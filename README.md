@@ -1,42 +1,36 @@
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-Source code for my blog.
+## Getting Started
 
-### Installation
+First, run the development server:
 
-You will need [gatsby](https://github.com/gatsbyjs/gatsby), obviously.
-
-```
-npm i -g gatsby
-git clone https://github.com/f0rr0/f0rr0.github.io
-cd f0rr0.github.io
-npm i
+```bash
 npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-You should have the site running on `localhost:8000`.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-### Deployment
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-Gatsby can be deployed on any static server. This one is deployed via GitHub Pages on the master branch.
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-### Cross-post to Medium
+## Learn More
 
-Make a `.env` file in `./src/scripts` and set your [Medium Integration Token](https://help.medium.com/hc/en-us/articles/215274738-Integration-tokens) like so:
+To learn more about Next.js, take a look at the following resources:
 
-```
-TOKEN=YOUR_TOKEN_HERE
-```
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-That's it. Cross-posting works out of the box with:
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-```
-npm run medium
-```
+## Deploy on Vercel
 
-Make sure you edit `config.toml` to reflect *your own* website.
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-### License
-
-The files under `blog` are Copyright 2016, All Rights Reserved.
-
-The rest of the project is under the [GNU Affero General Public License v3.0.](http://www.gnu.org/licenses/agpl-3.0.txt)
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
