@@ -1,11 +1,15 @@
 import type { MDXComponents } from "mdx/types";
+import MDXLink from "@/components/mdx/MDXLink";
+import Mermaid from "@/components/mdx/Mermaid";
 
 const components: MDXComponents = {
-  wrapper: ({ children }) => (
-    <article className="prose prose-zinc dark:prose-invert">{children}</article>
-  ),
+  a: MDXLink,
+  Mermaid,
 };
 
-export function useMDXComponents(): MDXComponents {
-  return components;
+export function useMDXComponents(overrides: MDXComponents = {}): MDXComponents {
+  return {
+    ...components,
+    ...overrides,
+  };
 }

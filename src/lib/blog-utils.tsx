@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { cache } from "react";
+import readingTime from "reading-time";
 import { z } from "zod";
 
 const BLOG_DIR = path.join(process.cwd(), "src", "content", "blog");
@@ -12,6 +13,10 @@ const metadataSchema = z.object({
   title: z.string(),
   date: z.string(),
   author: z.string(),
+  summary: z.string(),
+  tags: z.array(z.string()).optional(),
+  updated: z.string().optional(),
+  draft: z.boolean().optional(),
 });
 
 type BlogPostEntry = {
@@ -23,6 +28,10 @@ export type BlogPostMetadata = z.infer<typeof metadataSchema>;
 
 export type BlogPost = BlogPostEntry & {
   metadata: BlogPostMetadata;
+  date: Date;
+  updatedAt?: Date;
+  readingTime: string;
+  wordCount: number;
 };
 
 const hasFile = async (relativePath: string) => {
@@ -37,8 +46,8 @@ const hasFile = async (relativePath: string) => {
 const slugFromFilename = (filename: string) => filename.replace(/\.mdx$/, "");
 
 const importCandidates = (slug: string) => [
-  `${slug}.${MDX_EXT}`,
   `${slug}/${FOLDER_ENTRY}`,
+  `${slug}.${MDX_EXT}`,
 ];
 
 export const resolveImportPathForSlug = async (slug: string) => {
@@ -75,24 +84,160 @@ const collectEntries = async () => {
   return entries;
 };
 
+const stripMetadataExport = (source: string) =>
+  source
+    .replace(/export const metadata = \{[\s\S]*?^[\t ]*\};?\s*/m, "")
+    .trim();
+
+const toDate = (value: string, slug: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(
+      `Invalid date "${value}" in blog post "${slug}". Use YYYY-MM-DD or ISO format.`,
+    );
+  }
+  return parsed;
+};
+
+const getPostStats = async (importPath: string) => {
+  const source = await fs.readFile(path.join(BLOG_DIR, importPath), "utf8");
+  const text = stripMetadataExport(source);
+  const stats = readingTime(text);
+  return { readingTime: stats.text, wordCount: stats.words };
+};
+
 export const importBlogPostModule = async <Module = unknown>(
+  importPath: string,
+) => import(`${IMPORT_PREFIX}${importPath}`) as Promise<Module>;
+
+export const importMetadataImageModule = async <Module = unknown>(
   importPath: string,
 ) => import(`${IMPORT_PREFIX}${importPath}`) as Promise<Module>;
 
 export const parseBlogPostMetadata = (metadata: unknown) =>
   metadataSchema.parse(metadata);
 
+const METADATA_IMAGE_EXTENSIONS = [
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".avif",
+  ".gif",
+];
+const METADATA_IMAGE_MODULE_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"];
+
+export type MetadataImageKind = "opengraph" | "twitter";
+
+export type MetadataImageAsset = {
+  kind: MetadataImageKind;
+  type: "module" | "file";
+  filePath: string;
+  importPath: string;
+  contentType?: string;
+};
+
+const toPosixPath = (value: string) => value.split(path.sep).join("/");
+
+const contentTypeForExtension = (extension: string) => {
+  switch (extension) {
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".webp":
+      return "image/webp";
+    case ".avif":
+      return "image/avif";
+    case ".gif":
+      return "image/gif";
+    default:
+      return "application/octet-stream";
+  }
+};
+
+const metadataImageBaseName = (kind: MetadataImageKind) =>
+  kind === "opengraph" ? "opengraph-image" : "twitter-image";
+
+const getContentDirForImportPath = (importPath: string) =>
+  path.dirname(path.join(BLOG_DIR, importPath));
+
+const fileExists = async (filePath: string) => {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const findMetadataImageAsset = async (
+  importPath: string,
+  kind: MetadataImageKind,
+): Promise<MetadataImageAsset | null> => {
+  const baseName = metadataImageBaseName(kind);
+  const contentDir = getContentDirForImportPath(importPath);
+
+  for (const extension of METADATA_IMAGE_MODULE_EXTENSIONS) {
+    const filePath = path.join(contentDir, `${baseName}${extension}`);
+    if (await fileExists(filePath)) {
+      return {
+        kind,
+        type: "module",
+        filePath,
+        importPath: toPosixPath(path.relative(BLOG_DIR, filePath)),
+      };
+    }
+  }
+
+  for (const extension of METADATA_IMAGE_EXTENSIONS) {
+    const filePath = path.join(contentDir, `${baseName}${extension}`);
+    if (await fileExists(filePath)) {
+      return {
+        kind,
+        type: "file",
+        filePath,
+        importPath: toPosixPath(path.relative(BLOG_DIR, filePath)),
+        contentType: contentTypeForExtension(extension),
+      };
+    }
+  }
+
+  return null;
+};
+
 export const getBlogPosts = cache(async (): Promise<BlogPost[]> => {
   const entries = await collectEntries();
 
-  return Promise.all(
+  const posts = await Promise.all(
     entries.map(async ({ slug, importPath }) => {
       const mod = await importBlogPostModule<{ metadata: unknown }>(importPath);
+      const metadata = parseBlogPostMetadata(mod.metadata);
+      const stats = await getPostStats(importPath);
+      const date = toDate(metadata.date, slug);
+      const updatedAt = metadata.updated
+        ? toDate(metadata.updated, slug)
+        : undefined;
+
       return {
         slug,
         importPath,
-        metadata: parseBlogPostMetadata(mod.metadata),
+        metadata,
+        date,
+        updatedAt,
+        readingTime: stats.readingTime,
+        wordCount: stats.wordCount,
       };
     }),
   );
+
+  return posts
+    .filter((post) => !post.metadata.draft)
+    .sort((a, b) => b.date.getTime() - a.date.getTime());
+});
+
+export const getBlogPost = cache(async (slug: string) => {
+  const posts = await getBlogPosts();
+  return posts.find((post) => post.slug === slug) ?? null;
 });

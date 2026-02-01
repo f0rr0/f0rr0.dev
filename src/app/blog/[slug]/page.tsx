@@ -1,52 +1,144 @@
+import type { MDXComponents } from "mdx/types";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ComponentType } from "react";
+
+import MDXImage from "@/components/mdx/MDXImage";
 import {
+  findMetadataImageAsset,
+  getBlogPost,
   getBlogPosts,
   importBlogPostModule,
-  parseBlogPostMetadata,
-  resolveImportPathForSlug,
 } from "@/lib/blog-utils";
+import { formatDate } from "@/lib/date";
+import { absoluteUrl, siteConfig } from "@/lib/site";
 
-type PageParams = Promise<{ slug: string; importPath?: string }>;
+type PageParams = Promise<{ slug: string }>;
 
 type BlogPostModule = {
-  default: ComponentType;
+  default: ComponentType<{ components?: MDXComponents }>;
   metadata: unknown;
 };
 
 export async function generateStaticParams() {
   const posts = await getBlogPosts();
-  return posts.map(({ slug, importPath }) => ({ slug, importPath }));
+  return posts.map(({ slug }) => ({ slug }));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: PageParams;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const post = await getBlogPost(slug);
+
+  if (!post) return {};
+
+  const { metadata, date, updatedAt } = post;
+  const url = absoluteUrl(`/blog/${slug}`);
+  const ogAsset = await findMetadataImageAsset(post.importPath, "opengraph");
+  const twitterAsset = await findMetadataImageAsset(post.importPath, "twitter");
+  const ogImageUrl = ogAsset
+    ? absoluteUrl(`/blog/${slug}/opengraph-image`)
+    : undefined;
+  const twitterImageUrl = twitterAsset
+    ? absoluteUrl(`/blog/${slug}/twitter-image`)
+    : ogImageUrl;
+
+  return {
+    title: metadata.title,
+    description: metadata.summary,
+    keywords: metadata.tags,
+    alternates: {
+      canonical: url,
+    },
+    openGraph: {
+      type: "article",
+      title: metadata.title,
+      description: metadata.summary,
+      url,
+      siteName: siteConfig.name,
+      locale: siteConfig.locale,
+      publishedTime: date.toISOString(),
+      modifiedTime: updatedAt?.toISOString(),
+      authors: [metadata.author],
+      images: ogImageUrl ? [{ url: ogImageUrl }] : undefined,
+    },
+    twitter: {
+      card: twitterImageUrl ? "summary_large_image" : "summary",
+      title: metadata.title,
+      description: metadata.summary,
+      images: twitterImageUrl ? [twitterImageUrl] : undefined,
+    },
+  };
 }
 
 export default async function BlogPostPage({ params }: { params: PageParams }) {
-  const { slug, importPath } = await params;
+  const { slug } = await params;
+  const post = await getBlogPost(slug);
 
-  const resolvedImportPath =
-    importPath ?? (await resolveImportPathForSlug(slug));
-  if (!resolvedImportPath) notFound();
+  if (!post) notFound();
 
-  const module = (await importBlogPostModule<BlogPostModule>(
-    resolvedImportPath,
-  ).catch(() => null)) as BlogPostModule | null;
+  const { importPath, metadata, date, updatedAt, readingTime } = post;
+
+  const module = (await importBlogPostModule<BlogPostModule>(importPath).catch(
+    () => null,
+  )) as BlogPostModule | null;
 
   if (!module?.default) notFound();
 
   const Content = module.default;
-  const metadata = parseBlogPostMetadata(module.metadata);
+  const url = absoluteUrl(`/blog/${slug}`);
+
+  const ogAsset = await findMetadataImageAsset(importPath, "opengraph");
+  const resolvedImageUrl = ogAsset
+    ? absoluteUrl(`/blog/${slug}/opengraph-image`)
+    : undefined;
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: metadata.title,
+    description: metadata.summary,
+    keywords: metadata.tags?.join(", "),
+    datePublished: date.toISOString(),
+    dateModified: (updatedAt ?? date).toISOString(),
+    author: {
+      "@type": "Person",
+      name: metadata.author,
+    },
+    url,
+    mainEntityOfPage: url,
+    image: resolvedImageUrl ? [resolvedImageUrl] : undefined,
+  };
+
+  const mdxComponents = {
+    img: (props) => <MDXImage {...props} />,
+    Image: (props) => <MDXImage {...props} />,
+  } satisfies MDXComponents;
 
   return (
     <article className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-16">
-      <header className="flex flex-col gap-2">
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is required for SEO.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <header className="flex flex-col gap-3">
         <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           {metadata.title}
         </h1>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          {metadata.date} · {metadata.author}
+          {metadata.summary}
+        </p>
+        <p className="text-xs text-zinc-500 dark:text-zinc-500">
+          <time dateTime={date.toISOString()}>{formatDate(date)}</time> ·{" "}
+          {metadata.author} · {readingTime}
         </p>
       </header>
       <div className="prose prose-zinc dark:prose-invert">
-        <Content />
+        <Content components={mdxComponents} />
       </div>
     </article>
   );
