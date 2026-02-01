@@ -14,7 +14,7 @@ import {
 import { formatDate } from "@/lib/date";
 import { absoluteUrl, siteConfig } from "@/lib/site";
 
-type PageParams = { slug: string };
+type PageParams = Promise<{ slug: string }>;
 
 type BlogPostModule = {
   default: ComponentType<{ components?: MDXComponents }>;
@@ -31,7 +31,7 @@ export async function generateMetadata({
 }: {
   params: PageParams;
 }): Promise<Metadata> {
-  const { slug } = params;
+  const { slug } = await params;
   const post = await getBlogPost(slug);
 
   if (!post) return {};
@@ -71,7 +71,7 @@ export async function generateMetadata({
 }
 
 export default async function BlogPostPage({ params }: { params: PageParams }) {
-  const { slug } = params;
+  const { slug } = await params;
   const post = await getBlogPost(slug);
 
   if (!post) notFound();
