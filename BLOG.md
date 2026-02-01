@@ -22,7 +22,6 @@ export const metadata = {
   date: "2025-02-01",
   author: "Your Name",
   summary: "Short description used for listings + meta tags.",
-  image: "./og.png", // optional but recommended
   tags: ["tag", "tag"], // optional
   updated: "2025-02-12", // optional
   draft: false, // optional (true hides from listings/RSS)
@@ -44,7 +43,8 @@ Assets live next to the post and are referenced with relative paths:
 ```
 
 Notes:
-- `metadata.image` can be a relative file path; it is converted into a static import.
+- If you add `opengraph-image.*` (or `og.*`) next to the post, it is used automatically for OG/Twitter.
+- `metadata.image` can still be set to override the default.
 - Markdown images and `<Image src="./...">` are converted into static imports automatically.
 
 Gotchas:
@@ -80,6 +80,6 @@ Set `NEXT_PUBLIC_SITE_URL` in production for correct canonical URLs.
 
 1. Create `src/content/blog/<slug>/page.mdx`.
 2. Add `metadata` with `title`, `date`, `author`, `summary`.
-3. Import `./og.png` and set `image: og`.
-4. Reference images with `./` paths (Markdown) or static imports (JSX).
+3. (Optional) add `opengraph-image.png` next to the post.
+4. Reference images with `./` paths (Markdown) or `src="./..."` (JSX).
 5. Keep `draft: true` until ready to publish.
