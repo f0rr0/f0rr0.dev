@@ -45,7 +45,7 @@ Assets live next to the post and are referenced with relative paths:
 
 Notes:
 - `metadata.image` supports `./og.png` and is used for OG/Twitter cards.
-- Asset URLs are served from `/content/...` automatically.
+- Assets are copied to `public/content/**` during `dev` and `build`.
 
 Gotchas:
 - Asset responses are cached with `Cache-Control: public, max-age=31536000, immutable`.
@@ -53,6 +53,7 @@ Gotchas:
 - `next/image` is used only when width/height are provided and the image is local
   (non-SVG). Otherwise it falls back to `<img>` with lazy loading.
 - Remote images are not optimized unless you add them to Next's remote image config.
+- If you add new assets while `next dev` is running, re-run `bun run sync:content`.
 
 ## Markdown features
 
