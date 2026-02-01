@@ -8,6 +8,8 @@ export const env = createEnv({
     VERCEL_ENV: z.enum(["development", "preview", "production"]).optional(),
     VERCEL_URL: z.string().min(1).optional(),
     VERCEL_PROJECT_PRODUCTION_URL: z.string().min(1).optional(),
+  },
+  client: {
     NEXT_PUBLIC_PORT: z.string().min(1).optional(),
   },
   experimental__runtimeEnv: process.env,
