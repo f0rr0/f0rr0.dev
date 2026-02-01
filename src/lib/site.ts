@@ -8,17 +8,26 @@ const withProtocol = (value: string) => {
 };
 
 const resolveSiteUrl = () => {
-  if (env.VERCEL_PROJECT_PRODUCTION_URL) {
-    return withProtocol(env.VERCEL_PROJECT_PRODUCTION_URL);
+  if (process.env.NODE_ENV === "development") {
+    const devPort = process.env.PORT ?? process.env.NEXT_PUBLIC_PORT ?? "3000";
+    return `http://localhost:${devPort}`;
+  }
+
+  if (env.VERCEL_ENV === "production") {
+    if (env.VERCEL_PROJECT_PRODUCTION_URL) {
+      return withProtocol(env.VERCEL_PROJECT_PRODUCTION_URL);
+    }
+    if (env.VERCEL_URL) {
+      return withProtocol(env.VERCEL_URL);
+    }
   }
 
   if (env.VERCEL_URL) {
     return withProtocol(env.VERCEL_URL);
   }
 
-  if (process.env.NODE_ENV === "development") {
-    const devPort = process.env.PORT ?? process.env.NEXT_PUBLIC_PORT ?? "3000";
-    return `http://localhost:${devPort}`;
+  if (env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return withProtocol(env.VERCEL_PROJECT_PRODUCTION_URL);
   }
 
   throw new Error(

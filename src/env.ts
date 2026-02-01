@@ -3,6 +3,7 @@ import { z } from "zod";
 
 export const env = createEnv({
   server: {
+    VERCEL_ENV: z.enum(["development", "preview", "production"]).optional(),
     VERCEL_URL: z.string().min(1).optional(),
     VERCEL_PROJECT_PRODUCTION_URL: z.string().min(1).optional(),
   },
