@@ -1,3 +1,4 @@
+import "./src/env";
 import path from "node:path";
 import createMDX from "@next/mdx";
 import type { NextConfig } from "next";
@@ -8,6 +9,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   outputFileTracingIncludes: {
+    "/blog/[slug]": ["./src/content/**/*"],
     "/blog/[slug]/opengraph-image": ["./src/content/**/*"],
     "/blog/[slug]/twitter-image": ["./src/content/**/*"],
   },

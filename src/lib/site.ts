@@ -1,7 +1,44 @@
+import { env } from "@/env";
+
+const withProtocol = (value: string) => {
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+  return value.includes("localhost") ? `http://${value}` : `https://${value}`;
+};
+
+const resolveSiteUrl = () => {
+  if (env.NODE_ENV === "development") {
+    const devPort = env.PORT ?? env.NEXT_PUBLIC_PORT ?? "3000";
+    return `http://localhost:${devPort}`;
+  }
+
+  if (env.VERCEL_ENV === "production") {
+    if (env.VERCEL_PROJECT_PRODUCTION_URL) {
+      return withProtocol(env.VERCEL_PROJECT_PRODUCTION_URL);
+    }
+    if (env.VERCEL_URL) {
+      return withProtocol(env.VERCEL_URL);
+    }
+  }
+
+  if (env.VERCEL_URL) {
+    return withProtocol(env.VERCEL_URL);
+  }
+
+  if (env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return withProtocol(env.VERCEL_PROJECT_PRODUCTION_URL);
+  }
+
+  throw new Error(
+    "Missing Vercel system env vars. Expected VERCEL_PROJECT_PRODUCTION_URL or VERCEL_URL.",
+  );
+};
+
 export const siteConfig = {
   name: "F0RR0",
   description: "Creative developer building digital experiences.",
-  url: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  url: resolveSiteUrl(),
   language: "en-US",
   locale: "en_US",
   author: {
@@ -9,5 +46,5 @@ export const siteConfig = {
   },
 };
 
-export const absoluteUrl = (path: string) =>
-  new URL(path, siteConfig.url).toString();
+export const absoluteUrl = (path: string, baseUrl = siteConfig.url) =>
+  new URL(path, baseUrl).toString();
