@@ -114,18 +114,8 @@ export const importMetadataImageModule = async <Module = unknown>(
   importPath: string,
 ) => import(`${IMPORT_PREFIX}${importPath}`) as Promise<Module>;
 
-export const parseBlogPostMetadata = (metadata: unknown) => {
-  if (metadata && typeof metadata === "object") {
-    const record = metadata as Record<string, unknown>;
-    if ("image" in record || "twitterImage" in record) {
-      throw new Error(
-        "metadata.image and metadata.twitterImage are not supported. Use opengraph-image.* and twitter-image.* files instead.",
-      );
-    }
-  }
-
-  return metadataSchema.parse(metadata);
-};
+export const parseBlogPostMetadata = (metadata: unknown) =>
+  metadataSchema.parse(metadata);
 
 const METADATA_IMAGE_EXTENSIONS = [
   ".png",

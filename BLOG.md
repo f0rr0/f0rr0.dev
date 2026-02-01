@@ -52,7 +52,6 @@ Gotchas:
 - `next/image` is used only when width/height are provided and the image is local
   (non-SVG). Otherwise it falls back to `<img>` with lazy loading.
 - Remote images are not optimized unless you add them to Next's remote image config.
-- `metadata.image` / `metadata.twitterImage` are ignored. Use special files instead.
 
 ## Markdown features
 
