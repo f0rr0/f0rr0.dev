@@ -1,10 +1,5 @@
 import createMDX from "@next/mdx";
 import type { NextConfig } from "next";
-import rehypeAutolinkHeadings from "rehype-autolink-headings";
-import rehypePrettyCode from "rehype-pretty-code";
-import rehypeSlug from "rehype-slug";
-import remarkGfm from "remark-gfm";
-import remarkMermaid from "./src/lib/remark-mermaid";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
@@ -15,11 +10,11 @@ const nextConfig: NextConfig = {
 
 const withMDX = createMDX({
   options: {
-    remarkPlugins: [remarkMermaid, remarkGfm],
+    remarkPlugins: ["./src/lib/remark-mermaid.mjs", "remark-gfm"],
     rehypePlugins: [
-      rehypeSlug,
+      "rehype-slug",
       [
-        rehypeAutolinkHeadings,
+        "rehype-autolink-headings",
         {
           behavior: "wrap",
           properties: {
@@ -28,7 +23,7 @@ const withMDX = createMDX({
         },
       ],
       [
-        rehypePrettyCode,
+        "rehype-pretty-code",
         {
           theme: {
             light: "github-light",
