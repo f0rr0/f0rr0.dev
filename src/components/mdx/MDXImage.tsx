@@ -1,13 +1,12 @@
 import Image from "next/image";
 import type { ImgHTMLAttributes } from "react";
 
-import { useAssetBasePath } from "@/components/mdx/MDXContent";
-
 const isRemoteSrc = (src: string) => /^https?:\/\//i.test(src);
 
 type MDXImageProps = ImgHTMLAttributes<HTMLImageElement> & {
   width?: number | string;
   height?: number | string;
+  assetBasePath?: string;
 };
 
 const parseDimension = (value?: number | string) => {
@@ -43,9 +42,9 @@ export default function MDXImage({
   width,
   height,
   className,
+  assetBasePath,
   ...rest
 }: MDXImageProps) {
-  const assetBasePath = useAssetBasePath();
   if (typeof src !== "string" || src.length === 0) return null;
 
   const resolvedSrc = resolveAssetSrc(src, assetBasePath);

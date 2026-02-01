@@ -1,8 +1,9 @@
+import type { MDXComponents } from "mdx/types";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ComponentType } from "react";
 
-import MDXContent from "@/components/mdx/MDXContent";
+import MDXImage from "@/components/mdx/MDXImage";
 import {
   getBlogPost,
   getBlogPosts,
@@ -16,7 +17,7 @@ import { absoluteUrl, siteConfig } from "@/lib/site";
 type PageParams = { slug: string };
 
 type BlogPostModule = {
-  default: ComponentType;
+  default: ComponentType<{ components?: MDXComponents }>;
   metadata: unknown;
 };
 
@@ -108,6 +109,11 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
     image: resolvedImage ? [resolvedImage] : undefined,
   };
 
+  const mdxComponents = {
+    img: (props) => <MDXImage {...props} assetBasePath={assetBasePath} />,
+    Image: (props) => <MDXImage {...props} assetBasePath={assetBasePath} />,
+  } satisfies MDXComponents;
+
   return (
     <article className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-16">
       <script
@@ -128,9 +134,7 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
         </p>
       </header>
       <div className="prose prose-zinc dark:prose-invert">
-        <MDXContent assetBasePath={assetBasePath}>
-          <Content />
-        </MDXContent>
+        <Content components={mdxComponents} />
       </div>
     </article>
   );
