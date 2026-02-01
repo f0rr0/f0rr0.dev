@@ -1,4 +1,4 @@
-# Inspiration (2023-02-01 to 2026-02-01)
+# Inspiration articles (2023-02-01 to 2026-02-01)
 
 Curated blog posts and articles about landing-page hero effects, WebGL/GLSL shaders, and interactive visuals for the web.
 
