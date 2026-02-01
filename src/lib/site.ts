@@ -8,8 +8,8 @@ const withProtocol = (value: string) => {
 };
 
 const resolveSiteUrl = () => {
-  if (process.env.NODE_ENV === "development") {
-    const devPort = process.env.PORT ?? process.env.NEXT_PUBLIC_PORT ?? "3000";
+  if (env.NODE_ENV === "development") {
+    const devPort = env.PORT ?? env.NEXT_PUBLIC_PORT ?? "3000";
     return `http://localhost:${devPort}`;
   }
 
