@@ -30,7 +30,13 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         {children}
-        <SceneWrapper style={{ pointerEvents: 'none' }} eventSource={typeof window !== 'undefined' ? document.body : undefined} eventPrefix="client" />
+        <SceneWrapper
+          style={{ pointerEvents: "none" }}
+          eventSource={
+            typeof window !== "undefined" ? document.body : undefined
+          }
+          eventPrefix="client"
+        />
       </body>
     </html>
   );
