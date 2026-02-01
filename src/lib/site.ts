@@ -17,7 +17,8 @@ const resolveSiteUrl = () => {
   }
 
   if (process.env.NODE_ENV === "development") {
-    return "http://localhost:3000";
+    const devPort = process.env.PORT ?? process.env.NEXT_PUBLIC_PORT ?? "3000";
+    return `http://localhost:${devPort}`;
   }
 
   throw new Error(
