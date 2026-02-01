@@ -10,7 +10,6 @@ type MDXImageProps = Omit<
   src?: string | StaticImageData;
   width?: number | string;
   height?: number | string;
-  assetBasePath?: string;
 };
 
 const parseDimension = (value?: number | string) => {
@@ -28,21 +27,6 @@ const isStaticImageData = (value: unknown): value is StaticImageData =>
   "src" in value &&
   typeof (value as { src?: unknown }).src === "string";
 
-const resolveAssetSrc = (src: string, basePath?: string) => {
-  if (
-    !basePath ||
-    src.startsWith("/") ||
-    isRemoteSrc(src) ||
-    src.startsWith("data:") ||
-    src.startsWith("blob:")
-  ) {
-    return src;
-  }
-  const trimmedBase = basePath.replace(/\/$/, "");
-  const trimmedSrc = src.replace(/^\.\/+/, "");
-  return `${trimmedBase}/${trimmedSrc}`.replace(/\/{2,}/g, "/");
-};
-
 const isSvg = (src: string) =>
   src.split("?")[0]?.split("#")[0]?.toLowerCase().endsWith(".svg");
 
@@ -52,20 +36,24 @@ export default function MDXImage({
   width,
   height,
   className,
-  assetBasePath,
   ...rest
 }: MDXImageProps) {
   if (!src) return null;
 
-  if (typeof src === "string" && src.startsWith(".") && !assetBasePath) {
+  if (
+    typeof src === "string" &&
+    !src.startsWith("/") &&
+    !isRemoteSrc(src) &&
+    !src.startsWith("data:") &&
+    !src.startsWith("blob:")
+  ) {
     throw new Error(
-      `MDXImage received a relative src ("${src}") without an asset base path. Import the image and pass the import instead.`,
+      `MDXImage received a relative src ("${src}"). Import the image or use a Markdown image so it can be statically imported.`,
     );
   }
 
   const staticImage = isStaticImageData(src) ? src : null;
-  const resolvedSrc =
-    typeof src === "string" ? resolveAssetSrc(src, assetBasePath) : src.src;
+  const resolvedSrc = typeof src === "string" ? src : src.src;
 
   const parsedWidth = parseDimension(width) ?? staticImage?.width;
   const parsedHeight = parseDimension(height) ?? staticImage?.height;

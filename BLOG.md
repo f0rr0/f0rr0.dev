@@ -17,14 +17,12 @@ The slug is the folder name or filename.
 Each post must export `metadata`:
 
 ```mdx
-import og from "./og.png";
-
 export const metadata = {
   title: "Post title",
   date: "2025-02-01",
   author: "Your Name",
   summary: "Short description used for listings + meta tags.",
-  image: og, // optional but recommended
+  image: "./og.png", // optional but recommended
   tags: ["tag", "tag"], // optional
   updated: "2025-02-12", // optional
   draft: false, // optional (true hides from listings/RSS)
@@ -40,17 +38,14 @@ Gotchas:
 Assets live next to the post and are referenced with relative paths:
 
 ```mdx
-import hero from "./hero.png";
-
 ![Diagram](./diagram.png)
 
-<Image src={hero} width={1200} height={630} alt="Hero" />
+<Image src="./hero.png" width={1200} height={630} alt="Hero" />
 ```
 
 Notes:
-- `metadata.image` should be a static import (or an absolute URL) and is used for OG/Twitter cards.
-- Markdown images are converted into static imports automatically.
-- `<Image />` requires a manual import and `src={hero}`.
+- `metadata.image` can be a relative file path; it is converted into a static import.
+- Markdown images and `<Image src="./...">` are converted into static imports automatically.
 
 Gotchas:
 - `next/image` is used only when width/height are provided and the image is local
