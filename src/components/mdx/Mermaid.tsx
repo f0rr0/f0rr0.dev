@@ -57,6 +57,7 @@ export default function Mermaid({ chart, className }: MermaidProps) {
   return (
     <div
       className={className}
+      role="img"
       aria-label="Mermaid diagram"
       // biome-ignore lint/security/noDangerouslySetInnerHtml: Mermaid renders trusted diagrams.
       dangerouslySetInnerHTML={{ __html: svg }}

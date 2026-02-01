@@ -2,16 +2,16 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ComponentType } from "react";
 
+import MDXContent from "@/components/mdx/MDXContent";
 import {
   getBlogPost,
   getBlogPosts,
-  importBlogPostModule,
   getContentAssetBasePath,
+  importBlogPostModule,
   resolveContentAssetPath,
 } from "@/lib/blog-utils";
 import { formatDate } from "@/lib/date";
 import { absoluteUrl, siteConfig } from "@/lib/site";
-import MDXContent from "@/components/mdx/MDXContent";
 
 type PageParams = { slug: string };
 

@@ -1,11 +1,13 @@
+import type { Code, Root } from "mdast";
+import type { Parent } from "unist";
 import { visit } from "unist-util-visit";
 
-const remarkMermaid = () => (tree: any) => {
-  visit(tree, "code", (node: any, index: number | null, parent: any) => {
+const remarkMermaid = () => (tree: Root) => {
+  visit(tree, "code", (node: Code, index, parent) => {
     if (!parent || typeof index !== "number") return;
     if (node.lang !== "mermaid") return;
 
-    parent.children[index] = {
+    const element = {
       type: "mdxJsxFlowElement",
       name: "Mermaid",
       attributes: [
@@ -17,6 +19,8 @@ const remarkMermaid = () => (tree: any) => {
       ],
       children: [],
     };
+
+    (parent as Parent).children[index] = element as Parent["children"][number];
   });
 };
 

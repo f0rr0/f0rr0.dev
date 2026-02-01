@@ -45,9 +45,9 @@ export default function MDXImage({
   className,
   ...rest
 }: MDXImageProps) {
+  const assetBasePath = useAssetBasePath();
   if (typeof src !== "string" || src.length === 0) return null;
 
-  const assetBasePath = useAssetBasePath();
   const resolvedSrc = resolveAssetSrc(src, assetBasePath);
   const parsedWidth = parseDimension(width);
   const parsedHeight = parseDimension(height);
@@ -59,6 +59,7 @@ export default function MDXImage({
 
   if (!shouldUseNextImage) {
     return (
+      // biome-ignore lint/performance/noImgElement: fall back for remote/unknown dimensions.
       <img
         src={resolvedSrc}
         alt={alt ?? ""}

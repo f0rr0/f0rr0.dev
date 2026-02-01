@@ -96,7 +96,7 @@ const toDate = (value: string, slug: string) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     throw new Error(
-      `Invalid date \"${value}\" in blog post \"${slug}\". Use YYYY-MM-DD or ISO format.`,
+      `Invalid date "${value}" in blog post "${slug}". Use YYYY-MM-DD or ISO format.`,
     );
   }
   return parsed;

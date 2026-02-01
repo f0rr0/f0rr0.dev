@@ -17,6 +17,7 @@ export async function GET() {
     favicon: absoluteUrl("/favicon.ico"),
     updated: posts[0]?.date ?? new Date(),
     generator: "Next.js",
+    copyright: `© ${new Date().getFullYear()} ${siteConfig.name}`,
     feedLinks: {
       rss2: absoluteUrl("/rss.xml"),
     },
