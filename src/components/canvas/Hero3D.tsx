@@ -1,37 +1,44 @@
-'use client'
+"use client";
 
-import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
-import { useScrollRig } from '@14islands/r3f-scroll-rig'
-import { MeshDistortMaterial, Sphere } from '@react-three/drei'
-import * as THREE from 'three'
+import {
+  type ScrollSceneChildProps,
+  useScrollRig,
+} from "@14islands/r3f-scroll-rig";
+import { MeshDistortMaterial, Sphere } from "@react-three/drei";
+import { useFrame } from "@react-three/fiber";
+import { useRef } from "react";
+import type * as THREE from "three";
 
-export default function Hero3D({ scrollState }: { scrollState?: any }) {
-    const mesh = useRef<THREE.Mesh>(null)
-    const { requestRender } = useScrollRig()
+type Hero3DProps = {
+  scrollState?: ScrollSceneChildProps["scrollState"];
+};
 
-    useFrame((state, delta) => {
-        if (mesh.current) {
-            // Basic rotation
-            mesh.current.rotation.x += delta * 0.2
-            mesh.current.rotation.y += delta * 0.3
+export default function Hero3D({ scrollState: _scrollState }: Hero3DProps) {
+  const mesh = useRef<THREE.Mesh | null>(null);
+  const { requestRender } = useScrollRig();
 
-            // If we had scrollState passed down or available via context, we could use it here
-            // For now, just a continuous animation to prove 3D works
-            requestRender()
-        }
-    })
+  useFrame((_state, delta) => {
+    if (mesh.current) {
+      // Basic rotation
+      mesh.current.rotation.x += delta * 0.2;
+      mesh.current.rotation.y += delta * 0.3;
 
-    return (
-        <Sphere args={[1, 32, 32]} ref={mesh} scale={1.5}>
-            <MeshDistortMaterial
-                color="#4a90e2"
-                attach="material"
-                distort={0.5}
-                speed={2}
-                roughness={0.2}
-                metalness={0.8}
-            />
-        </Sphere>
-    )
+      // If we had scrollState passed down or available via context, we could use it here
+      // For now, just a continuous animation to prove 3D works
+      requestRender();
+    }
+  });
+
+  return (
+    <Sphere args={[1, 32, 32]} ref={mesh} scale={1.5}>
+      <MeshDistortMaterial
+        color="#4a90e2"
+        attach="material"
+        distort={0.5}
+        speed={2}
+        roughness={0.2}
+        metalness={0.8}
+      />
+    </Sphere>
+  );
 }

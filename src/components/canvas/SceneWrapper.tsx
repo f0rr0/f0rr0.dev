@@ -1,18 +1,23 @@
-'use client'
+"use client";
 
-import dynamic from 'next/dynamic'
+import { SmoothScrollbar } from "@14islands/r3f-scroll-rig";
+import dynamic from "next/dynamic";
+import type { ComponentProps } from "react";
 
-import { SmoothScrollbar } from '@14islands/r3f-scroll-rig'
+import ErrorBoundary from "@/components/ErrorBoundary";
 
-import ErrorBoundary from '@/components/ErrorBoundary'
+type SceneComponent = typeof import("@/components/canvas/Scene").default;
+type SceneProps = ComponentProps<SceneComponent>;
 
-const Scene = dynamic(() => import('@/components/canvas/Scene'), { ssr: false })
+const Scene = dynamic<SceneProps>(() => import("@/components/canvas/Scene"), {
+  ssr: false,
+});
 
-export default function SceneWrapper(props: any) {
-    return (
-        <ErrorBoundary>
-            <SmoothScrollbar />
-            <Scene {...props} />
-        </ErrorBoundary>
-    )
+export default function SceneWrapper(props: SceneProps) {
+  return (
+    <ErrorBoundary>
+      <SmoothScrollbar />
+      <Scene {...props} />
+    </ErrorBoundary>
+  );
 }
