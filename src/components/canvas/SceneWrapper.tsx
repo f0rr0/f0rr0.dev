@@ -14,10 +14,14 @@ const Scene = dynamic<SceneProps>(() => import("@/components/canvas/Scene"), {
 });
 
 export default function SceneWrapper(props: SceneProps) {
+  const eventSource =
+    props.eventSource ??
+    (typeof window !== "undefined" ? document.body : undefined);
+
   return (
     <ErrorBoundary>
       <SmoothScrollbar />
-      <Scene {...props} />
+      <Scene {...props} eventSource={eventSource} />
     </ErrorBoundary>
   );
 }
