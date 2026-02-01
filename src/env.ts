@@ -12,6 +12,8 @@ export const env = createEnv({
   client: {
     NEXT_PUBLIC_PORT: z.string().min(1).optional(),
   },
-  experimental__runtimeEnv: process.env,
+  experimental__runtimeEnv: {
+    NEXT_PUBLIC_PORT: process.env.NEXT_PUBLIC_PORT,
+  },
   emptyStringAsUndefined: true,
 });
