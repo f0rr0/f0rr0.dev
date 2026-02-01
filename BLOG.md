@@ -43,8 +43,9 @@ Assets live next to the post and are referenced with relative paths:
 ```
 
 Notes:
-- If you add `opengraph-image.*` (or `og.*`) next to the post, it is used automatically for OG/Twitter.
-- `metadata.image` can still be set to override the default.
+- If you add `opengraph-image.*` (or `og.*`) next to the post, it is used automatically for OG.
+- If you add `twitter-image.*` (or `twitter-card.*`) next to the post, it is used for Twitter cards.
+- `metadata.image` / `metadata.twitterImage` can still be set to override the defaults.
 - Markdown images and `<Image src="./...">` are converted into static imports automatically.
 
 Gotchas:
@@ -80,6 +81,6 @@ Set `NEXT_PUBLIC_SITE_URL` in production for correct canonical URLs.
 
 1. Create `src/content/blog/<slug>/page.mdx`.
 2. Add `metadata` with `title`, `date`, `author`, `summary`.
-3. (Optional) add `opengraph-image.png` next to the post.
+3. (Optional) add `opengraph-image.png` and/or `twitter-image.png` next to the post.
 4. Reference images with `./` paths (Markdown) or `src="./..."` (JSX).
 5. Keep `draft: true` until ready to publish.

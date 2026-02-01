@@ -19,6 +19,18 @@ const DEFAULT_OG_IMAGE_NAMES = [
   "og.webp",
   "og.avif",
 ];
+const DEFAULT_TWITTER_IMAGE_NAMES = [
+  "twitter-image.png",
+  "twitter-image.jpg",
+  "twitter-image.jpeg",
+  "twitter-image.webp",
+  "twitter-image.avif",
+  "twitter-card.png",
+  "twitter-card.jpg",
+  "twitter-card.jpeg",
+  "twitter-card.webp",
+  "twitter-card.avif",
+];
 
 const isTransformableUrl = (url) => {
   if (!url) return false;
@@ -169,6 +181,7 @@ const transformMetadataImage = (
   importAliases,
   counterRef,
   defaultMetadataImage,
+  defaultTwitterImage,
 ) => {
   const program = node?.data?.estree;
   if (!program || !Array.isArray(program.body)) return;
@@ -188,10 +201,18 @@ const transformMetadataImage = (
 
       const properties = declaration.init.properties ?? [];
       let hasImageProperty = false;
+      let hasTwitterProperty = false;
 
       for (const property of properties) {
-        if (getPropertyName(property) !== "image") continue;
-        hasImageProperty = true;
+        const propertyName = getPropertyName(property);
+        if (propertyName === "image") {
+          hasImageProperty = true;
+        }
+        if (propertyName === "twitterImage") {
+          hasTwitterProperty = true;
+        }
+        if (propertyName !== "image" && propertyName !== "twitterImage")
+          continue;
 
         if (property.value?.type !== "Literal") continue;
         if (typeof property.value.value !== "string") continue;
@@ -229,6 +250,26 @@ const transformMetadataImage = (
           computed: false,
         });
       }
+
+      if (!hasTwitterProperty && defaultTwitterImage) {
+        const importPath = normaliseImportPath(defaultTwitterImage);
+        const identifier = getOrCreateImport(
+          imports,
+          importAliases,
+          importPath,
+          counterRef,
+        );
+
+        properties.push({
+          type: "Property",
+          key: { type: "Identifier", name: "twitterImage" },
+          value: { type: "Identifier", name: identifier },
+          kind: "init",
+          method: false,
+          shorthand: false,
+          computed: false,
+        });
+      }
     }
   }
 };
@@ -247,11 +288,26 @@ const findDefaultMetadataImage = (filePath) => {
   return null;
 };
 
+const findDefaultTwitterImage = (filePath) => {
+  if (!filePath || typeof filePath !== "string") return null;
+  const dir = path.dirname(filePath);
+
+  for (const filename of DEFAULT_TWITTER_IMAGE_NAMES) {
+    const candidate = path.join(dir, filename);
+    if (fs.existsSync(candidate)) {
+      return `./${filename}`;
+    }
+  }
+
+  return null;
+};
+
 const remarkStaticImageImports = () => (tree, file) => {
   const imports = [];
   const importAliases = new Map();
   const counterRef = { value: 0 };
   const defaultMetadataImage = findDefaultMetadataImage(file?.path);
+  const defaultTwitterImage = findDefaultTwitterImage(file?.path);
 
   visit(tree, "image", (node, index, parent) => {
     if (!parent || typeof index !== "number") return;
@@ -285,6 +341,7 @@ const remarkStaticImageImports = () => (tree, file) => {
       importAliases,
       counterRef,
       defaultMetadataImage,
+      defaultTwitterImage,
     );
   });
 

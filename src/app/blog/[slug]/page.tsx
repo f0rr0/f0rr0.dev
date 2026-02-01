@@ -37,8 +37,14 @@ export async function generateMetadata({
 
   const { metadata, date, updatedAt } = post;
   const url = absoluteUrl(`/blog/${slug}`);
-  const ogImage = resolveMetadataImage(metadata.image, slug);
+  const ogImage = resolveMetadataImage(metadata.image, slug, "image");
   const ogImageUrl = ogImage ? absoluteUrl(ogImage) : undefined;
+  const twitterImage = resolveMetadataImage(
+    metadata.twitterImage ?? metadata.image,
+    slug,
+    "twitterImage",
+  );
+  const twitterImageUrl = twitterImage ? absoluteUrl(twitterImage) : ogImageUrl;
 
   return {
     title: metadata.title,
@@ -60,10 +66,10 @@ export async function generateMetadata({
       images: ogImageUrl ? [{ url: ogImageUrl }] : undefined,
     },
     twitter: {
-      card: ogImageUrl ? "summary_large_image" : "summary",
+      card: twitterImageUrl ? "summary_large_image" : "summary",
       title: metadata.title,
       description: metadata.summary,
-      images: ogImageUrl ? [ogImageUrl] : undefined,
+      images: twitterImageUrl ? [twitterImageUrl] : undefined,
     },
   };
 }
@@ -85,7 +91,7 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
   const Content = module.default;
   const url = absoluteUrl(`/blog/${slug}`);
 
-  const resolvedImage = resolveMetadataImage(metadata.image, slug);
+  const resolvedImage = resolveMetadataImage(metadata.image, slug, "image");
   const resolvedImageUrl = resolvedImage
     ? absoluteUrl(resolvedImage)
     : undefined;

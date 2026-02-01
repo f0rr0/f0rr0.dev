@@ -17,6 +17,9 @@ const metadataSchema = z.object({
   image: z
     .union([z.string(), z.object({ src: z.string() }).passthrough()])
     .optional(),
+  twitterImage: z
+    .union([z.string(), z.object({ src: z.string() }).passthrough()])
+    .optional(),
   tags: z.array(z.string()).optional(),
   updated: z.string().optional(),
   draft: z.boolean().optional(),
@@ -132,14 +135,15 @@ const isStaticImageData = (value: unknown): value is StaticImageData =>
 const isAbsoluteUrl = (value: string) => /^https?:\/\//i.test(value);
 
 export const resolveMetadataImage = (
-  image: BlogPostMetadata["image"],
+  image: BlogPostMetadata["image"] | BlogPostMetadata["twitterImage"],
   slug: string,
+  fieldName: "image" | "twitterImage",
 ) => {
   if (!image) return undefined;
   if (typeof image === "string") {
     if (isAbsoluteUrl(image) || image.startsWith("/")) return image;
     throw new Error(
-      `Blog post "${slug}" uses a relative metadata.image ("${image}"). Import the image and pass the import instead.`,
+      `Blog post "${slug}" uses a relative metadata.${fieldName} ("${image}"). Import the image or rely on the auto-detected file name.`,
     );
   }
   if (isStaticImageData(image)) return image.src;
