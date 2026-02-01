@@ -8,6 +8,7 @@
     "start": "next start",
     "typecheck": "tsgo --noEmit",
     "lint": "biome check",
+    "rulesync": "bunx rulesync generate",
     "format": "biome format --write"
   },
   "dependencies": {

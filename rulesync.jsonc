@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dyoshikawa/rulesync/main/config-schema.json",
+  "targets": ["codexcli"],
+  "features": ["rules", "skills"],
+  "delete": true,
+  "rules": {
+    "root": "overview.md"
+  }
+}
