@@ -139,7 +139,7 @@ export const resolveMetadataImage = (
   if (typeof image === "string") {
     if (isAbsoluteUrl(image) || image.startsWith("/")) return image;
     throw new Error(
-      `Blog post \"${slug}\" uses a relative metadata.image (\"${image}\"). Import the image and pass the import instead.`,
+      `Blog post "${slug}" uses a relative metadata.image ("${image}"). Import the image and pass the import instead.`,
     );
   }
   if (isStaticImageData(image)) return image.src;

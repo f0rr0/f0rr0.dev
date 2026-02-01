@@ -1,14 +1,7 @@
-import Image from "next/image";
+import Image, { type StaticImageData } from "next/image";
 import type { ImgHTMLAttributes } from "react";
 
 const isRemoteSrc = (src: string) => /^https?:\/\//i.test(src);
-
-type StaticImageData = {
-  src: string;
-  width?: number;
-  height?: number;
-  blurDataURL?: string;
-};
 
 type MDXImageProps = Omit<
   ImgHTMLAttributes<HTMLImageElement>,
@@ -66,7 +59,7 @@ export default function MDXImage({
 
   if (typeof src === "string" && src.startsWith(".") && !assetBasePath) {
     throw new Error(
-      `MDXImage received a relative src (\"${src}\") without an asset base path. Import the image and pass the import instead.`,
+      `MDXImage received a relative src ("${src}") without an asset base path. Import the image and pass the import instead.`,
     );
   }
 
