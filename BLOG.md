@@ -75,7 +75,7 @@ If rendering fails, the raw code block is shown.
 - Sitemap: `/sitemap.xml`
 - Robots: `/robots.txt`
 
-Set `NEXT_PUBLIC_SITE_URL` in production for correct canonical URLs.
+Canonical URLs are derived from Vercel system environment variables when deployed on Vercel.
 
 ## Quick checklist
 
