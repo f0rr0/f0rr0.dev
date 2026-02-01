@@ -11,7 +11,7 @@ import {
   importBlogPostModule,
 } from "@/lib/blog-utils";
 import { formatDate } from "@/lib/date";
-import { absoluteUrl, resolveRequestBaseUrl, siteConfig } from "@/lib/site";
+import { absoluteUrl, siteConfig } from "@/lib/site";
 
 type PageParams = Promise<{ slug: string }>;
 
@@ -36,15 +36,14 @@ export async function generateMetadata({
   if (!post) return {};
 
   const { metadata, date, updatedAt } = post;
-  const baseUrl = await resolveRequestBaseUrl();
-  const url = absoluteUrl(`/blog/${slug}`, baseUrl);
+  const url = absoluteUrl(`/blog/${slug}`);
   const ogAsset = await findMetadataImageAsset(post.importPath, "opengraph");
   const twitterAsset = await findMetadataImageAsset(post.importPath, "twitter");
   const ogImageUrl = ogAsset
-    ? absoluteUrl(`/blog/${slug}/opengraph-image`, baseUrl)
+    ? absoluteUrl(`/blog/${slug}/opengraph-image`)
     : undefined;
   const twitterImageUrl = twitterAsset
-    ? absoluteUrl(`/blog/${slug}/twitter-image`, baseUrl)
+    ? absoluteUrl(`/blog/${slug}/twitter-image`)
     : ogImageUrl;
 
   return {
@@ -90,12 +89,11 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
   if (!module?.default) notFound();
 
   const Content = module.default;
-  const baseUrl = await resolveRequestBaseUrl();
-  const url = absoluteUrl(`/blog/${slug}`, baseUrl);
+  const url = absoluteUrl(`/blog/${slug}`);
 
   const ogAsset = await findMetadataImageAsset(importPath, "opengraph");
   const resolvedImageUrl = ogAsset
-    ? absoluteUrl(`/blog/${slug}/opengraph-image`, baseUrl)
+    ? absoluteUrl(`/blog/${slug}/opengraph-image`)
     : undefined;
 
   const jsonLd = {

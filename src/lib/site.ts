@@ -48,20 +48,3 @@ export const siteConfig = {
 
 export const absoluteUrl = (path: string, baseUrl = siteConfig.url) =>
   new URL(path, baseUrl).toString();
-
-export const resolveRequestBaseUrl = async () => {
-  if (process.env.NODE_ENV !== "development") {
-    return siteConfig.url;
-  }
-
-  try {
-    const { headers } = await import("next/headers");
-    const headerList = await headers();
-    const host = headerList.get("x-forwarded-host") ?? headerList.get("host");
-    if (!host) return siteConfig.url;
-    const proto = headerList.get("x-forwarded-proto") ?? "http";
-    return `${proto}://${host}`;
-  } catch {
-    return siteConfig.url;
-  }
-};
