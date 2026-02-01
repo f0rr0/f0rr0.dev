@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { cache } from "react";
+import readingTime from "reading-time";
 import { z } from "zod";
 
 const BLOG_DIR = path.join(process.cwd(), "src", "content", "blog");
@@ -12,6 +13,11 @@ const metadataSchema = z.object({
   title: z.string(),
   date: z.string(),
   author: z.string(),
+  summary: z.string(),
+  image: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  updated: z.string().optional(),
+  draft: z.boolean().optional(),
 });
 
 type BlogPostEntry = {
@@ -23,7 +29,13 @@ export type BlogPostMetadata = z.infer<typeof metadataSchema>;
 
 export type BlogPost = BlogPostEntry & {
   metadata: BlogPostMetadata;
+  date: Date;
+  updatedAt?: Date;
+  readingTime: string;
+  wordCount: number;
 };
+
+const trimLeadingDotSlash = (value: string) => value.replace(/^\.\/+/, "");
 
 const hasFile = async (relativePath: string) => {
   try {
@@ -37,8 +49,8 @@ const hasFile = async (relativePath: string) => {
 const slugFromFilename = (filename: string) => filename.replace(/\.mdx$/, "");
 
 const importCandidates = (slug: string) => [
-  `${slug}.${MDX_EXT}`,
   `${slug}/${FOLDER_ENTRY}`,
+  `${slug}.${MDX_EXT}`,
 ];
 
 export const resolveImportPathForSlug = async (slug: string) => {
@@ -75,6 +87,28 @@ const collectEntries = async () => {
   return entries;
 };
 
+const stripMetadataExport = (source: string) =>
+  source
+    .replace(/export const metadata = \{[\s\S]*?^[\t ]*\};?\s*/m, "")
+    .trim();
+
+const toDate = (value: string, slug: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(
+      `Invalid date \"${value}\" in blog post \"${slug}\". Use YYYY-MM-DD or ISO format.`,
+    );
+  }
+  return parsed;
+};
+
+const getPostStats = async (importPath: string) => {
+  const source = await fs.readFile(path.join(BLOG_DIR, importPath), "utf8");
+  const text = stripMetadataExport(source);
+  const stats = readingTime(text);
+  return { readingTime: stats.text, wordCount: stats.words };
+};
+
 export const importBlogPostModule = async <Module = unknown>(
   importPath: string,
 ) => import(`${IMPORT_PREFIX}${importPath}`) as Promise<Module>;
@@ -82,17 +116,54 @@ export const importBlogPostModule = async <Module = unknown>(
 export const parseBlogPostMetadata = (metadata: unknown) =>
   metadataSchema.parse(metadata);
 
+export const getContentAssetBasePath = (importPath: string) => {
+  const parts = importPath.split("/");
+  if (parts.length <= 1) return "/content/blog";
+  parts.pop();
+  return `/content/blog/${parts.join("/")}`;
+};
+
+export const resolveContentAssetPath = (
+  importPath: string,
+  assetPath: string,
+) => {
+  if (assetPath.startsWith("http") || assetPath.startsWith("/"))
+    return assetPath;
+  const base = getContentAssetBasePath(importPath).replace(/\/$/, "");
+  return `${base}/${trimLeadingDotSlash(assetPath)}`.replace(/\/{2,}/g, "/");
+};
+
 export const getBlogPosts = cache(async (): Promise<BlogPost[]> => {
   const entries = await collectEntries();
 
-  return Promise.all(
+  const posts = await Promise.all(
     entries.map(async ({ slug, importPath }) => {
       const mod = await importBlogPostModule<{ metadata: unknown }>(importPath);
+      const metadata = parseBlogPostMetadata(mod.metadata);
+      const stats = await getPostStats(importPath);
+      const date = toDate(metadata.date, slug);
+      const updatedAt = metadata.updated
+        ? toDate(metadata.updated, slug)
+        : undefined;
+
       return {
         slug,
         importPath,
-        metadata: parseBlogPostMetadata(mod.metadata),
+        metadata,
+        date,
+        updatedAt,
+        readingTime: stats.readingTime,
+        wordCount: stats.wordCount,
       };
     }),
   );
+
+  return posts
+    .filter((post) => !post.metadata.draft)
+    .sort((a, b) => b.date.getTime() - a.date.getTime());
+});
+
+export const getBlogPost = cache(async (slug: string) => {
+  const posts = await getBlogPosts();
+  return posts.find((post) => post.slug === slug) ?? null;
 });

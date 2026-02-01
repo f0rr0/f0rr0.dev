@@ -1,6 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { getBlogPosts } from "@/lib/blog-utils";
+import { formatDate } from "@/lib/date";
+import { siteConfig } from "@/lib/site";
+
+export const metadata: Metadata = {
+  title: "Blog",
+  description: `Notes on what ${siteConfig.author.name} is building and learning.`,
+};
 
 export default async function BlogIndexPage() {
   const posts = await getBlogPosts();
@@ -17,7 +25,7 @@ export default async function BlogIndexPage() {
       </div>
       <ul className="flex flex-col gap-6">
         {posts.length > 0 ? (
-          posts.map(({ slug, metadata }) => (
+          posts.map(({ slug, metadata, date, readingTime }) => (
             <li key={slug} className="flex flex-col gap-1">
               <Link
                 href={`/blog/${slug}`}
@@ -25,8 +33,12 @@ export default async function BlogIndexPage() {
               >
                 {metadata.title}
               </Link>
-              <span className="text-sm text-zinc-500 dark:text-zinc-500">
-                {metadata.date} · {metadata.author}
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                {metadata.summary}
+              </p>
+              <span className="text-xs text-zinc-500 dark:text-zinc-500">
+                <time dateTime={date.toISOString()}>{formatDate(date)}</time> ·{" "}
+                {metadata.author} · {readingTime}
               </span>
             </li>
           ))
