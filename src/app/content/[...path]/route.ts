@@ -31,9 +31,10 @@ const safeJoin = (segments: string[]) => {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { path: string[] } },
+  { params }: { params: Promise<{ path: string[] }> },
 ) {
-  const filePath = safeJoin(params.path ?? []);
+  const { path: pathSegments } = await params;
+  const filePath = safeJoin(pathSegments ?? []);
 
   if (!filePath) {
     return new Response("Not found", { status: 404 });
