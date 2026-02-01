@@ -3,7 +3,18 @@ import type { ImgHTMLAttributes } from "react";
 
 const isRemoteSrc = (src: string) => /^https?:\/\//i.test(src);
 
-type MDXImageProps = ImgHTMLAttributes<HTMLImageElement> & {
+type StaticImageData = {
+  src: string;
+  width?: number;
+  height?: number;
+  blurDataURL?: string;
+};
+
+type MDXImageProps = Omit<
+  ImgHTMLAttributes<HTMLImageElement>,
+  "src" | "width" | "height"
+> & {
+  src?: string | StaticImageData;
   width?: number | string;
   height?: number | string;
   assetBasePath?: string;
@@ -17,6 +28,12 @@ const parseDimension = (value?: number | string) => {
   }
   return undefined;
 };
+
+const isStaticImageData = (value: unknown): value is StaticImageData =>
+  typeof value === "object" &&
+  value !== null &&
+  "src" in value &&
+  typeof (value as { src?: unknown }).src === "string";
 
 const resolveAssetSrc = (src: string, basePath?: string) => {
   if (
@@ -45,11 +62,20 @@ export default function MDXImage({
   assetBasePath,
   ...rest
 }: MDXImageProps) {
-  if (typeof src !== "string" || src.length === 0) return null;
+  if (!src) return null;
 
-  const resolvedSrc = resolveAssetSrc(src, assetBasePath);
-  const parsedWidth = parseDimension(width);
-  const parsedHeight = parseDimension(height);
+  if (typeof src === "string" && src.startsWith(".") && !assetBasePath) {
+    throw new Error(
+      `MDXImage received a relative src (\"${src}\") without an asset base path. Import the image and pass the import instead.`,
+    );
+  }
+
+  const staticImage = isStaticImageData(src) ? src : null;
+  const resolvedSrc =
+    typeof src === "string" ? resolveAssetSrc(src, assetBasePath) : src.src;
+
+  const parsedWidth = parseDimension(width) ?? staticImage?.width;
+  const parsedHeight = parseDimension(height) ?? staticImage?.height;
   const shouldUseNextImage =
     parsedWidth !== undefined &&
     parsedHeight !== undefined &&
@@ -72,7 +98,7 @@ export default function MDXImage({
 
   return (
     <Image
-      src={resolvedSrc}
+      src={staticImage ?? resolvedSrc}
       alt={alt ?? ""}
       width={parsedWidth}
       height={parsedHeight}

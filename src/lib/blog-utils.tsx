@@ -14,7 +14,9 @@ const metadataSchema = z.object({
   date: z.string(),
   author: z.string(),
   summary: z.string(),
-  image: z.string().optional(),
+  image: z
+    .union([z.string(), z.object({ src: z.string() }).passthrough()])
+    .optional(),
   tags: z.array(z.string()).optional(),
   updated: z.string().optional(),
   draft: z.boolean().optional(),
@@ -35,7 +37,12 @@ export type BlogPost = BlogPostEntry & {
   wordCount: number;
 };
 
-const trimLeadingDotSlash = (value: string) => value.replace(/^\.\/+/, "");
+type StaticImageData = {
+  src: string;
+  width?: number;
+  height?: number;
+  blurDataURL?: string;
+};
 
 const hasFile = async (relativePath: string) => {
   try {
@@ -116,21 +123,27 @@ export const importBlogPostModule = async <Module = unknown>(
 export const parseBlogPostMetadata = (metadata: unknown) =>
   metadataSchema.parse(metadata);
 
-export const getContentAssetBasePath = (importPath: string) => {
-  const parts = importPath.split("/");
-  if (parts.length <= 1) return "/content/blog";
-  parts.pop();
-  return `/content/blog/${parts.join("/")}`;
-};
+const isStaticImageData = (value: unknown): value is StaticImageData =>
+  typeof value === "object" &&
+  value !== null &&
+  "src" in value &&
+  typeof (value as { src?: unknown }).src === "string";
 
-export const resolveContentAssetPath = (
-  importPath: string,
-  assetPath: string,
+const isAbsoluteUrl = (value: string) => /^https?:\/\//i.test(value);
+
+export const resolveMetadataImage = (
+  image: BlogPostMetadata["image"],
+  slug: string,
 ) => {
-  if (assetPath.startsWith("http") || assetPath.startsWith("/"))
-    return assetPath;
-  const base = getContentAssetBasePath(importPath).replace(/\/$/, "");
-  return `${base}/${trimLeadingDotSlash(assetPath)}`.replace(/\/{2,}/g, "/");
+  if (!image) return undefined;
+  if (typeof image === "string") {
+    if (isAbsoluteUrl(image) || image.startsWith("/")) return image;
+    throw new Error(
+      `Blog post \"${slug}\" uses a relative metadata.image (\"${image}\"). Import the image and pass the import instead.`,
+    );
+  }
+  if (isStaticImageData(image)) return image.src;
+  return undefined;
 };
 
 export const getBlogPosts = cache(async (): Promise<BlogPost[]> => {

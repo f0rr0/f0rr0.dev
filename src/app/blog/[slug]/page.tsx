@@ -7,9 +7,8 @@ import MDXImage from "@/components/mdx/MDXImage";
 import {
   getBlogPost,
   getBlogPosts,
-  getContentAssetBasePath,
   importBlogPostModule,
-  resolveContentAssetPath,
+  resolveMetadataImage,
 } from "@/lib/blog-utils";
 import { formatDate } from "@/lib/date";
 import { absoluteUrl, siteConfig } from "@/lib/site";
@@ -38,9 +37,8 @@ export async function generateMetadata({
 
   const { metadata, date, updatedAt } = post;
   const url = absoluteUrl(`/blog/${slug}`);
-  const ogImage = metadata.image
-    ? absoluteUrl(resolveContentAssetPath(post.importPath, metadata.image))
-    : undefined;
+  const ogImage = resolveMetadataImage(metadata.image, slug);
+  const ogImageUrl = ogImage ? absoluteUrl(ogImage) : undefined;
 
   return {
     title: metadata.title,
@@ -59,13 +57,13 @@ export async function generateMetadata({
       publishedTime: date.toISOString(),
       modifiedTime: updatedAt?.toISOString(),
       authors: [metadata.author],
-      images: ogImage ? [{ url: ogImage }] : undefined,
+      images: ogImageUrl ? [{ url: ogImageUrl }] : undefined,
     },
     twitter: {
-      card: ogImage ? "summary_large_image" : "summary",
+      card: ogImageUrl ? "summary_large_image" : "summary",
       title: metadata.title,
       description: metadata.summary,
-      images: ogImage ? [ogImage] : undefined,
+      images: ogImageUrl ? [ogImageUrl] : undefined,
     },
   };
 }
@@ -86,10 +84,10 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
 
   const Content = module.default;
   const url = absoluteUrl(`/blog/${slug}`);
-  const assetBasePath = getContentAssetBasePath(importPath);
 
-  const resolvedImage = metadata.image
-    ? absoluteUrl(resolveContentAssetPath(importPath, metadata.image))
+  const resolvedImage = resolveMetadataImage(metadata.image, slug);
+  const resolvedImageUrl = resolvedImage
+    ? absoluteUrl(resolvedImage)
     : undefined;
 
   const jsonLd = {
@@ -106,12 +104,12 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
     },
     url,
     mainEntityOfPage: url,
-    image: resolvedImage ? [resolvedImage] : undefined,
+    image: resolvedImageUrl ? [resolvedImageUrl] : undefined,
   };
 
   const mdxComponents = {
-    img: (props) => <MDXImage {...props} assetBasePath={assetBasePath} />,
-    Image: (props) => <MDXImage {...props} assetBasePath={assetBasePath} />,
+    img: (props) => <MDXImage {...props} />,
+    Image: (props) => <MDXImage {...props} />,
   } satisfies MDXComponents;
 
   return (

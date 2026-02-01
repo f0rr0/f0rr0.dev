@@ -7,14 +7,12 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  outputFileTracingIncludes: {
-    "/content/[...path]": ["./src/content/**/*"],
-  },
 };
 
 const withMDX = createMDX({
   options: {
     remarkPlugins: [
+      path.join(process.cwd(), "src/lib/remark-static-image-imports.mjs"),
       path.join(process.cwd(), "src/lib/remark-mermaid.mjs"),
       "remark-gfm",
     ],

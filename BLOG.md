@@ -17,12 +17,14 @@ The slug is the folder name or filename.
 Each post must export `metadata`:
 
 ```mdx
+import og from "./og.png";
+
 export const metadata = {
   title: "Post title",
   date: "2025-02-01",
   author: "Your Name",
   summary: "Short description used for listings + meta tags.",
-  image: "./og.png", // optional but recommended
+  image: og, // optional but recommended
   tags: ["tag", "tag"], // optional
   updated: "2025-02-12", // optional
   draft: false, // optional (true hides from listings/RSS)
@@ -38,18 +40,19 @@ Gotchas:
 Assets live next to the post and are referenced with relative paths:
 
 ```mdx
+import hero from "./hero.png";
+
 ![Diagram](./diagram.png)
 
-<Image src="./hero.png" width={1200} height={630} alt="Hero" />
+<Image src={hero} width={1200} height={630} alt="Hero" />
 ```
 
 Notes:
-- `metadata.image` supports `./og.png` and is used for OG/Twitter cards.
-- Asset URLs are served from `/content/...` automatically.
+- `metadata.image` should be a static import (or an absolute URL) and is used for OG/Twitter cards.
+- Markdown images are converted into static imports automatically.
+- `<Image />` requires a manual import and `src={hero}`.
 
 Gotchas:
-- Asset responses are cached with `Cache-Control: public, max-age=31536000, immutable`.
-  Rename files when updating assets.
 - `next/image` is used only when width/height are provided and the image is local
   (non-SVG). Otherwise it falls back to `<img>` with lazy loading.
 - Remote images are not optimized unless you add them to Next's remote image config.
@@ -82,6 +85,6 @@ Set `NEXT_PUBLIC_SITE_URL` in production for correct canonical URLs.
 
 1. Create `src/content/blog/<slug>/page.mdx`.
 2. Add `metadata` with `title`, `date`, `author`, `summary`.
-3. Add `image: "./og.png"` and place the file next to the post.
-4. Reference images with `./` paths.
+3. Import `./og.png` and set `image: og`.
+4. Reference images with `./` paths (Markdown) or static imports (JSX).
 5. Keep `draft: true` until ready to publish.

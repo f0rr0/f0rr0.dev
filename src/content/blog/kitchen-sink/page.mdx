@@ -1,9 +1,12 @@
+import og from "./og.png";
+import inline from "./inline.png";
+
 export const metadata = {
   title: "MDX Kitchen Sink",
   date: "2025-02-01",
   author: "F0RR0",
   summary: "A tour of the MDX blog features: headings, code, images, tables, diagrams, and links.",
-  image: "./og.png",
+  image: og,
   tags: ["mdx", "blog", "demo"],
   updated: "2025-02-10",
 }
@@ -22,7 +25,7 @@ Create a folder, add `page.mdx`, and drop assets next to it.
 
 1. `src/content/blog/my-post/page.mdx`
 2. `src/content/blog/my-post/og.png`
-3. Use `image: "./og.png"` in metadata
+3. Import `./og.png` and set `image: og`
 
 > Tip: keep `draft: true` until you are ready to publish.
 
@@ -49,7 +52,7 @@ Markdown images work with relative paths:
 
 You can also use the MDX `<Image />` component for optimized images:
 
-<Image src="./inline.png" width={800} height={450} alt="Inline preview" />
+<Image src={inline} width={800} height={450} alt="Inline preview" />
 
 ## Tables
 GFM tables are enabled:
