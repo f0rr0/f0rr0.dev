@@ -7,8 +7,8 @@ import MDXImage from "@/components/mdx/MDXImage";
 import {
   getBlogPost,
   getBlogPosts,
+  findMetadataImageAsset,
   importBlogPostModule,
-  resolveMetadataImage,
 } from "@/lib/blog-utils";
 import { formatDate } from "@/lib/date";
 import { absoluteUrl, siteConfig } from "@/lib/site";
@@ -37,14 +37,14 @@ export async function generateMetadata({
 
   const { metadata, date, updatedAt } = post;
   const url = absoluteUrl(`/blog/${slug}`);
-  const ogImage = resolveMetadataImage(metadata.image, slug, "image");
-  const ogImageUrl = ogImage ? absoluteUrl(ogImage) : undefined;
-  const twitterImage = resolveMetadataImage(
-    metadata.twitterImage ?? metadata.image,
-    slug,
-    "twitterImage",
-  );
-  const twitterImageUrl = twitterImage ? absoluteUrl(twitterImage) : ogImageUrl;
+  const ogAsset = await findMetadataImageAsset(post.importPath, "opengraph");
+  const twitterAsset = await findMetadataImageAsset(post.importPath, "twitter");
+  const ogImageUrl = ogAsset
+    ? absoluteUrl(`/blog/${slug}/opengraph-image`)
+    : undefined;
+  const twitterImageUrl = twitterAsset
+    ? absoluteUrl(`/blog/${slug}/twitter-image`)
+    : ogImageUrl;
 
   return {
     title: metadata.title,
@@ -91,9 +91,9 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
   const Content = module.default;
   const url = absoluteUrl(`/blog/${slug}`);
 
-  const resolvedImage = resolveMetadataImage(metadata.image, slug, "image");
-  const resolvedImageUrl = resolvedImage
-    ? absoluteUrl(resolvedImage)
+  const ogAsset = await findMetadataImageAsset(importPath, "opengraph");
+  const resolvedImageUrl = ogAsset
+    ? absoluteUrl(`/blog/${slug}/opengraph-image`)
     : undefined;
 
   const jsonLd = {

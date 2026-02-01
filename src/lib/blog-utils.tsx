@@ -14,12 +14,6 @@ const metadataSchema = z.object({
   date: z.string(),
   author: z.string(),
   summary: z.string(),
-  image: z
-    .union([z.string(), z.object({ src: z.string() }).passthrough()])
-    .optional(),
-  twitterImage: z
-    .union([z.string(), z.object({ src: z.string() }).passthrough()])
-    .optional(),
   tags: z.array(z.string()).optional(),
   updated: z.string().optional(),
   draft: z.boolean().optional(),
@@ -38,13 +32,6 @@ export type BlogPost = BlogPostEntry & {
   updatedAt?: Date;
   readingTime: string;
   wordCount: number;
-};
-
-type StaticImageData = {
-  src: string;
-  width?: number;
-  height?: number;
-  blurDataURL?: string;
 };
 
 const hasFile = async (relativePath: string) => {
@@ -123,31 +110,111 @@ export const importBlogPostModule = async <Module = unknown>(
   importPath: string,
 ) => import(`${IMPORT_PREFIX}${importPath}`) as Promise<Module>;
 
-export const parseBlogPostMetadata = (metadata: unknown) =>
-  metadataSchema.parse(metadata);
+export const importMetadataImageModule = async <Module = unknown>(
+  importPath: string,
+) => import(`${IMPORT_PREFIX}${importPath}`) as Promise<Module>;
 
-const isStaticImageData = (value: unknown): value is StaticImageData =>
-  typeof value === "object" &&
-  value !== null &&
-  "src" in value &&
-  typeof (value as { src?: unknown }).src === "string";
-
-const isAbsoluteUrl = (value: string) => /^https?:\/\//i.test(value);
-
-export const resolveMetadataImage = (
-  image: BlogPostMetadata["image"] | BlogPostMetadata["twitterImage"],
-  slug: string,
-  fieldName: "image" | "twitterImage",
-) => {
-  if (!image) return undefined;
-  if (typeof image === "string") {
-    if (isAbsoluteUrl(image) || image.startsWith("/")) return image;
-    throw new Error(
-      `Blog post "${slug}" uses a relative metadata.${fieldName} ("${image}"). Import the image or rely on the auto-detected file name.`,
-    );
+export const parseBlogPostMetadata = (metadata: unknown) => {
+  if (metadata && typeof metadata === "object") {
+    const record = metadata as Record<string, unknown>;
+    if ("image" in record || "twitterImage" in record) {
+      throw new Error(
+        "metadata.image and metadata.twitterImage are not supported. Use opengraph-image.* and twitter-image.* files instead.",
+      );
+    }
   }
-  if (isStaticImageData(image)) return image.src;
-  return undefined;
+
+  return metadataSchema.parse(metadata);
+};
+
+const METADATA_IMAGE_EXTENSIONS = [
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".avif",
+  ".gif",
+];
+const METADATA_IMAGE_MODULE_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"];
+
+export type MetadataImageKind = "opengraph" | "twitter";
+
+export type MetadataImageAsset = {
+  kind: MetadataImageKind;
+  type: "module" | "file";
+  filePath: string;
+  importPath: string;
+  contentType?: string;
+};
+
+const toPosixPath = (value: string) => value.split(path.sep).join("/");
+
+const contentTypeForExtension = (extension: string) => {
+  switch (extension) {
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".webp":
+      return "image/webp";
+    case ".avif":
+      return "image/avif";
+    case ".gif":
+      return "image/gif";
+    default:
+      return "application/octet-stream";
+  }
+};
+
+const metadataImageBaseName = (kind: MetadataImageKind) =>
+  kind === "opengraph" ? "opengraph-image" : "twitter-image";
+
+const getContentDirForImportPath = (importPath: string) =>
+  path.dirname(path.join(BLOG_DIR, importPath));
+
+const fileExists = async (filePath: string) => {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const findMetadataImageAsset = async (
+  importPath: string,
+  kind: MetadataImageKind,
+): Promise<MetadataImageAsset | null> => {
+  const baseName = metadataImageBaseName(kind);
+  const contentDir = getContentDirForImportPath(importPath);
+
+  for (const extension of METADATA_IMAGE_MODULE_EXTENSIONS) {
+    const filePath = path.join(contentDir, `${baseName}${extension}`);
+    if (await fileExists(filePath)) {
+      return {
+        kind,
+        type: "module",
+        filePath,
+        importPath: toPosixPath(path.relative(BLOG_DIR, filePath)),
+      };
+    }
+  }
+
+  for (const extension of METADATA_IMAGE_EXTENSIONS) {
+    const filePath = path.join(contentDir, `${baseName}${extension}`);
+    if (await fileExists(filePath)) {
+      return {
+        kind,
+        type: "file",
+        filePath,
+        importPath: toPosixPath(path.relative(BLOG_DIR, filePath)),
+        contentType: contentTypeForExtension(extension),
+      };
+    }
+  }
+
+  return null;
 };
 
 export const getBlogPosts = cache(async (): Promise<BlogPost[]> => {

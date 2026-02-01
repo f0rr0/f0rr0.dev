@@ -43,15 +43,16 @@ Assets live next to the post and are referenced with relative paths:
 ```
 
 Notes:
-- If you add `opengraph-image.*` (or `og.*`) next to the post, it is used automatically for OG.
-- If you add `twitter-image.*` (or `twitter-card.*`) next to the post, it is used for Twitter cards.
-- `metadata.image` / `metadata.twitterImage` can still be set to override the defaults.
+- Add `opengraph-image.*` next to the post for Open Graph (PNG/JPG/WEBP/AVIF/GIF).
+- Add `twitter-image.*` next to the post for Twitter cards.
+- Special files can also be `opengraph-image.tsx` / `twitter-image.tsx` to generate images dynamically.
 - Markdown images and `<Image src="./...">` are converted into static imports automatically.
 
 Gotchas:
 - `next/image` is used only when width/height are provided and the image is local
   (non-SVG). Otherwise it falls back to `<img>` with lazy loading.
 - Remote images are not optimized unless you add them to Next's remote image config.
+- `metadata.image` / `metadata.twitterImage` are ignored. Use special files instead.
 
 ## Markdown features
 

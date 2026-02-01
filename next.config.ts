@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  outputFileTracingIncludes: {
+    "/blog/[slug]/opengraph-image": ["./src/content/**/*"],
+    "/blog/[slug]/twitter-image": ["./src/content/**/*"],
+  },
 };
 
 const withMDX = createMDX({
