@@ -1,0 +1,12 @@
+pre-commit:
+  commands:
+    format:
+      run: bun run format
+      stage_fixed: true
+
+pre-push:
+  commands:
+    lint:
+      run: bun run lint
+    typecheck:
+      run: bun run typecheck
