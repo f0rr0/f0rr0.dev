@@ -5,9 +5,9 @@ import type { ComponentType } from "react";
 
 import MDXImage from "@/components/mdx/MDXImage";
 import {
+  findMetadataImageAsset,
   getBlogPost,
   getBlogPosts,
-  findMetadataImageAsset,
   importBlogPostModule,
 } from "@/lib/blog-utils";
 import { formatDate } from "@/lib/date";
