@@ -43,6 +43,9 @@ export const siteConfig = {
   locale: "en_US",
   author: {
     name: "F0RR0",
+    role: "Creative Developer",
+    bio: "Creative developer building digital experiences and thoughtful web tools.",
+    image: "",
   },
 };
 
