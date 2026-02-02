@@ -67,7 +67,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .theme-transition,
   .theme-transition * {
-    transition: none !important;
+    transition: none;
   }
 }
 
