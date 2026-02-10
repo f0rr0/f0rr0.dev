@@ -3,7 +3,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ComponentType } from "react";
 
+import AuthorCard from "@/components/blog/AuthorCard";
+import PostCard from "@/components/blog/PostCard";
 import MDXImage from "@/components/mdx/MDXImage";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   findMetadataImageAsset,
   getBlogPost,
@@ -18,6 +22,29 @@ type PageParams = Promise<{ slug: string }>;
 type BlogPostModule = {
   default: ComponentType<{ components?: MDXComponents }>;
   metadata: unknown;
+};
+
+const getSuggestedPosts = (
+  posts: Awaited<ReturnType<typeof getBlogPosts>>,
+  currentSlug: string,
+) => {
+  const current = posts.find((post) => post.slug === currentSlug);
+  if (!current) return [];
+  const currentTags = new Set(current.metadata.tags ?? []);
+
+  return posts
+    .filter((post) => post.slug !== currentSlug)
+    .map((post) => {
+      const tagMatches =
+        post.metadata.tags?.filter((tag) => currentTags.has(tag)) ?? [];
+      return { post, score: tagMatches.length };
+    })
+    .sort(
+      (a, b) =>
+        b.score - a.score || b.post.date.getTime() - a.post.date.getTime(),
+    )
+    .slice(0, 3)
+    .map(({ post }) => post);
 };
 
 export async function generateStaticParams() {
@@ -90,6 +117,7 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
 
   const Content = module.default;
   const url = absoluteUrl(`/blog/${slug}`);
+  const suggestedPosts = getSuggestedPosts(await getBlogPosts(), slug);
 
   const ogAsset = await findMetadataImageAsset(importPath, "opengraph");
   const resolvedImageUrl = ogAsset
@@ -119,26 +147,75 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
   } satisfies MDXComponents;
 
   return (
-    <article className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-16">
+    <article className="relative">
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is required for SEO.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <header className="flex flex-col gap-3">
-        <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          {metadata.title}
-        </h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          {metadata.summary}
-        </p>
-        <p className="text-xs text-zinc-500 dark:text-zinc-500">
-          <time dateTime={date.toISOString()}>{formatDate(date)}</time> ·{" "}
-          {metadata.author} · {readingTime}
-        </p>
-      </header>
-      <div className="prose prose-zinc dark:prose-invert">
-        <Content components={mdxComponents} />
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-6 py-16">
+        <header className="flex flex-col gap-6">
+          {metadata.tags?.length ? (
+            <div className="flex flex-wrap gap-2">
+              {metadata.tags.map((tag) => (
+                <Badge key={tag} variant="secondary">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+          <div className="space-y-4">
+            <h1 className="text-balance text-4xl font-semibold tracking-tight md:text-5xl">
+              {metadata.title}
+            </h1>
+            <p className="max-w-3xl text-base text-muted-foreground md:text-lg">
+              {metadata.summary}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <span>
+              <time dateTime={date.toISOString()}>{formatDate(date)}</time>
+            </span>
+            <Separator orientation="vertical" className="h-4" />
+            <span>{metadata.author}</span>
+            <Separator orientation="vertical" className="h-4" />
+            <span>{readingTime}</span>
+            <Separator orientation="vertical" className="h-4" />
+            <span>{post.wordCount.toLocaleString()} words</span>
+            {updatedAt ? (
+              <>
+                <Separator orientation="vertical" className="h-4" />
+                <span>Updated {formatDate(updatedAt)}</span>
+              </>
+            ) : null}
+          </div>
+        </header>
+        <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="prose prose-neutral max-w-[70ch] dark:prose-invert prose-headings:scroll-mt-24 prose-h2:text-2xl prose-h3:text-xl prose-lead:text-muted-foreground prose-a:text-foreground/90 prose-strong:text-foreground prose-p:leading-relaxed prose-li:marker:text-muted-foreground/70">
+            <Content components={mdxComponents} />
+          </div>
+          <aside className="space-y-6 lg:sticky lg:top-24">
+            <AuthorCard />
+            <div className="rounded-xl border border-border/70 bg-muted/40 p-5 text-sm text-muted-foreground">
+              Want more like this? New posts land weekly with experiments and
+              craft notes.
+            </div>
+          </aside>
+        </div>
+        {suggestedPosts.length > 0 ? (
+          <section className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold tracking-tight">
+                Suggested next posts
+              </h2>
+            </div>
+            <div className="grid gap-6 md:grid-cols-3">
+              {suggestedPosts.map((suggested) => (
+                <PostCard key={suggested.slug} post={suggested} />
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
     </article>
   );
