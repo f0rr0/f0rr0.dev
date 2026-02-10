@@ -48,10 +48,6 @@
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
-html {
-  color-scheme: light dark;
-}
-
 body {
   font-family: var(--font-geist-sans);
 }
@@ -241,6 +237,14 @@ body {
 }
 
 @layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
