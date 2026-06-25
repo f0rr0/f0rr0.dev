@@ -13,7 +13,9 @@ export default function ThemeToggle() {
   const { theme, setTheme, systemTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   if (!mounted) {
     return <div className="h-6 w-12" aria-hidden />;
@@ -25,7 +27,9 @@ export default function ThemeToggle() {
   const handleToggle = (checked: boolean) => {
     const root = window.document.documentElement;
     root.classList.add(TRANSITION_CLASS);
-    window.setTimeout(() => root.classList.remove(TRANSITION_CLASS), 500);
+    window.setTimeout(() => {
+      root.classList.remove(TRANSITION_CLASS);
+    }, 500);
     setTheme(checked ? "dark" : "light");
   };
 

@@ -1,0 +1,47 @@
+amends "package://github.com/jdx/hk/releases/download/v1.48.0/hk@1.48.0#/Config.pkl"
+
+local formattable = List(
+  "**/*.css",
+  "**/*.html",
+  "**/*.js",
+  "**/*.json",
+  "**/*.jsonc",
+  "**/*.jsx",
+  "**/*.md",
+  "**/*.mdx",
+  "**/*.mjs",
+  "**/*.svg",
+  "**/*.toml",
+  "**/*.ts",
+  "**/*.tsx",
+  "**/*.yaml",
+  "**/*.yml"
+)
+
+exclude = List(".next/**", ".rulesync/**", "node_modules/**")
+
+hooks {
+  ["pre-commit"] {
+    fix = true
+    stage = true
+    stash = "git"
+    steps {
+      ["format-staged"] {
+        glob = formattable
+        fix = "bun run format:ox -- {{files}}"
+        check = "bun run format:check -- {{files}}"
+        stage = formattable
+      }
+    }
+  }
+  ["pre-push"] {
+    steps {
+      ["lint"] {
+        check = "bun run lint"
+      }
+      ["typecheck"] {
+        check = "bun run typecheck"
+      }
+    }
+  }
+}

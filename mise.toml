@@ -1,0 +1,42 @@
+[settings]
+lockfile = true
+
+[tools]
+bun = "1.3.14"
+hk = "1.48.0"
+node = "26.3.1"
+pkl = "0.31.1"
+
+[env]
+HK_MISE = "1"
+
+[hooks]
+postinstall = "hk install --mise"
+
+[tasks.install]
+description = "Install npm dependencies with the locked Bun toolchain"
+run = "bun install --frozen-lockfile"
+
+[tasks.lint]
+description = "Run formatting and lint checks"
+run = "bun run lint"
+
+[tasks.format]
+description = "Format the repo"
+run = "bun run format"
+
+[tasks.typecheck]
+description = "Run TypeScript checks"
+run = "bun run typecheck"
+
+[tasks.build]
+description = "Build the site"
+run = "bun run build"
+
+[tasks.pre-commit]
+description = "Run the hk pre-commit hook"
+run = "hk run pre-commit"
+
+[tasks.pre-push]
+description = "Run the hk pre-push hook"
+run = "hk run pre-push"

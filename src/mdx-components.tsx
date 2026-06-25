@@ -1,10 +1,11 @@
 import type { MDXComponents } from "mdx/types";
+
 import MDXLink from "@/components/mdx/MDXLink";
 import Mermaid from "@/components/mdx/Mermaid";
 
 const components: MDXComponents = {
-  a: MDXLink,
   Mermaid,
+  a: MDXLink,
 };
 
 export function useMDXComponents(overrides: MDXComponents = {}): MDXComponents {

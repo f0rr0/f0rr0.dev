@@ -6,8 +6,8 @@ import { getBlogPosts } from "@/lib/blog-utils";
 import { siteConfig } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Blog",
   description: `Notes on what ${siteConfig.author.name} is building and learning.`,
+  title: "Blog",
 };
 
 export default async function BlogIndexPage() {
@@ -40,12 +40,12 @@ export default async function BlogIndexPage() {
               <span>Deep dives + quick notes</span>
             </div>
           </div>
-          {featured ? (
-            <PostCard post={featured} variant="featured" />
-          ) : (
+          {featured === undefined ? (
             <div className="rounded-xl border border-dashed border-border/70 p-10 text-sm text-muted-foreground">
               First post coming soon.
             </div>
+          ) : (
+            <PostCard post={featured} variant="featured" />
           )}
         </div>
       </section>

@@ -1,4 +1,5 @@
-import Image, { type StaticImageData } from "next/image";
+import Image from "next/image";
+import type { StaticImageData } from "next/image";
 import type { ImgHTMLAttributes } from "react";
 
 const isRemoteSrc = (src: string) => /^https?:\/\//i.test(src);
@@ -13,13 +14,21 @@ type MDXImageProps = Omit<
 };
 
 const parseDimension = (value?: number | string) => {
-  if (typeof value === "number") return value;
+  if (typeof value === "number") {
+    return value;
+  }
   if (typeof value === "string") {
     const parsed = Number.parseInt(value, 10);
-    return Number.isNaN(parsed) ? undefined : parsed;
+    return Number.isNaN(parsed) ? null : parsed;
   }
-  return undefined;
+  return null;
 };
+
+const isClientResolvableStringSrc = (src: string) =>
+  src.startsWith("/") ||
+  isRemoteSrc(src) ||
+  src.startsWith("data:") ||
+  src.startsWith("blob:");
 
 const isStaticImageData = (value: unknown): value is StaticImageData =>
   typeof value === "object" &&
@@ -38,17 +47,13 @@ export default function MDXImage({
   className,
   ...rest
 }: MDXImageProps) {
-  if (!src) return null;
+  if (src === undefined || src === "") {
+    return null;
+  }
 
-  if (
-    typeof src === "string" &&
-    !src.startsWith("/") &&
-    !isRemoteSrc(src) &&
-    !src.startsWith("data:") &&
-    !src.startsWith("blob:")
-  ) {
+  if (typeof src === "string" && !isClientResolvableStringSrc(src)) {
     throw new Error(
-      `MDXImage received a relative src ("${src}"). Import the image or use a Markdown image so it can be statically imported.`,
+      `MDXImage received a relative src ("${src}"). Import the image or use a Markdown image so it can be statically imported.`
     );
   }
 
@@ -57,15 +62,14 @@ export default function MDXImage({
 
   const parsedWidth = parseDimension(width) ?? staticImage?.width;
   const parsedHeight = parseDimension(height) ?? staticImage?.height;
-  const shouldUseNextImage =
+  const canUseNextImage =
     parsedWidth !== undefined &&
     parsedHeight !== undefined &&
     !isRemoteSrc(resolvedSrc) &&
     !isSvg(resolvedSrc);
 
-  if (!shouldUseNextImage) {
+  if (!canUseNextImage) {
     return (
-      // biome-ignore lint/performance/noImgElement: fall back for remote/unknown dimensions.
       <img
         src={resolvedSrc}
         alt={alt ?? ""}

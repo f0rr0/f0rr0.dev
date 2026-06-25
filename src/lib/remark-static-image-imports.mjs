@@ -7,10 +7,18 @@ const BACKSLASH_PATTERN = /\\/g;
 const LEADING_SLASH_PATTERN = /^\/+/;
 
 const isTransformableUrl = (url) => {
-  if (!url) return false;
-  if (EXTERNAL_PROTOCOL_PATTERN.test(url)) return false;
-  if (DATA_URL_PATTERN.test(url)) return false;
-  if (MAILTO_PATTERN.test(url)) return false;
+  if (!url) {
+    return false;
+  }
+  if (EXTERNAL_PROTOCOL_PATTERN.test(url)) {
+    return false;
+  }
+  if (DATA_URL_PATTERN.test(url)) {
+    return false;
+  }
+  if (MAILTO_PATTERN.test(url)) {
+    return false;
+  }
   return true;
 };
 
@@ -23,18 +31,14 @@ const normaliseImportPath = (url) => {
 
 const toSafeIdentifier = (importPath, index) => {
   const baseName =
-    importPath.split("/").filter(Boolean).pop()?.replace(/\W+/g, "_") ??
+    importPath.split("/").filter(Boolean).pop()?.replaceAll(/\W+/g, "_") ??
     "image";
   return `__mdxImage_${baseName || "image"}_${index}`;
 };
 
 const createImportNode = (identifier, importPath) => ({
-  type: "mdxjsEsm",
-  value: `import ${identifier} from '${importPath}';`,
   data: {
     estree: {
-      type: "Program",
-      sourceType: "module",
       body: [
         {
           type: "ImportDeclaration",
@@ -51,54 +55,58 @@ const createImportNode = (identifier, importPath) => ({
           },
         },
       ],
+      sourceType: "module",
+      type: "Program",
     },
   },
+  type: "mdxjsEsm",
+  value: `import ${identifier} from '${importPath}';`,
 });
 
 const createIdentifierExpression = (identifier) => ({
-  type: "mdxJsxAttributeValueExpression",
-  value: identifier,
   data: {
     estree: {
-      type: "Program",
-      sourceType: "module",
       body: [
         {
           type: "ExpressionStatement",
           expression: { type: "Identifier", name: identifier },
         },
       ],
+      sourceType: "module",
+      type: "Program",
     },
   },
+  type: "mdxJsxAttributeValueExpression",
+  value: identifier,
 });
 
 const createJsxNode = (identifier, node) => {
   const attributes = [
     {
-      type: "mdxJsxAttribute",
       name: "src",
+      type: "mdxJsxAttribute",
       value: createIdentifierExpression(identifier),
     },
     {
-      type: "mdxJsxAttribute",
       name: "alt",
+      type: "mdxJsxAttribute",
       value: node.alt ?? "",
     },
   ];
 
   if (node.title) {
     attributes.push({
-      type: "mdxJsxAttribute",
       name: "title",
+      type: "mdxJsxAttribute",
       value: node.title,
     });
   }
 
   return {
-    type: "mdxJsxTextElement",
-    name: "img",
     attributes,
     children: [],
+    name: "img",
+    type: "mdxJsxTextElement",
   };
 };
 
@@ -117,26 +125,29 @@ const getAttribute = (node, name) =>
     (attribute) =>
       attribute &&
       attribute.type === "mdxJsxAttribute" &&
-      attribute.name === name,
+      attribute.name === name
   );
 
 const getAttributeStringValue = (attribute) =>
   typeof attribute?.value === "string" ? attribute.value : null;
 
 const transformJsxImage = (node, imports, importAliases, counterRef) => {
-  if (!node || !node.name || (node.name !== "img" && node.name !== "Image"))
+  if (!node?.name || (node.name !== "img" && node.name !== "Image")) {
     return;
+  }
 
   const srcAttribute = getAttribute(node, "src");
   const srcValue = getAttributeStringValue(srcAttribute);
-  if (!srcValue || !isTransformableUrl(srcValue)) return;
+  if (!srcValue || !isTransformableUrl(srcValue)) {
+    return;
+  }
 
   const importPath = normaliseImportPath(srcValue);
   const identifier = getOrCreateImport(
     imports,
     importAliases,
     importPath,
-    counterRef,
+    counterRef
   );
 
   srcAttribute.value = createIdentifierExpression(identifier);
@@ -148,17 +159,21 @@ const remarkStaticImageImports = () => (tree) => {
   const counterRef = { value: 0 };
 
   visit(tree, "image", (node, index, parent) => {
-    if (!parent || typeof index !== "number") return;
+    if (!parent || typeof index !== "number") {
+      return;
+    }
 
     const url = node.url ?? "";
-    if (!isTransformableUrl(url)) return;
+    if (!isTransformableUrl(url)) {
+      return;
+    }
 
     const importPath = normaliseImportPath(url);
     const identifier = getOrCreateImport(
       imports,
       importAliases,
       importPath,
-      counterRef,
+      counterRef
     );
 
     parent.children[index] = createJsxNode(identifier, node);

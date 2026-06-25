@@ -19,17 +19,19 @@ import { absoluteUrl, siteConfig } from "@/lib/site";
 
 type PageParams = Promise<{ slug: string }>;
 
-type BlogPostModule = {
+interface BlogPostModule {
   default: ComponentType<{ components?: MDXComponents }>;
   metadata: unknown;
-};
+}
 
 const getSuggestedPosts = (
   posts: Awaited<ReturnType<typeof getBlogPosts>>,
-  currentSlug: string,
+  currentSlug: string
 ) => {
   const current = posts.find((post) => post.slug === currentSlug);
-  if (!current) return [];
+  if (current === undefined) {
+    return [];
+  }
   const currentTags = new Set(current.metadata.tags ?? []);
 
   return posts
@@ -39,9 +41,9 @@ const getSuggestedPosts = (
         post.metadata.tags?.filter((tag) => currentTags.has(tag)) ?? [];
       return { post, score: tagMatches.length };
     })
-    .sort(
+    .toSorted(
       (a, b) =>
-        b.score - a.score || b.post.date.getTime() - a.post.date.getTime(),
+        b.score - a.score || b.post.date.getTime() - a.post.date.getTime()
     )
     .slice(0, 3)
     .map(({ post }) => post);
@@ -60,7 +62,9 @@ export async function generateMetadata({
   const { slug } = await params;
   const post = await getBlogPost(slug);
 
-  if (!post) return {};
+  if (!post) {
+    return {};
+  }
 
   const { metadata, date, updatedAt } = post;
   const url = absoluteUrl(`/blog/${slug}`);
@@ -74,29 +78,29 @@ export async function generateMetadata({
     : ogImageUrl;
 
   return {
-    title: metadata.title,
-    description: metadata.summary,
-    keywords: metadata.tags,
     alternates: {
       canonical: url,
     },
+    description: metadata.summary,
+    keywords: metadata.tags,
     openGraph: {
-      type: "article",
-      title: metadata.title,
-      description: metadata.summary,
-      url,
-      siteName: siteConfig.name,
-      locale: siteConfig.locale,
-      publishedTime: date.toISOString(),
-      modifiedTime: updatedAt?.toISOString(),
       authors: [metadata.author],
-      images: ogImageUrl ? [{ url: ogImageUrl }] : undefined,
-    },
-    twitter: {
-      card: twitterImageUrl ? "summary_large_image" : "summary",
-      title: metadata.title,
       description: metadata.summary,
-      images: twitterImageUrl ? [twitterImageUrl] : undefined,
+      images: ogImageUrl === undefined ? undefined : [{ url: ogImageUrl }],
+      locale: siteConfig.locale,
+      modifiedTime: updatedAt?.toISOString(),
+      publishedTime: date.toISOString(),
+      siteName: siteConfig.name,
+      title: metadata.title,
+      type: "article",
+      url,
+    },
+    title: metadata.title,
+    twitter: {
+      card: twitterImageUrl === undefined ? "summary" : "summary_large_image",
+      description: metadata.summary,
+      images: twitterImageUrl === undefined ? undefined : [twitterImageUrl],
+      title: metadata.title,
     },
   };
 }
@@ -105,15 +109,19 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
   const { slug } = await params;
   const post = await getBlogPost(slug);
 
-  if (!post) notFound();
+  if (!post) {
+    notFound();
+  }
 
   const { importPath, metadata, date, updatedAt, readingTime } = post;
 
-  const module = (await importBlogPostModule<BlogPostModule>(importPath).catch(
-    () => null,
-  )) as BlogPostModule | null;
+  const module = await importBlogPostModule<BlogPostModule>(importPath).catch(
+    () => null
+  );
 
-  if (!module?.default) notFound();
+  if (module?.default === undefined) {
+    notFound();
+  }
 
   const Content = module.default;
   const url = absoluteUrl(`/blog/${slug}`);
@@ -127,35 +135,34 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
-    headline: metadata.title,
-    description: metadata.summary,
-    keywords: metadata.tags?.join(", "),
-    datePublished: date.toISOString(),
-    dateModified: (updatedAt ?? date).toISOString(),
     author: {
       "@type": "Person",
       name: metadata.author,
     },
-    url,
+    dateModified: (updatedAt ?? date).toISOString(),
+    datePublished: date.toISOString(),
+    description: metadata.summary,
+    headline: metadata.title,
+    image: resolvedImageUrl === undefined ? undefined : [resolvedImageUrl],
+    keywords: metadata.tags?.join(", "),
     mainEntityOfPage: url,
-    image: resolvedImageUrl ? [resolvedImageUrl] : undefined,
+    url,
   };
 
   const mdxComponents = {
-    img: (props) => <MDXImage {...props} />,
     Image: (props) => <MDXImage {...props} />,
+    img: (props) => <MDXImage {...props} />,
   } satisfies MDXComponents;
 
   return (
     <article className="relative">
       <script
         type="application/ld+json"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is required for SEO.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-6 py-16">
         <header className="flex flex-col gap-6">
-          {metadata.tags?.length ? (
+          {metadata.tags !== undefined && metadata.tags.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {metadata.tags.map((tag) => (
                 <Badge key={tag} variant="secondary">
@@ -182,12 +189,12 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
             <span>{readingTime}</span>
             <Separator orientation="vertical" className="h-4" />
             <span>{post.wordCount.toLocaleString()} words</span>
-            {updatedAt ? (
+            {updatedAt === undefined ? null : (
               <>
                 <Separator orientation="vertical" className="h-4" />
                 <span>Updated {formatDate(updatedAt)}</span>
               </>
-            ) : null}
+            )}
           </div>
         </header>
         <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_280px]">

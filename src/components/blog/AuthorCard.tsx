@@ -14,13 +14,15 @@ const initialsFromName = (name: string) =>
 export default function AuthorCard() {
   const { author } = siteConfig;
   const initials = initialsFromName(author.name);
-  const image = author.image?.trim() ? author.image : undefined;
+  const image = author.image.trim() === "" ? undefined : author.image;
 
   return (
     <Card className="bg-gradient-to-br from-muted/60 via-background to-muted/40">
       <CardHeader className="flex flex-row items-center gap-4">
         <Avatar size="lg">
-          {image ? <AvatarImage src={image} alt={author.name} /> : null}
+          {image === undefined ? null : (
+            <AvatarImage src={image} alt={author.name} />
+          )}
           <AvatarFallback>{initials}</AvatarFallback>
         </Avatar>
         <div className="space-y-2">

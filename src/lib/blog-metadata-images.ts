@@ -4,8 +4,8 @@ import {
   findMetadataImageAsset,
   getBlogPost,
   importMetadataImageModule,
-  type MetadataImageKind,
 } from "@/lib/blog-utils";
+import type { MetadataImageKind } from "@/lib/blog-utils";
 
 type ImageHandler = (context: {
   params: { slug: string };
@@ -13,7 +13,7 @@ type ImageHandler = (context: {
 
 export const resolveMetadataImageResponse = async (
   slug: string,
-  kind: MetadataImageKind,
+  kind: MetadataImageKind
 ) => {
   const post = await getBlogPost(slug);
   if (!post) {
@@ -27,19 +27,19 @@ export const resolveMetadataImageResponse = async (
 
   if (asset.type === "module") {
     const mod = await importMetadataImageModule<{ default?: ImageHandler }>(
-      asset.importPath,
+      asset.importPath
     );
     if (typeof mod?.default !== "function") {
       return new Response("Not found", { status: 404 });
     }
-    return mod.default({ params: { slug } });
+    return await mod.default({ params: { slug } });
   }
 
   const buffer = await fs.readFile(asset.filePath);
   return new Response(buffer, {
     headers: {
-      "Content-Type": asset.contentType ?? "application/octet-stream",
       "Cache-Control": "public, max-age=31536000, immutable",
+      "Content-Type": asset.contentType ?? "application/octet-stream",
     },
   });
 };

@@ -9,32 +9,32 @@ export async function GET() {
   const posts = await getBlogPosts();
 
   const feed = new Feed({
-    title: siteConfig.name,
-    description: siteConfig.description,
-    id: siteConfig.url,
-    link: siteConfig.url,
-    language: siteConfig.language,
-    favicon: absoluteUrl("/favicon.ico"),
-    updated: posts[0]?.date ?? new Date(),
-    generator: "Next.js",
-    copyright: `© ${new Date().getFullYear()} ${siteConfig.name}`,
-    feedLinks: {
-      rss2: absoluteUrl("/rss.xml"),
-    },
     author: {
       name: siteConfig.author.name,
     },
+    copyright: `© ${new Date().getFullYear()} ${siteConfig.name}`,
+    description: siteConfig.description,
+    favicon: absoluteUrl("/favicon.ico"),
+    feedLinks: {
+      rss2: absoluteUrl("/rss.xml"),
+    },
+    generator: "Next.js",
+    id: siteConfig.url,
+    language: siteConfig.language,
+    link: siteConfig.url,
+    title: siteConfig.name,
+    updated: posts[0]?.date ?? new Date(),
   });
 
   for (const post of posts) {
     const url = absoluteUrl(`/blog/${post.slug}`);
     feed.addItem({
-      title: post.metadata.title,
+      author: [{ name: post.metadata.author }],
+      date: post.date,
+      description: post.metadata.summary,
       id: url,
       link: url,
-      description: post.metadata.summary,
-      date: post.date,
-      author: [{ name: post.metadata.author }],
+      title: post.metadata.title,
     });
   }
 

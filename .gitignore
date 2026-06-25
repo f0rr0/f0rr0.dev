@@ -33,6 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# local mise overrides
+mise.local.toml
+mise.local.lock
+
 # vercel
 .vercel
 
