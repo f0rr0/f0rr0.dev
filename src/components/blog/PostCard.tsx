@@ -12,10 +12,10 @@ import type { BlogPost } from "@/lib/blog-utils";
 import { formatDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
-type PostCardProps = {
+interface PostCardProps {
   post: BlogPost;
   variant?: "featured" | "list";
-};
+}
 
 export default function PostCard({ post, variant = "list" }: PostCardProps) {
   const isFeatured = variant === "featured";
@@ -26,14 +26,14 @@ export default function PostCard({ post, variant = "list" }: PostCardProps) {
         className={cn(
           "transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-md",
           isFeatured &&
-            "border-transparent bg-gradient-to-br from-muted/70 via-background to-muted/40",
+            "border-transparent bg-gradient-to-br from-muted/70 via-background to-muted/40"
         )}
       >
         <CardHeader>
           <CardTitle
             className={cn(
               "text-balance text-lg font-semibold tracking-tight",
-              isFeatured && "text-2xl",
+              isFeatured && "text-2xl"
             )}
           >
             {post.metadata.title}

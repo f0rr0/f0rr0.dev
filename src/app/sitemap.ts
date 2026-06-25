@@ -9,16 +9,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     {
-      url: siteConfig.url,
       lastModified: now,
+      url: siteConfig.url,
     },
     {
-      url: absoluteUrl("/blog"),
       lastModified: posts[0]?.updatedAt ?? posts[0]?.date ?? now,
+      url: absoluteUrl("/blog"),
     },
     ...posts.map((post) => ({
-      url: absoluteUrl(`/blog/${post.slug}`),
       lastModified: post.updatedAt ?? post.date,
+      url: absoluteUrl(`/blog/${post.slug}`),
     })),
   ];
 }

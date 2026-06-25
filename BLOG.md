@@ -25,10 +25,11 @@ export const metadata = {
   tags: ["tag", "tag"], // optional
   updated: "2025-02-12", // optional
   draft: false, // optional (true hides from listings/RSS)
-}
+};
 ```
 
 Gotchas:
+
 - `date` / `updated` must be valid ISO or `YYYY-MM-DD`. Invalid dates fail builds.
 - `summary` is required and used for SEO + RSS.
 
@@ -43,12 +44,14 @@ Assets live next to the post and are referenced with relative paths:
 ```
 
 Notes:
+
 - Add `opengraph-image.*` next to the post for Open Graph (PNG/JPG/WEBP/AVIF/GIF).
 - Add `twitter-image.*` next to the post for Twitter cards.
 - Special files can also be `opengraph-image.tsx` / `twitter-image.tsx` to generate images dynamically.
 - Markdown images and `<Image src="./...">` are converted into static imports automatically.
 
 Gotchas:
+
 - `next/image` is used only when width/height are provided and the image is local
   (non-SVG). Otherwise it falls back to `<img>` with lazy loading.
 - Remote images are not optimized unless you add them to Next's remote image config.
@@ -60,11 +63,13 @@ Gotchas:
 - Headings get slugs and clickable anchors.
 - Mermaid diagrams are supported with fenced blocks:
 
-```md
+````md
 ```mermaid
 flowchart LR
   A --> B
 ```
+````
+
 ```
 
 If rendering fails, the raw code block is shown.
@@ -84,3 +89,4 @@ Canonical URLs are derived from Vercel system environment variables when deploye
 3. (Optional) add `opengraph-image.png` and/or `twitter-image.png` next to the post.
 4. Reference images with `./` paths (Markdown) or `src="./..."` (JSX).
 5. Keep `draft: true` until ready to publish.
+```

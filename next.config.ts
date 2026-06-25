@@ -1,27 +1,29 @@
 import "./src/env";
-import path from "node:path";
 import createMDX from "@next/mdx";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  reactCompiler: true,
-  typescript: {
-    ignoreBuildErrors: true,
+  outputFileTracingExcludes: {
+    "/*": ["./next.config.ts"],
   },
   outputFileTracingIncludes: {
     "/blog/[slug]": ["./src/content/**/*"],
     "/blog/[slug]/opengraph-image": ["./src/content/**/*"],
     "/blog/[slug]/twitter-image": ["./src/content/**/*"],
+    "/rss.xml": ["./src/content/**/*"],
   },
+  reactCompiler: true,
 };
+
+const remarkStaticImageImports = new URL(
+  "src/lib/remark-static-image-imports.mjs",
+  import.meta.url
+).pathname;
+const remarkMermaid = new URL("src/lib/remark-mermaid.mjs", import.meta.url)
+  .pathname;
 
 const withMDX = createMDX({
   options: {
-    remarkPlugins: [
-      path.join(process.cwd(), "src/lib/remark-static-image-imports.mjs"),
-      path.join(process.cwd(), "src/lib/remark-mermaid.mjs"),
-      "remark-gfm",
-    ],
     rehypePlugins: [
       "rehype-slug",
       [
@@ -44,6 +46,7 @@ const withMDX = createMDX({
         },
       ],
     ],
+    remarkPlugins: [remarkStaticImageImports, remarkMermaid, "remark-gfm"],
   },
 });
 

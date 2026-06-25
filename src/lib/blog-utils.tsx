@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+
 import { cache } from "react";
 import readingTime from "reading-time";
 import { z } from "zod";
@@ -7,22 +8,21 @@ import { z } from "zod";
 const BLOG_DIR = path.join(process.cwd(), "src", "content", "blog");
 const MDX_EXT = "mdx";
 const FOLDER_ENTRY = `page.${MDX_EXT}`;
-const IMPORT_PREFIX = "@/content/blog/";
 
 const metadataSchema = z.object({
-  title: z.string(),
-  date: z.string(),
   author: z.string(),
+  date: z.string(),
+  draft: z.boolean().optional(),
   summary: z.string(),
   tags: z.array(z.string()).optional(),
+  title: z.string(),
   updated: z.string().optional(),
-  draft: z.boolean().optional(),
 });
 
-type BlogPostEntry = {
+interface BlogPostEntry {
   slug: string;
   importPath: string;
-};
+}
 
 export type BlogPostMetadata = z.infer<typeof metadataSchema>;
 
@@ -76,8 +76,8 @@ const collectEntries = async () => {
 
   for (const slug of slugs) {
     const importPath = await resolveImportPathForSlug(slug);
-    if (importPath) {
-      entries.push({ slug, importPath });
+    if (importPath !== null) {
+      entries.push({ importPath, slug });
     }
   }
 
@@ -92,27 +92,27 @@ const stripMetadataExport = (source: string) =>
 const toDate = (value: string, slug: string) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    throw new Error(
-      `Invalid date "${value}" in blog post "${slug}". Use YYYY-MM-DD or ISO format.`,
+    throw new TypeError(
+      `Invalid date "${value}" in blog post "${slug}". Use YYYY-MM-DD or ISO format.`
     );
   }
   return parsed;
 };
 
 const getPostStats = async (importPath: string) => {
-  const source = await fs.readFile(path.join(BLOG_DIR, importPath), "utf8");
+  const source = await fs.readFile(path.join(BLOG_DIR, importPath), "utf-8");
   const text = stripMetadataExport(source);
   const stats = readingTime(text);
   return { readingTime: stats.text, wordCount: stats.words };
 };
 
-export const importBlogPostModule = async <Module = unknown>(
-  importPath: string,
-) => import(`${IMPORT_PREFIX}${importPath}`) as Promise<Module>;
+export const importBlogPostModule = async <Module = unknown,>(
+  importPath: string
+) => await (import(`@/content/blog/${importPath}`) as Promise<Module>);
 
-export const importMetadataImageModule = async <Module = unknown>(
-  importPath: string,
-) => import(`${IMPORT_PREFIX}${importPath}`) as Promise<Module>;
+export const importMetadataImageModule = async <Module = unknown,>(
+  importPath: string
+) => await (import(`@/content/blog/${importPath}`) as Promise<Module>);
 
 export const parseBlogPostMetadata = (metadata: unknown) =>
   metadataSchema.parse(metadata);
@@ -129,31 +129,37 @@ const METADATA_IMAGE_MODULE_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"];
 
 export type MetadataImageKind = "opengraph" | "twitter";
 
-export type MetadataImageAsset = {
+export interface MetadataImageAsset {
   kind: MetadataImageKind;
   type: "module" | "file";
   filePath: string;
   importPath: string;
   contentType?: string;
-};
+}
 
 const toPosixPath = (value: string) => value.split(path.sep).join("/");
 
 const contentTypeForExtension = (extension: string) => {
   switch (extension) {
-    case ".png":
+    case ".png": {
       return "image/png";
+    }
     case ".jpg":
-    case ".jpeg":
+    case ".jpeg": {
       return "image/jpeg";
-    case ".webp":
+    }
+    case ".webp": {
       return "image/webp";
-    case ".avif":
+    }
+    case ".avif": {
       return "image/avif";
-    case ".gif":
+    }
+    case ".gif": {
       return "image/gif";
-    default:
+    }
+    default: {
       return "application/octet-stream";
+    }
   }
 };
 
@@ -174,7 +180,7 @@ const fileExists = async (filePath: string) => {
 
 export const findMetadataImageAsset = async (
   importPath: string,
-  kind: MetadataImageKind,
+  kind: MetadataImageKind
 ): Promise<MetadataImageAsset | null> => {
   const baseName = metadataImageBaseName(kind);
   const contentDir = getContentDirForImportPath(importPath);
@@ -183,10 +189,10 @@ export const findMetadataImageAsset = async (
     const filePath = path.join(contentDir, `${baseName}${extension}`);
     if (await fileExists(filePath)) {
       return {
-        kind,
-        type: "module",
         filePath,
         importPath: toPosixPath(path.relative(BLOG_DIR, filePath)),
+        kind,
+        type: "module",
       };
     }
   }
@@ -195,11 +201,11 @@ export const findMetadataImageAsset = async (
     const filePath = path.join(contentDir, `${baseName}${extension}`);
     if (await fileExists(filePath)) {
       return {
-        kind,
-        type: "file",
+        contentType: contentTypeForExtension(extension),
         filePath,
         importPath: toPosixPath(path.relative(BLOG_DIR, filePath)),
-        contentType: contentTypeForExtension(extension),
+        kind,
+        type: "file",
       };
     }
   }
@@ -216,25 +222,26 @@ export const getBlogPosts = cache(async (): Promise<BlogPost[]> => {
       const metadata = parseBlogPostMetadata(mod.metadata);
       const stats = await getPostStats(importPath);
       const date = toDate(metadata.date, slug);
-      const updatedAt = metadata.updated
-        ? toDate(metadata.updated, slug)
-        : undefined;
+      const updatedAt =
+        metadata.updated === undefined
+          ? undefined
+          : toDate(metadata.updated, slug);
 
       return {
-        slug,
+        date,
         importPath,
         metadata,
-        date,
-        updatedAt,
         readingTime: stats.readingTime,
+        slug,
+        updatedAt,
         wordCount: stats.wordCount,
       };
-    }),
+    })
   );
 
   return posts
-    .filter((post) => !post.metadata.draft)
-    .sort((a, b) => b.date.getTime() - a.date.getTime());
+    .filter((post) => post.metadata.draft !== true)
+    .toSorted((a, b) => b.date.getTime() - a.date.getTime());
 });
 
 export const getBlogPost = cache(async (slug: string) => {

@@ -4,6 +4,6 @@
   "features": ["rules", "skills"],
   "delete": true,
   "rules": {
-    "root": "overview.md"
-  }
+    "root": "overview.md",
+  },
 }
