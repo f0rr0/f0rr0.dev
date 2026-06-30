@@ -61,7 +61,7 @@
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/namefi.svg", fill: rgb("#0f1714"), size: 30pt, image-width: 21pt, image-height: 15pt, dy: 0pt)]],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/namefi.png", fill: rgb("#0f1714"), size: 30pt, image-width: 21pt, image-height: 15pt, dy: 0pt)]],
   [
     #t("Namefi", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
     #v(-6pt)
@@ -124,7 +124,7 @@
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/memorang.svg", fill: rgb("#ffffff"), size: 30pt, image-width: 21pt, image-height: 15pt, dy: 0pt)]],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/memorang.png", fill: rgb("#ffffff"), size: 30pt, image-width: 21pt, image-height: 15pt, dy: 0pt)]],
   [
     #t("Memorang", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
     #v(-6pt)
@@ -177,7 +177,7 @@
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/yuppies.svg", fill: rgb("#171220"), size: 30pt, image-width: 21pt, image-height: 12pt, dy: 0.75pt)]],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/yuppies.png", fill: rgb("#171220"), size: 30pt, image-width: 21pt, image-height: 12pt, dy: 0.75pt)]],
   [
     #t("Yuppies Tech", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
     #v(-6pt)
@@ -216,7 +216,7 @@
   columns: (21pt, 1fr),
   gutter: 7.5pt,
   align: top,
-  [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/zebpay-mark.svg", fill: rgb("#12202a"), size: 21pt, image-width: 15pt, image-height: 15pt, dy: 0pt)]],
+  [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/zebpay-mark.png", fill: rgb("#12202a"), size: 21pt, image-width: 15pt, image-height: 15pt, dy: 0pt)]],
   [#t("ZebPay: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("client-facing technical lead for a 10-person team modernizing iOS/Android apps, release infrastructure, exchange features, payment flows, and international KYC; moved stabilization releases from monthly/bi-monthly to weekly.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
@@ -225,7 +225,7 @@
   columns: (21pt, 1fr),
   gutter: 7.5pt,
   align: top,
-  [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/mitsubishi-mark.svg", fill: rgb("#211816"), size: 21pt, image-width: 15pt, image-height: 12pt, dy: -1.5pt)]],
+  [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/mitsubishi-mark.png", fill: rgb("#211816"), size: 21pt, image-width: 15pt, image-height: 12pt, dy: -1.5pt)]],
   [#t("Mitsubishi Motors: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("client-facing technical lead for MiAR, turning remote dealership goals into native iOS/iPadOS and WebAR with optimized 3D vehicles, low-end Android support, bilingual content, and contest/admin workflows.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
@@ -234,7 +234,7 @@
   columns: (21pt, 1fr),
   gutter: 7.5pt,
   align: top,
-  [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/airbus.svg", fill: rgb("#17213a"), size: 21pt, image-width: 15pt, image-height: 6pt, dy: 0pt)]],
+  [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/airbus.png", fill: rgb("#17213a"), size: 21pt, image-width: 15pt, image-height: 6pt, dy: 0pt)]],
   [#t("Airbus Tripset: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("solo technical partner to Milkinside for Airbus's public iOS/Android COVID travel companion, translating urgent traveler guidance needs into app/backend layers over Airbus/Amadeus APIs, CMS rules, and itinerary notifications.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 
@@ -249,7 +249,7 @@
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/kult.svg", fill: rgb("#211722"), size: 30pt, image-width: 21pt, image-height: 9pt, dy: 0pt)]],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/kult.png", fill: rgb("#211722"), size: 30pt, image-width: 21pt, image-height: 9pt, dy: 0pt)]],
   [
     #t("Kult", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
     #v(-6pt)
@@ -284,7 +284,7 @@
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/yilu.svg", fill: rgb("#101827"), size: 30pt, image-width: 21pt, image-height: 12pt, dy: 0pt)]],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/yilu.png", fill: rgb("#101827"), size: 30pt, image-width: 21pt, image-height: 12pt, dy: 0pt)]],
   [
     #t("Yilu, Lufthansa Group / BCG Digital Ventures", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
     #v(-6pt)
@@ -328,7 +328,7 @@
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/8fit.svg", fill: rgb("#102018"), size: 30pt, image-width: 21pt, image-height: 15pt, dy: 0pt)]],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/8fit.png", fill: rgb("#102018"), size: 30pt, image-width: 21pt, image-height: 15pt, dy: 0pt)]],
   [
     #t("8fit by Withings", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
     #v(-6pt)
@@ -416,7 +416,7 @@
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/bridg.svg", fill: rgb("#211916"), size: 30pt, image-width: 21pt, image-height: 12pt, dy: 0.75pt)]],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/bridg.png", fill: rgb("#211916"), size: 30pt, image-width: 21pt, image-height: 12pt, dy: 0.75pt)]],
   [
     #t("Earlier Consulting and Startup Work", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
     #v(-6pt)
@@ -459,7 +459,7 @@
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/ucla.svg", fill: rgb("#2774ae"), size: 30pt, image-width: 21pt, image-height: 9pt, dy: 0pt)]],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/ucla.png", fill: rgb("#2774ae"), size: 30pt, image-width: 21pt, image-height: 9pt, dy: 0pt)]],
   [
     #t("University of California, Los Angeles", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
     #v(-6pt)
@@ -479,6 +479,32 @@
 )
 ]
 
+]
+#v(18pt)
+
+#block(breakable: false)[
+#grid(
+  columns: (30pt, 1fr),
+  gutter: 12pt,
+  align: top,
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/dps-rk-puram.png", fill: rgb("#016b2f"), size: 30pt, image-width: 21pt, image-height: 27pt, dy: 0pt)]],
+  [
+    #t("Delhi Public School, R. K. Puram", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
+    #v(-6pt)
+    #t("High School.", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "italic")
+
+#v(3pt)
+#grid(
+  columns: (1fr, auto),
+  gutter: 12pt,
+  [#t("Computer Science, Physics, Chemistry, Math", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")],
+  [#t("New Delhi, India · 2011 - 2013", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "normal")],
+)
+
+
+
+  ],
+)
 ]
 
 
