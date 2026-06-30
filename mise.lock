@@ -231,3 +231,47 @@ url = "https://github.com/typst/typst/releases/download/v0.15.0/typst-x86_64-pc-
 [tools.typst."platforms.windows-x64-baseline"]
 checksum = "sha256:66ae7f0907b4b9afed5c7d6cb9b21e07f0f3c3d4e293ba3e0026a54d88202fe9"
 url = "https://github.com/typst/typst/releases/download/v0.15.0/typst-x86_64-pc-windows-msvc.zip"
+
+[[tools.typstyle]]
+version = "0.15.0"
+backend = "aqua:Enter-tainer/typstyle"
+
+[tools.typstyle."platforms.linux-arm64"]
+checksum = "sha256:d782f1fa1704c537542edf131bddb9b6467af72944a50b174709f904a198f3b7"
+url = "https://github.com/typstyle-rs/typstyle/releases/download/v0.15.0/typstyle-aarch64-unknown-linux-gnu"
+
+[tools.typstyle."platforms.linux-x64"]
+checksum = "sha256:4ee395be9c923eaffdfcc84d4cea7c54d8087ce8fc380ea82d775e0915698097"
+url = "https://github.com/typstyle-rs/typstyle/releases/download/v0.15.0/typstyle-x86_64-unknown-linux-musl"
+
+[tools.typstyle."platforms.linux-x64-baseline"]
+checksum = "sha256:4ee395be9c923eaffdfcc84d4cea7c54d8087ce8fc380ea82d775e0915698097"
+url = "https://github.com/typstyle-rs/typstyle/releases/download/v0.15.0/typstyle-x86_64-unknown-linux-musl"
+
+[tools.typstyle."platforms.linux-x64-musl"]
+checksum = "sha256:4ee395be9c923eaffdfcc84d4cea7c54d8087ce8fc380ea82d775e0915698097"
+url = "https://github.com/typstyle-rs/typstyle/releases/download/v0.15.0/typstyle-x86_64-unknown-linux-musl"
+
+[tools.typstyle."platforms.linux-x64-musl-baseline"]
+checksum = "sha256:4ee395be9c923eaffdfcc84d4cea7c54d8087ce8fc380ea82d775e0915698097"
+url = "https://github.com/typstyle-rs/typstyle/releases/download/v0.15.0/typstyle-x86_64-unknown-linux-musl"
+
+[tools.typstyle."platforms.macos-arm64"]
+checksum = "sha256:5603286375b060fdfd6719cac25227508473140e502ab1f7ab9557cf397b0de5"
+url = "https://github.com/typstyle-rs/typstyle/releases/download/v0.15.0/typstyle-aarch64-apple-darwin"
+
+[tools.typstyle."platforms.macos-x64"]
+checksum = "sha256:5e36e61aa2e811954959f70a921d7f5f0647460dbad7f7d6d3b3eeaa37cad9e4"
+url = "https://github.com/typstyle-rs/typstyle/releases/download/v0.15.0/typstyle-x86_64-apple-darwin"
+
+[tools.typstyle."platforms.macos-x64-baseline"]
+checksum = "sha256:5e36e61aa2e811954959f70a921d7f5f0647460dbad7f7d6d3b3eeaa37cad9e4"
+url = "https://github.com/typstyle-rs/typstyle/releases/download/v0.15.0/typstyle-x86_64-apple-darwin"
+
+[tools.typstyle."platforms.windows-x64"]
+checksum = "sha256:ff04ab943537779246274dc0ff9bb71fae6a9d232ce4b54b1b5d5710c20be714"
+url = "https://github.com/typstyle-rs/typstyle/releases/download/v0.15.0/typstyle-x86_64-pc-windows-msvc.exe"
+
+[tools.typstyle."platforms.windows-x64-baseline"]
+checksum = "sha256:ff04ab943537779246274dc0ff9bb71fae6a9d232ce4b54b1b5d5710c20be714"
+url = "https://github.com/typstyle-rs/typstyle/releases/download/v0.15.0/typstyle-x86_64-pc-windows-msvc.exe"

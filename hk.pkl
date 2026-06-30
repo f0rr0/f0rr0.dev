@@ -18,6 +18,8 @@ local formattable = List(
   "**/*.yml"
 )
 
+local typstFiles = List("**/*.typ")
+
 exclude = List(".next/**", ".rulesync/**", "node_modules/**")
 
 hooks {
@@ -32,12 +34,21 @@ hooks {
         check = "bun run format:check -- {{files}}"
         stage = formattable
       }
+      ["format-typst-staged"] {
+        glob = typstFiles
+        fix = "typstyle -i {{files}}"
+        check = "typstyle --check {{files}}"
+        stage = typstFiles
+      }
     }
   }
   ["pre-push"] {
     steps {
       ["lint"] {
         check = "bun run lint"
+      }
+      ["typst-format"] {
+        check = "bun run format:typ:check"
       }
       ["typecheck"] {
         check = "bun run typecheck"

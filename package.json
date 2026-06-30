@@ -14,7 +14,9 @@
     "rulesync": "bunx rulesync generate",
     "format": "ultracite fix",
     "format:ox": "oxfmt --write",
-    "format:check": "oxfmt --check"
+    "format:check": "oxfmt --check",
+    "format:typ": "typstyle -i career",
+    "format:typ:check": "typstyle --check career"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
