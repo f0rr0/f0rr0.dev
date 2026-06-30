@@ -62,6 +62,7 @@ const pdfOnly = {
   contactStackHeight: pt(28),
   companyTaglineGap: pt(-6),
   pageMargin: "0.29in",
+  profileAvatarSize: fontSize["5xl"],
   roleBodyGap: cssPxToPt(3),
   roleTopGap: spacing[1],
   sectionTitleAfterGap: spacing[3],
@@ -136,7 +137,12 @@ const tileFill = (logo: LogoAsset) => {
   return /bg-\[(#[\da-fA-F]+)\]/.exec(logo.tileClassName)?.[1] ?? "#1a1918";
 };
 
-const logoPath = (logo: LogoAsset) => `/public/${logo.src.replace(/^\//, "")}`;
+const publicAssetPath = (src: string) => `/public/${src.replace(/^\//, "")}`;
+
+const logoPath = (logo: LogoAsset) => publicAssetPath(logo.src);
+
+const profileAvatarPath = () =>
+  publicAssetPath(resumeData.person.avatarImage ?? resumeData.person.image);
 
 const logoTile = (
   logo: LogoAsset,
@@ -303,6 +309,7 @@ const buildTypst = () => {
   const experience = resumeData.experience.map(experienceItem);
 
   const education = resumeData.education.map(experienceItem);
+  const profileAvatar = profileAvatarPath();
 
   return `#set document(
   title: ${quote(resumeData.pdf.title)},
@@ -330,24 +337,29 @@ const buildTypst = () => {
   fill: fill,
   stroke: ${spacing.px} + rule-color,
 )[#align(center + horizon)[#move(dy: dy)[#image(path, width: image-width, height: image-height, fit: "contain")]]]
+#let profile-photo(path, size: ${pdfOnly.profileAvatarSize}) = image(path, width: size, height: size, fit: "contain")
 
 #align(left)[
 #grid(
-  columns: (auto, 1fr),
-  gutter: ${spacing[6]},
+  columns: (${pdfOnly.profileAvatarSize}, auto, 1fr),
+  gutter: ${spacing[4]},
   align: top,
-  [${text(resumeData.person.name, {
-    fill: "strong",
-    font: "Literata",
-    size: fontSize["5xl"],
-    weight: "bold",
-  })}],
-  [#align(right)[#box(height: ${pdfOnly.contactStackHeight})[#grid(
-    columns: (auto,),
-    rows: (1fr, 1fr, 1fr),
-    align: right + horizon,
-    ${contactLinks}
-  )]]],
+  [#profile-photo(${quote(profileAvatar)})],
+  [#box(height: ${pdfOnly.profileAvatarSize})[#align(left + horizon)[${text(
+    resumeData.person.name,
+    {
+      fill: "strong",
+      font: "Literata",
+      size: fontSize["5xl"],
+      weight: "bold",
+    }
+  )}]]],
+  [#align(right)[#box(height: ${pdfOnly.profileAvatarSize})[#align(right + horizon)[#box(height: ${pdfOnly.contactStackHeight})[#grid(
+      columns: (auto,),
+      rows: (1fr, 1fr, 1fr),
+      align: right + horizon,
+      ${contactLinks}
+    )]]]]],
 )
   #v(${spacing[1]})
   ${paragraph(resumeData.summary)}

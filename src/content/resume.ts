@@ -152,11 +152,12 @@ const uclaLogo: LogoAsset = {
 };
 
 export const resumeData = {
-  lastUpdated: "2026-06-26",
+  lastUpdated: "2026-06-30",
   person: {
     alternateNames: ["f0rr0", "yuppiestechdev"],
+    avatarImage: "/resume/sid-jain-profile-avatar.png",
     email: "sid_26@outlook.com",
-    image: "https://github.com/f0rr0.png",
+    image: "/resume/sid-jain-profile.png",
     location: "Mumbai, India / Remote",
     name: "Sid Jain",
     role: "Senior Full-Stack Engineer / AI Lead",
@@ -174,12 +175,12 @@ export const resumeData = {
     { href: "https://github.com/f0rr0", label: "github.com/f0rr0" },
   ] satisfies ResumeLink[],
   summary:
-    "Senior Full-Stack Engineer / AI Lead building AI-native products and hard production systems from zero to launch. Founded Yuppies Tech and personally led technical delivery for Airbus Tripset, Mitsubishi Motors Puerto Rico MiAR, ZebPay, Texts.com, Veera Browser, and Memorang. Currently leads Namefi AI product engineering across Outbound, Brand Studio, and Feed while building core registrar, DNS, payments, and workflow infrastructure.",
+    "Senior Full-Stack Engineer / AI Lead building production AI systems from customer workflows. At Namefi, leads domain sales automation, listing intelligence, brand generation, and analytics across discovery, agent/workflow design, evaluation, full-stack implementation, and deployment. Previously led Yuppies Tech, translating ambiguous client goals into shipped systems for Airbus Tripset, Mitsubishi Motors MiAR, ZebPay, Texts.com, Veera Browser, and Memorang.",
   experience: [
     {
       company: "Namefi",
       tagline:
-        "Domain registrar and marketplace infrastructure with AI-native products for domain owners.",
+        "Domain registrar and marketplace infrastructure with production AI workflows for domain owners.",
       logo: namefiLogo,
       roles: [
         {
@@ -187,10 +188,10 @@ export const resumeData = {
           dates: "Dec 2024 - Present",
           location: "Remote",
           bullets: [
-            "Built Namefi Outbound, reducing domain sales research and outreach prep from days/weeks to minutes by automating buyer-fit hypotheses, web research, lead scoring, contact discovery, and editable outreach drafts.",
-            "Built Brand Studio, a multi-stage AI branding system that turns domains into buyer-ready logo, poster, and motion concepts with strategist/concept passes, exact domain/TLD rendering constraints, and cinematic animation workflows.",
-            "Built Namefi Feed, an MLS-style discovery layer indexing roughly 4,000-5,000 public secondary-market domain listings from X, NamePros, DNForum, and marketplaces into searchable/RSS surfaces.",
-            "Built registrar and domain systems across registrar integrations, DNS/DNSSEC, nameservers, ENS/.eth, renewals, payments, checkout, and Temporal-backed long-running workflows.",
+            "Led customer discovery with large domain owners and built Namefi Outbound, reducing sales research/outreach prep from days to minutes through buyer-fit hypotheses, web research, lead scoring, contact discovery, and editable drafts.",
+            "Built Brand Studio, a multi-stage AI branding workflow that turns domains into buyer-ready logos, posters, and motion concepts with strategist/concept passes, exact domain/TLD constraints, and animation workflows.",
+            "Built Namefi Feed, an AI-enriched listing intelligence layer indexing roughly 4,000-5,000 public domain listings from X, NamePros, DNForum, and marketplaces into searchable/RSS surfaces.",
+            "Built production registrar and domain systems across registrar integrations, DNS/DNSSEC, nameservers, ENS/.eth, renewals, payments, checkout, analytics, and Temporal-backed long-running workflows.",
           ],
         },
       ],
@@ -203,15 +204,15 @@ export const resumeData = {
       roles: [
         {
           title: "Founder / Technical Lead",
-          dates: "Jan 2021 - Present",
+          dates: "2021 - 2025",
           location: "Mumbai / Remote",
           summary:
-            "Founded and led a product engineering consultancy; served as client-facing technical partner and hands-on technical lead across travel, automotive, crypto, messaging, browsers, and AI education.",
+            "Founded and led a product engineering consultancy; translated ambiguous client goals into shipped systems across travel, automotive, crypto, messaging, browsers, and AI education.",
           bullets: [
             {
               label: "Memorang",
               logo: memorangLogo,
-              text: "Head of CMS for an AI education platform, leading schema-first AI CMS work for Cambridge/TOEFL content, AI-generated questions/media, adaptive practice, scoring workflows, and a JS/Flow to TypeScript/Bun/Biome modernization.",
+              text: "Head of CMS for an AI education platform, translating Cambridge/TOEFL requirements into a schema-first AI CMS for generated questions/media, adaptive practice, scoring workflows, and content operations; modernized JS/Flow to TypeScript/Bun/Biome.",
             },
             {
               label: "Veera Browser",
@@ -221,22 +222,22 @@ export const resumeData = {
             {
               label: "Texts.com",
               logo: textsLogo,
-              text: "built the production Facebook Messenger channel over undocumented messaging infrastructure, implementing protocol-compatible MQTT/Facebook Thrift handling, encrypted payload support, and feature-parity messaging across sync, groups, attachments, reactions, read receipts, typing, and presence.",
+              text: "built production Messenger channel by reverse-engineering undocumented infrastructure and implementing MQTT/Facebook Thrift, encrypted payloads, sync, groups, attachments, reactions, receipts, typing, and presence.",
             },
             {
               label: "ZebPay",
               logo: zebpayLogo,
-              text: "technical lead for a 10-person embedded team modernizing iOS/Android apps and release infrastructure for one of India's largest crypto exchanges, moving stabilization releases from monthly/bi-monthly to weekly.",
+              text: "client-facing technical lead for a 10-person team modernizing iOS/Android apps, release infrastructure, exchange features, payment flows, and international KYC; moved stabilization releases from monthly/bi-monthly to weekly.",
             },
             {
               label: "Mitsubishi Motors",
               logo: mitsubishiLogo,
-              text: "tech lead for MiAR virtual dealership and Outlander AR campaign, leading a 3-person team across native iOS/iPadOS, WebAR, optimized 3D vehicles, low-end Android support, bilingual content, and contest/admin workflows.",
+              text: "client-facing technical lead for MiAR, turning remote dealership goals into native iOS/iPadOS and WebAR with optimized 3D vehicles, low-end Android support, bilingual content, and contest/admin workflows.",
             },
             {
               label: "Airbus Tripset",
               logo: airbusLogo,
-              text: "solo technical partner to Milkinside for Airbus's public iOS/Android COVID travel companion, building the React Native app and backend aggregation layer over Airbus/Amadeus APIs, CMS-driven travel guidance, and itinerary notifications.",
+              text: "solo technical partner to Milkinside for Airbus's public iOS/Android COVID travel companion, translating urgent traveler guidance needs into app/backend layers over Airbus/Amadeus APIs, CMS rules, and itinerary notifications.",
             },
           ],
         },
@@ -389,9 +390,9 @@ export const resumeData = {
           {
             heading: "Sid's role",
             bullets: [
-              "Leads AI product engineering across Namefi Outbound, Namefi Brand Studio, and Namefi Feed.",
+              "Leads AI product engineering across Namefi Outbound, Namefi Brand Studio, Namefi Feed, and internal analytics workflows.",
               "Builds core registrar, DNS, payment, checkout, renewal, ENS/.eth, and workflow infrastructure.",
-              "Operates as a full-stack product engineer, AI lead, and technical owner across both customer-facing AI products and production domain infrastructure.",
+              "Operates as a full-stack product engineer, AI lead, and technical owner across customer discovery, workflow design, agent implementation, evaluation, deployment, and production domain infrastructure.",
               "Helps define Namefi's AI development operating model, including documentation patterns, agent-ready repository conventions, static checks, CI, and repeatable engineering/design principles for AI-assisted development.",
             ],
           },
@@ -402,7 +403,7 @@ export const resumeData = {
               "Built from customer interviews with large domain portfolio owners.",
               "Target user problem: domain sellers had to manually choose which domains to sell, research market timing, identify plausible buyers, maintain spreadsheets/CRM notes, buy or discover contacts, and draft outreach.",
               "Previous workflow could take days to weeks for only a few domains.",
-              "Sid's product work reduced research and outreach preparation to minutes by automating domain-quality framing, buyer-fit hypotheses, web research, lead scoring, contact discovery, and editable outreach drafts.",
+              "Sid's product work reduced research and outreach preparation to minutes by translating that manual workflow into buyer-fit hypotheses, web research, lead scoring, contact discovery, and editable outreach drafts.",
               "The product improves both speed and quality by making the seller's existing workflow repeatable, structured, and AI-assisted instead of replacing it with a black box.",
             ],
           },
@@ -411,7 +412,7 @@ export const resumeData = {
             bullets: [
               "Customer-facing AI branding product for domains.",
               "Turns a domain into buyer-ready logo, poster, and motion concepts.",
-              "The system is not a thin image-prompt wrapper; it uses a multi-stage workflow with strategist and concept passes.",
+              "The system is not a thin image-prompt wrapper; it uses a multi-stage workflow with strategist, concept, generation, constraint, and asset-delivery passes.",
               "Logo generation includes typed concept parsing, design taxonomy controls, style and text-treatment controls, foreground/background treatment, exact domain/TLD rendering constraints, and negative constraints against wrong TLDs, slogans, mockups, and watermarks.",
               "Asset delivery includes generated files, thumbnails, model/token metadata, and cloud asset storage/delivery.",
               "Animation generation supports cinematic, looped, and sheet-guided approaches, with motion strategy, motion presets/intensity, prepared frames, safe margins, video generation, thumbnails, and optional animation sheets.",
@@ -436,7 +437,7 @@ export const resumeData = {
               "Built or contributed to registrar integrations, including third-party registrar connectivity.",
               "Built domain registration, renewal, checkout, payments, DNS records, DNSSEC, nameserver management, ENS/.eth support, and operational flows required for registrar-grade products.",
               "Led or substantially drove the move from Airflow-style DAGs to Temporal for stateful long-running processing, then reused Temporal for AI workflows and operational systems.",
-              "This infrastructure work is important because it shows Sid can ship AI products inside real regulated/operational systems, not only demos.",
+              "This infrastructure work shows Sid can ship AI products inside real regulated/operational systems, not only demos.",
             ],
           },
         ],
@@ -449,7 +450,7 @@ export const resumeData = {
             bullets: [
               "Company: Yuppies Tech.",
               "Title: Founder / Technical Lead.",
-              "Dates: 2021 - Present.",
+              "Dates: 2021 - 2025.",
               "Location: Mumbai / Remote.",
             ],
           },
@@ -465,6 +466,7 @@ export const resumeData = {
             heading: "General value",
             bullets: [
               "Served as client-facing technical partner for enterprise and startup clients across travel, automotive, crypto, messaging, browsers, and AI education.",
+              "Translated ambiguous business, design, and customer needs into scoped architectures, delivery plans, product systems, and production releases.",
               "Led delivery under high ambiguity, including emergency COVID timelines, App Store/Play Store constraints, browser and device compatibility constraints, and legacy code modernization.",
               "Frequently worked directly with CTOs, heads of engineering, heads of product, founders, QA leads, design teams, marketing teams, and enterprise stakeholders.",
               "Strong theme: making design a first-class citizen of technical implementation through design systems, design QA, and cross-functional review loops.",
@@ -487,7 +489,7 @@ export const resumeData = {
           {
             heading: "Major work and impact",
             bullets: [
-              "Led schema-first AI CMS work for Cambridge/TOEFL-style education products.",
+              "Translated Cambridge/TOEFL-style education requirements into schema-first AI CMS work.",
               "Modeled TOEFL-like exam structures into dynamic schemas for sections, question types, component types, content groups, practice scoring, and adaptive workflows.",
               "Built CMS capabilities for AI generation of full question sets, including text questions and companion media such as audio or images.",
               "Built schema versioning so content and question formats could evolve without breaking existing client apps or backend services.",

@@ -36,7 +36,7 @@ export const buildPersonNode = (): Person => ({
   description:
     "Senior Full-Stack Engineer / AI Lead building AI-native products and production systems from zero to launch.",
   email: `mailto:${resumeData.person.email}`,
-  image: resumeData.person.image,
+  image: publicUrl(resumeData.person.image),
   jobTitle: resumeData.person.role,
   knowsAbout: [
     "AI product engineering",

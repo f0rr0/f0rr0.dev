@@ -200,7 +200,7 @@ function Header() {
         <nav className="flex items-center justify-between">
           <Link href="/" className="group flex items-center gap-3">
             <img
-              src="https://github.com/f0rr0.png"
+              src={resumeData.person.image}
               alt="Sid Jain"
               className="h-10 w-10 rounded-full object-cover ring-2 ring-[#e7e5e4] transition-shadow group-hover:ring-[#b45309] dark:ring-[#3a3836] dark:group-hover:ring-[#d97706]"
             />
@@ -252,9 +252,17 @@ export function ResumePageContent({
         <main className="mx-auto max-w-5xl px-4 pb-20 pt-16 sm:px-8 sm:pt-24 lg:px-12 print:pt-8">
           <header className="max-w-5xl">
             <div className="flex items-center justify-between gap-4">
-              <h1 className="font-[family-name:var(--resume-font-heading)] text-4xl font-bold text-[#292524] sm:text-5xl dark:text-[#e7e5e4]">
-                Sid Jain
-              </h1>
+              <div className="flex min-w-0 items-center gap-4 sm:gap-5">
+                <img
+                  src={resumeData.person.image}
+                  alt=""
+                  aria-hidden="true"
+                  className="h-16 w-16 shrink-0 rounded-full border-2 border-white object-cover shadow-sm ring-1 ring-[#e7e5e4] sm:h-20 sm:w-20 dark:ring-[#3a3836]"
+                />
+                <h1 className="font-[family-name:var(--resume-font-heading)] text-4xl font-bold text-[#292524] sm:text-5xl dark:text-[#e7e5e4]">
+                  Sid Jain
+                </h1>
+              </div>
               <ResumePrintButton />
             </div>
           </header>
