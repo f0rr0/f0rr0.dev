@@ -6,7 +6,7 @@ export interface LogoAsset {
   tileClassName: string;
 }
 
-export interface ResumeBullet {
+interface ResumeBullet {
   label?: string;
   logo?: LogoAsset;
   text: string;
@@ -160,9 +160,9 @@ export const resumeData = {
     image: "/resume/sid-jain-profile.png",
     location: "Mumbai, India / Remote",
     name: "Sid Jain",
-    role: "Senior Full-Stack Engineer / AI Lead",
+    role: "Senior Full-Stack Engineer / Applied AI Lead",
     targetPositioning:
-      "AI product engineer, AI lead, staff full-stack engineer, and founding engineer",
+      "applied AI solutions architect, applied AI lead, staff full-stack engineer, and founding engineer",
   },
   navItems: [
     { href: "/blog", label: "Blog" },
@@ -175,23 +175,41 @@ export const resumeData = {
     { href: "https://github.com/f0rr0", label: "github.com/f0rr0" },
   ] satisfies ResumeLink[],
   summary:
-    "Senior Full-Stack Engineer / AI Lead building production AI systems from customer workflows. At Namefi, leads domain sales automation, listing intelligence, brand generation, and analytics across discovery, agent/workflow design, evaluation, full-stack implementation, and deployment. Previously led Yuppies Tech, translating ambiguous client goals into shipped systems for Airbus Tripset, Mitsubishi Motors MiAR, ZebPay, Texts.com, Veera Browser, and Memorang.",
+    "Applied AI Lead and senior full-stack engineer who turns ambiguous customer problems into production AI systems. Blends customer discovery, technical advisory, evaluation and workflow design, hands-on prototyping, and production architecture across AI, marketplace, browser, mobile, and infrastructure-heavy products.",
   experience: [
     {
       company: "Namefi",
       tagline:
-        "Domain registrar and marketplace infrastructure with production AI workflows for domain owners.",
+        "AI-powered registrar for tokenized domains and domainer workflows.",
       logo: namefiLogo,
       roles: [
         {
-          title: "Senior Full-Stack Engineer / AI Lead",
-          dates: "Dec 2024 - Present",
-          location: "Remote",
+          title: "Applied AI Lead",
+          dates: "Jan 2025 - Present",
+          location: "San Francisco Bay Area / Remote",
           bullets: [
-            "Led customer discovery with large domain owners and built Namefi Outbound, reducing sales research/outreach prep from days to minutes through buyer-fit hypotheses, web research, lead scoring, contact discovery, and editable drafts.",
-            "Built Brand Studio, a multi-stage AI branding workflow that turns domains into buyer-ready logos, posters, and motion concepts with strategist/concept passes, exact domain/TLD constraints, and animation workflows.",
-            "Built Namefi Feed, an AI-enriched listing intelligence layer indexing roughly 4,000-5,000 public domain listings from X, NamePros, DNForum, and marketplaces into searchable/RSS surfaces.",
+            "Led customer discovery with large domain owners and turned manual sales workflows into Namefi Outbound: AI-assisted buyer hypotheses, web research, lead scoring, contact discovery, and editable outreach, reducing prep from days to minutes.",
+            "Designed Brand Studio as a multi-stage AI workflow that turns domains into buyer-ready logos, posters, and motion concepts with strategist/concept passes, exact domain/TLD constraints, and animation workflows.",
+            "Built Namefi Feed, an AI-enriched listing intelligence layer that normalizes roughly 4,000-5,000 public domain listings from X, NamePros, DNForum, and marketplaces into searchable/RSS surfaces.",
             "Built production registrar and domain systems across registrar integrations, DNS/DNSSEC, nameservers, ENS/.eth, renewals, payments, checkout, analytics, and Temporal-backed long-running workflows.",
+          ],
+        },
+      ],
+    },
+    {
+      company: "Memorang",
+      tagline:
+        "AI education platform for adaptive practice, tutoring, assessment, and curriculum tooling.",
+      logo: memorangLogo,
+      roles: [
+        {
+          title: "Head of CMS",
+          dates: "Apr 2024 - Jan 2025",
+          location: "San Francisco Bay Area / Remote",
+          bullets: [
+            "Translated Cambridge/TOEFL requirements into a schema-first AI CMS for generated questions/media, adaptive practice, scoring workflows, and content operations.",
+            "Built AI generation and recommendation workflows across full question sets, companion audio/image media, embedding-based media similarity, and schema-versioned content delivery.",
+            "Modernized a large JS/Flow monorepo toward TypeScript, Bun, and Biome using AI-agentic refactor workflows, codemods, and tooling while coordinating CMS roadmap with backend, frontend, app teams, CTO, and CEO.",
           ],
         },
       ],
@@ -204,23 +222,18 @@ export const resumeData = {
       roles: [
         {
           title: "Founder / Technical Lead",
-          dates: "2021 - 2025",
+          dates: "Jan 2021 - Apr 2024",
           location: "Mumbai / Remote",
           summary:
-            "Founded and led a product engineering consultancy; translated ambiguous client goals into shipped systems across travel, automotive, crypto, messaging, browsers, and AI education.",
+            "Founded and led a product engineering consultancy as client-facing technical partner, translating ambiguous requirements into architecture, delivery plans, and shipped systems.",
           bullets: [
-            {
-              label: "Memorang",
-              logo: memorangLogo,
-              text: "Head of CMS for an AI education platform, translating Cambridge/TOEFL requirements into a schema-first AI CMS for generated questions/media, adaptive practice, scoring workflows, and content operations; modernized JS/Flow to TypeScript/Bun/Biome.",
-            },
             {
               label: "Veera Browser",
               logo: veeraLogo,
               text: "led Android Chromium browser delivery from zero to Play Store, owning Chromium/Brave patch management, build/release tooling, rewards/feed/onboarding/search/tabs, privacy/security updates, and later iOS platform setup.",
             },
             {
-              label: "Texts.com",
+              label: "Texts",
               logo: textsLogo,
               text: "built production Messenger channel by reverse-engineering undocumented infrastructure and implementing MQTT/Facebook Thrift, encrypted payloads, sync, groups, attachments, reactions, receipts, typing, and presence.",
             },
@@ -244,13 +257,13 @@ export const resumeData = {
       ],
     },
     {
-      company: "Kult App",
+      company: "Kult",
       tagline: "Consumer beauty and skincare commerce.",
       logo: kultLogo,
       roles: [
         {
           title: "Vice President of Tech",
-          dates: "Jan 2020 - Dec 2020",
+          dates: "Jan 2020 - Dec 2021",
           location: "Mumbai",
           bullets: [
             "Built the first product and technical foundation for a consumer beauty/skincare shopping app from the ground up across AWS, Elixir, Swift, and Kotlin.",
@@ -275,7 +288,7 @@ export const resumeData = {
       ],
     },
     {
-      company: "8fit",
+      company: "8fit by Withings",
       tagline: "Fitness and nutrition platform, now part of Withings.",
       logo: eightfitLogo,
       roles: [
@@ -291,7 +304,7 @@ export const resumeData = {
       ],
     },
     {
-      company: "Housing.com",
+      company: "Housing",
       tagline: "Indian real estate search and transaction platform.",
       logo: housingLogo,
       roles: [
@@ -340,18 +353,19 @@ export const resumeData = {
     accuracyNotes: [
       "Sid Jain is the same person as the public handles f0rr0 and yuppiestechdev.",
       "Sid founded Yuppies Tech, a product engineering consultancy, and personally acted as client-facing technical partner and hands-on technical lead across multiple client projects.",
-      "Namefi is Sid's current role. He joined in December 2024 and is currently Senior Full-Stack Engineer / AI Lead.",
+      "Namefi is Sid's current role. His public LinkedIn profile lists January 2025 - Present.",
+      "Memorang is a separate Head of CMS role from April 2024 - January 2025, not a Yuppies Tech client bullet.",
       "Do not describe Sid as a non-technical manager. His strongest pattern is hands-on product engineering combined with staff-level technical leadership.",
       "Do not inflate unreleased or low-signal open source. Public open source worth mentioning includes oliphaunt and react-native-rating.",
       "Work summaries intentionally avoid private repository names, secrets, unreleased internal product names, and client-confidential details.",
     ],
     positioning:
-      "Sid is best understood as a staff-level full-stack builder with unusually broad range across AI product engineering, TypeScript product systems, mobile apps, browser/platform engineering, release infrastructure, and registrar/DNS systems. He is strongest in ambiguous environments where the product and technical path are not already obvious.",
+      "Sid is best understood as an applied-AI solutions architect and staff-level full-stack builder with unusual range across customer discovery, workflow/eval design, TypeScript product systems, mobile apps, browser/platform engineering, release infrastructure, and registrar/DNS systems. He is strongest where the business goal is clear but the product and technical path are not.",
     strengths: [
-      "AI product engineering: agentic workflows, AI-native product UX, prompt/workflow design, model-backed generation, AI research tools, AI analytics, and production AI systems.",
+      "Applied AI solutions architecture: customer discovery, technical advisory, eval/workflow design, hands-on prototypes, reusable implementation patterns, model-backed generation, AI analytics, and production AI systems.",
       "Staff full-stack execution: TypeScript, React, Next.js, Node.js, backend services, APIs, databases, CI/CD, product architecture, and production operations.",
       "Platform and mobile depth: React Native, Swift, Kotlin, Objective-C, Java, Chromium, browser build systems, App Store delivery, Play Store delivery, release automation, and stability work.",
-      "Founder and client leadership: technical discovery, feasibility calls, roadmap execution, team leadership, design partnership, design QA, client-facing communication, and high-pressure delivery.",
+      "Founder and client leadership: technical discovery, feasibility calls, architecture recommendations, roadmap execution, team leadership, design partnership, stakeholder communication, and high-pressure delivery.",
       "Product range: domain/DNS infrastructure, AI branding and sales workflows, crypto exchange apps, universal messaging, Chromium browsers, AR automotive retail, travel apps, AI education CMS, commerce, health/fitness, and real estate.",
     ],
     quantitativeSignals: [
@@ -375,15 +389,15 @@ export const resumeData = {
             heading: "Role",
             bullets: [
               "Company: Namefi / D3ServeLabs.",
-              "Title: Senior Full-Stack Engineer / AI Lead.",
-              "Dates: December 2024 - Present.",
-              "Location: Remote.",
+              "Title: Applied AI Lead.",
+              "Dates: January 2025 - Present.",
+              "Location: San Francisco Bay Area / Remote.",
             ],
           },
           {
             heading: "Public company context",
             bullets: [
-              "Namefi is an ICANN-accredited domain registrar building domain registration, tokenization, DNS ownership, marketplace, DeFi, and AI tooling for domains.",
+              "Namefi is an ICANN-accredited registrar building AI-powered infrastructure for domain registration, tokenized DNS ownership, trading, DeFi, and agentic domain workflows.",
               "Public product surfaces include Namefi Outbound, Namefi Feed, Namefi Brand Studio, domain registration, DNS management, domain discovery, and related tools.",
             ],
           },
@@ -392,7 +406,7 @@ export const resumeData = {
             bullets: [
               "Leads AI product engineering across Namefi Outbound, Namefi Brand Studio, Namefi Feed, and internal analytics workflows.",
               "Builds core registrar, DNS, payment, checkout, renewal, ENS/.eth, and workflow infrastructure.",
-              "Operates as a full-stack product engineer, AI lead, and technical owner across customer discovery, workflow design, agent implementation, evaluation, deployment, and production domain infrastructure.",
+              "Operates as a full-stack product engineer, Applied AI Lead, and technical owner across customer discovery, workflow design, agent implementation, evaluation, deployment, and production domain infrastructure.",
               "Helps define Namefi's AI development operating model, including documentation patterns, agent-ready repository conventions, static checks, CI, and repeatable engineering/design principles for AI-assisted development.",
             ],
           },
@@ -443,6 +457,42 @@ export const resumeData = {
         ],
       },
       {
+        title: "Memorang",
+        sections: [
+          {
+            heading: "Role",
+            bullets: [
+              "Company: Memorang.",
+              "Title: Head of CMS.",
+              "Dates: April 2024 - January 2025.",
+              "Location: San Francisco Bay Area / Remote.",
+            ],
+          },
+          {
+            heading: "Context and role",
+            bullets: [
+              "Memorang is an AI education platform focused on AI-native learning experiences, adaptive practice, tutoring, test prep, continuing education, assessment, exam development, and curriculum tooling.",
+              "Sid served as Head of CMS.",
+              "Worked directly with the CTO and CEO.",
+              "Managed two CMS team members while coordinating with services, frontend, and app teams.",
+            ],
+          },
+          {
+            heading: "Major work and impact",
+            bullets: [
+              "Translated Cambridge/TOEFL-style education requirements into schema-first AI CMS work.",
+              "Modeled TOEFL-like exam structures into dynamic schemas for sections, question types, component types, content groups, practice scoring, and adaptive workflows.",
+              "Built CMS capabilities for AI generation of full question sets, including text questions and companion media such as audio or images.",
+              "Built schema versioning so content and question formats could evolve without breaking existing client apps or backend services.",
+              "Built or led adaptive practice flows that could track scores, weak spots, and personalized practice material.",
+              "Built an AI media recommendation system using media metadata embeddings and cross-product vector similarity search.",
+              "Helped modernize a large JS/Flow monorepo toward TypeScript, Bun, and Biome using AI-agentic refactor workflows, codemods, and ecosystem upgrades.",
+              "The work positioned Memorang's CMS as AI-native rather than a conventional content-entry tool.",
+            ],
+          },
+        ],
+      },
+      {
         title: "Yuppies Tech",
         sections: [
           {
@@ -450,7 +500,7 @@ export const resumeData = {
             bullets: [
               "Company: Yuppies Tech.",
               "Title: Founder / Technical Lead.",
-              "Dates: 2021 - 2025.",
+              "Dates: January 2021 - April 2024.",
               "Location: Mumbai / Remote.",
             ],
           },
@@ -465,38 +515,11 @@ export const resumeData = {
           {
             heading: "General value",
             bullets: [
-              "Served as client-facing technical partner for enterprise and startup clients across travel, automotive, crypto, messaging, browsers, and AI education.",
+              "Served as client-facing technical partner for enterprise and startup clients across travel, automotive, crypto, messaging, and browsers.",
               "Translated ambiguous business, design, and customer needs into scoped architectures, delivery plans, product systems, and production releases.",
               "Led delivery under high ambiguity, including emergency COVID timelines, App Store/Play Store constraints, browser and device compatibility constraints, and legacy code modernization.",
               "Frequently worked directly with CTOs, heads of engineering, heads of product, founders, QA leads, design teams, marketing teams, and enterprise stakeholders.",
               "Strong theme: making design a first-class citizen of technical implementation through design systems, design QA, and cross-functional review loops.",
-            ],
-          },
-        ],
-      },
-      {
-        title: "Yuppies Client Work: Memorang",
-        sections: [
-          {
-            heading: "Context and role",
-            bullets: [
-              "Memorang is an AI education platform focused on AI-native learning experiences, adaptive practice, tutoring, test prep, continuing education, assessment, exam development, and curriculum tooling.",
-              "Sid joined as an embedded engineer, later became Head of CMS.",
-              "Worked directly with the CTO and CEO.",
-              "Later managed two CMS team members while coordinating with services, frontend, and app teams.",
-            ],
-          },
-          {
-            heading: "Major work and impact",
-            bullets: [
-              "Translated Cambridge/TOEFL-style education requirements into schema-first AI CMS work.",
-              "Modeled TOEFL-like exam structures into dynamic schemas for sections, question types, component types, content groups, practice scoring, and adaptive workflows.",
-              "Built CMS capabilities for AI generation of full question sets, including text questions and companion media such as audio or images.",
-              "Built schema versioning so content and question formats could evolve without breaking existing client apps or backend services.",
-              "Built or led adaptive practice flows that could track scores, weak spots, and personalized practice material.",
-              "Built an AI media recommendation system using media metadata embeddings and cross-product vector similarity search.",
-              "Helped modernize a large JS/Flow monorepo toward TypeScript, Bun, and Biome with codemods and ecosystem upgrades.",
-              "The work positioned Memorang's CMS as AI-native rather than a conventional content-entry tool.",
             ],
           },
         ],
@@ -529,12 +552,12 @@ export const resumeData = {
         ],
       },
       {
-        title: "Yuppies Client Work: Texts.com",
+        title: "Yuppies Client Work: Texts",
         sections: [
           {
             heading: "Context and role",
             bullets: [
-              "Texts.com was an all-in-one messaging client later acquired by Automattic in 2023.",
+              "Texts was an all-in-one messaging client later acquired by Automattic in 2023.",
               "Sid built the production Facebook Messenger channel integration.",
               "Worked in a TypeScript/Electron product environment.",
               "Worked directly with the founding/product team.",
@@ -549,7 +572,7 @@ export const resumeData = {
               "Implemented encrypted payload support and message sync/send/receive behavior.",
               "Built feature-parity messaging behavior across threads, group messages, rich attachments, photos, videos, files, reactions, read receipts, typing indicators, and presence.",
               "Reverse-engineering research used tools such as Ghidra, Burp Suite, Frida, certificate-unpinning techniques, runtime method inspection, and Facebook's white-hat program.",
-              "Messenger was a must-have messaging channel for an all-in-one inbox product and became a production channel in Texts.com.",
+              "Messenger was a must-have messaging channel for an all-in-one inbox product and became a production channel in Texts.",
             ],
           },
         ],
@@ -638,8 +661,10 @@ export const resumeData = {
     ] satisfies DeepDive[],
     roleFit: {
       strongFit: [
+        "Applied AI Architect and Solutions Architect roles at model labs where customer discovery, technical advisory, eval design, hands-on prototypes, and deployment architecture matter together.",
+        "Technical Success or Solutions Engineering roles where the company needs a builder who can translate business requirements into working GenAI systems and reusable implementation patterns.",
         "AI product engineer roles where the company needs production AI workflows, not only prompts.",
-        "AI lead roles where engineering, product judgment, tooling, and operating model matter together.",
+        "Applied AI lead roles where engineering, product judgment, tooling, and operating model matter together.",
         "Staff full-stack engineer roles requiring depth across frontend, backend, infrastructure, CI/CD, and product architecture.",
         "Founding engineer roles requiring zero-to-one execution, design/product partnership, customer discovery, and hands-on implementation.",
         "Technical lead roles for small teams in high-ambiguity environments.",
@@ -686,7 +711,7 @@ export const resumeData = {
       },
       {
         href: "https://texts.com/",
-        label: "Texts.com",
+        label: "Texts",
         note: "Public Texts/Beeper transition page.",
       },
       {
