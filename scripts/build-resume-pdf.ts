@@ -59,7 +59,10 @@ const lineLeading = {
 
 const pdfOnly = {
   bulletLogoTopNudge: pt(-0.5),
-  contactStackHeight: pt(28),
+  contactLinkLeading: typstLeadingFromCssLineHeight(
+    32 / 3 / (10 * CSS_PX_TO_PT)
+  ),
+  contactStackHeight: pt(32),
   companyTaglineGap: pt(-6),
   pageMargin: "0.58in",
   profileAvatarSize: fontSize["5xl"],
@@ -303,8 +306,7 @@ const buildTypst = () => {
         weight: "medium",
       })
     )
-    .map((item) => `[${item}]`)
-    .join(",\n");
+    .join("\n#linebreak()\n");
 
   const experience = resumeData.experience.map(experienceItem);
 
@@ -354,12 +356,12 @@ const buildTypst = () => {
       weight: "bold",
     }
   )}]]],
-  [#align(right)[#box(height: ${pdfOnly.profileAvatarSize})[#align(right + horizon)[#box(height: ${pdfOnly.contactStackHeight})[#grid(
-      columns: (auto,),
-      rows: (1fr, 1fr, 1fr),
-      align: right + horizon,
+  [#align(right)[#box(height: ${pdfOnly.profileAvatarSize})[#align(right + horizon)[#box(height: ${pdfOnly.contactStackHeight})[
+      #set par(leading: ${pdfOnly.contactLinkLeading})
+      #align(right)[
       ${contactLinks}
-    )]]]]],
+      ]
+    ]]]]],
 )
   #v(${spacing[1]})
   ${paragraph(resumeData.summary)}
