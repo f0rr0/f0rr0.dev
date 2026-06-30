@@ -61,7 +61,7 @@ const pdfOnly = {
   bulletLogoTopNudge: pt(-0.5),
   contactStackHeight: pt(28),
   companyTaglineGap: pt(-6),
-  pageMargin: "0.29in",
+  pageMargin: "0.58in",
   profileAvatarSize: fontSize["5xl"],
   roleBodyGap: cssPxToPt(3),
   roleTopGap: spacing[1],

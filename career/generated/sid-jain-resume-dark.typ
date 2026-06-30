@@ -5,7 +5,7 @@
 )
 #set page(
   paper: "us-legal",
-  margin: 0.29in,
+  margin: 0.58in,
   fill: rgb("#1a1918"),
 )
 #set text(font: "Source Sans 3", size: 10.5pt, fill: rgb("#a8a29e"), lang: "en")
