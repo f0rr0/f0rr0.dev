@@ -5,7 +5,7 @@
 )
 #set page(
   paper: "us-letter",
-  margin: (x: 0.58in, top: 0.42in, bottom: 0.42in),
+  margin: 0.29in,
   fill: rgb("#1a1918"),
 )
 #set text(font: "Source Sans 3", size: 10.5pt, fill: rgb("#a8a29e"), lang: "en")
@@ -22,38 +22,47 @@
   height: size,
   radius: size / 2,
   fill: fill,
-  stroke: 0.5pt + rule-color,
+  stroke: 0.75pt + rule-color,
 )[#align(center + horizon)[#move(dy: dy)[#image(path, width: image-width, height: image-height, fit: "contain")]]]
 
 #align(left)[
-  #t("Sid Jain", fill: strong, font: "Literata", size: 36pt, weight: "bold", style: "normal")
-  #v(-18pt)
+#grid(
+  columns: (auto, 1fr),
+  gutter: 18pt,
+  align: top,
+  [#t("Sid Jain", fill: strong, font: "Literata", size: 36pt, weight: "bold", style: "normal")],
+  [#align(right)[#box(height: 28pt)[#grid(
+    columns: (auto,),
+    rows: (1fr, 1fr, 1fr),
+    align: right + horizon,
+    [#link("mailto:sid_26@outlook.com")[#t("sid_26@outlook.com", fill: accent, font: "Source Sans 3", size: 7.5pt, weight: "medium", style: "normal")]],
+[#link("https://linkedin.com/in/f0rr0")[#t("linkedin.com/in/f0rr0", fill: accent, font: "Source Sans 3", size: 7.5pt, weight: "medium", style: "normal")]],
+[#link("https://github.com/f0rr0")[#t("github.com/f0rr0", fill: accent, font: "Source Sans 3", size: 7.5pt, weight: "medium", style: "normal")]]
+  )]]],
+)
+  #v(3pt)
   #block[
-  #set par(leading: 0.9em)
+  #set par(leading: 0.625em)
   #t("Senior Full-Stack Engineer / AI Lead building AI-native products and hard production systems from zero to launch. Founded Yuppies Tech and personally led technical delivery for Airbus Tripset, Mitsubishi Motors Puerto Rico MiAR, ZebPay, Texts.com, Veera Browser, and Memorang. Currently leads Namefi AI product engineering across Outbound, Brand Studio, and Feed while building core registrar, DNS, payments, and workflow infrastructure.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")
 ]
-  #v(12pt)
-  #link("mailto:sid_26@outlook.com")[#t("sid_26@outlook.com", fill: accent, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")] #h(12pt)
-#link("https://linkedin.com/in/f0rr0")[#t("linkedin.com/in/f0rr0", fill: accent, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")] #h(12pt)
-#link("https://github.com/f0rr0")[#t("github.com/f0rr0", fill: accent, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")]
 
   
 #block(breakable: false)[
   
 #v(12pt)
 #t("Experience", fill: strong, font: "Literata", size: 15pt, weight: "bold", style: "normal")
-#v(10.5pt)
+#v(9pt)
 
   
-#block(breakable: false)[
+#block[
 #grid(
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#logo-tile("/public/resume/logos/namefi.svg", fill: rgb("#0f1714"), size: 30pt, image-width: 21pt, image-height: 15pt, dy: 0pt)],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/namefi.svg", fill: rgb("#0f1714"), size: 30pt, image-width: 21pt, image-height: 15pt, dy: 0pt)]],
   [
     #t("Namefi", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
-    #v(3pt)
+    #v(-6pt)
     #t("Domain registrar and marketplace infrastructure with AI-native products for domain owners.", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "italic")
     
 #v(3pt)
@@ -64,7 +73,7 @@
   [#t("Remote · Dec 2024 - Present", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "normal")],
 )
 
-#v(6pt)
+#v(2.25pt)
 
 #grid(
   columns: (6pt, 1fr),
@@ -108,15 +117,15 @@
 ]
 #v(18pt)
 
-#block(breakable: false)[
+#block[
 #grid(
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#logo-tile("/public/resume/logos/yuppies.svg", fill: rgb("#171220"), size: 30pt, image-width: 21pt, image-height: 12pt, dy: 0.75pt)],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/yuppies.svg", fill: rgb("#171220"), size: 30pt, image-width: 21pt, image-height: 12pt, dy: 0.75pt)]],
   [
     #t("Yuppies Tech", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
-    #v(3pt)
+    #v(-6pt)
     #t("Founder-led product engineering consultancy for high-ambiguity client work.", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "italic")
     
 #v(3pt)
@@ -126,15 +135,15 @@
   [#t("Founder / Technical Lead", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")],
   [#t("Mumbai / Remote · Jan 2021 - Present", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "normal")],
 )
-#v(6pt)
+#v(2.25pt)
 #t("Founded and led a product engineering consultancy; served as client-facing technical partner and hands-on technical lead across travel, automotive, crypto, messaging, browsers, and AI education.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")
-#v(6pt)
+#v(2.25pt)
 
 #grid(
   columns: (21pt, 1fr),
   gutter: 7.5pt,
   align: top,
-  [#move(dy: 1.5pt)[#logo-tile("/public/resume/logos/memorang.svg", fill: rgb("#ffffff"), size: 21pt, image-width: 15pt, image-height: 12pt, dy: 0pt)]],
+  [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/memorang.svg", fill: rgb("#ffffff"), size: 21pt, image-width: 15pt, image-height: 12pt, dy: 0pt)]],
   [#t("Memorang: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("Head of CMS for an AI education platform, leading schema-first AI CMS work for Cambridge/TOEFL content, AI-generated questions/media, adaptive practice, scoring workflows, and a JS/Flow to TypeScript/Bun/Biome modernization.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
@@ -143,7 +152,7 @@
   columns: (21pt, 1fr),
   gutter: 7.5pt,
   align: top,
-  [#move(dy: 1.5pt)[#logo-tile("/public/resume/logos/veera.png", fill: rgb("#111111"), size: 21pt, image-width: 15pt, image-height: 12pt, dy: 0.75pt)]],
+  [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/veera.png", fill: rgb("#111111"), size: 21pt, image-width: 15pt, image-height: 12pt, dy: 0.75pt)]],
   [#t("Veera Browser: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("led Android Chromium browser delivery from zero to Play Store, owning Chromium/Brave patch management, build/release tooling, rewards/feed/onboarding/search/tabs, privacy/security updates, and later iOS platform setup.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
@@ -152,7 +161,7 @@
   columns: (21pt, 1fr),
   gutter: 7.5pt,
   align: top,
-  [#move(dy: 1.5pt)[#logo-tile("/public/resume/logos/texts-icon.png", fill: rgb("#f3f6ff"), size: 21pt, image-width: 15pt, image-height: 15pt, dy: 0pt)]],
+  [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/texts-icon.png", fill: rgb("#f3f6ff"), size: 21pt, image-width: 15pt, image-height: 15pt, dy: 0pt)]],
   [#t("Texts.com: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("built the production Facebook Messenger channel over undocumented messaging infrastructure, implementing protocol-compatible MQTT/Facebook Thrift handling, encrypted payload support, and feature-parity messaging across sync, groups, attachments, reactions, read receipts, typing, and presence.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
@@ -161,7 +170,7 @@
   columns: (21pt, 1fr),
   gutter: 7.5pt,
   align: top,
-  [#move(dy: 1.5pt)[#logo-tile("/public/resume/logos/zebpay-mark.svg", fill: rgb("#12202a"), size: 21pt, image-width: 15pt, image-height: 15pt, dy: 0pt)]],
+  [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/zebpay-mark.svg", fill: rgb("#12202a"), size: 21pt, image-width: 15pt, image-height: 15pt, dy: 0pt)]],
   [#t("ZebPay: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("technical lead for a 10-person embedded team modernizing iOS/Android apps and release infrastructure for one of India's largest crypto exchanges, moving stabilization releases from monthly/bi-monthly to weekly.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
@@ -170,7 +179,7 @@
   columns: (21pt, 1fr),
   gutter: 7.5pt,
   align: top,
-  [#move(dy: 1.5pt)[#logo-tile("/public/resume/logos/mitsubishi-mark.svg", fill: rgb("#211816"), size: 21pt, image-width: 15pt, image-height: 12pt, dy: -1.5pt)]],
+  [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/mitsubishi-mark.svg", fill: rgb("#211816"), size: 21pt, image-width: 15pt, image-height: 12pt, dy: -1.5pt)]],
   [#t("Mitsubishi Motors: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("tech lead for MiAR virtual dealership and Outlander AR campaign, leading a 3-person team across native iOS/iPadOS, WebAR, optimized 3D vehicles, low-end Android support, bilingual content, and contest/admin workflows.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
@@ -179,7 +188,7 @@
   columns: (21pt, 1fr),
   gutter: 7.5pt,
   align: top,
-  [#move(dy: 1.5pt)[#logo-tile("/public/resume/logos/airbus.svg", fill: rgb("#17213a"), size: 21pt, image-width: 15pt, image-height: 6pt, dy: 0pt)]],
+  [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/airbus.svg", fill: rgb("#17213a"), size: 21pt, image-width: 15pt, image-height: 6pt, dy: 0pt)]],
   [#t("Airbus Tripset: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("solo technical partner to Milkinside for Airbus's public iOS/Android COVID travel companion, building the React Native app and backend aggregation layer over Airbus/Amadeus APIs, CMS-driven travel guidance, and itinerary notifications.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 
@@ -189,15 +198,15 @@
 
 #v(18pt)
 
-#block(breakable: false)[
+#block[
 #grid(
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#logo-tile("/public/resume/logos/kult.svg", fill: rgb("#211722"), size: 30pt, image-width: 21pt, image-height: 9pt, dy: 0pt)],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/kult.svg", fill: rgb("#211722"), size: 30pt, image-width: 21pt, image-height: 9pt, dy: 0pt)]],
   [
     #t("Kult App", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
-    #v(3pt)
+    #v(-6pt)
     #t("Consumer beauty and skincare commerce.", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "italic")
     
 #v(3pt)
@@ -208,7 +217,7 @@
   [#t("Mumbai · Jan 2020 - Dec 2020", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "normal")],
 )
 
-#v(6pt)
+#v(2.25pt)
 
 #grid(
   columns: (6pt, 1fr),
@@ -224,15 +233,15 @@
 
 #v(18pt)
 
-#block(breakable: false)[
+#block[
 #grid(
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#logo-tile("/public/resume/logos/yilu.svg", fill: rgb("#101827"), size: 30pt, image-width: 21pt, image-height: 12pt, dy: 0pt)],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/yilu.svg", fill: rgb("#101827"), size: 30pt, image-width: 21pt, image-height: 12pt, dy: 0pt)]],
   [
     #t("Yilu, Lufthansa Group / BCG Digital Ventures", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
-    #v(3pt)
+    #v(-6pt)
     #t("Smart travel platform for Lufthansa Group.", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "italic")
     
 #v(3pt)
@@ -243,7 +252,7 @@
   [#t("Berlin · Nov 2018 - Dec 2019", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "normal")],
 )
 
-#v(6pt)
+#v(2.25pt)
 
 #grid(
   columns: (6pt, 1fr),
@@ -268,15 +277,15 @@
 
 #v(18pt)
 
-#block(breakable: false)[
+#block[
 #grid(
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#logo-tile("/public/resume/logos/8fit.svg", fill: rgb("#102018"), size: 30pt, image-width: 21pt, image-height: 15pt, dy: 0pt)],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/8fit.svg", fill: rgb("#102018"), size: 30pt, image-width: 21pt, image-height: 15pt, dy: 0pt)]],
   [
     #t("8fit", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
-    #v(3pt)
+    #v(-6pt)
     #t("Fitness and nutrition platform, now part of Withings.", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "italic")
     
 #v(3pt)
@@ -287,7 +296,7 @@
   [#t("Berlin · Nov 2017 - Oct 2018", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "normal")],
 )
 
-#v(6pt)
+#v(2.25pt)
 
 #grid(
   columns: (6pt, 1fr),
@@ -312,15 +321,15 @@
 
 #v(18pt)
 
-#block(breakable: false)[
+#block[
 #grid(
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#logo-tile("/public/resume/logos/housing-mini.png", fill: rgb("#ffdf30"), size: 30pt, image-width: 21pt, image-height: 30pt, dy: 0pt)],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/housing-mini.png", fill: rgb("#ffdf30"), size: 30pt, image-width: 21pt, image-height: 30pt, dy: 0pt)]],
   [
     #t("Housing.com", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
-    #v(3pt)
+    #v(-6pt)
     #t("Indian real estate search and transaction platform.", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "italic")
     
 #v(3pt)
@@ -331,7 +340,7 @@
   [#t("Mumbai · Oct 2016 - Oct 2017", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "normal")],
 )
 
-#v(6pt)
+#v(2.25pt)
 
 #grid(
   columns: (6pt, 1fr),
@@ -356,15 +365,15 @@
 
 #v(18pt)
 
-#block(breakable: false)[
+#block[
 #grid(
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#logo-tile("/public/resume/logos/bridg.svg", fill: rgb("#211916"), size: 30pt, image-width: 21pt, image-height: 12pt, dy: 0.75pt)],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/bridg.svg", fill: rgb("#211916"), size: 30pt, image-width: 21pt, image-height: 12pt, dy: 0.75pt)]],
   [
     #t("Earlier Consulting and Startup Work", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
-    #v(3pt)
+    #v(-6pt)
     #t("Bridg, 1mg, HornOk, Volkno, Meriad, and self-employed work.", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "italic")
     
 #v(3pt)
@@ -375,7 +384,7 @@
   [#t("Los Angeles / India · 2015 - 2016", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "normal")],
 )
 
-#v(6pt)
+#v(2.25pt)
 
 #grid(
   columns: (6pt, 1fr),
@@ -394,20 +403,20 @@
   
 #block(breakable: false)[
   
-#v(21pt)
+#v(24pt)
 #t("Education", fill: strong, font: "Literata", size: 15pt, weight: "bold", style: "normal")
-#v(10.5pt)
+#v(9pt)
 
   
-#block(breakable: false)[
+#block[
 #grid(
   columns: (30pt, 1fr),
   gutter: 12pt,
   align: top,
-  [#logo-tile("/public/resume/logos/ucla.svg", fill: rgb("#2774ae"), size: 30pt, image-width: 21pt, image-height: 9pt, dy: 0pt)],
+  [#move(dy: -0.75pt)[#logo-tile("/public/resume/logos/ucla.svg", fill: rgb("#2774ae"), size: 30pt, image-width: 21pt, image-height: 9pt, dy: 0pt)]],
   [
     #t("University of California, Los Angeles", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
-    #v(3pt)
+    #v(-6pt)
     #t("BS, Computer Science and Engineering.", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "italic")
     
 #v(3pt)
