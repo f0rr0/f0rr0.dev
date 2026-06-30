@@ -382,6 +382,10 @@ await writeFile(
   buildTypst().replaceAll(/[ \t]+$/gm, "")
 );
 
+execFileSync("typstyle", ["-i", resumeData.pdf.generatedTypstPath], {
+  stdio: "inherit",
+});
+
 execFileSync(
   "typst",
   [

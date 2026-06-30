@@ -37,6 +37,15 @@ career/generated/sid-jain-resume-dark.typ
 public/resume/sid-jain-resume.pdf
 ```
 
+## Formatting
+
+Typst files are formatted with `typstyle`, pinned in `mise.toml`.
+
+```sh
+bun run format:typ
+bun run format:typ:check
+```
+
 ## Validation
 
 The target is a selectable-text PDF generated from the same data as the web
