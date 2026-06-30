@@ -137,7 +137,7 @@ function RoleBlock({ role }: Readonly<{ role: ResumeRole }>) {
         <p className={`mt-2 text-sm ${mutedText}`}>{role.summary}</p>
       )}
       {role.bullets !== undefined && role.bullets.length > 0 ? (
-        <ul className={`mt-2 space-y-0.5 text-sm ${mutedText}`}>
+        <ul className={`mt-2 space-y-0.5 text-sm leading-[1.625] ${mutedText}`}>
           {role.bullets.map((bullet) => {
             const isTextBullet = typeof bullet === "string";
             const text = isTextBullet ? bullet : bullet.text;
@@ -259,7 +259,7 @@ export function ResumePageContent({
             </div>
           </header>
 
-          <div className="mt-16 max-w-4xl sm:mt-20 print:mt-8">
+          <div className="mt-8 max-w-4xl sm:mt-10 print:mt-8">
             <section>
               <p className={`text-sm leading-relaxed ${mutedText}`}>
                 {summary}
