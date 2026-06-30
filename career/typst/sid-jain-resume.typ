@@ -111,7 +111,6 @@ Senior Full-Stack Engineer / AI Lead who ships AI-native products and hard produ
   "Dec 2024 - Present",
   "Remote",
 )[
-  - Lead AI product engineering across Outbound, Brand Studio, and Feed while contributing core registrar, DNS, payment, checkout, and workflow infrastructure.
   - Built registrar and domain infrastructure across registrar integrations, DNS/DNSSEC, nameservers, ENS/.eth, renewals, payments, and Temporal-backed long-running workflows.
   - Built internal AI/product analytics surfaces across product usage, search, social, and funnel data, enabling product managers to ask natural-language questions over operating metrics.
 ]

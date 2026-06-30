@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Clipboard, Menu, Moon, Sun } from "lucide-react";
+import { Menu, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import Image from "next/image";
 import Link from "next/link";
@@ -49,43 +49,22 @@ export function ResumePrintButton() {
 }
 
 const agentButtonClass =
-  "inline-flex items-center gap-1.5 rounded-full bg-[#292524] px-3 py-1.5 text-xs font-semibold text-[#faf9f6] transition-colors hover:bg-[#b45309] dark:bg-[#e7e5e4] dark:text-[#1a1918] dark:hover:bg-[#f59e0b]";
-
-const agentSecondaryButtonClass =
-  "inline-flex items-center gap-1.5 rounded-full border border-[#e7e5e4] px-3 py-1.5 text-xs font-medium text-[#57534e] transition-colors hover:border-[#b45309]/40 hover:text-[#b45309] dark:border-[#3a3836] dark:text-[#a8a29e] dark:hover:border-[#d97706]/50 dark:hover:text-[#f59e0b]";
+  "group inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 font-medium text-[#292524] underline-offset-4 transition-colors hover:text-[#b45309] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b45309] dark:text-[#e7e5e4] dark:hover:text-[#f59e0b] dark:focus-visible:outline-[#f59e0b]";
 
 export function ResumeAskAgents({
   actions,
-  contextHref,
-  prompt,
 }: Readonly<{
   actions: readonly AskAgentAction[];
-  contextHref: string;
-  prompt: string;
 }>) {
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
-    "idle"
-  );
-
-  const copyPrompt = async () => {
-    try {
-      await navigator.clipboard.writeText(prompt);
-      setCopyState("copied");
-    } catch {
-      setCopyState("error");
-    }
-
-    window.setTimeout(() => {
-      setCopyState("idle");
-    }, 1800);
-  };
-
   return (
     <footer className="mt-12 border-t border-[#e7e5e4] pt-6 print:hidden dark:border-[#3a3836]">
-      <div className="flex flex-wrap items-center gap-2 text-sm text-[#78716c] dark:text-[#a8a29e]">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-sm text-[#78716c] dark:text-[#a8a29e]">
         <span>Ask</span>
         {actions.map((action, index) => (
-          <span key={action.label} className="inline-flex items-center gap-2">
+          <span
+            key={action.label}
+            className="inline-flex items-center gap-x-1.5"
+          >
             <a
               href={action.href}
               className={agentButtonClass}
@@ -106,28 +85,7 @@ export function ResumeAskAgents({
             {index === 0 ? <span>or</span> : null}
           </span>
         ))}
-        <span>about me</span>
-        <button
-          type="button"
-          className={agentSecondaryButtonClass}
-          onClick={() => {
-            void copyPrompt();
-          }}
-        >
-          {copyState === "copied" ? (
-            <Check className="h-3.5 w-3.5" />
-          ) : (
-            <Clipboard className="h-3.5 w-3.5" />
-          )}
-          {copyState === "copied"
-            ? "Copied"
-            : copyState === "error"
-              ? "Copy failed"
-              : "Copy prompt"}
-        </button>
-        <a href={contextHref} className={agentSecondaryButtonClass}>
-          llms.txt
-        </a>
+        <span>about me.</span>
       </div>
     </footer>
   );

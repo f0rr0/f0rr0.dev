@@ -187,7 +187,6 @@ export const resumeData = {
           dates: "Dec 2024 - Present",
           location: "Remote",
           bullets: [
-            "Lead AI product engineering across Outbound, Brand Studio, and Feed while building core registrar, DNS, payment, checkout, and workflow infrastructure.",
             "Built Namefi Outbound, reducing domain sales research and outreach prep from days/weeks to minutes by automating buyer-fit hypotheses, web research, lead scoring, contact discovery, and editable outreach drafts.",
             "Built Brand Studio, a multi-stage AI branding system that turns domains into buyer-ready logo, poster, and motion concepts with strategist/concept passes, exact domain/TLD rendering constraints, and cinematic animation workflows.",
             "Built Namefi Feed, an MLS-style discovery layer indexing roughly 4,000-5,000 public secondary-market domain listings from X, NamePros, DNForum, and marketplaces into searchable/RSS surfaces.",

@@ -301,11 +301,7 @@ export function ResumePageContent({
               </div>
             </section>
 
-            <ResumeAskAgents
-              actions={askAgents.actions}
-              contextHref={askAgents.contextHref}
-              prompt={askAgents.prompt}
-            />
+            <ResumeAskAgents actions={askAgents.actions} />
           </div>
         </main>
       </div>
