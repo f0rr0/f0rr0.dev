@@ -1,77 +1,47 @@
 # Typst Resume Workflow
 
-This folder contains Typst assets for Sid Jain's resume.
+The canonical resume content lives in `src/content/resume.ts`.
 
-The current canonical resume is generated from RenderCV YAML in `../rendercv/sid-jain-resume.yaml`. RenderCV writes a clean Typst file to `../rendercv/rendercv-resume.typ`, which can also be compiled directly with the pinned Typst toolchain.
+The current PDF workflow uses `scripts/build-resume-pdf.ts` to generate Typst
+from that shared resume data, then compiles it with the pinned Typst toolchain.
+The generated Typst file is an output, not the source of truth.
 
 ## Files
 
-- `../rendercv/sid-jain-resume.yaml`: canonical resume content and RenderCV design configuration.
-- `../rendercv/rendercv-resume.typ`: generated Typst source from RenderCV.
-- `fonts/`: project-local IBM Plex Sans and Source Sans 3 files used by direct Typst compiles.
-- `../sid-jain-resume-2026-rendercv.pdf`: canonical PDF output from RenderCV.
-- `../sid-jain-resume-2026-rendercv-typst.pdf`: PDF compiled directly from the generated Typst file.
-- `sid-jain-resume.typ`: original Typst baseline kept for comparison.
-
-The older Markdown/HTML/PDF files in `career/` are kept as reference outputs while the Typst version is evaluated.
-
-## Install Tooling
-
-Tooling is pinned in the repo root `mise.toml` / `mise.lock`.
-
-```sh
-mise install
-```
-
-Typst `0.15.0` is pinned through mise. The canonical RenderCV build uses `uvx 'rendercv[full]==2.8'`.
+- `../../src/content/resume.ts`: canonical resume content for the web resume,
+  `/resume.json`, `/llms.txt`, and the public PDF.
+- `../../scripts/build-resume-pdf.ts`: generator that writes Typst from the
+  canonical resume data.
+- `../generated/sid-jain-resume-dark.typ`: generated Typst output.
+- `../../public/resume/sid-jain-resume.pdf`: public PDF served by the site.
+- `fonts/`: project-local IBM Plex Sans and Source Sans 3 files used by Typst.
 
 ## Build
 
-From the repo root, build the canonical RenderCV output:
+From the repo root:
 
 ```sh
-mise run resume-rendercv
+mise run resume-pdf
 ```
 
-To compile the generated Typst file directly:
+or:
 
 ```sh
-mise run resume-typst
+bun run resume:pdf
 ```
 
-To build the older comparison files:
+This produces:
 
-```sh
-mise run resume-typst-v1
-```
-
-To create page PNGs for visual review:
-
-```sh
-mise run resume-typst-png
+```text
+career/generated/sid-jain-resume-dark.typ
+public/resume/sid-jain-resume.pdf
 ```
 
 ## Validation
 
-Render page PNGs and review them visually:
-
-```sh
-ls -lh /tmp/sid-jain-rendercv-final-*.png /tmp/sid-jain-rendercv-typst-*.png
-```
-
-Optional text extraction check if `pypdf` is installed:
-
-```sh
-python - <<'PY'
-from pypdf import PdfReader
-p = "career/sid-jain-resume-2026-rendercv.pdf"
-r = PdfReader(p)
-print("pages", len(r.pages))
-print("\\n".join(page.extract_text() or "" for page in r.pages)[:2000])
-PY
-```
-
-The target is a two-page, selectable-text PDF with a single-column ATS-safe reading order.
+The target is a selectable-text PDF generated from the same data as the web
+resume. After changing `src/content/resume.ts`, rebuild the PDF and inspect the
+served resume link at `/resume/sid-jain-resume.pdf`.
 
 ## Font Source
 
