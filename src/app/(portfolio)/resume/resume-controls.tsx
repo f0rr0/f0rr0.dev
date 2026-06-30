@@ -1,7 +1,8 @@
 "use client";
 
-import { Bot, Check, Clipboard, Menu, Moon, Sun, Terminal } from "lucide-react";
+import { Check, Clipboard, Menu, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -53,13 +54,6 @@ const agentButtonClass =
 const agentSecondaryButtonClass =
   "inline-flex items-center gap-1.5 rounded-full border border-[#e7e5e4] px-3 py-1.5 text-xs font-medium text-[#57534e] transition-colors hover:border-[#b45309]/40 hover:text-[#b45309] dark:border-[#3a3836] dark:text-[#a8a29e] dark:hover:border-[#d97706]/50 dark:hover:text-[#f59e0b]";
 
-const agentIcon = (label: string) =>
-  label === "Codex" ? (
-    <Terminal className="h-3.5 w-3.5" />
-  ) : (
-    <Bot className="h-3.5 w-3.5" />
-  );
-
 export function ResumeAskAgents({
   actions,
   contextHref,
@@ -99,7 +93,14 @@ export function ResumeAskAgents({
               rel={action.external === true ? "noopener noreferrer" : undefined}
               aria-label={action.description}
             >
-              {agentIcon(action.label)}
+              <Image
+                alt=""
+                aria-hidden="true"
+                className="h-3.5 w-3.5 shrink-0 object-contain"
+                height={14}
+                src={action.iconSrc}
+                width={14}
+              />
               {action.label}
             </a>
             {index === 0 ? <span>or</span> : null}

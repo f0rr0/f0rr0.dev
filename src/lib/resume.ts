@@ -7,6 +7,7 @@ import { buildProfilePageJsonLd } from "@/lib/structured-data";
 export interface AskAgentAction {
   description: string;
   href: string;
+  iconSrc: string;
   label: string;
   external?: boolean;
 }
@@ -61,12 +62,14 @@ export const buildAskAgentLinks = () => {
         description: "Open Claude Code with a prefilled question prompt.",
         external: true,
         href: `https://claude.ai/code?prompt=${encodedPrompt}`,
+        iconSrc: "/resume/logos/claude-code.svg",
         label: "Claude Code",
       },
       {
         description:
           "Open the Codex app with the prompt in a new local thread.",
         href: `codex://threads/new?prompt=${encodedPrompt}`,
+        iconSrc: "/resume/logos/codex.svg",
         label: "Codex",
       },
     ] satisfies AskAgentAction[],
