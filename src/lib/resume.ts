@@ -73,8 +73,6 @@ export const buildAskAgentLinks = () => {
         label: "Codex",
       },
     ] satisfies AskAgentAction[],
-    contextHref: publicUrl("/llms.txt"),
-    prompt,
   };
 };
 

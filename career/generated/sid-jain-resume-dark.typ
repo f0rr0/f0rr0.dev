@@ -71,15 +71,6 @@
   gutter: 6pt,
   align: top,
   [#t("·", fill: accent, font: "Source Sans 3", size: 10.5pt, weight: "bold", style: "normal")],
-  [#t("Lead AI product engineering across Outbound, Brand Studio, and Feed while building core registrar, DNS, payment, checkout, and workflow infrastructure.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
-)
-#v(1.5pt)
-
-#grid(
-  columns: (6pt, 1fr),
-  gutter: 6pt,
-  align: top,
-  [#t("·", fill: accent, font: "Source Sans 3", size: 10.5pt, weight: "bold", style: "normal")],
   [#t("Built Namefi Outbound, reducing domain sales research and outreach prep from days/weeks to minutes by automating buyer-fit hypotheses, web research, lead scoring, contact discovery, and editable outreach drafts.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
@@ -161,7 +152,7 @@
   columns: (21pt, 1fr),
   gutter: 7.5pt,
   align: top,
-  [#move(dy: 1.5pt)[#logo-tile("/public/resume/logos/texts-icon.png", fill: rgb("#f3f6ff"), size: 21pt, image-width: 15pt, image-height: 21pt, dy: 0pt)]],
+  [#move(dy: 1.5pt)[#logo-tile("/public/resume/logos/texts-icon.png", fill: rgb("#f3f6ff"), size: 21pt, image-width: 15pt, image-height: 15pt, dy: 0pt)]],
   [#t("Texts.com: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("built the production Facebook Messenger channel over undocumented messaging infrastructure, implementing protocol-compatible MQTT/Facebook Thrift handling, encrypted payload support, and feature-parity messaging across sync, groups, attachments, reactions, read receipts, typing, and presence.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
