@@ -2,7 +2,6 @@ import { resumeData } from "@/content/resume";
 import type { PublicReference, ResumeRole } from "@/content/resume";
 import type { BlogPost } from "@/lib/blog-utils";
 import { publicUrl } from "@/lib/site";
-import { buildProfilePageJsonLd } from "@/lib/structured-data";
 
 export interface AskAgentAction {
   description: string;
@@ -21,6 +20,7 @@ const markdownLink = ({
 
 const normalizeDate = (value: string) =>
   value
+    .replace("Apr ", "April ")
     .replace("Jan ", "January ")
     .replace("Nov ", "November ")
     .replace("Oct ", "October ")
@@ -36,18 +36,13 @@ const roleBullets = (role: ResumeRole) =>
 
 const localProfileUrl = (path: string) => publicUrl(path);
 
-export const buildProfileJsonLd = buildProfilePageJsonLd;
-
-export const buildProfileJsonLdHtml = () =>
-  JSON.stringify(buildProfileJsonLd()).replaceAll("<", "\\u003c");
-
-export const buildAskAboutMePrompt = () => {
+const buildAskAboutMePrompt = () => {
   const contextUrl = publicUrl("/llms.txt");
 
   return [
     `Read ${contextUrl} for full context about ${resumeData.person.name}.`,
     "This is an informational research chat, not a code-editing task.",
-    `I want to ask questions about ${resumeData.person.name}'s work, technical depth, projects, and fit for AI product engineer, AI lead, staff full-stack engineer, or founding engineer roles.`,
+    `I want to ask questions about ${resumeData.person.name}'s work, technical depth, projects, and fit for Applied AI Solutions Architect, Applied AI Lead, staff full-stack engineer, or founding engineer roles.`,
     "Use the public source links in that file when verification is needed, and call out uncertainty when a claim is not supported.",
   ].join(" ");
 };
@@ -123,7 +118,10 @@ export const buildJsonResume = () => ({
   skills: [
     {
       keywords: [
+        "Applied AI solutions architecture",
         "AI product engineering",
+        "technical advisory",
+        "AI evals",
         "agentic workflows",
         "TypeScript",
         "React",
@@ -147,13 +145,17 @@ export const buildJsonResume = () => ({
   work: resumeData.experience.flatMap((item) =>
     item.roles.map((role) => {
       const roleSummary = "summary" in role ? role.summary : undefined;
+      const [startDate, endDate] = role.dates.split(" - ");
 
       return {
+        ...(endDate === undefined || endDate === "Present"
+          ? {}
+          : { endDate: normalizeDate(endDate) }),
         highlights: roleBullets(role),
         location: role.location,
         name: item.company,
         position: role.title,
-        startDate: normalizeDate(role.dates.split(" - ")[0]),
+        startDate: normalizeDate(startDate),
         summary: roleSummary ?? item.tagline,
       };
     })
@@ -161,6 +163,8 @@ export const buildJsonResume = () => ({
 });
 
 export const buildLlmsTxt = (blogPosts: BlogPost[] = []) => {
+  const currentRole =
+    resumeData.experience[0]?.roles[0]?.title ?? resumeData.person.role;
   const {
     accuracyNotes,
     deepDives,
@@ -253,7 +257,7 @@ export const buildLlmsTxt = (blogPosts: BlogPost[] = []) => {
 
   return `# ${resumeData.person.name}
 
-> ${resumeData.person.name} is a senior full-stack engineer, AI lead, founder of Yuppies Tech, and hands-on product engineer who builds AI-native products and hard production systems from zero to launch.
+> ${resumeData.person.name} is an Applied AI Lead, senior full-stack engineer, founder of Yuppies Tech, and solutions-architect-style builder who turns customer workflows into production AI systems.
 
 Last updated: ${resumeData.lastUpdated}
 
@@ -273,7 +277,7 @@ ${canonicalText}
 - Alternate GitHub identity: yuppiestechdev.
 - Location: ${resumeData.person.location}.
 - Current target positioning: ${resumeData.person.targetPositioning}.
-- Current title: ${resumeData.person.role} at Namefi.
+- Current title: ${currentRole} at Namefi.
 - Current company: Namefi / D3ServeLabs.
 - Consultancy founded: Yuppies Tech.
 - Education: BS, Computer Science and Engineering, University of California, Los Angeles, 2013-2016.

@@ -5,7 +5,7 @@ export type JsonLdData =
   | WithContext<Thing>
   | (Graph | WithContext<Thing>)[];
 
-export const serializeJsonLd = (data: JsonLdData) =>
+const serializeJsonLd = (data: JsonLdData) =>
   JSON.stringify(data).replaceAll("<", "\\u003c");
 
 export function JsonLd({ data }: Readonly<{ data: JsonLdData }>) {

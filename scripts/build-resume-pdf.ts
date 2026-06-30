@@ -258,7 +258,7 @@ ${bullets.length === 0 ? "" : `#v(${pdfOnly.roleBodyGap})\n${stack(bullets)}`}
 };
 
 const experienceItem = (item: ResumeExperience) => `
-#block[
+#block(breakable: false)[
 #grid(
   columns: (${spacing[10]}, 1fr),
   gutter: ${spacing[4]},
@@ -317,7 +317,7 @@ const buildTypst = () => {
   keywords: ("AI product engineer", "AI lead", "staff full-stack engineer", "founding engineer", "TypeScript", "React Native", "Chromium", "DNS"),
 )
 #set page(
-  paper: "us-letter",
+  paper: "us-legal",
   margin: ${pdfOnly.pageMargin},
   fill: rgb("#1a1918"),
 )
@@ -375,7 +375,10 @@ await mkdir(path.dirname(resumeData.pdf.generatedTypstPath), {
   recursive: true,
 });
 await mkdir(path.dirname(resumeData.pdf.outputPath), { recursive: true });
-await writeFile(resumeData.pdf.generatedTypstPath, buildTypst());
+await writeFile(
+  resumeData.pdf.generatedTypstPath,
+  buildTypst().replaceAll(/[ \t]+$/gm, "")
+);
 
 execFileSync(
   "typst",

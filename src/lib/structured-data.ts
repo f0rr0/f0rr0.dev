@@ -1,6 +1,5 @@
 import type {
   BlogPosting,
-  BreadcrumbList,
   CollectionPage,
   Graph,
   ItemList,
@@ -19,12 +18,12 @@ const linkedInUrl = "https://linkedin.com/in/f0rr0";
 const githubUrl = "https://github.com/f0rr0";
 const yuppiesGithubUrl = "https://github.com/yuppiestechdev";
 
-export const personId = () => publicUrl("/#sid-jain");
-export const websiteId = () => publicUrl("/#website");
+const personId = () => publicUrl("/#sid-jain");
+const websiteId = () => publicUrl("/#website");
 
 const sameAs = [linkedInUrl, githubUrl, yuppiesGithubUrl];
 
-export const buildPersonNode = (): Person => ({
+const buildPersonNode = (): Person => ({
   "@id": personId(),
   "@type": "Person",
   alternateName: resumeData.person.alternateNames,
@@ -34,12 +33,15 @@ export const buildPersonNode = (): Person => ({
     sameAs: "https://www.ucla.edu/",
   },
   description:
-    "Senior Full-Stack Engineer / AI Lead building AI-native products and production systems from zero to launch.",
+    "Applied AI Lead and senior full-stack engineer building production AI systems from customer workflows.",
   email: `mailto:${resumeData.person.email}`,
   image: publicUrl(resumeData.person.image),
   jobTitle: resumeData.person.role,
   knowsAbout: [
+    "Applied AI solutions architecture",
     "AI product engineering",
+    "technical advisory",
+    "AI evaluation",
     "agentic workflows",
     "TypeScript",
     "React",
@@ -65,7 +67,7 @@ export const buildPersonNode = (): Person => ({
   },
 });
 
-export const buildWebsiteNode = (): WebSite => ({
+const buildWebsiteNode = (): WebSite => ({
   "@id": websiteId(),
   "@type": "WebSite",
   alternateName: "F0RR0",
@@ -105,21 +107,6 @@ export const buildProfilePageJsonLd = (): WithContext<ProfilePage> => ({
   mainEntity: buildPersonNode(),
   name: "Sid Jain Resume",
   url: publicUrl("/resume"),
-});
-
-export const buildBreadcrumbJsonLd = (
-  items: { name: string; url: string }[]
-): WithContext<BreadcrumbList> => ({
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  itemListElement: items.map(
-    (item, index): ListItem => ({
-      "@type": "ListItem",
-      item: item.url,
-      name: item.name,
-      position: index + 1,
-    })
-  ),
 });
 
 export const buildBlogPostingJsonLd = ({
