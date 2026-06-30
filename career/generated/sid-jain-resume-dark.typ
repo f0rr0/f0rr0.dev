@@ -33,14 +33,16 @@
   align: top,
   [#profile-photo("/public/resume/sid-jain-profile-avatar.png")],
   [#box(height: 36pt)[#align(left + horizon)[#t("Sid Jain", fill: strong, font: "Literata", size: 36pt, weight: "bold", style: "normal")]]],
-  [#align(right)[#box(height: 36pt)[#align(right + horizon)[#box(height: 28pt)[#grid(
-      columns: (auto,),
-      rows: (1fr, 1fr, 1fr),
-      align: right + horizon,
-      [#link("mailto:sid_26@outlook.com")[#t("sid_26@outlook.com", fill: accent, font: "Source Sans 3", size: 7.5pt, weight: "medium", style: "normal")]],
-[#link("https://linkedin.com/in/f0rr0")[#t("linkedin.com/in/f0rr0", fill: accent, font: "Source Sans 3", size: 7.5pt, weight: "medium", style: "normal")]],
-[#link("https://github.com/f0rr0")[#t("github.com/f0rr0", fill: accent, font: "Source Sans 3", size: 7.5pt, weight: "medium", style: "normal")]]
-    )]]]]],
+  [#align(right)[#box(height: 36pt)[#align(right + horizon)[#box(height: 32pt)[
+      #set par(leading: 0.422em)
+      #align(right)[
+      #link("mailto:sid_26@outlook.com")[#t("sid_26@outlook.com", fill: accent, font: "Source Sans 3", size: 7.5pt, weight: "medium", style: "normal")]
+#linebreak()
+#link("https://linkedin.com/in/f0rr0")[#t("linkedin.com/in/f0rr0", fill: accent, font: "Source Sans 3", size: 7.5pt, weight: "medium", style: "normal")]
+#linebreak()
+#link("https://github.com/f0rr0")[#t("github.com/f0rr0", fill: accent, font: "Source Sans 3", size: 7.5pt, weight: "medium", style: "normal")]
+      ]
+    ]]]]],
 )
   #v(3pt)
   #block[
