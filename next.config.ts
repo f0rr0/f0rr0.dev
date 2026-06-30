@@ -9,8 +9,11 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/blog/[slug]": ["./src/content/**/*"],
     "/blog/[slug]/opengraph-image": ["./src/content/**/*"],
+    "/blog/[slug]/share-image": ["./src/content/**/*"],
     "/blog/[slug]/twitter-image": ["./src/content/**/*"],
+    "/llms.txt": ["./src/content/**/*"],
     "/rss.xml": ["./src/content/**/*"],
+    "/sitemap.xml": ["./src/content/**/*"],
   },
   reactCompiler: true,
 };

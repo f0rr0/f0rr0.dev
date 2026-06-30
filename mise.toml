@@ -6,6 +6,7 @@ bun = "1.3.14"
 hk = "1.48.0"
 node = "26.3.1"
 pkl = "0.31.1"
+typst = "0.15.0"
 
 [env]
 HK_MISE = "1"
@@ -32,6 +33,26 @@ run = "bun run typecheck"
 [tasks.build]
 description = "Build the site"
 run = "bun run build"
+
+[tasks.resume-typst]
+description = "Compile the RenderCV-generated Typst resume PDF"
+run = "typst compile --font-path career/typst/fonts career/rendercv/rendercv-resume.typ career/sid-jain-resume-2026-rendercv-typst.pdf"
+
+[tasks.resume-pdf]
+description = "Build the dark ATS-friendly resume PDF from shared resume data"
+run = "bun scripts/build-resume-pdf.ts"
+
+[tasks.resume-rendercv]
+description = "Build the reference resume PDF and generated Typst with pinned RenderCV"
+run = "uvx 'rendercv[full]==2.8' render career/rendercv/sid-jain-resume.yaml --pdf-path ../sid-jain-resume-2026-rendercv.pdf --typst-path rendercv-resume.typ --png-path /tmp/sid-jain-rendercv-final-{page_number}.png --dont-generate-markdown --dont-generate-html"
+
+[tasks.resume-typst-v1]
+description = "Build the original Typst resume PDF"
+run = "typst compile career/typst/sid-jain-resume.typ career/sid-jain-resume-2026-typst.pdf"
+
+[tasks.resume-typst-png]
+description = "Render Typst resume pages as PNGs for visual review"
+run = "typst compile --font-path career/typst/fonts --format png --ppi 150 career/rendercv/rendercv-resume.typ /tmp/sid-jain-rendercv-typst-{p}.png"
 
 [tasks.pre-commit]
 description = "Run the hk pre-commit hook"

@@ -1,13 +1,36 @@
 import type { Metadata } from "next";
 
 import PostCard from "@/components/blog/PostCard";
+import { JsonLd } from "@/components/json-ld";
 import { Separator } from "@/components/ui/separator";
 import { getBlogPosts } from "@/lib/blog-utils";
-import { siteConfig } from "@/lib/site";
+import { publicUrl, siteConfig } from "@/lib/site";
+import { buildBlogCollectionJsonLd } from "@/lib/structured-data";
+
+const description = `Notes on what ${siteConfig.author.name} is building and learning.`;
 
 export const metadata: Metadata = {
-  description: `Notes on what ${siteConfig.author.name} is building and learning.`,
+  alternates: {
+    canonical: "/blog",
+    types: {
+      "application/rss+xml": "/rss.xml",
+    },
+  },
+  description,
+  openGraph: {
+    description,
+    locale: siteConfig.locale,
+    siteName: siteConfig.name,
+    title: "Sid Jain Blog",
+    type: "website",
+    url: publicUrl("/blog"),
+  },
   title: "Blog",
+  twitter: {
+    card: "summary",
+    description,
+    title: "Sid Jain Blog",
+  },
 };
 
 export default async function BlogIndexPage() {
@@ -16,6 +39,7 @@ export default async function BlogIndexPage() {
 
   return (
     <main className="relative">
+      <JsonLd data={buildBlogCollectionJsonLd(posts)} />
       <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(120,120,120,0.12),transparent_55%)]" />
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-16">
         <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">

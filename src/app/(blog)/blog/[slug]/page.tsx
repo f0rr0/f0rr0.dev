@@ -5,6 +5,7 @@ import type { ComponentType } from "react";
 
 import AuthorCard from "@/components/blog/AuthorCard";
 import PostCard from "@/components/blog/PostCard";
+import { JsonLd } from "@/components/json-ld";
 import MDXImage from "@/components/mdx/MDXImage";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -15,7 +16,8 @@ import {
   importBlogPostModule,
 } from "@/lib/blog-utils";
 import { formatDate } from "@/lib/date";
-import { absoluteUrl, siteConfig } from "@/lib/site";
+import { publicUrl, siteConfig } from "@/lib/site";
+import { buildBlogPostingJsonLd } from "@/lib/structured-data";
 
 type PageParams = Promise<{ slug: string }>;
 
@@ -67,15 +69,15 @@ export async function generateMetadata({
   }
 
   const { metadata, date, updatedAt } = post;
-  const url = absoluteUrl(`/blog/${slug}`);
-  const ogAsset = await findMetadataImageAsset(post.importPath, "opengraph");
-  const twitterAsset = await findMetadataImageAsset(post.importPath, "twitter");
-  const ogImageUrl = ogAsset
-    ? absoluteUrl(`/blog/${slug}/opengraph-image`)
+  const url = publicUrl(`/blog/${slug}`);
+  const [ogAsset, twitterAsset] = await Promise.all([
+    findMetadataImageAsset(post.importPath, "opengraph"),
+    findMetadataImageAsset(post.importPath, "twitter"),
+  ]);
+  const hasShareImage = ogAsset !== null || twitterAsset !== null;
+  const shareImageUrl = hasShareImage
+    ? publicUrl(`/blog/${slug}/share-image`)
     : undefined;
-  const twitterImageUrl = twitterAsset
-    ? absoluteUrl(`/blog/${slug}/twitter-image`)
-    : ogImageUrl;
 
   return {
     alternates: {
@@ -86,8 +88,16 @@ export async function generateMetadata({
     openGraph: {
       authors: [metadata.author],
       description: metadata.summary,
-      images: ogImageUrl === undefined ? undefined : [{ url: ogImageUrl }],
       locale: siteConfig.locale,
+      images:
+        shareImageUrl === undefined
+          ? undefined
+          : [
+              {
+                alt: metadata.title,
+                url: shareImageUrl,
+              },
+            ],
       modifiedTime: updatedAt?.toISOString(),
       publishedTime: date.toISOString(),
       siteName: siteConfig.name,
@@ -97,9 +107,9 @@ export async function generateMetadata({
     },
     title: metadata.title,
     twitter: {
-      card: twitterImageUrl === undefined ? "summary" : "summary_large_image",
+      card: hasShareImage ? "summary_large_image" : "summary",
       description: metadata.summary,
-      images: twitterImageUrl === undefined ? undefined : [twitterImageUrl],
+      images: shareImageUrl === undefined ? undefined : [shareImageUrl],
       title: metadata.title,
     },
   };
@@ -124,30 +134,18 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
   }
 
   const Content = module.default;
-  const url = absoluteUrl(`/blog/${slug}`);
-  const suggestedPosts = getSuggestedPosts(await getBlogPosts(), slug);
-
-  const ogAsset = await findMetadataImageAsset(importPath, "opengraph");
-  const resolvedImageUrl = ogAsset
-    ? absoluteUrl(`/blog/${slug}/opengraph-image`)
-    : undefined;
-
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "BlogPosting",
-    author: {
-      "@type": "Person",
-      name: metadata.author,
-    },
-    dateModified: (updatedAt ?? date).toISOString(),
-    datePublished: date.toISOString(),
-    description: metadata.summary,
-    headline: metadata.title,
-    image: resolvedImageUrl === undefined ? undefined : [resolvedImageUrl],
-    keywords: metadata.tags?.join(", "),
-    mainEntityOfPage: url,
+  const url = publicUrl(`/blog/${slug}`);
+  const [suggestedPosts, ogAsset, twitterAsset] = await Promise.all([
+    getBlogPosts().then((posts) => getSuggestedPosts(posts, slug)),
+    findMetadataImageAsset(importPath, "opengraph"),
+    findMetadataImageAsset(importPath, "twitter"),
+  ]);
+  const hasShareImage = ogAsset !== null || twitterAsset !== null;
+  const jsonLd = buildBlogPostingJsonLd({
+    image: hasShareImage ? publicUrl(`/blog/${slug}/share-image`) : undefined,
+    post,
     url,
-  };
+  });
 
   const mdxComponents = {
     Image: (props) => <MDXImage {...props} />,
@@ -156,10 +154,7 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
 
   return (
     <article className="relative">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
+      <JsonLd data={jsonLd} />
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-6 py-16">
         <header className="flex flex-col gap-6">
           {metadata.tags !== undefined && metadata.tags.length > 0 ? (

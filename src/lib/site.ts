@@ -1,12 +1,16 @@
 import { env } from "@/env";
 
-const LOCAL_SITE_URL = "http://localhost:3000";
+const PUBLIC_SITE_URL = "https://f0rr0.github.io";
 
 const withProtocol = (value: string) => {
-  if (value.startsWith("http://") || value.startsWith("https://")) {
-    return value;
+  const normalized = value.trim().replace(/\/+$/, "");
+
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+    return normalized;
   }
-  return value.includes("localhost") ? `http://${value}` : `https://${value}`;
+  return normalized.includes("localhost")
+    ? `http://${normalized}`
+    : `https://${normalized}`;
 };
 
 const resolveSiteUrl = () => {
@@ -42,22 +46,31 @@ const resolveSiteUrl = () => {
     return withProtocol(env.VERCEL_PROJECT_PRODUCTION_URL);
   }
 
-  return LOCAL_SITE_URL;
+  return PUBLIC_SITE_URL;
 };
 
 export const siteConfig = {
   author: {
-    bio: "Creative developer building digital experiences and thoughtful web tools.",
-    image: "",
-    name: "F0RR0",
-    role: "Creative Developer",
+    bio: "Senior Full-Stack Engineer / AI Lead building AI-native products and hard production systems from zero to launch.",
+    handle: "f0rr0",
+    image: "https://github.com/f0rr0.png",
+    name: "Sid Jain",
+    role: "Senior Full-Stack Engineer / AI Lead",
   },
-  description: "Creative developer building digital experiences.",
+  description:
+    "Sid Jain is a Senior Full-Stack Engineer / AI Lead building AI-native products, mobile/browser platforms, and production infrastructure.",
   language: "en-US",
   locale: "en_US",
-  name: "F0RR0",
+  name: "Sid Jain",
+  shortName: "F0RR0",
   url: resolveSiteUrl(),
 };
 
 export const absoluteUrl = (path: string, baseUrl = siteConfig.url) =>
   new URL(path, baseUrl).toString();
+
+export const publicUrl = (path: string) =>
+  absoluteUrl(
+    path,
+    siteConfig.url.includes("localhost") ? PUBLIC_SITE_URL : siteConfig.url
+  );
