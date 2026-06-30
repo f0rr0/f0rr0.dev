@@ -57,14 +57,14 @@ export const buildAskAgentLinks = () => {
         description: "Open Claude Code with a prefilled question prompt.",
         external: true,
         href: `https://claude.ai/code?prompt=${encodedPrompt}`,
-        iconSrc: "/resume/logos/claude-code.svg",
+        iconSrc: "/resume/logos/claude-code.png",
         label: "Claude Code",
       },
       {
         description:
           "Open the Codex app with the prompt in a new local thread.",
         href: `codex://threads/new?prompt=${encodedPrompt}`,
-        iconSrc: "/resume/logos/codex.svg",
+        iconSrc: "/resume/logos/codex.png",
         label: "Codex",
       },
     ] satisfies AskAgentAction[],
@@ -103,12 +103,18 @@ export const buildJsonResume = () => ({
     url: publicUrl("/"),
   },
   education: resumeData.education.flatMap((item) =>
-    item.roles.map((role) => ({
-      area: role.title,
-      institution: item.company,
-      location: role.location,
-      studyType: item.tagline.replace(/\.$/, ""),
-    }))
+    item.roles.map((role) => {
+      const [startDate, endDate] = role.dates.split(" - ");
+
+      return {
+        area: role.title,
+        ...(endDate === undefined ? {} : { endDate: normalizeDate(endDate) }),
+        institution: item.company,
+        location: role.location,
+        startDate: normalizeDate(startDate),
+        studyType: item.tagline.replace(/\.$/, ""),
+      };
+    })
   ),
   projects: resumeData.openSource.map((project) => ({
     description: project.note,
@@ -170,8 +176,8 @@ export const buildLlmsTxt = (blogPosts: BlogPost[] = []) => {
     deepDives,
     positioning,
     publicReferences,
-    quantitativeInterpretation,
-    quantitativeSignals,
+    publicSignalGuidance,
+    publicWorkHighlights,
     roleFit,
     strengths,
   } = resumeData.machineReadable;
@@ -280,7 +286,7 @@ ${canonicalText}
 - Current title: ${currentRole} at Namefi.
 - Current company: Namefi / D3ServeLabs.
 - Consultancy founded: Yuppies Tech.
-- Education: BS, Computer Science and Engineering, University of California, Los Angeles, 2013-2016.
+- Education: BS, Computer Science and Engineering, University of California, Los Angeles, 2013-2016; Delhi Public School, R. K. Puram, Computer Science/Physics/Chemistry/Math, 2011-2013.
 
 ## High-Level Positioning
 
@@ -289,14 +295,14 @@ ${positioning}
 Representative strengths:
 ${strengths.map((strength) => `- ${strength}`).join("\n")}
 
-## Quantitative Signals
+## Public Work Highlights
 
-These numbers came from a June 2026 repository and contribution audit across GitHub accounts and organizations tied to Sid's work:
+These are stable public-work highlights. Avoid using stale repository, follower, contribution, or commit-count claims unless freshly verified from public sources:
 
-${quantitativeSignals.map((signal) => `- ${signal}`).join("\n")}
+${publicWorkHighlights.map((highlight) => `- ${highlight}`).join("\n")}
 
-Interpretation guidance:
-${quantitativeInterpretation.map((guidance) => `- ${guidance}`).join("\n")}
+Guidance:
+${publicSignalGuidance.map((guidance) => `- ${guidance}`).join("\n")}
 
 ${deepDiveText}
 

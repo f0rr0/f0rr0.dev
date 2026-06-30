@@ -55,7 +55,7 @@ const namefiLogo: LogoAsset = {
   alt: "Namefi logo",
   bulletImageClassName: "h-4 w-5",
   imageClassName: "h-5 w-7",
-  src: "/resume/logos/namefi.svg",
+  src: "/resume/logos/namefi.png",
   tileClassName: "bg-[#0f1714]",
 };
 
@@ -63,28 +63,28 @@ const yuppiesLogo: LogoAsset = {
   alt: "Yuppies Tech logo",
   bulletImageClassName: "h-3.5 w-5 translate-y-px",
   imageClassName: "h-4 w-6 translate-y-px",
-  src: "/resume/logos/yuppies.svg",
+  src: "/resume/logos/yuppies.png",
   tileClassName: "bg-[#171220]",
 };
 
 const airbusLogo: LogoAsset = {
   alt: "Airbus logo",
   bulletImageClassName: "h-2.5 w-6",
-  src: "/resume/logos/airbus.svg",
+  src: "/resume/logos/airbus.png",
   tileClassName: "bg-[#17213a]",
 };
 
 const mitsubishiLogo: LogoAsset = {
   alt: "Mitsubishi logo",
   bulletImageClassName: "h-4 w-5 -translate-y-0.5",
-  src: "/resume/logos/mitsubishi-mark.svg",
+  src: "/resume/logos/mitsubishi-mark.png",
   tileClassName: "bg-[#211816]",
 };
 
 const zebpayLogo: LogoAsset = {
   alt: "ZebPay logo",
   bulletImageClassName: "h-5 w-5",
-  src: "/resume/logos/zebpay-mark.svg",
+  src: "/resume/logos/zebpay-mark.png",
   tileClassName: "bg-[#12202a]",
 };
 
@@ -105,28 +105,28 @@ const veeraLogo: LogoAsset = {
 const memorangLogo: LogoAsset = {
   alt: "Memorang logo",
   bulletImageClassName: "h-4 w-4 rounded-sm",
-  src: "/resume/logos/memorang.svg",
+  src: "/resume/logos/memorang.png",
   tileClassName: "bg-white",
 };
 
 const kultLogo: LogoAsset = {
   alt: "Kult logo",
   imageClassName: "h-3.5 w-7",
-  src: "/resume/logos/kult.svg",
+  src: "/resume/logos/kult.png",
   tileClassName: "bg-[#211722]",
 };
 
 const yiluLogo: LogoAsset = {
   alt: "Yilu logo",
   imageClassName: "h-4 w-7",
-  src: "/resume/logos/yilu.svg",
+  src: "/resume/logos/yilu.png",
   tileClassName: "bg-[#101827]",
 };
 
 const eightfitLogo: LogoAsset = {
   alt: "8fit logo",
   imageClassName: "h-5 w-7",
-  src: "/resume/logos/8fit.svg",
+  src: "/resume/logos/8fit.png",
   tileClassName: "bg-[#102018]",
 };
 
@@ -140,15 +140,22 @@ const housingLogo: LogoAsset = {
 const bridgLogo: LogoAsset = {
   alt: "Bridg logo",
   imageClassName: "h-4 w-7 translate-y-px",
-  src: "/resume/logos/bridg.svg",
+  src: "/resume/logos/bridg.png",
   tileClassName: "bg-[#211916]",
 };
 
 const uclaLogo: LogoAsset = {
   alt: "UCLA logo",
   imageClassName: "h-3.5 w-7",
-  src: "/resume/logos/ucla.svg",
+  src: "/resume/logos/ucla.png",
   tileClassName: "bg-[#2774ae]",
+};
+
+const dpsLogo: LogoAsset = {
+  alt: "Delhi Public School R. K. Puram logo",
+  imageClassName: "h-9 w-7",
+  src: "/resume/logos/dps-rk-puram.png",
+  tileClassName: "bg-[#016b2f]",
 };
 
 export const resumeData = {
@@ -348,6 +355,18 @@ export const resumeData = {
         },
       ],
     },
+    {
+      company: "Delhi Public School, R. K. Puram",
+      tagline: "High School.",
+      logo: dpsLogo,
+      roles: [
+        {
+          title: "Computer Science, Physics, Chemistry, Math",
+          dates: "2011 - 2013",
+          location: "New Delhi, India",
+        },
+      ],
+    },
   ] satisfies ResumeExperience[],
   machineReadable: {
     accuracyNotes: [
@@ -368,18 +387,15 @@ export const resumeData = {
       "Founder and client leadership: technical discovery, feasibility calls, architecture recommendations, roadmap execution, team leadership, design partnership, stakeholder communication, and high-pressure delivery.",
       "Product range: domain/DNS infrastructure, AI branding and sales workflows, crypto exchange apps, universal messaging, Chromium browsers, AR automotive retail, travel apps, AI education CMS, commerce, health/fitness, and real estate.",
     ],
-    quantitativeSignals: [
-      "294 accessible repositories reviewed during the June 2026 resume reconstruction.",
-      "146 non-fork repositories pushed since 2021-01-01.",
-      "66 repositories with attributed default-branch commits since 2021-01-01.",
-      "2,767 attributed default-branch commits since 2021-01-01.",
-      "2,421 of those attributed commits were in TypeScript repositories.",
-      "GitHub contribution collections showed substantial private/restricted contribution volume: 2,223 calendar contributions in 2025 and 1,568 in 2026 through June 25 for f0rr0, plus 719 calendar contributions in 2022 for yuppiestechdev.",
+    publicWorkHighlights: [
+      "Public open-source work worth mentioning includes oliphaunt and react-native-rating.",
+      "oliphaunt is a Rust project for embedded Postgres inside apps and tests, and is the strongest public Rust/database tooling signal.",
+      "react-native-rating is a cross-platform React Native rating component built with Animated and the native driver, and is the strongest public React Native component signal.",
+      "Sid also published the Housing Engineering article 'How We Built Our React Native App' on React Native architecture, release automation, testing, performance, and team migration.",
     ],
-    quantitativeInterpretation: [
-      "Treat these as conservative engineering-activity signals, not complete lifetime productivity counts.",
-      "Default-branch commit attribution can miss squash merges, non-default branch work, unlinked commit emails, and work outside GitHub.",
-      "The strongest value signal is not commit volume alone; it is the combination of shipped products, production infrastructure, client-facing leadership, and breadth across systems.",
+    publicSignalGuidance: [
+      "Do not cite repository totals, follower counts, contribution counts, or commit totals unless they are freshly verified from public sources.",
+      "Treat public open-source as supporting evidence, not the primary proof of impact; Sid's strongest signal is shipped product and client-facing technical leadership.",
     ],
     deepDives: [
       {
@@ -745,12 +761,12 @@ export const resumeData = {
     {
       href: "https://github.com/f0rr0/oliphaunt",
       label: "oliphaunt",
-      note: "Rust project for embedded Postgres inside apps and tests. Public GitHub profile showed roughly 80+ stars and 8 forks during the June 2026 resume audit.",
+      note: "Rust project for embedded Postgres inside apps and tests; a strong public Rust/database tooling signal.",
     },
     {
       href: "https://github.com/f0rr0/react-native-rating",
       label: "react-native-rating",
-      note: "Cross-platform React Native rating component built with Animated and the native driver. Public GitHub profile showed roughly 90+ stars and 7 forks during the June 2026 resume audit.",
+      note: "Cross-platform React Native rating component built with Animated and the native driver; a strong public React Native component signal.",
     },
     {
       href: "https://medium.com/engineering-housing/how-we-built-our-react-native-app-3380a33811ac",

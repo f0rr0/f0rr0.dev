@@ -27,11 +27,18 @@ const buildPersonNode = (): Person => ({
   "@id": personId(),
   "@type": "Person",
   alternateName: resumeData.person.alternateNames,
-  alumniOf: {
-    "@type": "CollegeOrUniversity",
-    name: "University of California, Los Angeles",
-    sameAs: "https://www.ucla.edu/",
-  },
+  alumniOf: [
+    {
+      "@type": "CollegeOrUniversity",
+      name: "University of California, Los Angeles",
+      sameAs: "https://www.ucla.edu/",
+    },
+    {
+      "@type": "EducationalOrganization",
+      name: "Delhi Public School, R. K. Puram",
+      sameAs: "https://dpsrkp.net/",
+    },
+  ],
   description:
     "Applied AI Lead and senior full-stack engineer building production AI systems from customer workflows.",
   email: `mailto:${resumeData.person.email}`,
