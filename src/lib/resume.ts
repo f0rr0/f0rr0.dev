@@ -79,7 +79,7 @@ export const buildAskAgentLinks = () => {
 export const buildJsonResume = () => ({
   basics: {
     email: resumeData.person.email,
-    image: resumeData.person.image,
+    image: publicUrl(resumeData.person.image),
     label: resumeData.person.role,
     location: {
       city: "Mumbai",

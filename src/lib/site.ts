@@ -53,7 +53,7 @@ export const siteConfig = {
   author: {
     bio: "Senior Full-Stack Engineer / AI Lead building AI-native products and hard production systems from zero to launch.",
     handle: "f0rr0",
-    image: "https://github.com/f0rr0.png",
+    image: "/resume/sid-jain-profile.png",
     name: "Sid Jain",
     role: "Senior Full-Stack Engineer / AI Lead",
   },

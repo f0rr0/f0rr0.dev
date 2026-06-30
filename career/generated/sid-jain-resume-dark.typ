@@ -24,26 +24,28 @@
   fill: fill,
   stroke: 0.75pt + rule-color,
 )[#align(center + horizon)[#move(dy: dy)[#image(path, width: image-width, height: image-height, fit: "contain")]]]
+#let profile-photo(path, size: 36pt) = image(path, width: size, height: size, fit: "contain")
 
 #align(left)[
 #grid(
-  columns: (auto, 1fr),
-  gutter: 18pt,
+  columns: (36pt, auto, 1fr),
+  gutter: 12pt,
   align: top,
-  [#t("Sid Jain", fill: strong, font: "Literata", size: 36pt, weight: "bold", style: "normal")],
-  [#align(right)[#box(height: 28pt)[#grid(
-    columns: (auto,),
-    rows: (1fr, 1fr, 1fr),
-    align: right + horizon,
-    [#link("mailto:sid_26@outlook.com")[#t("sid_26@outlook.com", fill: accent, font: "Source Sans 3", size: 7.5pt, weight: "medium", style: "normal")]],
+  [#profile-photo("/public/resume/sid-jain-profile-avatar.png")],
+  [#box(height: 36pt)[#align(left + horizon)[#t("Sid Jain", fill: strong, font: "Literata", size: 36pt, weight: "bold", style: "normal")]]],
+  [#align(right)[#box(height: 36pt)[#align(right + horizon)[#box(height: 28pt)[#grid(
+      columns: (auto,),
+      rows: (1fr, 1fr, 1fr),
+      align: right + horizon,
+      [#link("mailto:sid_26@outlook.com")[#t("sid_26@outlook.com", fill: accent, font: "Source Sans 3", size: 7.5pt, weight: "medium", style: "normal")]],
 [#link("https://linkedin.com/in/f0rr0")[#t("linkedin.com/in/f0rr0", fill: accent, font: "Source Sans 3", size: 7.5pt, weight: "medium", style: "normal")]],
 [#link("https://github.com/f0rr0")[#t("github.com/f0rr0", fill: accent, font: "Source Sans 3", size: 7.5pt, weight: "medium", style: "normal")]]
-  )]]],
+    )]]]]],
 )
   #v(3pt)
   #block[
   #set par(leading: 0.625em)
-  #t("Senior Full-Stack Engineer / AI Lead building AI-native products and hard production systems from zero to launch. Founded Yuppies Tech and personally led technical delivery for Airbus Tripset, Mitsubishi Motors Puerto Rico MiAR, ZebPay, Texts.com, Veera Browser, and Memorang. Currently leads Namefi AI product engineering across Outbound, Brand Studio, and Feed while building core registrar, DNS, payments, and workflow infrastructure.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")
+  #t("Senior Full-Stack Engineer / AI Lead building production AI systems from customer workflows. At Namefi, leads domain sales automation, listing intelligence, brand generation, and analytics across discovery, agent/workflow design, evaluation, full-stack implementation, and deployment. Previously led Yuppies Tech, translating ambiguous client goals into shipped systems for Airbus Tripset, Mitsubishi Motors MiAR, ZebPay, Texts.com, Veera Browser, and Memorang.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")
 ]
 
   
@@ -63,7 +65,7 @@
   [
     #t("Namefi", fill: strong, font: "Literata", size: 12pt, weight: "bold", style: "normal")
     #v(-6pt)
-    #t("Domain registrar and marketplace infrastructure with AI-native products for domain owners.", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "italic")
+    #t("Domain registrar and marketplace infrastructure with production AI workflows for domain owners.", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "italic")
     
 #v(3pt)
 #grid(
@@ -80,7 +82,7 @@
   gutter: 6pt,
   align: top,
   [#t("·", fill: accent, font: "Source Sans 3", size: 10.5pt, weight: "bold", style: "normal")],
-  [#t("Built Namefi Outbound, reducing domain sales research and outreach prep from days/weeks to minutes by automating buyer-fit hypotheses, web research, lead scoring, contact discovery, and editable outreach drafts.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
+  [#t("Led customer discovery with large domain owners and built Namefi Outbound, reducing sales research/outreach prep from days to minutes through buyer-fit hypotheses, web research, lead scoring, contact discovery, and editable drafts.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
 
@@ -89,7 +91,7 @@
   gutter: 6pt,
   align: top,
   [#t("·", fill: accent, font: "Source Sans 3", size: 10.5pt, weight: "bold", style: "normal")],
-  [#t("Built Brand Studio, a multi-stage AI branding system that turns domains into buyer-ready logo, poster, and motion concepts with strategist/concept passes, exact domain/TLD rendering constraints, and cinematic animation workflows.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
+  [#t("Built Brand Studio, a multi-stage AI branding workflow that turns domains into buyer-ready logos, posters, and motion concepts with strategist/concept passes, exact domain/TLD constraints, and animation workflows.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
 
@@ -98,7 +100,7 @@
   gutter: 6pt,
   align: top,
   [#t("·", fill: accent, font: "Source Sans 3", size: 10.5pt, weight: "bold", style: "normal")],
-  [#t("Built Namefi Feed, an MLS-style discovery layer indexing roughly 4,000-5,000 public secondary-market domain listings from X, NamePros, DNForum, and marketplaces into searchable/RSS surfaces.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
+  [#t("Built Namefi Feed, an AI-enriched listing intelligence layer indexing roughly 4,000-5,000 public domain listings from X, NamePros, DNForum, and marketplaces into searchable/RSS surfaces.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
 
@@ -107,7 +109,7 @@
   gutter: 6pt,
   align: top,
   [#t("·", fill: accent, font: "Source Sans 3", size: 10.5pt, weight: "bold", style: "normal")],
-  [#t("Built registrar and domain systems across registrar integrations, DNS/DNSSEC, nameservers, ENS/.eth, renewals, payments, checkout, and Temporal-backed long-running workflows.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
+  [#t("Built production registrar and domain systems across registrar integrations, DNS/DNSSEC, nameservers, ENS/.eth, renewals, payments, checkout, analytics, and Temporal-backed long-running workflows.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 
   ],
@@ -133,10 +135,10 @@
   columns: (1fr, auto),
   gutter: 12pt,
   [#t("Founder / Technical Lead", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")],
-  [#t("Mumbai / Remote · Jan 2021 - Present", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "normal")],
+  [#t("Mumbai / Remote · 2021 - 2025", fill: muted, font: "Source Sans 3", size: 9pt, weight: "regular", style: "normal")],
 )
 #v(2.25pt)
-#t("Founded and led a product engineering consultancy; served as client-facing technical partner and hands-on technical lead across travel, automotive, crypto, messaging, browsers, and AI education.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")
+#t("Founded and led a product engineering consultancy; translated ambiguous client goals into shipped systems across travel, automotive, crypto, messaging, browsers, and AI education.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")
 #v(2.25pt)
 
 #grid(
@@ -144,7 +146,7 @@
   gutter: 7.5pt,
   align: top,
   [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/memorang.svg", fill: rgb("#ffffff"), size: 21pt, image-width: 15pt, image-height: 12pt, dy: 0pt)]],
-  [#t("Memorang: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("Head of CMS for an AI education platform, leading schema-first AI CMS work for Cambridge/TOEFL content, AI-generated questions/media, adaptive practice, scoring workflows, and a JS/Flow to TypeScript/Bun/Biome modernization.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
+  [#t("Memorang: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("Head of CMS for an AI education platform, translating Cambridge/TOEFL requirements into a schema-first AI CMS for generated questions/media, adaptive practice, scoring workflows, and content operations; modernized JS/Flow to TypeScript/Bun/Biome.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
 
@@ -162,7 +164,7 @@
   gutter: 7.5pt,
   align: top,
   [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/texts-icon.png", fill: rgb("#f3f6ff"), size: 21pt, image-width: 15pt, image-height: 15pt, dy: 0pt)]],
-  [#t("Texts.com: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("built the production Facebook Messenger channel over undocumented messaging infrastructure, implementing protocol-compatible MQTT/Facebook Thrift handling, encrypted payload support, and feature-parity messaging across sync, groups, attachments, reactions, read receipts, typing, and presence.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
+  [#t("Texts.com: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("built production Messenger channel by reverse-engineering undocumented infrastructure and implementing MQTT/Facebook Thrift, encrypted payloads, sync, groups, attachments, reactions, receipts, typing, and presence.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
 
@@ -171,7 +173,7 @@
   gutter: 7.5pt,
   align: top,
   [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/zebpay-mark.svg", fill: rgb("#12202a"), size: 21pt, image-width: 15pt, image-height: 15pt, dy: 0pt)]],
-  [#t("ZebPay: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("technical lead for a 10-person embedded team modernizing iOS/Android apps and release infrastructure for one of India's largest crypto exchanges, moving stabilization releases from monthly/bi-monthly to weekly.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
+  [#t("ZebPay: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("client-facing technical lead for a 10-person team modernizing iOS/Android apps, release infrastructure, exchange features, payment flows, and international KYC; moved stabilization releases from monthly/bi-monthly to weekly.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
 
@@ -180,7 +182,7 @@
   gutter: 7.5pt,
   align: top,
   [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/mitsubishi-mark.svg", fill: rgb("#211816"), size: 21pt, image-width: 15pt, image-height: 12pt, dy: -1.5pt)]],
-  [#t("Mitsubishi Motors: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("tech lead for MiAR virtual dealership and Outlander AR campaign, leading a 3-person team across native iOS/iPadOS, WebAR, optimized 3D vehicles, low-end Android support, bilingual content, and contest/admin workflows.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
+  [#t("Mitsubishi Motors: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("client-facing technical lead for MiAR, turning remote dealership goals into native iOS/iPadOS and WebAR with optimized 3D vehicles, low-end Android support, bilingual content, and contest/admin workflows.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 #v(1.5pt)
 
@@ -189,7 +191,7 @@
   gutter: 7.5pt,
   align: top,
   [#move(dy: -0.5pt)[#logo-tile("/public/resume/logos/airbus.svg", fill: rgb("#17213a"), size: 21pt, image-width: 15pt, image-height: 6pt, dy: 0pt)]],
-  [#t("Airbus Tripset: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("solo technical partner to Milkinside for Airbus's public iOS/Android COVID travel companion, building the React Native app and backend aggregation layer over Airbus/Amadeus APIs, CMS-driven travel guidance, and itinerary notifications.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
+  [#t("Airbus Tripset: ", fill: strong, font: "Source Sans 3", size: 10.5pt, weight: "medium", style: "normal")#t("solo technical partner to Milkinside for Airbus's public iOS/Android COVID travel companion, translating urgent traveler guidance needs into app/backend layers over Airbus/Amadeus APIs, CMS rules, and itinerary notifications.", fill: muted, font: "Source Sans 3", size: 10.5pt, weight: "regular", style: "normal")],
 )
 
   ],
