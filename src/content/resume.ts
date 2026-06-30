@@ -90,7 +90,7 @@ const zebpayLogo: LogoAsset = {
 
 const textsLogo: LogoAsset = {
   alt: "Texts.com logo",
-  bulletImageClassName: "h-7 w-7",
+  bulletImageClassName: "h-5 w-5",
   src: "/resume/logos/texts-icon.png",
   tileClassName: "bg-[#f3f6ff]",
 };
