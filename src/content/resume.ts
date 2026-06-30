@@ -269,7 +269,7 @@ export const resumeData = {
       logo: kultLogo,
       roles: [
         {
-          title: "Vice President of Tech",
+          title: "Vice President of Engineering",
           dates: "Jan 2020 - Dec 2021",
           location: "Mumbai",
           bullets: [

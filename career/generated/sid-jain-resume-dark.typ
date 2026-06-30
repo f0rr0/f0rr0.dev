@@ -675,7 +675,7 @@
           columns: (1fr, auto),
           gutter: 12pt,
           [#t(
-            "Vice President of Tech",
+            "Vice President of Engineering",
             fill: strong,
             font: "Source Sans 3",
             size: 10.5pt,
