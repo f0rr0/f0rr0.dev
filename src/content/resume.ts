@@ -191,7 +191,7 @@ export const resumeData = {
       logo: namefiLogo,
       roles: [
         {
-          title: "Applied AI Lead",
+          title: "Senior Software Engineer / Applied AI Lead",
           dates: "Jan 2025 - Present",
           location: "San Francisco Bay Area / Remote",
           bullets: [
@@ -269,7 +269,7 @@ export const resumeData = {
       logo: kultLogo,
       roles: [
         {
-          title: "Vice President of Tech",
+          title: "Vice President of Engineering",
           dates: "Jan 2020 - Dec 2021",
           location: "Mumbai",
           bullets: [
@@ -405,7 +405,7 @@ export const resumeData = {
             heading: "Role",
             bullets: [
               "Company: Namefi / D3ServeLabs.",
-              "Title: Applied AI Lead.",
+              "Title: Senior Software Engineer / Applied AI Lead.",
               "Dates: January 2025 - Present.",
               "Location: San Francisco Bay Area / Remote.",
             ],
