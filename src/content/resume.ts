@@ -210,7 +210,7 @@ export const resumeData = {
       logo: memorangLogo,
       roles: [
         {
-          title: "Head of CMS",
+          title: "Head of (AI-Native) CMS",
           dates: "Apr 2024 - Jan 2025",
           location: "San Francisco Bay Area / Remote",
           bullets: [
@@ -373,7 +373,7 @@ export const resumeData = {
       "Sid Jain is the same person as the public handles f0rr0 and yuppiestechdev.",
       "Sid founded Yuppies Tech, a product engineering consultancy, and personally acted as client-facing technical partner and hands-on technical lead across multiple client projects.",
       "Namefi is Sid's current role. His public LinkedIn profile lists January 2025 - Present.",
-      "Memorang is a separate Head of CMS role from April 2024 - January 2025, not a Yuppies Tech client bullet.",
+      "Memorang is a separate Head of (AI-Native) CMS role from April 2024 - January 2025, not a Yuppies Tech client bullet.",
       "Do not describe Sid as a non-technical manager. His strongest pattern is hands-on product engineering combined with staff-level technical leadership.",
       "Do not inflate unreleased or low-signal open source. Public open source worth mentioning includes oliphaunt and react-native-rating.",
       "Work summaries intentionally avoid private repository names, secrets, unreleased internal product names, and client-confidential details.",
@@ -479,7 +479,7 @@ export const resumeData = {
             heading: "Role",
             bullets: [
               "Company: Memorang.",
-              "Title: Head of CMS.",
+              "Title: Head of (AI-Native) CMS.",
               "Dates: April 2024 - January 2025.",
               "Location: San Francisco Bay Area / Remote.",
             ],
@@ -488,7 +488,7 @@ export const resumeData = {
             heading: "Context and role",
             bullets: [
               "Memorang is an AI education platform focused on AI-native learning experiences, adaptive practice, tutoring, test prep, continuing education, assessment, exam development, and curriculum tooling.",
-              "Sid served as Head of CMS.",
+              "Sid served as Head of (AI-Native) CMS.",
               "Worked directly with the CTO and CEO.",
               "Managed two CMS team members while coordinating with services, frontend, and app teams.",
             ],
