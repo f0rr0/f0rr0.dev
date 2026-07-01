@@ -172,7 +172,7 @@
             columns: (1fr, auto),
             gutter: 12pt,
             [#t(
-              "Applied AI Lead",
+              "Senior Software Engineer / Applied AI Lead",
               fill: strong,
               font: "Source Sans 3",
               size: 10.5pt,
