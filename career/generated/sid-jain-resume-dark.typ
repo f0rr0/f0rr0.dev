@@ -326,7 +326,7 @@
           columns: (1fr, auto),
           gutter: 12pt,
           [#t(
-            "Head of CMS",
+            "Head of (AI-Native) CMS",
             fill: strong,
             font: "Source Sans 3",
             size: 10.5pt,
