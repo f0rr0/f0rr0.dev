@@ -76,12 +76,14 @@ const text = (
   {
     fill = "muted",
     font = "Source Sans 3",
+    kerning,
     size = fontSize.sm,
     style = "normal",
     weight = "regular",
   }: {
     fill?: string;
     font?: string;
+    kerning?: boolean;
     size?: string;
     style?: string;
     weight?: string;
@@ -89,7 +91,9 @@ const text = (
 ) =>
   `#t(${quote(clean(value))}, fill: ${fill}, font: ${quote(
     font
-  )}, size: ${size}, weight: ${quote(weight)}, style: ${quote(style)})`;
+  )}, size: ${size}, weight: ${quote(weight)}, style: ${quote(style)}${
+    kerning === undefined ? "" : `, kerning: ${kerning}`
+  })`;
 
 const paragraph = (
   value: string,
@@ -271,6 +275,7 @@ const experienceItem = (item: ResumeExperience) => `
     ${text(item.company, {
       fill: "strong",
       font: "Literata",
+      kerning: false,
       size: fontSize.base,
       weight: "bold",
     })}
@@ -316,7 +321,7 @@ const buildTypst = () => {
   return `#set document(
   title: ${quote(resumeData.pdf.title)},
   author: ${quote(resumeData.person.name)},
-  keywords: ("AI product engineer", "AI lead", "staff full-stack engineer", "founding engineer", "TypeScript", "React Native", "Chromium", "DNS"),
+  keywords: ("AI product engineer", "Applied AI lead", "staff full-stack engineer", "founding engineer", "TypeScript", "React Native", "Chromium", "DNS"),
 )
 #set page(
   paper: "us-legal",
@@ -331,7 +336,7 @@ const buildTypst = () => {
 #let muted = rgb("#a8a29e")
 #let accent = rgb("#d97706")
 #let rule-color = rgb("#3a3836")
-#let t(s, fill: muted, font: "Source Sans 3", size: ${fontSize.sm}, weight: "regular", style: "normal") = text(font: font, fill: fill, size: size, weight: weight, style: style, s)
+#let t(s, fill: muted, font: "Source Sans 3", size: ${fontSize.sm}, weight: "regular", style: "normal", kerning: true) = text(font: font, fill: fill, size: size, weight: weight, style: style, kerning: kerning, s)
 #let logo-tile(path, fill: background, size: ${spacing[10]}, image-width: ${spacing[7]}, image-height: ${spacing[5]}, dy: ${pt(0)}) = rect(
   width: size,
   height: size,

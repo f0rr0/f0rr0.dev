@@ -1,6 +1,7 @@
+import { resumeData } from "@/content/resume";
 import { env } from "@/env";
 
-const PUBLIC_SITE_URL = "https://f0rr0.github.io";
+const CANONICAL_SITE_URL = "https://f0rr0.dev";
 
 const withProtocol = (value: string) => {
   const normalized = value.trim().replace(/\/+$/, "");
@@ -46,19 +47,18 @@ const resolveSiteUrl = () => {
     return withProtocol(env.VERCEL_PROJECT_PRODUCTION_URL);
   }
 
-  return PUBLIC_SITE_URL;
+  return CANONICAL_SITE_URL;
 };
 
 export const siteConfig = {
   author: {
-    bio: "Senior Full-Stack Engineer / AI Lead building AI-native products and hard production systems from zero to launch.",
+    bio: `${resumeData.person.role} building AI-native products and hard production systems from zero to launch.`,
     handle: "f0rr0",
     image: "/resume/sid-jain-profile.png",
     name: "Sid Jain",
-    role: "Senior Full-Stack Engineer / AI Lead",
+    role: resumeData.person.role,
   },
-  description:
-    "Sid Jain is a Senior Full-Stack Engineer / AI Lead building AI-native products, mobile/browser platforms, and production infrastructure.",
+  description: `${resumeData.person.name} is a ${resumeData.person.role} building AI-native products, mobile/browser platforms, and production infrastructure.`,
   language: "en-US",
   locale: "en_US",
   name: "Sid Jain",
@@ -72,5 +72,5 @@ export const absoluteUrl = (path: string, baseUrl = siteConfig.url) =>
 export const publicUrl = (path: string) =>
   absoluteUrl(
     path,
-    siteConfig.url.includes("localhost") ? PUBLIC_SITE_URL : siteConfig.url
+    siteConfig.url.includes("localhost") ? CANONICAL_SITE_URL : siteConfig.url
   );

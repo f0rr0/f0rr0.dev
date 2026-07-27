@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "f0rr0.github.io",
+      "name": "f0rr0.dev",
       "dependencies": {
         "@base-ui/react": "^1.6.0",
         "@mdx-js/loader": "^3.1.1",

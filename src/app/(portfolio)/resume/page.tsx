@@ -16,6 +16,8 @@ import {
   ResumeThemeToggle,
 } from "./resume-controls";
 
+const resumeDescription = `Sid Jain resume: ${resumeData.person.role}, founder of Yuppies Tech, and AI product engineer at Namefi.`;
+
 const literata = Literata({
   subsets: ["latin"],
   variable: "--resume-font-heading",
@@ -38,11 +40,9 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "/resume",
   },
-  description:
-    "Sid Jain resume: Senior Full-Stack Engineer / AI Lead, founder of Yuppies Tech, and AI product engineer at Namefi.",
+  description: resumeDescription,
   openGraph: {
-    description:
-      "Sid Jain resume: Senior Full-Stack Engineer / AI Lead, founder of Yuppies Tech, and AI product engineer at Namefi.",
+    description: resumeDescription,
     images: [resumeData.person.image],
     locale: siteConfig.locale,
     siteName: siteConfig.name,
@@ -53,8 +53,7 @@ export const metadata: Metadata = {
   title: "Resume",
   twitter: {
     card: "summary",
-    description:
-      "Sid Jain resume: Senior Full-Stack Engineer / AI Lead, founder of Yuppies Tech, and AI product engineer at Namefi.",
+    description: resumeDescription,
     images: [resumeData.person.image],
     title: "Sid Jain Resume",
   },
