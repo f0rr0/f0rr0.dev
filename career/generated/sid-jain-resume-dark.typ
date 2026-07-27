@@ -172,7 +172,7 @@
             columns: (1fr, auto),
             gutter: 12pt,
             [#t(
-              "Senior Software Engineer / Applied AI Lead",
+              "Lead Applied AI Engineer",
               fill: strong,
               font: "Source Sans 3",
               size: 10.5pt,
@@ -326,7 +326,7 @@
           columns: (1fr, auto),
           gutter: 12pt,
           [#t(
-            "Head of (AI-Native) CMS",
+            "Lead Product Engineer, AI Content Platform",
             fill: strong,
             font: "Source Sans 3",
             size: 10.5pt,
@@ -358,7 +358,7 @@
             style: "normal",
           )],
           [#t(
-            "Turned expert requirements into structured, versioned curricula, assessments, and content APIs through EdWrite's schema-first architecture.",
+            "Built EdWrite, Memorang's graph-based headless CMS, turning Cambridge/TOEFL and subject-matter expert requirements into structured, versioned curricula, assessments, and content APIs.",
             fill: muted,
             font: "Source Sans 3",
             size: 10.5pt,
@@ -381,7 +381,7 @@
             style: "normal",
           )],
           [#t(
-            "Designed human-in-the-loop agent workflows for subject-matter experts to generate, review, and manage complete question sets and companion audio/image media at scale.",
+            "Designed human-in-the-loop agent workflows for experts to generate, review, and manage complete question sets and companion audio/image media at scale; built adaptive practice, scoring, and embedding-based media recommendations.",
             fill: muted,
             font: "Source Sans 3",
             size: 10.5pt,
@@ -404,7 +404,7 @@
             style: "normal",
           )],
           [#t(
-            "Built adaptive-practice, scoring, and embedding-based media recommendation systems; modernized the JS/Flow monorepo toward TypeScript, Bun, and Biome while leading the CMS team.",
+            "Led the CMS team and roadmap across backend, frontend, app, CTO, and CEO while modernizing a large JS/Flow monorepo toward TypeScript, Bun, and Biome with agentic refactors and codemods.",
             fill: muted,
             font: "Source Sans 3",
             size: 10.5pt,
@@ -456,7 +456,7 @@
           columns: (1fr, auto),
           gutter: 12pt,
           [#t(
-            "Founder / Technical Lead",
+            "Founder & Technical Director",
             fill: strong,
             font: "Source Sans 3",
             size: 10.5pt,
@@ -1005,7 +1005,7 @@
             style: "normal",
           )],
           [#t(
-            "Led cross-platform mobile architecture and the team transition to React Native, built in-house release/CI/CD systems, and contributed to Housing.com's PWA.",
+            "Led Housing's React Native mobile architecture, building more than 90% of the app in JavaScript for shared iOS/Android delivery with Redux, redux-observable/RxJS, immutable state, offline persistence, and component-driven UI.",
             fill: muted,
             font: "Source Sans 3",
             size: 10.5pt,
@@ -1028,7 +1028,30 @@
             style: "normal",
           )],
           [#t(
-            "Published the Housing Engineering article 'How We Built Our React Native App' covering architecture, release automation, testing, performance, and team migration.",
+            "Built the mobile quality and release platform with Storybook, Jest/Detox, Sentry, Fastlane, Jenkins, and CodePush, automating signed builds, device registration, beta distribution, source-map uploads, release notes, stakeholder notifications, OTA rollouts, and Git tagging.",
+            fill: muted,
+            font: "Source Sans 3",
+            size: 10.5pt,
+            weight: "regular",
+            style: "normal",
+          )],
+        )
+        #v(1.5pt)
+
+        #grid(
+          columns: (6pt, 1fr),
+          gutter: 6pt,
+          align: top,
+          [#t(
+            "·",
+            fill: accent,
+            font: "Source Sans 3",
+            size: 10.5pt,
+            weight: "bold",
+            style: "normal",
+          )],
+          [#t(
+            "Contributed to Housing.com's Progressive Web App for users on slow and inconsistent network connections.",
             fill: muted,
             font: "Source Sans 3",
             size: 10.5pt,
@@ -1113,6 +1136,29 @@
           )],
           [#t(
             "Built startup web/mobile systems across customer-data email tooling, real-time doctor consultation, IoT fleet management, and JavaScript/Java/Ruby on Rails product engineering while studying Computer Science at UCLA.",
+            fill: muted,
+            font: "Source Sans 3",
+            size: 10.5pt,
+            weight: "regular",
+            style: "normal",
+          )],
+        )
+        #v(1.5pt)
+
+        #grid(
+          columns: (6pt, 1fr),
+          gutter: 6pt,
+          align: top,
+          [#t(
+            "·",
+            fill: accent,
+            font: "Source Sans 3",
+            size: 10.5pt,
+            weight: "bold",
+            style: "normal",
+          )],
+          [#t(
+            "Mentored 1mg's mobile team on hybrid app architecture and modern development tooling.",
             fill: muted,
             font: "Source Sans 3",
             size: 10.5pt,

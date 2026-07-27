@@ -191,7 +191,7 @@ export const resumeData = {
       logo: namefiLogo,
       roles: [
         {
-          title: "Senior Software Engineer / Applied AI Lead",
+          title: "Lead Applied AI Engineer",
           dates: "Jan 2025 - Present",
           location: "San Francisco Bay Area / Remote",
           bullets: [
@@ -210,13 +210,13 @@ export const resumeData = {
       logo: memorangLogo,
       roles: [
         {
-          title: "Head of (AI-Native) CMS",
+          title: "Lead Product Engineer, AI Content Platform",
           dates: "Apr 2024 - Jan 2025",
           location: "San Francisco Bay Area / Remote",
           bullets: [
-            "Turned expert requirements into structured, versioned curricula, assessments, and content APIs through EdWrite's schema-first architecture.",
-            "Designed human-in-the-loop agent workflows for subject-matter experts to generate, review, and manage complete question sets and companion audio/image media at scale.",
-            "Built adaptive-practice, scoring, and embedding-based media recommendation systems; modernized the JS/Flow monorepo toward TypeScript, Bun, and Biome while leading the CMS team.",
+            "Built EdWrite, Memorang's graph-based headless CMS, turning Cambridge/TOEFL and subject-matter expert requirements into structured, versioned curricula, assessments, and content APIs.",
+            "Designed human-in-the-loop agent workflows for experts to generate, review, and manage complete question sets and companion audio/image media at scale; built adaptive practice, scoring, and embedding-based media recommendations.",
+            "Led the CMS team and roadmap across backend, frontend, app, CTO, and CEO while modernizing a large JS/Flow monorepo toward TypeScript, Bun, and Biome with agentic refactors and codemods.",
           ],
         },
       ],
@@ -228,7 +228,7 @@ export const resumeData = {
       logo: yuppiesLogo,
       roles: [
         {
-          title: "Founder / Technical Lead",
+          title: "Founder & Technical Director",
           dates: "Jan 2021 - Apr 2024",
           location: "Mumbai / Remote",
           summary:
@@ -320,8 +320,9 @@ export const resumeData = {
           dates: "Oct 2016 - Oct 2017",
           location: "Mumbai",
           bullets: [
-            "Led cross-platform mobile architecture and the team transition to React Native, built in-house release/CI/CD systems, and contributed to Housing.com's PWA.",
-            "Published the Housing Engineering article 'How We Built Our React Native App' covering architecture, release automation, testing, performance, and team migration.",
+            "Led Housing's React Native mobile architecture, building more than 90% of the app in JavaScript for shared iOS/Android delivery with Redux, redux-observable/RxJS, immutable state, offline persistence, and component-driven UI.",
+            "Built the mobile quality and release platform with Storybook, Jest/Detox, Sentry, Fastlane, Jenkins, and CodePush, automating signed builds, device registration, beta distribution, source-map uploads, release notes, stakeholder notifications, OTA rollouts, and Git tagging.",
+            "Contributed to Housing.com's Progressive Web App for users on slow and inconsistent network connections.",
           ],
         },
       ],
@@ -337,6 +338,7 @@ export const resumeData = {
           location: "Los Angeles / India",
           bullets: [
             "Built startup web/mobile systems across customer-data email tooling, real-time doctor consultation, IoT fleet management, and JavaScript/Java/Ruby on Rails product engineering while studying Computer Science at UCLA.",
+            "Mentored 1mg's mobile team on hybrid app architecture and modern development tooling.",
           ],
         },
       ],
@@ -373,7 +375,7 @@ export const resumeData = {
       "Sid Jain is the same person as the public handles f0rr0 and yuppiestechdev.",
       "Sid founded Yuppies Tech, a product engineering consultancy, and personally acted as client-facing technical partner and hands-on technical lead across multiple client projects.",
       "Namefi is Sid's current role. His public LinkedIn profile lists January 2025 - Present.",
-      "Memorang is a separate Head of (AI-Native) CMS role from April 2024 - January 2025, not a Yuppies Tech client bullet.",
+      "Memorang is a separate Lead Product Engineer, AI Content Platform role from April 2024 - January 2025, not a Yuppies Tech client bullet.",
       "Do not describe Sid as a non-technical manager. His strongest pattern is hands-on product engineering combined with staff-level technical leadership.",
       "Do not inflate unreleased or low-signal open source. Public open source worth mentioning includes oliphaunt and react-native-rating.",
       "Work summaries intentionally avoid private repository names, secrets, unreleased internal product names, and client-confidential details.",
@@ -391,7 +393,7 @@ export const resumeData = {
       "Public open-source work worth mentioning includes oliphaunt and react-native-rating.",
       "oliphaunt is a Rust project for embedded Postgres inside apps and tests, and is the strongest public Rust/database tooling signal.",
       "react-native-rating is a cross-platform React Native rating component built with Animated and the native driver, and is the strongest public React Native component signal.",
-      "Sid also published the Housing Engineering article 'How We Built Our React Native App' on React Native architecture, release automation, testing, performance, and team migration.",
+      "At Housing, Sid led a shared React Native architecture with more than 90% of the app in JavaScript, contributed to Housing.com's PWA, and built the automated testing, diagnostics, beta distribution, OTA rollout, and mobile release pipeline.",
     ],
     publicSignalGuidance: [
       "Do not cite repository totals, follower counts, contribution counts, or commit totals unless they are freshly verified from public sources.",
@@ -405,7 +407,7 @@ export const resumeData = {
             heading: "Role",
             bullets: [
               "Company: Namefi / D3ServeLabs.",
-              "Title: Senior Software Engineer / Applied AI Lead.",
+              "Title: Lead Applied AI Engineer.",
               "Dates: January 2025 - Present.",
               "Location: San Francisco Bay Area / Remote.",
             ],
@@ -422,7 +424,7 @@ export const resumeData = {
             bullets: [
               "Leads AI product engineering across Namefi Outbound, Namefi Brand Studio, Namefi Feed, and internal analytics workflows.",
               "Builds core registrar, DNS, payment, checkout, renewal, ENS/.eth, and workflow infrastructure.",
-              "Operates as a full-stack product engineer, Applied AI Lead, and technical owner across customer discovery, workflow design, agent implementation, evaluation, deployment, and production domain infrastructure.",
+              "Operates as a full-stack product engineer, Lead Applied AI Engineer, and technical owner across customer discovery, workflow design, agent implementation, evaluation, deployment, and production domain infrastructure.",
               "Helps define Namefi's AI development operating model, including documentation patterns, agent-ready repository conventions, static checks, CI, and repeatable engineering/design principles for AI-assisted development.",
             ],
           },
@@ -479,7 +481,7 @@ export const resumeData = {
             heading: "Role",
             bullets: [
               "Company: Memorang.",
-              "Title: Head of (AI-Native) CMS.",
+              "Title: Lead Product Engineer, AI Content Platform.",
               "Dates: April 2024 - January 2025.",
               "Location: San Francisco Bay Area / Remote.",
             ],
@@ -488,7 +490,7 @@ export const resumeData = {
             heading: "Context and role",
             bullets: [
               "EdWrite is Memorang's AI-native, graph-based headless CMS for education, combining structured curricula, custom agents, human-in-the-loop workflows, bulk content generation, and API delivery.",
-              "Sid built EdWrite as Head of (AI-Native) CMS.",
+              "Sid built EdWrite as Lead Product Engineer for Memorang's AI content platform.",
               "Worked directly with the CTO and CEO.",
               "Managed two CMS team members while coordinating with services, frontend, and app teams.",
             ],
@@ -496,9 +498,9 @@ export const resumeData = {
           {
             heading: "Major work and impact",
             bullets: [
-              "Built EdWrite as a schema-first system that translated Cambridge/TOEFL-style education requirements into structured, versioned curricula and assessments.",
+              "Built EdWrite, Memorang's graph-based headless CMS, and translated Cambridge/TOEFL-style education requirements into schema-first platform work.",
               "Modeled TOEFL-like exam structures into dynamic schemas for sections, question types, component types, content groups, practice scoring, and adaptive workflows.",
-              "Built human-in-the-loop agent workflows for subject-matter experts to generate, review, and manage full question sets, including companion audio and images.",
+              "Designed human-in-the-loop agent workflows for subject-matter experts to generate, review, and manage full question sets and companion audio/image media at scale.",
               "Built schema versioning so content and question formats could evolve without breaking existing client apps or backend services.",
               "Built or led adaptive practice flows that could track scores, weak spots, and personalized practice material.",
               "Built an AI media recommendation system using media metadata embeddings and cross-product vector similarity search.",
@@ -515,7 +517,7 @@ export const resumeData = {
             heading: "Role",
             bullets: [
               "Company: Yuppies Tech.",
-              "Title: Founder / Technical Lead.",
+              "Title: Founder & Technical Director.",
               "Dates: January 2021 - April 2024.",
               "Location: Mumbai / Remote.",
             ],
@@ -771,7 +773,7 @@ export const resumeData = {
     {
       href: "https://medium.com/engineering-housing/how-we-built-our-react-native-app-3380a33811ac",
       label: "How We Built Our React Native App",
-      note: "Housing Engineering article by Sid Jain on React Native architecture, release automation, testing, performance, and team migration.",
+      note: "Primary-source account of Housing's shared React Native architecture, performance work, testing stack, and automated mobile release pipeline.",
     },
   ] satisfies PublicReference[],
   pdf: {
