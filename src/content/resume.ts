@@ -206,7 +206,7 @@ export const resumeData = {
     {
       company: "Memorang",
       tagline:
-        "AI education platform for adaptive practice, tutoring, assessment, and curriculum tooling.",
+        "Built EdWrite, Memorang's AI-native, graph-based headless CMS for education.",
       logo: memorangLogo,
       roles: [
         {
@@ -489,8 +489,8 @@ export const resumeData = {
           {
             heading: "Context and role",
             bullets: [
-              "Memorang is an AI education platform focused on AI-native learning experiences, adaptive practice, tutoring, test prep, continuing education, assessment, exam development, and curriculum tooling.",
-              "Sid served as Lead Product Engineer for Memorang's AI content platform.",
+              "EdWrite is Memorang's AI-native, graph-based headless CMS for education, combining structured curricula, custom agents, human-in-the-loop workflows, bulk content generation, and API delivery.",
+              "Sid built EdWrite as Lead Product Engineer for Memorang's AI content platform.",
               "Worked directly with the CTO and CEO.",
               "Managed two CMS team members while coordinating with services, frontend, and app teams.",
             ],
@@ -708,9 +708,9 @@ export const resumeData = {
         note: "Public Feed surface.",
       },
       {
-        href: "https://memorang.com/",
-        label: "Memorang",
-        note: "AI education platform context.",
+        href: "https://memorang.com/products/edwrite",
+        label: "Memorang EdWrite",
+        note: "AI-native, graph-based headless CMS for education.",
       },
       {
         href: "https://www.airbus.com/en/newsroom/stories/2021-03-tripset-the-companion-app-that-helps-air-travellers-navigate-during-covid",

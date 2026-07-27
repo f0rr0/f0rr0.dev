@@ -313,7 +313,7 @@
         )
         #v(-6pt)
         #t(
-          "AI education platform for adaptive practice, tutoring, assessment, and curriculum tooling.",
+          "Built EdWrite, Memorang's AI-native, graph-based headless CMS for education.",
           fill: muted,
           font: "Source Sans 3",
           size: 9pt,
