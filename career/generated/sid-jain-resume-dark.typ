@@ -313,7 +313,7 @@
         )
         #v(-6pt)
         #t(
-          "AI education platform for adaptive practice, tutoring, assessment, and curriculum tooling.",
+          "Built EdWrite, Memorang's AI-native, graph-based headless CMS for education.",
           fill: muted,
           font: "Source Sans 3",
           size: 9pt,
@@ -358,7 +358,7 @@
             style: "normal",
           )],
           [#t(
-            "Translated Cambridge/TOEFL requirements into a schema-first AI CMS for generated questions/media, adaptive practice, scoring workflows, and content operations.",
+            "Turned expert requirements into structured, versioned curricula, assessments, and content APIs through EdWrite's schema-first architecture.",
             fill: muted,
             font: "Source Sans 3",
             size: 10.5pt,
@@ -381,7 +381,7 @@
             style: "normal",
           )],
           [#t(
-            "Built AI generation and recommendation workflows across full question sets, companion audio/image media, embedding-based media similarity, and schema-versioned content delivery.",
+            "Designed human-in-the-loop agent workflows for subject-matter experts to generate, review, and manage complete question sets and companion audio/image media at scale.",
             fill: muted,
             font: "Source Sans 3",
             size: 10.5pt,
@@ -404,7 +404,7 @@
             style: "normal",
           )],
           [#t(
-            "Modernized a large JS/Flow monorepo toward TypeScript, Bun, and Biome using AI-agentic refactor workflows, codemods, and tooling while coordinating CMS roadmap with backend, frontend, app teams, CTO, and CEO.",
+            "Built adaptive-practice, scoring, and embedding-based media recommendation systems; modernized the JS/Flow monorepo toward TypeScript, Bun, and Biome while leading the CMS team.",
             fill: muted,
             font: "Source Sans 3",
             size: 10.5pt,

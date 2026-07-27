@@ -159,7 +159,7 @@ const dpsLogo: LogoAsset = {
 };
 
 export const resumeData = {
-  lastUpdated: "2026-06-30",
+  lastUpdated: "2026-07-27",
   person: {
     alternateNames: ["f0rr0", "yuppiestechdev"],
     avatarImage: "/resume/sid-jain-profile-avatar.png",
@@ -206,7 +206,7 @@ export const resumeData = {
     {
       company: "Memorang",
       tagline:
-        "AI education platform for adaptive practice, tutoring, assessment, and curriculum tooling.",
+        "Built EdWrite, Memorang's AI-native, graph-based headless CMS for education.",
       logo: memorangLogo,
       roles: [
         {
@@ -214,9 +214,9 @@ export const resumeData = {
           dates: "Apr 2024 - Jan 2025",
           location: "San Francisco Bay Area / Remote",
           bullets: [
-            "Translated Cambridge/TOEFL requirements into a schema-first AI CMS for generated questions/media, adaptive practice, scoring workflows, and content operations.",
-            "Built AI generation and recommendation workflows across full question sets, companion audio/image media, embedding-based media similarity, and schema-versioned content delivery.",
-            "Modernized a large JS/Flow monorepo toward TypeScript, Bun, and Biome using AI-agentic refactor workflows, codemods, and tooling while coordinating CMS roadmap with backend, frontend, app teams, CTO, and CEO.",
+            "Turned expert requirements into structured, versioned curricula, assessments, and content APIs through EdWrite's schema-first architecture.",
+            "Designed human-in-the-loop agent workflows for subject-matter experts to generate, review, and manage complete question sets and companion audio/image media at scale.",
+            "Built adaptive-practice, scoring, and embedding-based media recommendation systems; modernized the JS/Flow monorepo toward TypeScript, Bun, and Biome while leading the CMS team.",
           ],
         },
       ],
@@ -487,8 +487,8 @@ export const resumeData = {
           {
             heading: "Context and role",
             bullets: [
-              "Memorang is an AI education platform focused on AI-native learning experiences, adaptive practice, tutoring, test prep, continuing education, assessment, exam development, and curriculum tooling.",
-              "Sid served as Head of (AI-Native) CMS.",
+              "EdWrite is Memorang's AI-native, graph-based headless CMS for education, combining structured curricula, custom agents, human-in-the-loop workflows, bulk content generation, and API delivery.",
+              "Sid built EdWrite as Head of (AI-Native) CMS.",
               "Worked directly with the CTO and CEO.",
               "Managed two CMS team members while coordinating with services, frontend, and app teams.",
             ],
@@ -496,9 +496,9 @@ export const resumeData = {
           {
             heading: "Major work and impact",
             bullets: [
-              "Translated Cambridge/TOEFL-style education requirements into schema-first AI CMS work.",
+              "Built EdWrite as a schema-first system that translated Cambridge/TOEFL-style education requirements into structured, versioned curricula and assessments.",
               "Modeled TOEFL-like exam structures into dynamic schemas for sections, question types, component types, content groups, practice scoring, and adaptive workflows.",
-              "Built CMS capabilities for AI generation of full question sets, including text questions and companion media such as audio or images.",
+              "Built human-in-the-loop agent workflows for subject-matter experts to generate, review, and manage full question sets, including companion audio and images.",
               "Built schema versioning so content and question formats could evolve without breaking existing client apps or backend services.",
               "Built or led adaptive practice flows that could track scores, weak spots, and personalized practice material.",
               "Built an AI media recommendation system using media metadata embeddings and cross-product vector similarity search.",
@@ -706,9 +706,9 @@ export const resumeData = {
         note: "Public Feed surface.",
       },
       {
-        href: "https://memorang.com/",
-        label: "Memorang",
-        note: "AI education platform context.",
+        href: "https://memorang.com/products/edwrite",
+        label: "Memorang EdWrite",
+        note: "AI-native, graph-based headless CMS for education.",
       },
       {
         href: "https://www.airbus.com/en/newsroom/stories/2021-03-tripset-the-companion-app-that-helps-air-travellers-navigate-during-covid",
