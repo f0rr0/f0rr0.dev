@@ -771,9 +771,9 @@ export const resumeData = {
       note: "Cross-platform React Native rating component built with Animated and the native driver; a strong public React Native component signal.",
     },
     {
-        href: "https://medium.com/engineering-housing/how-we-built-our-react-native-app-3380a33811ac",
-        label: "How We Built Our React Native App",
-        note: "Primary-source account of Housing's shared React Native architecture, performance work, testing stack, and automated mobile release pipeline.",
+      href: "https://medium.com/engineering-housing/how-we-built-our-react-native-app-3380a33811ac",
+      label: "How We Built Our React Native App",
+      note: "Primary-source account of Housing's shared React Native architecture, performance work, testing stack, and automated mobile release pipeline.",
     },
   ] satisfies PublicReference[],
   pdf: {
