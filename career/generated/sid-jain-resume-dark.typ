@@ -3,7 +3,7 @@
   author: "Sid Jain",
   keywords: (
     "AI product engineer",
-    "AI lead",
+    "Applied AI lead",
     "staff full-stack engineer",
     "founding engineer",
     "TypeScript",
@@ -32,7 +32,16 @@
   size: 10.5pt,
   weight: "regular",
   style: "normal",
-) = text(font: font, fill: fill, size: size, weight: weight, style: style, s)
+  kerning: true,
+) = text(
+  font: font,
+  fill: fill,
+  size: size,
+  weight: weight,
+  style: style,
+  kerning: kerning,
+  s,
+)
 #let logo-tile(
   path,
   fill: background,
@@ -156,6 +165,7 @@
             size: 12pt,
             weight: "bold",
             style: "normal",
+            kerning: false,
           )
           #v(-6pt)
           #t(
@@ -310,6 +320,7 @@
           size: 12pt,
           weight: "bold",
           style: "normal",
+          kerning: false,
         )
         #v(-6pt)
         #t(
@@ -440,6 +451,7 @@
           size: 12pt,
           weight: "bold",
           style: "normal",
+          kerning: false,
         )
         #v(-6pt)
         #t(
@@ -659,6 +671,7 @@
           size: 12pt,
           weight: "bold",
           style: "normal",
+          kerning: false,
         )
         #v(-6pt)
         #t(
@@ -743,6 +756,7 @@
           size: 12pt,
           weight: "bold",
           style: "normal",
+          kerning: false,
         )
         #v(-6pt)
         #t(
@@ -850,6 +864,7 @@
           size: 12pt,
           weight: "bold",
           style: "normal",
+          kerning: false,
         )
         #v(-6pt)
         #t(
@@ -957,6 +972,7 @@
           size: 12pt,
           weight: "bold",
           style: "normal",
+          kerning: false,
         )
         #v(-6pt)
         #t(
@@ -1087,6 +1103,7 @@
           size: 12pt,
           weight: "bold",
           style: "normal",
+          kerning: false,
         )
         #v(-6pt)
         #t(
@@ -1209,6 +1226,7 @@
             size: 12pt,
             weight: "bold",
             style: "normal",
+            kerning: false,
           )
           #v(-6pt)
           #t(
@@ -1272,6 +1290,7 @@
           size: 12pt,
           weight: "bold",
           style: "normal",
+          kerning: false,
         )
         #v(-6pt)
         #t(
