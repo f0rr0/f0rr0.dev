@@ -147,7 +147,7 @@ function RoleMarkers({ role }: Readonly<{ role: ResumeRole }>) {
   }
 
   return (
-    <span className="inline-flex flex-wrap items-center gap-1">
+    <span className="order-3 mt-2 inline-flex flex-wrap items-center gap-1 sm:order-none sm:mt-0">
       {role.markers.map((marker) => {
         const details = roleMarkerDetails[marker];
         const description =
@@ -172,15 +172,17 @@ function RoleMarkers({ role }: Readonly<{ role: ResumeRole }>) {
 
 function RoleBlock({ role }: Readonly<{ role: ResumeRole }>) {
   return (
-    <div className="mt-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="text-sm font-medium leading-5 text-[#292524] dark:text-[#e7e5e4]">
+    <div className="mt-4 sm:mt-3">
+      <div className="flex flex-col items-start sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between sm:gap-x-4">
+        <div className="contents sm:flex sm:min-w-0 sm:flex-wrap sm:items-center sm:gap-2">
+          <span className="order-1 text-sm font-medium leading-5 text-[#292524] sm:order-none dark:text-[#e7e5e4]">
             {role.title}
           </span>
           <RoleMarkers role={role} />
         </div>
-        <span className={`text-xs ${mutedText}`}>
+        <span
+          className={`order-2 mt-1 text-xs sm:order-none sm:mt-0 ${mutedText}`}
+        >
           {role.location} <span aria-hidden="true">·</span> {role.dates}
         </span>
       </div>
@@ -227,14 +229,16 @@ function RoleBlock({ role }: Readonly<{ role: ResumeRole }>) {
 
 function ExperienceItem({ item }: Readonly<{ item: ResumeExperience }>) {
   return (
-    <div className="mt-6">
-      <div className="flex items-start gap-4">
-        <CompanyLogo logo={item.logo} />
-        <div className="min-w-0 flex-1">
+    <div className="mt-6 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-4 sm:flex sm:gap-4">
+      <CompanyLogo logo={item.logo} />
+      <div className="contents sm:block sm:min-w-0 sm:flex-1">
+        <div className="col-start-2 min-w-0 sm:contents">
           <h3 className="font-[family-name:var(--resume-font-heading)] font-bold text-[#292524] dark:text-[#e7e5e4]">
             {item.company}
           </h3>
           <p className={`mt-1 text-xs italic ${mutedText}`}>{item.tagline}</p>
+        </div>
+        <div className="col-span-2 min-w-0 sm:contents">
           {item.roles.map((role) => (
             <RoleBlock key={`${item.company}-${role.title}`} role={role} />
           ))}
