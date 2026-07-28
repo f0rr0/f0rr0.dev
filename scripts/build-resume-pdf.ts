@@ -2,11 +2,12 @@ import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { resumeData } from "../src/content/resume";
+import { resumeData, resumeRoleMarkerLabels } from "../src/content/resume";
 import type {
   LogoAsset,
   ResumeExperience,
   ResumeRole,
+  ResumeRoleMarker,
 } from "../src/content/resume";
 
 const quote = (value: string) => JSON.stringify(value);
@@ -32,10 +33,11 @@ const typstLeadingFromCssLineHeight = (value: number) =>
 
 const fontSize = {
   xs: remToPt(0.75),
-  sm: remToPt(0.875),
+  sm: pt(10),
   base: remToPt(1),
   xl: remToPt(1.25),
   "5xl": remToPt(3),
+  marker: pt(7.5),
 };
 
 const spacing = {
@@ -64,6 +66,7 @@ const pdfOnly = {
   ),
   contactStackHeight: pt(32),
   companyTaglineGap: pt(-6),
+  experienceItemGap: spacing[4],
   pageMargin: "0.58in",
   profileAvatarSize: fontSize["5xl"],
   roleBodyGap: cssPxToPt(3),
@@ -109,6 +112,37 @@ const link = (
   href: string,
   options: Parameters<typeof text>[1] = {}
 ) => `#link(${quote(href)})[${text(label, { fill: "accent", ...options })}]`;
+
+const roleMarkerDetails = {
+  "hands-on": {
+    fill: "#2d2418",
+    stroke: "#9a6a2b",
+    text: "#f0b85f",
+  },
+  leadership: {
+    fill: "#2a2429",
+    stroke: "#7a6171",
+    text: "#e3bfd7",
+  },
+} satisfies Record<
+  ResumeRoleMarker,
+  { fill: string; stroke: string; text: string }
+>;
+
+const roleMarker = (marker: ResumeRoleMarker) => {
+  const details = roleMarkerDetails[marker];
+
+  return `#box(
+  inset: (x: ${pt(4)}, y: ${pt(1.5)}),
+  radius: ${pt(8)},
+  fill: rgb(${quote(details.fill)}),
+  stroke: ${pt(0.75)} + rgb(${quote(details.stroke)}),
+)[${text(resumeRoleMarkerLabels[marker], {
+    fill: `rgb(${quote(details.text)})`,
+    size: fontSize.marker,
+    weight: "medium",
+  })}]`;
+};
 
 const sizeFromClass = (
   className: string | undefined,
@@ -250,21 +284,37 @@ ${text(title, {
 
 const roleBlock = (role: ResumeRole) => {
   const bullets = role.bullets?.map(bulletContent) ?? [];
+  const roleHeadingItems = [
+    text(role.title, { fill: "strong", weight: "medium" }),
+    ...(role.markers?.map(roleMarker) ?? []),
+  ];
+  const roleHeading = `#grid(
+  columns: (${roleHeadingItems.map(() => "auto").join(", ")}),
+  gutter: ${pt(4)},
+  align: horizon,
+  ${roleHeadingItems.map((item) => `[${item}]`).join(",\n  ")}
+)`;
 
   return `
 #v(${pdfOnly.roleTopGap})
 #grid(
   columns: (1fr, auto),
   gutter: ${spacing[4]},
-  [${text(role.title, { fill: "strong", weight: "medium" })}],
-  [${text(`${role.location} · ${role.dates}`, { size: fontSize.xs })}],
+  [${roleHeading}],
+  [${text(`${role.location} · ${role.dates}`, { size: cssPxToPt(11) })}],
 )
 ${role.summary === undefined ? "" : `#v(${pdfOnly.roleBodyGap})\n${text(role.summary)}`}
 ${bullets.length === 0 ? "" : `#v(${pdfOnly.roleBodyGap})\n${stack(bullets)}`}
 `;
 };
 
-const experienceItem = (item: ResumeExperience) => `
+interface PdfSectionItem {
+  content: string;
+  pageBreakBefore: boolean;
+}
+
+const experienceItem = (item: ResumeExperience): PdfSectionItem => ({
+  content: `
 #block(breakable: false)[
 #grid(
   columns: (${spacing[10]}, 1fr),
@@ -285,21 +335,33 @@ const experienceItem = (item: ResumeExperience) => `
   ],
 )
 ]
-`;
+`,
+  pageBreakBefore: item.pdfPageBreakBefore === true,
+});
 
 const sectionWithItems = (
   title: string,
-  items: string[],
+  items: PdfSectionItem[],
   titleOptions?: Parameters<typeof sectionTitle>[1]
 ) => {
   const [firstItem, ...remainingItems] = items;
+  const firstItemContent =
+    firstItem === undefined
+      ? ""
+      : `${firstItem.pageBreakBefore ? "#pagebreak()\n" : ""}${firstItem.content}`;
 
   return `
 #block(breakable: false)[
   ${sectionTitle(title, titleOptions)}
-  ${firstItem ?? ""}
+  ${firstItemContent}
 ]
-${remainingItems.map((item) => `#v(${spacing[6]})\n${item}`).join("\n")}
+${remainingItems
+  .map((item) =>
+    item.pageBreakBefore
+      ? `#pagebreak()\n${item.content}`
+      : `#v(${pdfOnly.experienceItemGap})\n${item.content}`
+  )
+  .join("\n")}
 `;
 };
 

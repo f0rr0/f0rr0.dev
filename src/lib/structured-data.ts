@@ -12,7 +12,7 @@ import type {
 
 import { resumeData } from "@/content/resume";
 import type { BlogPost } from "@/lib/blog-utils";
-import { publicUrl } from "@/lib/site";
+import { publicUrl, siteConfig } from "@/lib/site";
 
 const linkedInUrl = "https://linkedin.com/in/f0rr0";
 const githubUrl = "https://github.com/f0rr0";
@@ -22,6 +22,12 @@ const personId = () => publicUrl("/#sid-jain");
 const websiteId = () => publicUrl("/#website");
 
 const sameAs = [linkedInUrl, githubUrl, yuppiesGithubUrl];
+const [currentExperience] = resumeData.experience;
+const [currentRole] = currentExperience?.roles ?? [];
+const currentCompanyReference =
+  resumeData.machineReadable.publicReferences.find(
+    (reference) => reference.label === currentExperience?.company
+  );
 
 const buildPersonNode = (): Person => ({
   "@id": personId(),
@@ -39,17 +45,16 @@ const buildPersonNode = (): Person => ({
       sameAs: "https://dpsrkp.net/",
     },
   ],
-  description:
-    "Applied AI Lead and senior full-stack engineer building production AI systems from customer workflows.",
+  description: siteConfig.description,
   email: `mailto:${resumeData.person.email}`,
   image: publicUrl(resumeData.person.image),
-  jobTitle: resumeData.person.role,
+  jobTitle: currentRole?.title ?? resumeData.person.role,
   knowsAbout: [
     "Applied AI solutions architecture",
     "AI product engineering",
     "technical advisory",
     "AI evaluation",
-    "agentic workflows",
+    "AI-assisted workflows",
     "TypeScript",
     "React",
     "Next.js",
@@ -68,9 +73,13 @@ const buildPersonNode = (): Person => ({
   url: publicUrl("/resume"),
   worksFor: {
     "@type": "Organization",
-    name: "Namefi",
-    sameAs: "https://namefi.io/",
-    url: "https://namefi.io/",
+    name: currentExperience?.company ?? "Current employer",
+    ...(currentCompanyReference === undefined
+      ? {}
+      : {
+          sameAs: currentCompanyReference.href,
+          url: currentCompanyReference.href,
+        }),
   },
 });
 
@@ -83,7 +92,7 @@ const buildWebsiteNode = (): WebSite => ({
     "@type": "Person",
     name: resumeData.person.name,
   },
-  description: resumeData.summary,
+  description: siteConfig.description,
   inLanguage: "en-US",
   name: resumeData.person.name,
   publisher: {
@@ -104,7 +113,7 @@ export const buildProfilePageJsonLd = (): WithContext<ProfilePage> => ({
   "@id": publicUrl("/resume#profile"),
   "@type": "ProfilePage",
   dateModified: resumeData.lastUpdated,
-  description: resumeData.summary,
+  description: siteConfig.description,
   isPartOf: {
     "@id": websiteId(),
     "@type": "WebSite",

@@ -199,8 +199,7 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
           <aside className="space-y-6 lg:sticky lg:top-24">
             <AuthorCard />
             <div className="rounded-xl border border-border/70 bg-muted/40 p-5 text-sm text-muted-foreground">
-              Want more like this? New posts land weekly with experiments and
-              craft notes.
+              Sid writes about engineering, product, AI, and creative work.
             </div>
           </aside>
         </div>
