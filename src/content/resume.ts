@@ -339,9 +339,8 @@ export const resumeData = {
         {
           title: "Team Lead",
           dates: "Oct 2016 - Oct 2017",
-          leadershipScope: "Led Housing's mobile engineering team",
           location: "Mumbai",
-          markers: ["hands-on", "leadership"],
+          markers: ["hands-on"],
           bullets: [
             "Led the architecture of Housing's React Native app, sharing more than 90% of its JavaScript code across iOS and Android.",
             "Designed its state management, reactive data flows, offline persistence, and component-driven UI. Also built automated testing and release systems covering diagnostics, signed builds, beta distribution, and over-the-air updates.",

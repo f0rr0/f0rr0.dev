@@ -1182,7 +1182,7 @@
           columns: (1fr, auto),
           gutter: 12pt,
           [#grid(
-            columns: (auto, auto, auto),
+            columns: (auto, auto),
             gutter: 4pt,
             align: horizon,
             [#t(
@@ -1201,19 +1201,6 @@
             )[#t(
               "Hands-on",
               fill: rgb("#f0b85f"),
-              font: "Source Sans 3",
-              size: 7.5pt,
-              weight: "medium",
-              style: "normal",
-            )]],
-            [#box(
-              inset: (x: 4pt, y: 1.5pt),
-              radius: 8pt,
-              fill: rgb("#2a2429"),
-              stroke: 0.75pt + rgb("#7a6171"),
-            )[#t(
-              "Leadership",
-              fill: rgb("#e3bfd7"),
               font: "Source Sans 3",
               size: 7.5pt,
               weight: "medium",
