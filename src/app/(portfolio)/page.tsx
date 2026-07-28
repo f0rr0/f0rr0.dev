@@ -5,7 +5,7 @@ import { publicUrl, siteConfig } from "@/lib/site";
 
 import { ResumePageContent } from "./resume/page";
 
-const resumeDescription = `Sid Jain resume: ${resumeData.person.role}, founder of Yuppies Tech, and AI product engineer at Namefi.`;
+const resumeDescription = siteConfig.description;
 
 export const metadata: Metadata = {
   alternates: {

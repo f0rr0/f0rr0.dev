@@ -34,7 +34,7 @@ export default function AuthorCard() {
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary">{author.role}</Badge>
               <span className="text-xs text-muted-foreground">
-                Building thoughtful web experiences.
+                Building products and leading engineering teams.
               </span>
             </div>
           </div>

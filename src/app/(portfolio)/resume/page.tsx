@@ -3,8 +3,13 @@ import { JetBrains_Mono, Literata, Source_Sans_3 } from "next/font/google";
 import Link from "next/link";
 
 import { JsonLd } from "@/components/json-ld";
-import { resumeData } from "@/content/resume";
-import type { LogoAsset, ResumeExperience, ResumeRole } from "@/content/resume";
+import { resumeData, resumeRoleMarkerLabels } from "@/content/resume";
+import type {
+  LogoAsset,
+  ResumeExperience,
+  ResumeRole,
+  ResumeRoleMarker,
+} from "@/content/resume";
 import { buildAskAgentLinks } from "@/lib/resume";
 import { publicUrl, siteConfig } from "@/lib/site";
 import { buildProfilePageJsonLd } from "@/lib/structured-data";
@@ -16,7 +21,7 @@ import {
   ResumeThemeToggle,
 } from "./resume-controls";
 
-const resumeDescription = `Sid Jain resume: ${resumeData.person.role}, founder of Yuppies Tech, and AI product engineer at Namefi.`;
+const resumeDescription = siteConfig.description;
 
 const literata = Literata({
   subsets: ["latin"],
@@ -66,6 +71,21 @@ const profileJsonLd = buildProfilePageJsonLd();
 const mutedText = "text-[#78716c] dark:text-[#a8a29e]";
 const accentText =
   "text-[#b45309] transition-colors hover:text-[#92400e] dark:text-[#d97706] dark:hover:text-[#f59e0b]";
+const roleMarkerDetails = {
+  "hands-on": {
+    className:
+      "border-[#e4c184] bg-[#f9ebd2] text-[#835018] dark:border-[#6a4b24] dark:bg-[#2b2319] dark:text-[#e8ae58]",
+    description: "Hands-on engineering",
+  },
+  leadership: {
+    className:
+      "border-[#d6c7cf] bg-[#f0eaee] text-[#66505f] dark:border-[#5b4b55] dark:bg-[#282328] dark:text-[#d8becd]",
+    description: "People and engineering leadership",
+  },
+} satisfies Record<
+  ResumeRoleMarker,
+  { className: string; description: string }
+>;
 
 interface ResumePageContentProps {
   includeProfileJsonLd?: boolean;
@@ -121,13 +141,45 @@ function SectionTitle({ children }: Readonly<{ children: React.ReactNode }>) {
   );
 }
 
+function RoleMarkers({ role }: Readonly<{ role: ResumeRole }>) {
+  if (role.markers === undefined || role.markers.length === 0) {
+    return null;
+  }
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {role.markers.map((marker) => {
+        const details = roleMarkerDetails[marker];
+        const description =
+          marker === "leadership" && role.leadershipScope !== undefined
+            ? `${details.description}: ${role.leadershipScope}`
+            : details.description;
+
+        return (
+          <span
+            className={`inline-flex h-5 items-center rounded-full border px-2 text-[0.625rem] font-semibold leading-none tracking-[0.01em] ${details.className}`}
+            key={marker}
+            title={description}
+          >
+            <span aria-hidden="true">{resumeRoleMarkerLabels[marker]}</span>
+            <span className="sr-only">{description}</span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 function RoleBlock({ role }: Readonly<{ role: ResumeRole }>) {
   return (
     <div className="mt-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4">
-        <span className="text-sm font-medium text-[#292524] dark:text-[#e7e5e4]">
-          {role.title}
-        </span>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="text-sm font-medium leading-5 text-[#292524] dark:text-[#e7e5e4]">
+            {role.title}
+          </span>
+          <RoleMarkers role={role} />
+        </div>
         <span className={`text-xs ${mutedText}`}>
           {role.location} <span aria-hidden="true">·</span> {role.dates}
         </span>
