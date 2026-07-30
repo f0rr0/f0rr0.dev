@@ -3,8 +3,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ComponentType } from "react";
 
-import AuthorCard from "@/components/blog/AuthorCard";
-import PostCard from "@/components/blog/PostCard";
 import { JsonLd } from "@/components/json-ld";
 import MDXImage from "@/components/mdx/MDXImage";
 import { SiteMain } from "@/components/site-page";
@@ -26,31 +24,6 @@ interface BlogPostModule {
   default: ComponentType<{ components?: MDXComponents }>;
   metadata: unknown;
 }
-
-const getSuggestedPosts = (
-  posts: Awaited<ReturnType<typeof getBlogPosts>>,
-  currentSlug: string
-) => {
-  const current = posts.find((post) => post.slug === currentSlug);
-  if (current === undefined) {
-    return [];
-  }
-  const currentTags = new Set(current.metadata.tags ?? []);
-
-  return posts
-    .filter((post) => post.slug !== currentSlug)
-    .map((post) => {
-      const tagMatches =
-        post.metadata.tags?.filter((tag) => currentTags.has(tag)) ?? [];
-      return { post, score: tagMatches.length };
-    })
-    .toSorted(
-      (a, b) =>
-        b.score - a.score || b.post.date.getTime() - a.post.date.getTime()
-    )
-    .slice(0, 3)
-    .map(({ post }) => post);
-};
 
 export async function generateStaticParams() {
   const posts = await getBlogPosts();
@@ -136,8 +109,7 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
 
   const Content = module.default;
   const url = publicUrl(`/blog/${slug}`);
-  const [suggestedPosts, ogAsset, twitterAsset] = await Promise.all([
-    getBlogPosts().then((posts) => getSuggestedPosts(posts, slug)),
+  const [ogAsset, twitterAsset] = await Promise.all([
     findMetadataImageAsset(importPath, "opengraph"),
     findMetadataImageAsset(importPath, "twitter"),
   ]);
@@ -197,28 +169,9 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
             )}
           </div>
         </header>
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_240px]">
-          <div className="prose max-w-[70ch] prose-h2:text-2xl prose-h3:text-xl prose-p:leading-relaxed">
-            <Content components={mdxComponents} />
-          </div>
-          <aside className="space-y-6 lg:sticky lg:top-24">
-            <AuthorCard />
-          </aside>
+        <div className="prose max-w-[70ch] prose-h2:text-2xl prose-h3:text-xl prose-p:leading-relaxed">
+          <Content components={mdxComponents} />
         </div>
-        {suggestedPosts.length > 0 ? (
-          <section className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="font-serif text-xl font-bold tracking-tight">
-                Suggested next posts
-              </h2>
-            </div>
-            <div className="grid gap-6 md:grid-cols-3">
-              {suggestedPosts.map((suggested) => (
-                <PostCard key={suggested.slug} post={suggested} />
-              ))}
-            </div>
-          </section>
-        ) : null}
       </article>
     </SiteMain>
   );
