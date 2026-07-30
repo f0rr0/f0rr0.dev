@@ -51,7 +51,7 @@ const askAgents = buildAskAgentLinks();
 const profileJsonLd = buildProfilePageJsonLd();
 
 const mutedText = "text-muted-foreground";
-const resumeBodyText = `text-sm font-normal leading-[1.625] ${mutedText}`;
+const resumeBodyText = `text-sm font-normal leading-[1.625] lg:text-base ${mutedText}`;
 const accentText =
   "text-primary transition-colors hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 const roleMarkerDetails = {
@@ -128,7 +128,7 @@ function RoleMarkers({ role }: Readonly<{ role: ResumeRole }>) {
   }
 
   return (
-    <span className="order-3 mt-2 inline-flex -translate-y-px flex-wrap items-center gap-1 sm:order-none sm:mt-0">
+    <span className="inline-flex -translate-y-px flex-wrap items-center gap-1">
       {role.markers.map((marker) => {
         const details = roleMarkerDetails[marker];
         const description =
@@ -155,20 +155,20 @@ function RoleBlock({ role }: Readonly<{ role: ResumeRole }>) {
   return (
     <div className="mt-4 sm:mt-3">
       <div className="flex flex-col items-start sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between sm:gap-x-4">
-        <div className="contents sm:flex sm:min-w-0 sm:flex-wrap sm:items-center sm:gap-2">
-          <span className="order-1 text-sm font-medium leading-5 text-foreground sm:order-none">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="text-sm font-medium leading-5 text-foreground lg:text-base lg:leading-6">
             {role.title}
           </span>
           <RoleMarkers role={role} />
         </div>
-        <span
-          className={`order-2 mt-1 text-xs sm:order-none sm:mt-0 ${mutedText}`}
-        >
+        <span className={`mt-1 text-xs sm:mt-0 ${mutedText}`}>
           {role.location} <span aria-hidden="true">·</span> {role.dates}
         </span>
       </div>
       {role.summary === undefined ? null : (
-        <p className={`mt-2 text-sm ${mutedText}`}>{role.summary}</p>
+        <p className={`mt-2 text-sm lg:text-base ${mutedText}`}>
+          {role.summary}
+        </p>
       )}
       {role.bullets !== undefined && role.bullets.length > 0 ? (
         <ul className={`mt-2 space-y-0.5 ${resumeBodyText}`}>
@@ -259,7 +259,7 @@ export function ResumePageContent({
             <p className={`mt-3 ${resumeBodyText}`}>
               {formatResumeLocation(person)}
             </p>
-            <div className="mt-4 flex flex-wrap gap-4 text-sm">
+            <div className="mt-4 flex flex-wrap gap-4 text-sm lg:text-base">
               {links.map((link) => (
                 <a
                   key={link.href}
