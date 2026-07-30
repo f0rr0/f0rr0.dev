@@ -1,0 +1,93 @@
+export const metadata = {
+  title: "I Let an AI Agent Take Over My Hinge",
+  date: "2026-08-27",
+  author: "Sid Jain",
+  summary:
+    "I let an AI agent read my Hinge queue, describe profile photos, and draft openings and replies. The protocol layer behind it became hinge-rs, an open-source Rust client.",
+  tags: [
+    "applied-ai",
+    "rust",
+    "reverse-engineering",
+    "distributed-systems",
+    "product-engineering",
+  ],
+  draft: true,
+};
+
+I had not planned to put an AI agent between me and Hinge. I only wanted to stop
+making a decision on one profile just to see the next. One Saturday in 2025, I
+built a local client for my own account that collected the day's recommendations
+into a list I could leave and return to later. Once it could assemble profiles,
+photos, prompts, and conversations in one place, I put a local AI agent on top
+of it. The agent began describing profile photos, proposing opening messages,
+and drafting replies from the conversation so far. It felt like a takeover the
+first time the blank text box stopped being blank.
+
+A recommendation card turned out not to be a card at all. The feed carried a
+subject identifier, an origin, and metadata needed for a later action. Profile
+details and media arrived through other requests. Conversations crossed into
+Sendbird, which brought its own credentials, REST resources, and WebSocket
+connection. Before a model could write anything useful, the application had to
+join those pieces without mixing up the profile being viewed, the rating token
+attached to it, or the history of a different conversation. A model is very good
+at making incomplete context sound complete, so I made context assembly a
+deterministic part of the system.
+
+Authentication created a similar assembly problem. Device, installation, and
+session identifiers lived for different lengths of time, but the server expected
+one coherent client. Replacing one while retaining the others could leave a
+session that looked valid locally and failed remotely. The early Python probe was
+useful for learning that protocol. I moved the stateful core to Rust once the
+client had to survive between runs, preserve recommendation metadata, hydrate
+profiles in batches, and keep a second chat session alive. Known responses
+stayed typed. Unknown WebSocket frames remained available as raw data instead of
+bringing down the connection.
+
+The reply generator could use written prompts directly, but photos needed their
+own pass. They often carried more personality than the written answers, so
+ignoring them stripped away much of what made a profile specific. I added an
+image-description pass that produced a short description of what was visible,
+then placed it beside the prompts and profile details. The agent could now notice
+an activity, a place, or a small background detail that the text alone never
+mentioned. For a new profile, it used that assembled context to draft opening
+messages. Generic charm is cheap, and a message that could be sent to anyone was
+not worth generating. A useful draft had to connect to a particular prompt or
+something visible in a photo. I still chose, edited, or ignored the result, but
+the first sentence was no longer a cold start.
+
+Replies needed a different context window. After a match, the application could
+retrieve the Sendbird transcript and combine the recent exchange with the
+original profile context. The agent drafted a response with both in view, which
+helped it continue a thread instead of asking a question that had already been
+answered. The output was a draft, not an unattended message. I could change it,
+ignore it, or send it. That small boundary kept the feature useful: the model
+handled recall and the first draft, while the conversation still sounded like
+one I had chosen to have.
+
+The visible AI layer was thinner than the plumbing beneath it. The model
+described photos and drafted messages. Rust handled identity, joins, persistence,
+retries, protocol drift, and message transport. Keeping those responsibilities
+separate made failures legible. If a reply was poor, I could inspect the exact
+profile and transcript the model had seen. If the context was wrong, no amount
+of prompting would disguise a broken join or a stale session. This is still the
+most useful lesson I took from the project: an agent becomes dependable when the
+uncertain part sits on top of boring, inspectable tools.
+
+The part worth releasing was the part that knew nothing about my taste. I
+extracted the protocol layer into
+[hinge-rs](https://github.com/f0rr0/hinge-rs), an open-source, typed Rust client
+for Hinge and its Sendbird chat transport. It covers authentication,
+recommendations, profiles, likes, ratings, connections, message history, and
+live chat events, while retaining raw escape hatches for an undocumented API
+that will inevitably change. The crate stops at that boundary. It is the reliable
+protocol layer an agent could use.
+
+The agent never chose who I liked or carried a conversation unattended. It took
+over the tedious parts: gathering the queue, interpreting photos, remembering
+what had been said, and getting the first words onto the screen. That was enough
+to change the experience, and enough to turn a personal Saturday experiment into
+a public Rust library.
+
+_This is a retrospective on a personal experiment. Hinge now
+[prohibits third-party automated
+tools](https://help.hinge.co/hc/en-us/articles/49657802257683-Note-on-Third-Party-Automated-Tools)._

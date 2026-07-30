@@ -1,0 +1,112 @@
+export const metadata = {
+  title: "Building Semantic Image Search at Memorang",
+  date: "2026-08-13",
+  author: "Sid Jain",
+  summary:
+    "At Memorang, I built a semantic image search prototype that combined embeddings with typed PostgreSQL filters for clinical, product, and access constraints.",
+  tags: ["applied-ai", "postgresql", "search", "typescript"],
+  draft: true,
+};
+
+At Memorang, I was working on an authoring platform for structured educational
+content. A question was rarely just text. It belonged to a versioned curriculum,
+carried answer choices and explanations, and connected to tags, source material,
+media, and assessment metadata. Finding a useful image for it looked like a
+natural job for embeddings, and they did find related concepts even when the
+question and media description used different words. The results also exposed
+the limits of similarity. A dermoscopic image could show the right kind of
+lesion and still be wrong for the lesson because it showed a different body
+location or skin phototype. It might also belong to an organization the editor
+was not allowed to access. An editor might ask for “a dermoscopic image relevant
+to this lesion, on the arm, for Fitzpatrick Type IV skin,” but the system still
+had to preserve a clinical idea, an exact body location, and a controlled skin
+phototype category all the way to the result.
+
+## Separating similarity from constraints
+
+The lesion and clinical concept belonged in the semantic query, while arm and
+Type IV were exact metadata constraints. Organization, project, visibility, and
+deletion state came from the application's access rules. Flattening all of that
+into the text sent to an embedding model would erase those distinctions. A
+vector can place “upper limb” near “arm,” which is useful when language varies,
+but it cannot guarantee that a record has the enumerated value required by the
+workflow. It should not determine whether an editor may see another
+organization's asset either.
+
+SQL predicates solve the exact part of the problem, but they cannot reliably
+find an image related to an explanation when the words do not line up. Letting a
+language model generate unrestricted SQL would have made the system harder to
+reason about and secure without helping with this division. I split the query
+instead: semantic retrieval handled conceptual similarity, typed metadata
+filters enforced the editor's constraints, and application code added
+authorization independently so that model output could neither supply nor
+weaken it. If the parser could not understand an exact medical constraint, the
+search stopped or asked the editor to clarify. A broader result set would have
+silently discarded part of the request.
+
+## Building and checking the query path
+
+The application already contained much of the structure needed to make that
+split work. Stable operational fields such as status, version, organization,
+project, and timestamps were relational. Content that varied across question
+schemas lived in PostgreSQL JSONB. Tags, media, collections, and parent-child
+relationships remained relational because their identity and integrity
+mattered. Before adding a model to the query path, I built a typed filter
+contract over this hybrid schema. A caller could provide a known field, an
+allowlisted operator, and a value. The translator knew whether the field mapped
+to a column, a JSON path, or a relationship, and all values remained
+parameterized. An early version of the translator warned about an unknown field
+and continued without it. That was convenient, but a misspelled constraint could
+broaden the result set without making the failure visible. I changed the
+contract to reject the request, and model-generated filters went through the
+same validation. Editors did not need to know whether a request touched JSONB, a
+trigram index, a relationship, or a vector, but they did need to know when the
+system could not honor it.
+
+Editor search already crossed JSONB fields and relational tags. A query plan
+showed that hydrating those relationships during search was expensive, so I kept
+filtering and ranking on lightweight identifiers. After pagination, the
+application loaded the related content in one batched step. Semantic search
+returned through that existing query layer instead of introducing another way
+to load records. For each media record, I created a compact text representation
+from the fields that could change its meaning: title, description, diagnosis,
+media type, body location, and skin phototype. A question used its stem, correct
+answer, explanation, concept, diagnosis, and specialties. Timestamps and
+internal identifiers stayed out because they added no useful meaning to the
+embedding. I stored the canonical text beside its vector so I could inspect
+exactly what had been embedded when a result looked wrong. The vector index
+returned media identifiers, and the application loaded the current records
+through the existing query layer.
+
+The model translated the editor's sentence into a semantic phrase and a small
+metadata expression drawn from the allowlisted schema. A parser rejected unknown
+fields, values, and operators before application-owned authorization was added.
+It never saw a database connection or wrote SQL. An invalid expression stopped
+the search or prompted a precise follow-up. I kept the prototype in PostgreSQL,
+where the source text, vector, filter, current record, and query plan could be
+inspected together. A separate retrieval service might have made sense later,
+but it was unnecessary until we knew whether the recommendations were useful to
+editors.
+
+To check the prototype, I used media that editors had previously attached to
+questions. For each question, the system retrieved a small candidate set and
+checked whether it recovered an earlier selection. Consistently missing those
+known associations suggested a problem with the representation or filtering,
+but historical choices were signals rather than ground truth. A new
+recommendation could be better than an old selection made from a smaller catalog
+or under constraints that had never been recorded. Nearest neighbors also tended
+to cluster around variants of the same asset, so a candidate list could look
+strong on paper while offering little real choice.
+
+Historical attachments could expose a broken representation, but they could not
+tell us whether a new image was clinically appropriate. That required review by
+subject-matter experts. Editors also needed to tell us whether a suggestion
+saved time, whether they accepted or replaced it, and why. Those reviews could
+explain failures hidden by an aggregate retrieval score, from a missing
+controlled attribute or a poor text representation to an overly broad synonym
+or a constraint that belonged in the authoring model itself. Latency and parse
+failures still mattered, but neither measured the quality of the final editorial
+decision. For the original request, the system could retrieve a candidate for
+the right lesion, on the arm, for Fitzpatrick Type IV skin, then show the text
+and filters that put it there. The editor could review the recommendation before
+deciding what students would see.
