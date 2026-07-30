@@ -71,9 +71,11 @@ export interface ResumePersonLocation {
   mobility?: readonly string[];
 }
 
+export const resumeInlineSeparator = "\u2002•\u2002";
+
 export const formatResumeLocation = (
   person: ResumePersonLocation,
-  separator = "\u2002•\u2002"
+  separator = resumeInlineSeparator
 ) => [person.location, ...(person.mobility ?? [])].join(separator);
 
 interface DeepDiveSection {

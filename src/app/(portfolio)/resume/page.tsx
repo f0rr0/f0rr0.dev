@@ -7,6 +7,7 @@ import {
   formatResumeLocation,
   resumeCompanyStageLabels,
   resumeData,
+  resumeInlineSeparator,
   resumeRoleMarkerLabels,
 } from "@/content/resume";
 import type {
@@ -259,21 +260,25 @@ export function ResumePageContent({
             <p className={`mt-3 ${resumeBodyText}`}>
               {formatResumeLocation(person)}
             </p>
-            <div className="mt-4 flex flex-wrap gap-4 text-sm lg:text-base">
-              {links.map((link) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  className={accentText}
-                  target={link.href.startsWith("http") ? "_blank" : undefined}
-                  rel={
-                    link.href.startsWith("http")
-                      ? "noopener noreferrer"
-                      : undefined
-                  }
-                >
-                  {link.label}
-                </a>
+            <div className="mt-4 text-sm lg:text-base">
+              {links.map((link, index) => (
+                <span className="whitespace-nowrap" key={link.href}>
+                  {index === 0 ? null : (
+                    <span aria-hidden="true">{resumeInlineSeparator}</span>
+                  )}
+                  <a
+                    href={link.href}
+                    className={accentText}
+                    target={link.href.startsWith("http") ? "_blank" : undefined}
+                    rel={
+                      link.href.startsWith("http")
+                        ? "noopener noreferrer"
+                        : undefined
+                    }
+                  >
+                    {link.label}
+                  </a>
+                </span>
               ))}
             </div>
           </section>
