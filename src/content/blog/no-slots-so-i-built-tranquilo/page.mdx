@@ -1,0 +1,106 @@
+export const metadata = {
+  title: "I Sent an AI Agent to Wait in Line for Me",
+  date: "2026-09-03",
+  author: "Sid Jain",
+  summary:
+    "Pronto’s best House Help slots appeared while I was away, so I asked an AI agent to keep looking and come back when it found one I could actually use.",
+  tags: ["typescript", "mcp", "ai-agents", "automation", "distributed-systems"],
+  draft: true,
+};
+
+Pronto's House Help appointments had become a queue I could only join by
+repeatedly checking the app. For several evenings, I opened it after work and
+found nothing useful. I knew appointments were becoming available because I
+would occasionally catch one, only to see it disappear before I could act.
+Checking every few minutes would probably have worked. I did not want to spend
+my evenings doing that, so I gave an AI agent a simple instruction: “Find an
+hour tomorrow after six. If there is nothing, keep looking.”
+
+People fill in quite a lot when they hear a request like that. The software had
+to turn “after six” into a time window, “an hour” into a preference with
+acceptable fallbacks, and “keep looking” into work that survived a sleeping
+laptop, a reboot, and stale availability. It also had to account for a more
+important problem: finding a slot did not reserve it.
+
+## Turning the request into a watch
+
+I started by treating every availability result as an observation made at a
+particular time, rather than a promise that the slot would still be there later.
+That kept search and booking as separate operations from the beginning. The
+availability responses did not always describe slots in the same way. A
+duration could also map to different service identifiers depending on the
+selected address or live catalog. I normalized those variations at the edge
+and carried the resolved service and duration through the rest of the workflow.
+The rest of the program could then use one small model instead of knowing every
+shape the upstream service might return.
+
+Availability was only one part of the request. On most days, I preferred a slot
+after work, then an earlier date, then a particular duration, with a few
+acceptable fallbacks. Those preferences were ordered, not interchangeable. A
+slot in the wrong time window should not win merely because it was twenty
+minutes earlier. I encoded the preferences in priority order: time window
+first, then date, duration, and clock time. Each priority occupied a separate
+score range, so a lower-priority choice could not overpower a higher-priority
+one. Without that separation, a mathematically good score could still produce
+a slot I would never choose.
+
+Time itself required care. Appointment times are local civil times, while
+scheduled checks run at UTC instants. Treating both as ordinary JavaScript dates
+invites quiet errors around parsing and conversion. I used the Temporal model to
+keep those concepts separate, rejecting past or out-of-horizon slots even when
+an old response still contained them. I exposed the workflow as a Model Context
+Protocol tool. The model could translate my sentence into tomorrow's date, a
+six-p.m. boundary, a sixty-minute preference, and instructions to keep looking.
+The tool validated those parameters and stored them as a watch that could
+continue after the conversation ended.
+
+My first instinct was a JavaScript loop with a sleep call, but that was a poor
+fit for a laptop that closes, reboots, changes networks, and gets upgraded. A
+loop is simple while it is running, but keeping it reliable for several days is
+a different problem. On my Mac, each check became a short-lived `launchd` job.
+The operating system woke the program, which acquired an exclusive file lock,
+loaded the watches that were due, checked current availability, recorded the
+next state, and exited. The same design could map to a `systemd` timer or Task
+Scheduler elsewhere.
+
+Instead of keeping a process alive, I persisted the watch. A crash could
+interrupt one check without erasing the instruction to keep looking, and a
+reboot did not require me to remember to restart a daemon. The exclusive lock
+stopped a manual check and a scheduled one from updating the same state at
+once. Each run recorded one event: no match, a transient error, an expiry, or a
+slot worth seeing. Errors delayed the next attempt more than an ordinary miss.
+
+When a useful slot appeared, the watcher saved the exact result, sent a
+notification, cleared its next run, and stopped. The notification marked the
+point where the agent was done and I took over. I had sent it to wait, not to
+choose who entered my home or spend money on my behalf.
+
+## Finding a slot was not booking it
+
+Time still passed between seeing a slot and acting on it, and no local lock
+could reserve an appointment held by a remote service. When I chose a result,
+the booking path searched again for the exact duration and timestamp. If the
+slot had disappeared, it stopped there and returned to fresh availability. If
+the slot remained, the program resolved the service for the selected address
+again before touching the cart.
+
+The cart was another source of stale state. It could contain an old item, a
+change made by another client, or a listing that no longer represented the
+duration I had selected. After setting the item and slot, the program fetched
+the cart again and verified the service identifiers against the choice. The
+checkout used the amount and cart version from that read, not values remembered
+from the earlier search. This narrowed the race without pretending to eliminate
+it. Another customer could still take the appointment after revalidation and
+before checkout completed. I treated that overbooking response as an expected
+outcome and sent the workflow back to search. Careful local code could reduce
+the window, but it could not make the remote booking system transactional.
+
+I deliberately stopped the automation at payment. The tool could prepare
+checkout and render a UPI option locally, but provider credentials never entered
+the model's context and I still had to approve the payment. It was less
+convenient than a single “book it” operation, but I knew exactly where control
+changed hands. The agent was the part I spoke to. The scheduler did the
+waiting, ordinary ranking code compared the slots, and a notification brought
+the decision back to me. I no longer had to keep opening an empty booking
+screen. The agent waited in line, and when it reached the front, it came back
+to get me.

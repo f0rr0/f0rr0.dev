@@ -5,9 +5,15 @@ import { cache } from "react";
 import readingTime from "reading-time";
 import { z } from "zod";
 
+import { env } from "@/env";
+
 const BLOG_DIR = path.join(process.cwd(), "src", "content", "blog");
 const MDX_EXT = "mdx";
 const FOLDER_ENTRY = `page.${MDX_EXT}`;
+const shouldShowDraftPosts =
+  env.NODE_ENV === "development" ||
+  env.VERCEL_ENV === "development" ||
+  env.VERCEL_ENV === "preview";
 
 const metadataSchema = z.object({
   author: z.string(),
@@ -240,7 +246,7 @@ export const getBlogPosts = cache(async (): Promise<BlogPost[]> => {
   );
 
   return posts
-    .filter((post) => post.metadata.draft !== true)
+    .filter((post) => shouldShowDraftPosts || post.metadata.draft !== true)
     .toSorted((a, b) => b.date.getTime() - a.date.getTime());
 });
 

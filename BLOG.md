@@ -24,7 +24,7 @@ export const metadata = {
   summary: "Short description used for listings + meta tags.",
   tags: ["tag", "tag"], // optional
   updated: "2025-02-12", // optional
-  draft: false, // optional (true hides from listings/RSS)
+  draft: false, // optional (true hides from production)
 };
 ```
 
@@ -32,6 +32,9 @@ Gotchas:
 
 - `date` / `updated` must be valid ISO or `YYYY-MM-DD`. Invalid dates fail builds.
 - `summary` is required and used for SEO + RSS.
+- Drafts remain visible locally and on Vercel preview deployments for review.
+- Production excludes drafts from direct routes, listings, RSS, sitemap, and
+  `llms.txt`.
 
 ## Co-located assets
 

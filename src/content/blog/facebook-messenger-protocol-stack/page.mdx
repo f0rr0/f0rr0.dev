@@ -1,0 +1,130 @@
+export const metadata = {
+  title: "Reverse Engineering Meta’s Messaging Protocol",
+  date: "2026-07-23",
+  author: "Sid Jain",
+  summary:
+    "While building a research client for Messenger, an unexpected MQTT keepalive led through MQTToT, compressed Thrift payloads, and session state shared across HTTP and realtime traffic.",
+  tags: ["reverse-engineering", "facebook", "mqtt", "thrift", "typescript"],
+  draft: true,
+};
+
+One of the most useful packets in this project contained no payload:
+
+```text
+C0 00
+```
+
+Those two bytes are an MQTT `PINGREQ`, the small keepalive a client sends to a
+broker when it has nothing else to say. This one had traveled in the opposite
+direction. Facebook's broker had sent it to me. I was building a research
+client in 2021 that could load my existing Messenger conversations and follow
+new messages without the official mobile application. Login mostly worked, and
+I could establish what looked like a realtime connection. The empty packet
+made it clear that there was not one last private endpoint left to find. I had
+to reconstruct a stack of familiar protocols, then identify the small places
+where Facebook's implementation departed from them.
+
+## The keepalive went the other way
+
+MQTT assigns the two sides of a keepalive exchange clearly. The client sends
+`PINGREQ`, and the broker answers with `PINGRESP`. The state machine I was using
+therefore had no incoming path for `C0 00`. It was behaving correctly for the
+standard and incorrectly for the system in front of it. I initially wondered
+whether the MQTT client was the wrong abstraction altogether, but stream
+parsing, packet framing, QoS, reconnection, and ordinary publish flows still
+behaved as expected. Only the direction of this exchange had changed.
+
+I added the narrowest extension I could: accept an incoming `PINGREQ` and answer
+with `PINGRESP`. The connection stayed alive, and the rest of the state machine
+remained intact. I did not need a Messenger-specific transport. I needed a
+conventional transport with an explicit place for the dialect to depart from
+convention. That small fix gave me an approach for the rest of the protocol. I
+started from the standard, kept everything that matched the traffic, and
+isolated each deviation rather than rewriting the whole layer. When something
+later failed, I could narrow the question to standard MQTT, Messenger's dialect,
+or my own code.
+
+## Reconstructing a Messenger session
+
+Keeping the connection alive was progress, but it did not make the connection a
+Messenger session. The HTTP and realtime sides had to agree on the identity of
+the client: the same device, application, locale, account, and authenticated
+session. Authentication could not be reduced to a token attached at the end.
+Instead, the client's identity depended on state shared across several requests
+and both transports. I moved that state into one shared model. The login flow
+established the authenticated device and session context, and the realtime
+connection consumed that same context rather than recreating its own version.
+That eliminated a class of failures in which both sides looked individually
+plausible but described different clients.
+
+Login still did not provide the history needed to interpret incoming events.
+Messenger used a snapshot-and-delta model. An HTTPS request returned the
+existing conversation state and a sequence cursor. The realtime client then
+used that cursor to establish the queue from which later changes would arrive.
+Authentication made the snapshot possible, and the snapshot made the stream
+meaningful. Skipping a step could leave me with a connection that appeared
+healthy but never received useful data.
+
+The data also crossed several representations. A command could begin as a typed
+object, become a Thrift Compact structure, be compressed, travel inside an MQTT
+publication over TLS, and return through the reverse path. I needed to keep
+those layers separate while debugging. Otherwise, a wrong field number could
+look like a compression failure, or a stale sequence cursor could look like a
+broken transport. The realtime handshake made the layering especially clear.
+Messenger's mobile dialect, known as MQTToT, reused MQTT's fixed header and
+length framing but not an ordinary MQTT `CONNECT`. Inside that familiar
+envelope was a dialect-specific header followed by a compressed Thrift
+connection object. The acknowledgment and subscription setup also used
+structures a normal MQTT client did not expect.
+
+I treated MQTToT as a dialect with a narrow adapter rather than malformed MQTT.
+The adapter replaced the connection writer and acknowledgment reader. The
+underlying client continued to own transport, buffering, publication, QoS,
+keepalives, and reconnects. Keeping the adapter narrow made the unfamiliar
+part small enough to inspect without recreating a well-tested network state
+machine. That boundary was useful whenever a new packet arrived. A framing
+failure pointed to the transport boundary. A connection object that would not
+decode pointed to compression or Thrift. A valid publication with an unknown
+topic belonged above MQTT. I still had plenty of unknowns, but I no longer had
+to debug every layer at once.
+
+## Learning schemas from traffic
+
+Once the connection stayed alive, many incoming publications were still
+compressed buffers without a local Thrift definition. Compact Protocol gave me
+structure in the form of field numbers, wire types, and container boundaries,
+but not meaning. A binary field might be text, an identifier, JSON, another
+Thrift object, or bytes that should remain opaque. I needed to distinguish what
+the bytes established from the names I was guessing.
+
+The first useful tool was a schema-free structural reader. It walked a payload
+and printed numbered fields, their wire types, and their nesting without
+pretending to know their names. Calling a field `userName` after seeing one
+familiar value would make the output easier to read while quietly turning a
+guess into a fact. I only named fields after controlled comparisons. I repeated
+the same operation, changed one visible input, and compared the resulting
+payloads. Stable positions and wire types justified a structural hypothesis. I
+gave a field a domain meaning only when its value changed consistently with an
+action I could observe. Fields that remained ambiguous stayed neutral.
+
+Repeated observations could then become runtime schemas. A schema recorded the
+wire number, expected type, optionality, and TypeScript representation in one
+place. Known fields failed clearly when their wire type changed, while unknown
+fields could be skipped recursively so that a partial understanding remained
+useful as the remote payload evolved. Sixty-four-bit identifiers stayed as
+`bigint` rather than passing through a JavaScript number and quietly losing
+precision. The next payload could then test the schema, and a mismatch failed at
+a specific field instead of quietly corrupting application state. Most
+discoveries were incremental: unknown bytes became stable structure, and only
+then did some fields acquire names. I stopped at whichever level the
+observations supported.
+
+Not every event yielded its meaning. Some stopped at structural decoding, some
+fields remained uncertain, and the remote operations and identifiers continued
+to move. I never expected to finish with a complete, permanent map of
+Messenger. I reused the layers that already matched the traffic, isolated local
+deviations, left unknown fields unnamed, and turned repeated observations into
+schemas that later traffic could challenge. The empty `C0 00` packet contained
+no Messenger data, but it showed me exactly where the standard MQTT model no
+longer fit. The endpoints have long since changed, but I still use the same
+approach whenever I have to learn from a system that can change without notice.
