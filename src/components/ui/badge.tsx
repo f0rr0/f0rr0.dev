@@ -23,6 +23,7 @@ const badgeVariants = cva(
           "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
         secondary:
           "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
+        tag: "border-primary/20 bg-primary/6 text-primary [a]:hover:bg-primary/10",
       },
     },
   }

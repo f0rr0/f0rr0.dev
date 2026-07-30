@@ -1,4 +1,9 @@
-import { resumeData, resumeRoleMarkerLabels } from "@/content/resume";
+import {
+  formatResumeLocation,
+  resumeCompanyStageLabels,
+  resumeData,
+  resumeRoleMarkerLabels,
+} from "@/content/resume";
 import type { PublicReference, ResumeRole } from "@/content/resume";
 import type { BlogPost } from "@/lib/blog-utils";
 import { publicUrl } from "@/lib/site";
@@ -222,6 +227,7 @@ export const buildJsonResume = () => ({
   meta: {
     canonical: publicUrl("/resume.json"),
     lastModified: resumeData.lastUpdated,
+    mobility: [...resumeData.person.mobility],
     schema: "https://jsonresume.org/schema/",
     source: publicUrl("/resume"),
   },
@@ -241,6 +247,11 @@ export const buildJsonResume = () => ({
         location: role.location,
         name: item.company,
         position: role.title,
+        ...(item.companyStage === undefined
+          ? {}
+          : {
+              companyStage: resumeCompanyStageLabels[item.companyStage],
+            }),
         ...(role.markers === undefined
           ? {}
           : { roleMarkers: roleMarkers(role) }),
@@ -328,6 +339,15 @@ export const buildLlmsTxt = (blogPosts: BlogPost[] = []) => {
       })
     )
     .join("\n");
+  const companyStageAssignments = resumeData.experience
+    .flatMap((item) =>
+      item.companyStage === undefined
+        ? []
+        : [
+            `- ${item.company} — ${resumeCompanyStageLabels[item.companyStage]}.`,
+          ]
+    )
+    .join("\n");
   const deepDiveText = deepDives
     .map((deepDive) =>
       [
@@ -404,7 +424,7 @@ ${canonicalText}
 
 - Name: ${resumeData.person.name}.
 - Public aliases: ${formatNaturalList([...resumeData.person.alternateNames])}.
-- Location: ${resumeData.person.location}.
+- Location and mobility: ${formatResumeLocation(resumeData.person, "; ")}.
 - Professional focus: ${resumeData.person.role}.
 - Current role: ${currentRole?.title ?? resumeData.person.role} at ${currentExperience?.company ?? "the current company"}.
 - Roles of interest: ${resumeData.person.targetPositioning}.
@@ -423,6 +443,9 @@ Role indicators used on the human-readable resume:
 
 Role indicators by position:
 ${roleMarkerAssignments}
+
+Company stage during each role:
+${companyStageAssignments}
 
 ${claimGuidanceSection}
 ${deepDiveText}

@@ -1,9 +1,12 @@
+import { Rss } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 
-import PostCard from "@/components/blog/PostCard";
 import { JsonLd } from "@/components/json-ld";
-import { Separator } from "@/components/ui/separator";
+import { SiteActionLink } from "@/components/site-action-link";
+import { SitePage } from "@/components/site-page";
 import { getBlogPosts } from "@/lib/blog-utils";
+import { formatDate } from "@/lib/date";
 import { publicUrl, siteConfig } from "@/lib/site";
 import { buildBlogCollectionJsonLd } from "@/lib/structured-data";
 
@@ -35,66 +38,46 @@ export const metadata: Metadata = {
 
 export default async function BlogIndexPage() {
   const posts = await getBlogPosts();
-  const [featured, ...rest] = posts;
 
   return (
-    <main className="relative">
+    <>
       <JsonLd data={buildBlogCollectionJsonLd(posts)} />
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(120,120,120,0.12),transparent_55%)]" />
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-16">
-        <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
-          <div className="space-y-6">
-            <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
-                Journal
-              </p>
-              <h1 className="text-balance text-4xl font-semibold tracking-tight md:text-5xl">
-                Writing about craft, experiments, and what I am learning.
-              </h1>
-              <p className="max-w-xl text-base text-muted-foreground md:text-lg">
-                Notes on what {siteConfig.author.name} is building across
-                product design, engineering, and creative development.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-              <span>{posts.length} posts</span>
-              <Separator orientation="vertical" className="h-4" />
-              <span>New notes as they land</span>
-              <Separator orientation="vertical" className="h-4" />
-              <span>Deep dives + quick notes</span>
-            </div>
-          </div>
-          {featured === undefined ? (
-            <div className="rounded-xl border border-dashed border-border/70 p-10 text-sm text-muted-foreground">
-              First post coming soon.
-            </div>
-          ) : (
-            <PostCard post={featured} variant="featured" />
-          )}
-        </div>
-      </section>
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 pb-20">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold tracking-tight">
-            Latest writing
-          </h2>
-        </div>
-        {rest.length > 0 ? (
-          <div className="grid gap-6 md:grid-cols-2">
-            {rest.map((post) => (
-              <PostCard key={post.slug} post={post} />
+      <SitePage
+        title="Blog"
+        action={
+          <SiteActionLink
+            href="/rss.xml"
+            icon={<Rss aria-hidden="true" className="h-3.5 w-3.5" />}
+          >
+            RSS
+          </SiteActionLink>
+        }
+      >
+        {posts.length > 0 ? (
+          <ol className="divide-y divide-border border-y border-border">
+            {posts.map((post) => (
+              <li key={post.slug}>
+                <Link
+                  href={`/blog/${post.slug}`}
+                  className="group flex flex-col gap-1 py-5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring sm:flex-row sm:items-baseline sm:justify-between sm:gap-6"
+                >
+                  <h2 className="font-serif text-xl font-bold tracking-tight transition-colors group-hover:text-brand-hover">
+                    {post.metadata.title}
+                  </h2>
+                  <time
+                    dateTime={post.date.toISOString()}
+                    className="shrink-0 text-sm text-muted-foreground"
+                  >
+                    {formatDate(post.date, siteConfig.language)}
+                  </time>
+                </Link>
+              </li>
             ))}
-          </div>
-        ) : posts.length > 0 ? (
-          <p className="text-sm text-muted-foreground">
-            More posts are on the way. In the meantime, check back soon.
-          </p>
+          </ol>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            No posts yet. Check back soon.
-          </p>
+          <p className="text-sm text-muted-foreground">No posts yet.</p>
         )}
-      </section>
-    </main>
+      </SitePage>
+    </>
   );
 }

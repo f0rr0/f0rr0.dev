@@ -7,6 +7,7 @@ import AuthorCard from "@/components/blog/AuthorCard";
 import PostCard from "@/components/blog/PostCard";
 import { JsonLd } from "@/components/json-ld";
 import MDXImage from "@/components/mdx/MDXImage";
+import { SiteMain } from "@/components/site-page";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -153,30 +154,32 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
   } satisfies MDXComponents;
 
   return (
-    <article className="relative">
+    <SiteMain className="relative">
       <JsonLd data={jsonLd} />
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-6 py-16">
-        <header className="flex flex-col gap-6">
+      <article className="flex flex-col gap-12">
+        <header className="flex max-w-4xl flex-col gap-6">
           {metadata.tags !== undefined && metadata.tags.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {metadata.tags.map((tag) => (
-                <Badge key={tag} variant="secondary">
+                <Badge key={tag} variant="tag">
                   {tag}
                 </Badge>
               ))}
             </div>
           ) : null}
           <div className="space-y-4">
-            <h1 className="text-balance text-4xl font-semibold tracking-tight md:text-5xl">
+            <h1 className="text-balance max-w-4xl font-serif text-3xl font-bold tracking-tight sm:text-4xl">
               {metadata.title}
             </h1>
-            <p className="max-w-3xl text-base text-muted-foreground md:text-lg">
+            <p className="max-w-3xl text-base text-muted-foreground">
               {metadata.summary}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             <span>
-              <time dateTime={date.toISOString()}>{formatDate(date)}</time>
+              <time dateTime={date.toISOString()}>
+                {formatDate(date, siteConfig.language)}
+              </time>
             </span>
             <Separator orientation="vertical" className="h-4" />
             <span>{metadata.author}</span>
@@ -187,26 +190,25 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
             {updatedAt === undefined ? null : (
               <>
                 <Separator orientation="vertical" className="h-4" />
-                <span>Updated {formatDate(updatedAt)}</span>
+                <span>
+                  Updated {formatDate(updatedAt, siteConfig.language)}
+                </span>
               </>
             )}
           </div>
         </header>
-        <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_280px]">
-          <div className="prose prose-neutral max-w-[70ch] dark:prose-invert prose-headings:scroll-mt-24 prose-h2:text-2xl prose-h3:text-xl prose-lead:text-muted-foreground prose-a:text-foreground/90 prose-strong:text-foreground prose-p:leading-relaxed prose-li:marker:text-muted-foreground/70">
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_240px]">
+          <div className="prose max-w-[70ch] prose-h2:text-2xl prose-h3:text-xl prose-p:leading-relaxed">
             <Content components={mdxComponents} />
           </div>
           <aside className="space-y-6 lg:sticky lg:top-24">
             <AuthorCard />
-            <div className="rounded-xl border border-border/70 bg-muted/40 p-5 text-sm text-muted-foreground">
-              Sid writes about engineering, product, AI, and creative work.
-            </div>
           </aside>
         </div>
         {suggestedPosts.length > 0 ? (
           <section className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold tracking-tight">
+              <h2 className="font-serif text-xl font-bold tracking-tight">
                 Suggested next posts
               </h2>
             </div>
@@ -217,7 +219,7 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
             </div>
           </section>
         ) : null}
-      </div>
-    </article>
+      </article>
+    </SiteMain>
   );
 }

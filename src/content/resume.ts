@@ -19,6 +19,21 @@ export const resumeRoleMarkerLabels = {
   leadership: "Leadership",
 } satisfies Record<ResumeRoleMarker, string>;
 
+export type ResumeCompanyStage =
+  | "zero-to-one"
+  | "early-stage"
+  | "growth-stage"
+  | "scale-up"
+  | "late-stage";
+
+export const resumeCompanyStageLabels = {
+  "zero-to-one": "0 → 1",
+  "early-stage": "Early-stage",
+  "growth-stage": "Growth-stage",
+  "scale-up": "Scale-up",
+  "late-stage": "Late-stage",
+} satisfies Record<ResumeCompanyStage, string>;
+
 export interface ResumeRole {
   title: string;
   dates: string;
@@ -31,6 +46,7 @@ export interface ResumeRole {
 
 export interface ResumeExperience {
   company: string;
+  companyStage?: ResumeCompanyStage;
   logo: LogoAsset;
   pdfPageBreakBefore?: boolean;
   tagline: string;
@@ -43,13 +59,22 @@ export interface ResumeLink {
 }
 
 export interface ResumeNavItem extends ResumeLink {
-  active?: boolean;
   external?: boolean;
 }
 
 export interface PublicReference extends ResumeLink {
   note: string;
 }
+
+export interface ResumePersonLocation {
+  location: string;
+  mobility?: readonly string[];
+}
+
+export const formatResumeLocation = (
+  person: ResumePersonLocation,
+  separator = "\u2002•\u2002"
+) => [person.location, ...(person.mobility ?? [])].join(separator);
 
 interface DeepDiveSection {
   heading: string;
@@ -169,13 +194,14 @@ const dpsLogo: LogoAsset = {
 };
 
 export const resumeData = {
-  lastUpdated: "2026-07-28",
+  lastUpdated: "2026-07-30",
   person: {
     alternateNames: ["f0rr0", "yuppiestechdev"],
     avatarImage: "/resume/sid-jain-profile-avatar.png",
     email: "sid_26@outlook.com",
     image: "/resume/sid-jain-profile.png",
-    location: "Mumbai, India / Remote",
+    location: "Based in Mumbai",
+    mobility: ["Available for India/APAC travel"],
     name: "Sid Jain",
     role: "Applied AI Lead and Senior Full-Stack Engineer",
     targetPositioning:
@@ -183,7 +209,7 @@ export const resumeData = {
   },
   navItems: [
     { href: "/blog", label: "Blog" },
-    { active: true, href: "/resume", label: "Resume" },
+    { href: "/resume", label: "Résumé" },
     { external: true, href: "https://github.com/f0rr0", label: "GitHub" },
   ] satisfies ResumeNavItem[],
   links: [
@@ -192,10 +218,11 @@ export const resumeData = {
     { href: "https://github.com/f0rr0", label: "github.com/f0rr0" },
   ] satisfies ResumeLink[],
   summary:
-    "Applied AI Lead and hands-on engineering leader who turns loosely defined customer needs into production systems. Leads customer discovery, technical strategy, teams, architecture, and delivery while remaining directly involved in AI workflow design, evaluation, prototyping, and full-stack implementation across marketplaces, browsers, mobile apps, and infrastructure-heavy products.",
+    "Software engineer and technical leader with 10+ years building and operating production applications, platforms, and infrastructure. Leads Applied AI at Namefi, taking customer workflows from discovery and system design through evaluation, implementation, and support; previously built human-in-the-loop AI content systems at Memorang. Founded a 15-engineer consultancy and shipped browser, messaging, payments, travel, mobile, and cloud systems.",
   experience: [
     {
       company: "Namefi",
+      companyStage: "early-stage",
       tagline:
         "ICANN-accredited registrar building AI products for domain ownership and sales.",
       logo: namefiLogo,
@@ -203,40 +230,43 @@ export const resumeData = {
         {
           title: "Lead Applied AI Engineer",
           dates: "Jan 2025 - Present",
-          location: "San Francisco Bay Area / Remote",
+          location: "Mumbai / Remote",
           markers: ["hands-on"],
           bullets: [
-            "Interviewed owners of large domain portfolios and built Namefi Outbound to streamline buyer research, lead scoring, contact discovery, and outreach drafting, reducing sales preparation from days to minutes.",
-            "Designed Brand Studio, a multi-stage AI system that creates logos, posters, and motion concepts for domains. It separates strategy, concept generation, and animation while preserving the exact domain name, including its top-level domain.",
-            "Built Namefi Feed, which aggregates and structures roughly 4,000 to 5,000 public domain listings from X, forums, and marketplaces, making them searchable on the web and through RSS feeds.",
-            "Built production registrar systems for third-party integrations, registration, renewals, payments, checkout, and analytics. Added DNS record and DNSSEC management, nameserver controls, ENS and .eth support, and long-running Temporal workflows.",
+            "Built Namefi Outbound from customer discovery through production, cutting buyer research from days to about five minutes per domain: 50–70 ranked leads with fit rationales, decision-maker contacts, and tailored drafts.",
+            "Built model-judged evals for buyer fit, name and product similarity, and decision-maker contacts; validated outputs through seller reports covering hundreds of prospective buyers.",
+            "Built and operated Namefi Studio, a Temporal pipeline for logos, posters, website mockups, and motion; separated strategy from generation and used prompt constraints plus visual review for domain/TLD fidelity.",
+            "Built and operated Namefi Feed, a Temporal ingestion and AI-classification system serving nearly 8,000 active listings, with reliable concurrent ingestion, retries, price verification, and auditable decisions.",
+            "Built registrar and commerce systems across integrations, registration, checkout, payments, and analytics; replaced Airflow with testable Temporal workflows, simplifying recovery and making orchestration failures rare.",
           ],
         },
       ],
     },
     {
       company: "Memorang",
+      companyStage: "growth-stage",
       tagline:
         "AI-assisted educational content platform for structured curricula and assessments.",
       logo: memorangLogo,
       roles: [
         {
-          title: "Lead Product Engineer, AI Content Platform",
+          title: "Lead Applied AI Engineer",
           dates: "Apr 2024 - Jan 2025",
           leadershipScope: "Managed 3 developers",
-          location: "San Francisco Bay Area / Remote",
+          location: "Mumbai / Remote",
           markers: ["hands-on", "leadership"],
           bullets: [
-            "Built EdWrite, a graph-based headless CMS that represents Cambridge and TOEFL curricula and assessment requirements in versioned schemas exposed through content APIs.",
-            "Designed human-in-the-loop workflows that let subject-matter experts generate, review, and manage complete question sets with supporting audio and images. Also built adaptive practice and scoring, plus semantic recommendations for related media.",
-            "Managed a three-developer CMS team and owned its roadmap, coordinating with backend, frontend, and mobile teams while working directly with the CTO and CEO.",
-            "Led the gradual migration of a large Flow-typed JavaScript monorepo to TypeScript, introducing Bun, Biome, codemods, and AI-assisted refactoring.",
+            "Built and shipped EdWrite, a graph-based CMS and content API managing tens of thousands of Cambridge and TOEFL questions, with adaptive practice, scoring, and semantic media recommendations.",
+            "Built human-in-the-loop generation for question sets, audio, and images, cutting content cycles from months to days; SME review calibrated model-based evals, while client SMEs controlled publishing.",
+            "Led a three-developer CMS team and roadmap across backend, frontend, and mobile, working directly with the CTO and CEO.",
+            "Led an AI-assisted Flow-to-TypeScript migration across hundreds of thousands of lines; cut compilation to single-digit minutes, accelerated CI and merges, and enabled safer refactors with fewer runtime errors.",
           ],
         },
       ],
     },
     {
       company: "Yuppies Tech",
+      companyStage: "zero-to-one",
       tagline: "Product engineering consultancy for complex client products.",
       logo: yuppiesLogo,
       roles: [
@@ -247,7 +277,7 @@ export const resumeData = {
           location: "Mumbai / Remote",
           markers: ["hands-on", "leadership"],
           summary:
-            "Founded and grew Yuppies Tech to 15 engineers while remaining the client-facing technical lead. Turned unclear requirements into architecture, delivery plans, and production releases.",
+            "Founded and grew Yuppies Tech to 15 engineers while remaining the client-facing technical lead. Turned unclear requirements into architecture, delivery plans, and production releases. Selected engagements:",
           bullets: [
             {
               label: "Veera Browser",
@@ -262,7 +292,7 @@ export const resumeData = {
             {
               label: "ZebPay",
               logo: zebpayLogo,
-              text: "led modernization of ZebPay's iOS and Android apps, release infrastructure, exchange and payment features, and international KYC. During stabilization, increased the release cadence from every two weeks to weekly.",
+              text: "led modernization of ZebPay's iOS and Android apps, release infrastructure, exchange and payment features, and international KYC. During stabilization, increased the release cadence from monthly to weekly.",
             },
             {
               label: "Mitsubishi Motors",
@@ -280,6 +310,7 @@ export const resumeData = {
     },
     {
       company: "Kult",
+      companyStage: "zero-to-one",
       tagline: "Consumer beauty and skincare commerce.",
       logo: kultLogo,
       roles: [
@@ -298,6 +329,7 @@ export const resumeData = {
     },
     {
       company: "Yilu",
+      companyStage: "zero-to-one",
       tagline:
         "Smart travel platform built for Lufthansa Group with BCG Digital Ventures.",
       logo: yiluLogo,
@@ -305,17 +337,19 @@ export const resumeData = {
         {
           title: "Founding Engineer",
           dates: "Nov 2018 - Dec 2019",
+          leadershipScope: "Led a five-developer full-stack pod",
           location: "Berlin",
-          markers: ["hands-on"],
+          markers: ["hands-on", "leadership"],
           bullets: [
             "Designed the native mobile architecture and release automation, built Terraform-managed AWS infrastructure, and shipped iOS and Android features for Eurowings.",
-            "Helped establish the engineering team by writing job descriptions, creating technical exercises, and interviewing candidates. Also served as Scrum Master.",
+            "As the first engineering hire, led a five-developer full-stack pod with a product manager and designer; partnered with the CTO on key hires and served as Scrum Master for early sprints, establishing the team's delivery cadence.",
           ],
         },
       ],
     },
     {
       company: "8fit",
+      companyStage: "growth-stage",
       tagline: "Fitness and nutrition platform later acquired by Withings.",
       logo: eightfitLogo,
       roles: [
@@ -333,6 +367,7 @@ export const resumeData = {
     },
     {
       company: "Housing",
+      companyStage: "late-stage",
       tagline: "Indian real estate search and transaction platform.",
       logo: housingLogo,
       roles: [
@@ -399,7 +434,7 @@ export const resumeData = {
       "Sid founded Yuppies Tech and served as the client-facing technical partner, architect, and hands-on engineering lead for its client work.",
       "At Kult, Sid was a hands-on Vice President of Engineering who owned product and engineering strategy, set the technical direction for both native apps, and contributed in Swift and Kotlin.",
       "Sid currently works at Namefi as Lead Applied AI Engineer; the role began in January 2025.",
-      "Memorang was a separate Lead Product Engineer role from April 2024 through January 2025.",
+      "Memorang was a separate Lead Applied AI Engineer role from April 2024 through January 2025.",
     ],
     positioning:
       "Sid is a hands-on engineering leader who combines team and product leadership with staff-level full-stack and applied AI depth. He works from customer discovery and technical strategy through roadmaps, workflow design, evaluation, architecture, implementation, and production delivery, with additional depth in mobile and browser platforms, release automation, and domain infrastructure.",
@@ -424,21 +459,21 @@ export const resumeData = {
               "Company: Namefi.",
               "Title: Lead Applied AI Engineer.",
               "Dates: January 2025 - Present.",
-              "Location: San Francisco Bay Area / Remote.",
+              "Location: Mumbai / Remote.",
             ],
           },
           {
             heading: "Public company context",
             bullets: [
               "Namefi is an ICANN-accredited registrar that combines domain registration and DNS management with tools for tokenized ownership, trading, and AI-assisted sales.",
-              "Its public products include Namefi Outbound, Namefi Feed, Namefi Brand Studio, domain registration, DNS management, and domain discovery.",
+              "Its public products include Namefi Outbound, Namefi Feed, Namefi Studio, domain registration, DNS management, and domain discovery.",
             ],
           },
           {
             heading: "Sid's role",
             bullets: [
-              "Leads AI product engineering across Namefi Outbound, Namefi Brand Studio, Namefi Feed, and internal analytics workflows.",
-              "Builds registrar and domain infrastructure for DNS, payments, checkout, renewals, ENS and .eth domains, and long-running workflows.",
+              "Leads AI product engineering across Namefi Outbound, Namefi Studio, Namefi Feed, and internal analytics workflows.",
+              "Builds registrar and commerce infrastructure for third-party integrations, registration, checkout, payments, analytics, and long-running workflows.",
               "Owns projects from customer interviews and workflow design through evaluation, implementation, deployment, and ongoing production support.",
               "Established repeatable documentation, static checks, and CI practices for AI-assisted development.",
             ],
@@ -447,34 +482,36 @@ export const resumeData = {
             heading: "Namefi Outbound",
             bullets: [
               "Namefi Outbound helps domain sellers research likely buyers and prepare outreach.",
-              "Sid designed it after interviewing owners of large domain portfolios about their sales process.",
+              "Sid built it from direct customer discovery with domain sellers through production implementation and support.",
               "The previous process required sellers to choose domains, assess market timing, research buyers, maintain notes, find contacts, and draft messages by hand.",
-              "Outbound reduces that preparation from days to minutes by organizing domain selection, buyer research, lead scoring, contact discovery, and editable outreach drafts.",
+              "For each domain, Outbound produces 50 to 70 ranked leads with fit rationales, decision-maker contacts, and tailored drafts in about five minutes, replacing work that previously took multiple days.",
+              "Sid built model-judged evals for buyer fit, name and product similarity, and decision-maker contact quality, then validated outputs through seller reports covering hundreds of prospective buyers.",
               "Its results remain transparent and editable so sellers retain control of the process.",
             ],
           },
           {
-            heading: "Namefi Brand Studio",
+            heading: "Namefi Studio",
             bullets: [
-              "Namefi Brand Studio creates logos, posters, and motion concepts that help owners present domains to buyers.",
+              "Namefi Studio creates logos, posters, website mockups, and motion concepts that help owners present domains to buyers.",
               "It uses separate stages for brand strategy, concept development, image generation, validation, animation, and asset delivery.",
-              "The system preserves the exact domain name, including its top-level domain, and rejects common generation errors such as incorrect suffixes, slogans, mockups, and watermarks.",
+              "Prompt constraints and manual side-by-side visual review assess domain and top-level-domain fidelity alongside overall output quality.",
               "It supports still and animated assets, prepared frames, thumbnails, generation metadata, and cloud delivery.",
             ],
           },
           {
             heading: "Namefi Feed",
             bullets: [
-              "Namefi Feed collects roughly 4,000 to 5,000 public domain listings from X, NamePros, DNForum, marketplaces, and other public sources.",
-              "It extracts and standardizes domains, sellers, sources, prices, currencies, and other listing details.",
+              "Namefi Feed serves nearly 8,000 active listings from X, NamePros, DNForum, Namefi, and other public sources.",
+              "Its Temporal-backed ingestion and AI-classification system extracts and standardizes domains, sellers, sources, prices, currencies, and other listing details while handling concurrent scans, retries, price verification, and auditable outcomes.",
               "Buyers can search the listings or follow them through RSS instead of monitoring many forums, marketplaces, and social feeds.",
             ],
           },
           {
             heading: "Core registrar and domain infrastructure",
             bullets: [
-              "Built third-party registrar integrations and systems for domain registration, renewal, checkout, payments, DNS records, DNSSEC, nameserver management, and ENS and .eth support.",
-              "Led the migration from Airflow-style DAGs to Temporal for stateful, long-running processes, then applied Temporal to AI and operational workflows.",
+              "Built third-party registrar integrations and systems for domain registration, checkout, payments, and analytics.",
+              "Replaced Airflow-backed orchestration with declarative, testable Temporal workflows, then expanded the pattern across stateful AI and operational workflows.",
+              "The change simplified the operating mental model, recovery, and testing while making orchestration failures rare in day-to-day operation.",
             ],
           },
         ],
@@ -486,16 +523,17 @@ export const resumeData = {
             heading: "Role",
             bullets: [
               "Company: Memorang.",
-              "Title: Lead Product Engineer, AI Content Platform.",
+              "Title: Lead Applied AI Engineer.",
               "Dates: April 2024 - January 2025.",
-              "Location: San Francisco Bay Area / Remote.",
+              "Location: Mumbai / Remote.",
             ],
           },
           {
             heading: "Context and role",
             bullets: [
-              "EdWrite is a graph-based headless CMS for structured educational content and AI-assisted content production.",
-              "Sid led product engineering for EdWrite, managed three developers, worked directly with the CTO and CEO, and coordinated with backend, frontend, and mobile teams.",
+              "EdWrite is a production graph-based headless CMS and content API for structured educational content and AI-assisted content production.",
+              "It managed tens of thousands of questions across versioned Cambridge and TOEFL curricula.",
+              "Sid led product engineering for EdWrite, owned its roadmap, managed three developers, worked directly with the CTO and CEO, and coordinated with backend, frontend, and mobile teams.",
             ],
           },
           {
@@ -503,11 +541,13 @@ export const resumeData = {
             bullets: [
               "Translated Cambridge and TOEFL curricula and assessment requirements into versioned schemas exposed through content APIs.",
               "Modeled exam sections, question types, content groups, scoring, and adaptive practice as configurable structures.",
-              "Designed human-in-the-loop workflows for subject-matter experts to generate, review, and manage complete question sets with supporting audio and images.",
+              "Built human-in-the-loop workflows for generating complete question sets with supporting audio and images, reducing end-to-end content cycles from months to days.",
+              "Initial subject-matter-expert review calibrated model-based evals, while client subject-matter experts retained final publishing control.",
               "Built schema versioning so content and question formats could evolve without breaking existing client apps or backend services.",
               "Built adaptive practice flows that track scores, identify weak areas, and recommend personalized material.",
               "Built recommendations for supporting media using metadata embeddings and vector similarity search across products.",
-              "Led the gradual migration of a large Flow-typed JavaScript monorepo to TypeScript, introducing Bun, Biome, codemods, and AI-assisted refactoring.",
+              "Led a Flow-to-TypeScript migration across hundreds of thousands of lines using codemods and AI-assisted refactoring.",
+              "Cut compilation from double-digit to single-digit minutes, accelerated CI and merges, and enabled safer refactors with fewer type-related runtime errors.",
             ],
           },
         ],
@@ -613,7 +653,7 @@ export const resumeData = {
               "Shipped exchange and payment features, wallet SDK integrations, and support for new coin and token launches.",
               "Built over-the-counter workflows for high-net-worth traders and localized KYC processes.",
               "Implemented country-specific document handling, media capture, identity verification, integrations such as IDfy, and secure document access.",
-              "During stabilization, increased the release cadence from every two weeks to weekly.",
+              "During stabilization, increased the release cadence from monthly to weekly.",
             ],
           },
         ],

@@ -1,5 +1,4 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { siteConfig } from "@/lib/site";
 
@@ -17,26 +16,19 @@ export default function AuthorCard() {
   const image = author.image.trim() === "" ? undefined : author.image;
 
   return (
-    <Card className="bg-gradient-to-br from-muted/60 via-background to-muted/40">
-      <CardHeader className="flex flex-row items-center gap-4">
-        <Avatar size="lg">
-          {image === undefined ? null : (
-            <AvatarImage src={image} alt={author.name} />
-          )}
-          <AvatarFallback>{initials}</AvatarFallback>
-        </Avatar>
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            About the author
-          </p>
+    <Card>
+      <CardHeader className="gap-4">
+        <p className="site-kicker">About Sid</p>
+        <div className="flex items-center gap-3">
+          <Avatar size="lg">
+            {image === undefined ? null : (
+              <AvatarImage src={image} alt={author.name} />
+            )}
+            <AvatarFallback>{initials}</AvatarFallback>
+          </Avatar>
           <div>
-            <h3 className="text-lg font-semibold">{author.name}</h3>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">{author.role}</Badge>
-              <span className="text-xs text-muted-foreground">
-                Building products and leading engineering teams.
-              </span>
-            </div>
+            <h3 className="font-serif text-lg font-bold">{author.name}</h3>
+            <p className="text-xs font-semibold text-primary">{author.role}</p>
           </div>
         </div>
       </CardHeader>

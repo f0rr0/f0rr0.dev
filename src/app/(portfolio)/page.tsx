@@ -17,19 +17,19 @@ export const metadata: Metadata = {
     images: [resumeData.person.image],
     locale: siteConfig.locale,
     siteName: siteConfig.name,
-    title: "Sid Jain Resume",
+    title: "Sid Jain Résumé",
     type: "profile",
     url: publicUrl("/"),
   },
-  title: "Resume",
+  title: "Résumé",
   twitter: {
     card: "summary",
     description: resumeDescription,
     images: [resumeData.person.image],
-    title: "Sid Jain Resume",
+    title: "Sid Jain Résumé",
   },
 };
 
 export default function Home() {
-  return <ResumePageContent includeProfileJsonLd={false} showSiteNav={false} />;
+  return <ResumePageContent currentPath="/" includeProfileJsonLd={false} />;
 }
