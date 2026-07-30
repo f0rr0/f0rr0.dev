@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import {
+  Geist,
+  JetBrains_Mono,
+  Literata,
+  Source_Sans_3,
+} from "next/font/google";
 
 import { JsonLd } from "@/components/json-ld";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -8,14 +13,28 @@ import { buildRootJsonLd } from "@/lib/structured-data";
 
 import "./globals.css";
 
-const geistSans = Geist({
+const literata = Literata({
   subsets: ["latin"],
-  variable: "--font-geist-sans",
+  variable: "--font-site-heading",
+  weight: ["400", "700"],
 });
 
-const geistMono = Geist_Mono({
+const sourceSans = Source_Sans_3({
   subsets: ["latin"],
-  variable: "--font-geist-mono",
+  variable: "--font-site-body",
+  weight: ["400", "600", "700"],
+});
+
+const geist = Geist({
+  subsets: ["latin"],
+  variable: "--font-site-ui",
+});
+
+const jetBrainsMono = JetBrains_Mono({
+  preload: false,
+  subsets: ["latin"],
+  variable: "--font-site-mono",
+  weight: ["400"],
 });
 
 export const metadata: Metadata = {
@@ -87,8 +106,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased`}
-        suppressHydrationWarning
+        className={`${literata.variable} ${sourceSans.variable} ${geist.variable} ${jetBrainsMono.variable} min-h-screen antialiased`}
       >
         <JsonLd data={buildRootJsonLd()} />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>

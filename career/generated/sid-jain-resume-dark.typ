@@ -75,7 +75,7 @@
     align: top,
     [#profile-photo("/public/resume/sid-jain-profile-avatar.png")],
     [#box(height: 36pt)[#align(left + horizon)[#t(
-      "Sid Jain",
+      "Sid Jain ",
       fill: strong,
       font: "Literata",
       size: 36pt,
@@ -88,7 +88,7 @@
       #set par(leading: 0.422em)
       #align(right)[
         #link("mailto:sid_26@outlook.com")[#t(
-          "sid_26@outlook.com",
+          " sid_26@outlook.com",
           fill: accent,
           font: "Source Sans 3",
           size: 7.5pt,
@@ -120,7 +120,19 @@
   #block[
     #set par(leading: 0.625em)
     #t(
-      "Applied AI Lead and hands-on engineering leader who turns loosely defined customer needs into production systems. Leads customer discovery, technical strategy, teams, architecture, and delivery while remaining directly involved in AI workflow design, evaluation, prototyping, and full-stack implementation across marketplaces, browsers, mobile apps, and infrastructure-heavy products.",
+      "Software engineer and technical leader with 10+ years building and operating production applications, platforms, and infrastructure. Leads Applied AI at Namefi, taking customer workflows from discovery and system design through evaluation, implementation, and support; previously built human-in-the-loop AI content systems at Memorang. Founded a 15-engineer consultancy and shipped browser, messaging, payments, travel, mobile, and cloud systems.",
+      fill: muted,
+      font: "Source Sans 3",
+      size: 10pt,
+      weight: "regular",
+      style: "normal",
+    )
+  ]
+  #v(3pt)
+  #block[
+    #set par(leading: 0.625em)
+    #t(
+      "Based in Mumbai • Available for India/APAC travel",
       fill: muted,
       font: "Source Sans 3",
       size: 10pt,
@@ -132,7 +144,7 @@
 
   #block(breakable: false)[
 
-    #v(12pt)
+    #v(6pt)
     #t(
       "Experience",
       fill: strong,
@@ -158,16 +170,34 @@
           dy: 0pt,
         )]],
         [
-          #t(
-            "Namefi",
-            fill: strong,
-            font: "Literata",
-            size: 12pt,
-            weight: "bold",
-            style: "normal",
-            kerning: false,
+          #grid(
+            columns: (auto, auto),
+            gutter: 5pt,
+            align: horizon,
+            [#t(
+              "Namefi",
+              fill: strong,
+              font: "Literata",
+              size: 12pt,
+              weight: "bold",
+              style: "normal",
+              kerning: false,
+            )],
+            [#box(
+              inset: (x: 4pt, y: 3pt),
+              radius: 8pt,
+              fill: rgb("#242220"),
+              stroke: 0.75pt + rgb("#57534e"),
+            )[#t(
+              "Early-stage",
+              fill: rgb("#c7c2bd"),
+              font: "Source Sans 3",
+              size: 7.5pt,
+              weight: "medium",
+              style: "normal",
+            )]],
           )
-          #v(-6pt)
+          #v(-3.75pt)
           #t(
             "ICANN-accredited registrar building AI products for domain ownership and sales.",
             fill: muted,
@@ -194,7 +224,7 @@
                 style: "normal",
               )],
               [#box(
-                inset: (x: 4pt, y: 1.5pt),
+                inset: (x: 4pt, y: 3pt),
                 radius: 8pt,
                 fill: rgb("#2d2418"),
                 stroke: 0.75pt + rgb("#9a6a2b"),
@@ -208,7 +238,7 @@
               )]],
             )],
             [#t(
-              "San Francisco Bay Area / Remote · Jan 2025 - Present",
+              "Mumbai / Remote · Jan 2025 - Present",
               fill: muted,
               font: "Source Sans 3",
               size: 8.25pt,
@@ -232,7 +262,7 @@
               style: "normal",
             )],
             [#t(
-              "Interviewed owners of large domain portfolios and built Namefi Outbound to streamline buyer research, lead scoring, contact discovery, and outreach drafting, reducing sales preparation from days to minutes.",
+              "Built Namefi Outbound from customer discovery through production, cutting buyer research from days to about five minutes per domain: 50-70 ranked leads with fit rationales, decision-maker contacts, and tailored drafts.",
               fill: muted,
               font: "Source Sans 3",
               size: 10pt,
@@ -255,7 +285,7 @@
               style: "normal",
             )],
             [#t(
-              "Designed Brand Studio, a multi-stage AI system that creates logos, posters, and motion concepts for domains. It separates strategy, concept generation, and animation while preserving the exact domain name, including its top-level domain.",
+              "Built model-judged evals for buyer fit, name and product similarity, and decision-maker contacts; validated outputs through seller reports covering hundreds of prospective buyers.",
               fill: muted,
               font: "Source Sans 3",
               size: 10pt,
@@ -278,7 +308,7 @@
               style: "normal",
             )],
             [#t(
-              "Built Namefi Feed, which aggregates and structures roughly 4,000 to 5,000 public domain listings from X, forums, and marketplaces, making them searchable on the web and through RSS feeds.",
+              "Built and operated Namefi Studio, a Temporal pipeline for logos, posters, website mockups, and motion; separated strategy from generation and used prompt constraints plus visual review for domain/TLD fidelity.",
               fill: muted,
               font: "Source Sans 3",
               size: 10pt,
@@ -301,7 +331,30 @@
               style: "normal",
             )],
             [#t(
-              "Built production registrar systems for third-party integrations, registration, renewals, payments, checkout, and analytics. Added DNS record and DNSSEC management, nameserver controls, ENS and .eth support, and long-running Temporal workflows.",
+              "Built and operated Namefi Feed, a Temporal ingestion and AI-classification system serving nearly 8,000 active listings, with reliable concurrent ingestion, retries, price verification, and auditable decisions.",
+              fill: muted,
+              font: "Source Sans 3",
+              size: 10pt,
+              weight: "regular",
+              style: "normal",
+            )],
+          )
+          #v(1.5pt)
+
+          #grid(
+            columns: (6pt, 1fr),
+            gutter: 6pt,
+            align: top,
+            [#t(
+              "·",
+              fill: accent,
+              font: "Source Sans 3",
+              size: 10pt,
+              weight: "bold",
+              style: "normal",
+            )],
+            [#t(
+              "Built registrar and commerce systems across integrations, registration, checkout, payments, and analytics; replaced Airflow with testable Temporal workflows, simplifying recovery and making orchestration failures rare.",
               fill: muted,
               font: "Source Sans 3",
               size: 10pt,
@@ -315,7 +368,7 @@
     ]
 
   ]
-  #v(12pt)
+  #v(9pt)
 
   #block(breakable: false)[
     #grid(
@@ -331,16 +384,34 @@
         dy: 0pt,
       )]],
       [
-        #t(
-          "Memorang",
-          fill: strong,
-          font: "Literata",
-          size: 12pt,
-          weight: "bold",
-          style: "normal",
-          kerning: false,
+        #grid(
+          columns: (auto, auto),
+          gutter: 5pt,
+          align: horizon,
+          [#t(
+            "Memorang",
+            fill: strong,
+            font: "Literata",
+            size: 12pt,
+            weight: "bold",
+            style: "normal",
+            kerning: false,
+          )],
+          [#box(
+            inset: (x: 4pt, y: 3pt),
+            radius: 8pt,
+            fill: rgb("#242220"),
+            stroke: 0.75pt + rgb("#57534e"),
+          )[#t(
+            "Growth-stage",
+            fill: rgb("#c7c2bd"),
+            font: "Source Sans 3",
+            size: 7.5pt,
+            weight: "medium",
+            style: "normal",
+          )]],
         )
-        #v(-6pt)
+        #v(-3.75pt)
         #t(
           "AI-assisted educational content platform for structured curricula and assessments.",
           fill: muted,
@@ -359,7 +430,7 @@
             gutter: 4pt,
             align: horizon,
             [#t(
-              "Lead Product Engineer, AI Content Platform",
+              "Lead Applied AI Engineer",
               fill: strong,
               font: "Source Sans 3",
               size: 10pt,
@@ -367,7 +438,7 @@
               style: "normal",
             )],
             [#box(
-              inset: (x: 4pt, y: 1.5pt),
+              inset: (x: 4pt, y: 3pt),
               radius: 8pt,
               fill: rgb("#2d2418"),
               stroke: 0.75pt + rgb("#9a6a2b"),
@@ -380,7 +451,7 @@
               style: "normal",
             )]],
             [#box(
-              inset: (x: 4pt, y: 1.5pt),
+              inset: (x: 4pt, y: 3pt),
               radius: 8pt,
               fill: rgb("#2a2429"),
               stroke: 0.75pt + rgb("#7a6171"),
@@ -394,7 +465,7 @@
             )]],
           )],
           [#t(
-            "San Francisco Bay Area / Remote · Apr 2024 - Jan 2025",
+            "Mumbai / Remote · Apr 2024 - Jan 2025",
             fill: muted,
             font: "Source Sans 3",
             size: 8.25pt,
@@ -418,7 +489,7 @@
             style: "normal",
           )],
           [#t(
-            "Built EdWrite, a graph-based headless CMS that represents Cambridge and TOEFL curricula and assessment requirements in versioned schemas exposed through content APIs.",
+            "Built and shipped EdWrite, a graph-based CMS and content API managing tens of thousands of Cambridge and TOEFL questions, with adaptive practice, scoring, and semantic media recommendations.",
             fill: muted,
             font: "Source Sans 3",
             size: 10pt,
@@ -441,7 +512,7 @@
             style: "normal",
           )],
           [#t(
-            "Designed human-in-the-loop workflows that let subject-matter experts generate, review, and manage complete question sets with supporting audio and images. Also built adaptive practice and scoring, plus semantic recommendations for related media.",
+            "Built human-in-the-loop generation for question sets, audio, and images, cutting content cycles from months to days; SME review calibrated model-based evals, while client SMEs controlled publishing.",
             fill: muted,
             font: "Source Sans 3",
             size: 10pt,
@@ -464,7 +535,7 @@
             style: "normal",
           )],
           [#t(
-            "Managed a three-developer CMS team and owned its roadmap, coordinating with backend, frontend, and mobile teams while working directly with the CTO and CEO.",
+            "Led a three-developer CMS team and roadmap across backend, frontend, and mobile, working directly with the CTO and CEO.",
             fill: muted,
             font: "Source Sans 3",
             size: 10pt,
@@ -487,7 +558,7 @@
             style: "normal",
           )],
           [#t(
-            "Led the gradual migration of a large Flow-typed JavaScript monorepo to TypeScript, introducing Bun, Biome, codemods, and AI-assisted refactoring.",
+            "Led an AI-assisted Flow-to-TypeScript migration across hundreds of thousands of lines; cut compilation to single-digit minutes, accelerated CI and merges, and enabled safer refactors with fewer runtime errors.",
             fill: muted,
             font: "Source Sans 3",
             size: 10pt,
@@ -500,7 +571,7 @@
     )
   ]
 
-  #v(12pt)
+  #v(9pt)
 
   #block(breakable: false)[
     #grid(
@@ -516,16 +587,34 @@
         dy: 0.75pt,
       )]],
       [
-        #t(
-          "Yuppies Tech",
-          fill: strong,
-          font: "Literata",
-          size: 12pt,
-          weight: "bold",
-          style: "normal",
-          kerning: false,
+        #grid(
+          columns: (auto, auto),
+          gutter: 5pt,
+          align: horizon,
+          [#t(
+            "Yuppies Tech",
+            fill: strong,
+            font: "Literata",
+            size: 12pt,
+            weight: "bold",
+            style: "normal",
+            kerning: false,
+          )],
+          [#box(
+            inset: (x: 4pt, y: 3pt),
+            radius: 8pt,
+            fill: rgb("#242220"),
+            stroke: 0.75pt + rgb("#57534e"),
+          )[#t(
+            "0 → 1",
+            fill: rgb("#c7c2bd"),
+            font: "Source Sans 3",
+            size: 7.5pt,
+            weight: "medium",
+            style: "normal",
+          )]],
         )
-        #v(-6pt)
+        #v(-3.75pt)
         #t(
           "Product engineering consultancy for complex client products.",
           fill: muted,
@@ -552,7 +641,7 @@
               style: "normal",
             )],
             [#box(
-              inset: (x: 4pt, y: 1.5pt),
+              inset: (x: 4pt, y: 3pt),
               radius: 8pt,
               fill: rgb("#2d2418"),
               stroke: 0.75pt + rgb("#9a6a2b"),
@@ -565,7 +654,7 @@
               style: "normal",
             )]],
             [#box(
-              inset: (x: 4pt, y: 1.5pt),
+              inset: (x: 4pt, y: 3pt),
               radius: 8pt,
               fill: rgb("#2a2429"),
               stroke: 0.75pt + rgb("#7a6171"),
@@ -589,7 +678,7 @@
         )
         #v(2.25pt)
         #t(
-          "Founded and grew Yuppies Tech to 15 engineers while remaining the client-facing technical lead. Turned unclear requirements into architecture, delivery plans, and production releases.",
+          "Founded and grew Yuppies Tech to 15 engineers while remaining the client-facing technical lead. Turned unclear requirements into architecture, delivery plans, and production releases. Selected engagements:",
           fill: muted,
           font: "Source Sans 3",
           size: 10pt,
@@ -678,7 +767,7 @@
               weight: "medium",
               style: "normal",
             )#t(
-              "led modernization of ZebPay's iOS and Android apps, release infrastructure, exchange and payment features, and international KYC. During stabilization, increased the release cadence from every two weeks to weekly.",
+              "led modernization of ZebPay's iOS and Android apps, release infrastructure, exchange and payment features, and international KYC. During stabilization, increased the release cadence from monthly to weekly.",
               fill: muted,
               font: "Source Sans 3",
               size: 10pt,
@@ -751,7 +840,7 @@
     )
   ]
 
-  #v(12pt)
+  #v(9pt)
 
   #block(breakable: false)[
     #grid(
@@ -767,16 +856,34 @@
         dy: 0pt,
       )]],
       [
-        #t(
-          "Kult",
-          fill: strong,
-          font: "Literata",
-          size: 12pt,
-          weight: "bold",
-          style: "normal",
-          kerning: false,
+        #grid(
+          columns: (auto, auto),
+          gutter: 5pt,
+          align: horizon,
+          [#t(
+            "Kult",
+            fill: strong,
+            font: "Literata",
+            size: 12pt,
+            weight: "bold",
+            style: "normal",
+            kerning: false,
+          )],
+          [#box(
+            inset: (x: 4pt, y: 3pt),
+            radius: 8pt,
+            fill: rgb("#242220"),
+            stroke: 0.75pt + rgb("#57534e"),
+          )[#t(
+            "0 → 1",
+            fill: rgb("#c7c2bd"),
+            font: "Source Sans 3",
+            size: 7.5pt,
+            weight: "medium",
+            style: "normal",
+          )]],
         )
-        #v(-6pt)
+        #v(-3.75pt)
         #t(
           "Consumer beauty and skincare commerce.",
           fill: muted,
@@ -803,7 +910,7 @@
               style: "normal",
             )],
             [#box(
-              inset: (x: 4pt, y: 1.5pt),
+              inset: (x: 4pt, y: 3pt),
               radius: 8pt,
               fill: rgb("#2d2418"),
               stroke: 0.75pt + rgb("#9a6a2b"),
@@ -816,7 +923,7 @@
               style: "normal",
             )]],
             [#box(
-              inset: (x: 4pt, y: 1.5pt),
+              inset: (x: 4pt, y: 3pt),
               radius: 8pt,
               fill: rgb("#2a2429"),
               stroke: 0.75pt + rgb("#7a6171"),
@@ -890,7 +997,7 @@
     )
   ]
 
-  #v(12pt)
+  #v(9pt)
 
   #block(breakable: false)[
     #grid(
@@ -906,16 +1013,34 @@
         dy: 0pt,
       )]],
       [
-        #t(
-          "Yilu",
-          fill: strong,
-          font: "Literata",
-          size: 12pt,
-          weight: "bold",
-          style: "normal",
-          kerning: false,
+        #grid(
+          columns: (auto, auto),
+          gutter: 5pt,
+          align: horizon,
+          [#t(
+            "Yilu",
+            fill: strong,
+            font: "Literata",
+            size: 12pt,
+            weight: "bold",
+            style: "normal",
+            kerning: false,
+          )],
+          [#box(
+            inset: (x: 4pt, y: 3pt),
+            radius: 8pt,
+            fill: rgb("#242220"),
+            stroke: 0.75pt + rgb("#57534e"),
+          )[#t(
+            "0 → 1",
+            fill: rgb("#c7c2bd"),
+            font: "Source Sans 3",
+            size: 7.5pt,
+            weight: "medium",
+            style: "normal",
+          )]],
         )
-        #v(-6pt)
+        #v(-3.75pt)
         #t(
           "Smart travel platform built for Lufthansa Group with BCG Digital Ventures.",
           fill: muted,
@@ -930,7 +1055,7 @@
           columns: (1fr, auto),
           gutter: 12pt,
           [#grid(
-            columns: (auto, auto),
+            columns: (auto, auto, auto),
             gutter: 4pt,
             align: horizon,
             [#t(
@@ -942,13 +1067,26 @@
               style: "normal",
             )],
             [#box(
-              inset: (x: 4pt, y: 1.5pt),
+              inset: (x: 4pt, y: 3pt),
               radius: 8pt,
               fill: rgb("#2d2418"),
               stroke: 0.75pt + rgb("#9a6a2b"),
             )[#t(
               "Hands-on",
               fill: rgb("#f0b85f"),
+              font: "Source Sans 3",
+              size: 7.5pt,
+              weight: "medium",
+              style: "normal",
+            )]],
+            [#box(
+              inset: (x: 4pt, y: 3pt),
+              radius: 8pt,
+              fill: rgb("#2a2429"),
+              stroke: 0.75pt + rgb("#7a6171"),
+            )[#t(
+              "Leadership",
+              fill: rgb("#e3bfd7"),
               font: "Source Sans 3",
               size: 7.5pt,
               weight: "medium",
@@ -1003,7 +1141,7 @@
             style: "normal",
           )],
           [#t(
-            "Helped establish the engineering team by writing job descriptions, creating technical exercises, and interviewing candidates. Also served as Scrum Master.",
+            "As the first engineering hire, led a five-developer full-stack pod with a product manager and designer; partnered with the CTO on key hires and served as Scrum Master for early sprints, establishing the team's delivery cadence.",
             fill: muted,
             font: "Source Sans 3",
             size: 10pt,
@@ -1016,7 +1154,7 @@
     )
   ]
 
-  #v(12pt)
+  #v(9pt)
 
   #block(breakable: false)[
     #grid(
@@ -1032,16 +1170,34 @@
         dy: 0pt,
       )]],
       [
-        #t(
-          "8fit",
-          fill: strong,
-          font: "Literata",
-          size: 12pt,
-          weight: "bold",
-          style: "normal",
-          kerning: false,
+        #grid(
+          columns: (auto, auto),
+          gutter: 5pt,
+          align: horizon,
+          [#t(
+            "8fit",
+            fill: strong,
+            font: "Literata",
+            size: 12pt,
+            weight: "bold",
+            style: "normal",
+            kerning: false,
+          )],
+          [#box(
+            inset: (x: 4pt, y: 3pt),
+            radius: 8pt,
+            fill: rgb("#242220"),
+            stroke: 0.75pt + rgb("#57534e"),
+          )[#t(
+            "Growth-stage",
+            fill: rgb("#c7c2bd"),
+            font: "Source Sans 3",
+            size: 7.5pt,
+            weight: "medium",
+            style: "normal",
+          )]],
         )
-        #v(-6pt)
+        #v(-3.75pt)
         #t(
           "Fitness and nutrition platform later acquired by Withings.",
           fill: muted,
@@ -1068,7 +1224,7 @@
               style: "normal",
             )],
             [#box(
-              inset: (x: 4pt, y: 1.5pt),
+              inset: (x: 4pt, y: 3pt),
               radius: 8pt,
               fill: rgb("#2d2418"),
               stroke: 0.75pt + rgb("#9a6a2b"),
@@ -1142,7 +1298,7 @@
     )
   ]
 
-  #v(12pt)
+  #v(9pt)
 
   #block(breakable: false)[
     #grid(
@@ -1158,16 +1314,34 @@
         dy: 0pt,
       )]],
       [
-        #t(
-          "Housing",
-          fill: strong,
-          font: "Literata",
-          size: 12pt,
-          weight: "bold",
-          style: "normal",
-          kerning: false,
+        #grid(
+          columns: (auto, auto),
+          gutter: 5pt,
+          align: horizon,
+          [#t(
+            "Housing",
+            fill: strong,
+            font: "Literata",
+            size: 12pt,
+            weight: "bold",
+            style: "normal",
+            kerning: false,
+          )],
+          [#box(
+            inset: (x: 4pt, y: 3pt),
+            radius: 8pt,
+            fill: rgb("#242220"),
+            stroke: 0.75pt + rgb("#57534e"),
+          )[#t(
+            "Late-stage",
+            fill: rgb("#c7c2bd"),
+            font: "Source Sans 3",
+            size: 7.5pt,
+            weight: "medium",
+            style: "normal",
+          )]],
         )
-        #v(-6pt)
+        #v(-3.75pt)
         #t(
           "Indian real estate search and transaction platform.",
           fill: muted,
@@ -1194,7 +1368,7 @@
               style: "normal",
             )],
             [#box(
-              inset: (x: 4pt, y: 1.5pt),
+              inset: (x: 4pt, y: 3pt),
               radius: 8pt,
               fill: rgb("#2d2418"),
               stroke: 0.75pt + rgb("#9a6a2b"),
@@ -1291,7 +1465,7 @@
     )
   ]
 
-  #v(12pt)
+  #v(9pt)
 
   #block(breakable: false)[
     #grid(
@@ -1307,16 +1481,21 @@
         dy: 0.75pt,
       )]],
       [
-        #t(
-          "Earlier Consulting and Startup Work",
-          fill: strong,
-          font: "Literata",
-          size: 12pt,
-          weight: "bold",
-          style: "normal",
-          kerning: false,
+        #grid(
+          columns: auto,
+          gutter: 5pt,
+          align: horizon,
+          [#t(
+            "Earlier Consulting and Startup Work",
+            fill: strong,
+            font: "Literata",
+            size: 12pt,
+            weight: "bold",
+            style: "normal",
+            kerning: false,
+          )],
         )
-        #v(-6pt)
+        #v(-3.75pt)
         #t(
           "Bridg, 1mg, HornOk, Volkno, Meriad, and self-employed work.",
           fill: muted,
@@ -1343,7 +1522,7 @@
               style: "normal",
             )],
             [#box(
-              inset: (x: 4pt, y: 1.5pt),
+              inset: (x: 4pt, y: 3pt),
               radius: 8pt,
               fill: rgb("#2d2418"),
               stroke: 0.75pt + rgb("#9a6a2b"),
@@ -1448,16 +1627,21 @@
           dy: 0pt,
         )]],
         [
-          #t(
-            "University of California, Los Angeles",
-            fill: strong,
-            font: "Literata",
-            size: 12pt,
-            weight: "bold",
-            style: "normal",
-            kerning: false,
+          #grid(
+            columns: auto,
+            gutter: 5pt,
+            align: horizon,
+            [#t(
+              "University of California, Los Angeles",
+              fill: strong,
+              font: "Literata",
+              size: 12pt,
+              weight: "bold",
+              style: "normal",
+              kerning: false,
+            )],
           )
-          #v(-6pt)
+          #v(-3.75pt)
           #t(
             "Bachelor of Science.",
             fill: muted,
@@ -1501,7 +1685,7 @@
     ]
 
   ]
-  #v(12pt)
+  #v(9pt)
 
   #block(breakable: false)[
     #grid(
@@ -1517,16 +1701,21 @@
         dy: 0pt,
       )]],
       [
-        #t(
-          "Delhi Public School, R. K. Puram",
-          fill: strong,
-          font: "Literata",
-          size: 12pt,
-          weight: "bold",
-          style: "normal",
-          kerning: false,
+        #grid(
+          columns: auto,
+          gutter: 5pt,
+          align: horizon,
+          [#t(
+            "Delhi Public School, R. K. Puram",
+            fill: strong,
+            font: "Literata",
+            size: 12pt,
+            weight: "bold",
+            style: "normal",
+            kerning: false,
+          )],
         )
-        #v(-6pt)
+        #v(-3.75pt)
         #t(
           "High School.",
           fill: muted,

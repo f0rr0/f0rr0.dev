@@ -45,7 +45,7 @@ const buildPersonNode = (): Person => ({
       sameAs: "https://dpsrkp.net/",
     },
   ],
-  description: siteConfig.description,
+  description: resumeData.summary,
   email: `mailto:${resumeData.person.email}`,
   image: publicUrl(resumeData.person.image),
   jobTitle: currentRole?.title ?? resumeData.person.role,
@@ -121,7 +121,7 @@ export const buildProfilePageJsonLd = (): WithContext<ProfilePage> => ({
     url: publicUrl("/"),
   },
   mainEntity: buildPersonNode(),
-  name: "Sid Jain Resume",
+  name: "Sid Jain Résumé",
   url: publicUrl("/resume"),
 });
 

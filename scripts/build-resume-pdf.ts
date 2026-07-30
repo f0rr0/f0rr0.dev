@@ -2,9 +2,15 @@ import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { resumeData, resumeRoleMarkerLabels } from "../src/content/resume";
+import {
+  formatResumeLocation,
+  resumeCompanyStageLabels,
+  resumeData,
+  resumeRoleMarkerLabels,
+} from "../src/content/resume";
 import type {
   LogoAsset,
+  ResumeCompanyStage,
   ResumeExperience,
   ResumeRole,
   ResumeRoleMarker,
@@ -65,8 +71,9 @@ const pdfOnly = {
     32 / 3 / (10 * CSS_PX_TO_PT)
   ),
   contactStackHeight: pt(32),
-  companyTaglineGap: pt(-6),
-  experienceItemGap: spacing[4],
+  companyTaglineGap: pt(-3.75),
+  experienceItemGap: spacing[3],
+  markerInsetY: cssPxToPt(4),
   pageMargin: "0.58in",
   profileAvatarSize: fontSize["5xl"],
   roleBodyGap: cssPxToPt(3),
@@ -133,7 +140,7 @@ const roleMarker = (marker: ResumeRoleMarker) => {
   const details = roleMarkerDetails[marker];
 
   return `#box(
-  inset: (x: ${pt(4)}, y: ${pt(1.5)}),
+  inset: (x: ${pt(4)}, y: ${pdfOnly.markerInsetY}),
   radius: ${pt(8)},
   fill: rgb(${quote(details.fill)}),
   stroke: ${pt(0.75)} + rgb(${quote(details.stroke)}),
@@ -143,6 +150,17 @@ const roleMarker = (marker: ResumeRoleMarker) => {
     weight: "medium",
   })}]`;
 };
+
+const companyStageMarker = (stage: ResumeCompanyStage) => `#box(
+  inset: (x: ${pt(4)}, y: ${pdfOnly.markerInsetY}),
+  radius: ${pt(8)},
+  fill: rgb("#242220"),
+  stroke: ${pt(0.75)} + rgb("#57534e"),
+)[${text(resumeCompanyStageLabels[stage], {
+  fill: `rgb(${quote("#c7c2bd")})`,
+  size: fontSize.marker,
+  weight: "medium",
+})}]`;
 
 const sizeFromClass = (
   className: string | undefined,
@@ -268,9 +286,17 @@ const bulletContent = (bullet: NonNullable<ResumeRole["bullets"]>[number]) => {
 const stack = (items: string[], gap = spacing[0.5]) =>
   items.join(`\n#v(${gap})\n`);
 
+interface SectionTitleOptions {
+  after?: string;
+  before?: string;
+}
+
 const sectionTitle = (
   title: string,
-  { after = pdfOnly.sectionTitleAfterGap, before = spacing[8] } = {}
+  {
+    after = pdfOnly.sectionTitleAfterGap,
+    before = spacing[8],
+  }: SectionTitleOptions = {}
 ) => `
 #v(${before})
 ${text(title, {
@@ -313,8 +339,28 @@ interface PdfSectionItem {
   pageBreakBefore: boolean;
 }
 
-const experienceItem = (item: ResumeExperience): PdfSectionItem => ({
-  content: `
+const experienceItem = (item: ResumeExperience): PdfSectionItem => {
+  const companyHeadingItems = [
+    text(item.company, {
+      fill: "strong",
+      font: "Literata",
+      kerning: false,
+      size: fontSize.base,
+      weight: "bold",
+    }),
+    ...(item.companyStage === undefined
+      ? []
+      : [companyStageMarker(item.companyStage)]),
+  ];
+  const companyHeading = `#grid(
+  columns: (${companyHeadingItems.map(() => "auto").join(", ")}),
+  gutter: ${pt(5)},
+  align: horizon,
+  ${companyHeadingItems.map((headingItem) => `[${headingItem}]`).join(",\n  ")}
+)`;
+
+  return {
+    content: `
 #block(breakable: false)[
 #grid(
   columns: (${spacing[10]}, 1fr),
@@ -322,13 +368,7 @@ const experienceItem = (item: ResumeExperience): PdfSectionItem => ({
   align: top,
   [${companyLogo(item.logo)}],
   [
-    ${text(item.company, {
-      fill: "strong",
-      font: "Literata",
-      kerning: false,
-      size: fontSize.base,
-      weight: "bold",
-    })}
+    ${companyHeading}
     #v(${pdfOnly.companyTaglineGap})
     ${text(item.tagline, { size: fontSize.xs, style: "italic" })}
     ${item.roles.map(roleBlock).join("\n")}
@@ -336,8 +376,9 @@ const experienceItem = (item: ResumeExperience): PdfSectionItem => ({
 )
 ]
 `,
-  pageBreakBefore: item.pdfPageBreakBefore === true,
-});
+    pageBreakBefore: item.pdfPageBreakBefore === true,
+  };
+};
 
 const sectionWithItems = (
   title: string,
@@ -366,9 +407,10 @@ ${remainingItems
 };
 
 const buildTypst = () => {
-  const contactLinks = resumeData.links
-    .map((item) =>
-      link(item.label, item.href, {
+  // Preserve a word boundary for Preview/ATS extractors between the name and first contact link.
+  const contactLines = resumeData.links
+    .map((item, index) =>
+      link(index === 0 ? ` ${item.label}` : item.label, item.href, {
         size: cssPxToPt(10),
         weight: "medium",
       })
@@ -415,7 +457,7 @@ const buildTypst = () => {
   align: top,
   [#profile-photo(${quote(profileAvatar)})],
   [#box(height: ${pdfOnly.profileAvatarSize})[#align(left + horizon)[${text(
-    resumeData.person.name,
+    `${resumeData.person.name} `,
     {
       fill: "strong",
       font: "Literata",
@@ -426,14 +468,18 @@ const buildTypst = () => {
   [#align(right)[#box(height: ${pdfOnly.profileAvatarSize})[#align(right + horizon)[#box(height: ${pdfOnly.contactStackHeight})[
       #set par(leading: ${pdfOnly.contactLinkLeading})
       #align(right)[
-      ${contactLinks}
+      ${contactLines}
       ]
     ]]]]],
 )
   #v(${spacing[1]})
   ${paragraph(resumeData.summary)}
+  #v(${spacing[1]})
+  ${paragraph(formatResumeLocation(resumeData.person))}
 
-  ${sectionWithItems("Experience", experience, { before: spacing[4] })}
+  ${sectionWithItems("Experience", experience, {
+    before: spacing[2],
+  })}
 
   ${sectionWithItems("Education", education)}
 ]
