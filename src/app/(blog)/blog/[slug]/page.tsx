@@ -169,7 +169,7 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
             )}
           </div>
         </header>
-        <div className="prose max-w-[70ch] prose-h2:text-2xl prose-h3:text-xl prose-p:leading-relaxed">
+        <div className="prose w-full max-w-4xl prose-h2:text-2xl prose-h3:text-xl prose-p:leading-relaxed">
           <Content components={mdxComponents} />
         </div>
       </article>
