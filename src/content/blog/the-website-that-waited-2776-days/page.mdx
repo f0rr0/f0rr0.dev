@@ -1,0 +1,104 @@
+export const metadata = {
+  title: "The Website That Waited 2,776 Days",
+  date: "2026-07-30",
+  author: "Sid Jain",
+  summary:
+    "Two portraits of one personal website: the final YUPPI.ES snapshot on master and the living résumé on next, with 2,776 days between posts.",
+  tags: ["personal web", "web development", "meta"],
+};
+
+Some websites disappear. Personal websites do something stranger: they wait.
+
+Today is exactly **seven years, seven months, and seven days** after December 23, 2018, the date of the newest post in this site's feed. That is 2,776 days of a feed clock pointing at _2018 Music in Review_. The arithmetic is almost suspiciously tidy. It feels less like a publishing gap and more like a very patient countdown.
+
+So this is not a changelog. It is a diptych: the [last known frame on `master`](https://github.com/f0rr0/f0rr0.dev/tree/0dd47f41a0073b5e9b60f0b2b4596824c3f8bd58) beside the [site on `next` today](https://github.com/f0rr0/f0rr0.dev/tree/4861fefc61f6794a12018aabf2730dc673049c52). No awkward adolescence between them, no tour of abandoned layouts. Memory rarely keeps the diffs anyway.
+
+Git considers the branches unrelated histories. The human evidence disagrees.
+
+## The pink room on `master`
+
+The final thing `master` did was forget its address.
+
+Its last commit, on April 27, 2026, removed one line: `yuppi.es`. Everything underneath remained untouched. The HTML still introduces itself as **YUPPI.ES**, still points its Open Graph metadata and links at that domain, and still loads a bundle stamped December 24, 2018. It is a 2026 envelope containing a 2018 letter.
+
+<figure>
+  <Image
+    src="./master-home.png"
+    width={1440}
+    height={1000}
+    alt="The final YUPPI.ES homepage from master, with a pink wordmark, monospace text, crossed-out cities, and a loading indicator"
+  />
+  <figcaption>
+    The final `master` homepage, rendered in July 2026. The calendar kept
+    counting; the data feed did not.
+  </figcaption>
+</figure>
+
+What a room it is. A 700-pixel corridor of Inconsolata, midnight blue walls, cyan links, and a slab of razzmatazz pink announcing `YUPPI.ES`. The navigation is three doors: `About · Blog · Hire Me`. There are no gradients, cookie banners, or urgent buttons asking anyone to book a demo.
+
+The homepage says hello and then crosses out Los Angeles, New Delhi, and Mumbai before arriving in Berlin. I work at Lufthansa. I am passionate about lambda calculus, house music, and Mexican food. It is the kind of sentence a résumé would never approve and a personal website absolutely should.
+
+Then comes the heartbeat: I have been lifelogging since 2014, and the page promises fresh RescueTime activity and Last.fm plays. A tiny pair of circles bounces beside **“Crunching latest data...”** The original HTML says the latest post was written “a day ago”; let the old JavaScript wake up in 2026 and it recalculates that to “8 years ago.” The browser can still subtract. The old APIs have less to say.
+
+The rest of the snapshot is just as specific. The About page remembers sixth-grade Logo, Flash animations—`.swf` anyone?—Near-Earth Object observations, close-up card tricks, and winning a Wordmaster championship after misspelling “hygiene.” The Hire Me page opens a glorious 2010s tool drawer: Babel and ES6/7, Redux, Relay, Browserify, JSPM, RethinkDB, PostCSS, Mocha, Chai, and Sinon. The 404 page simply scolds:
+
+> You should know better than hitting routes that don’t exist.
+
+Naturally, it follows this with a GIF.
+
+Even the shape of the branch is nostalgic. There is no `package.json` or workshop of editable source files in the final tree—only the finished deployment: generated HTML, `bundle.js`, a large source map, an Atom feed, icons, and article media. The source map preserves the original React 15 and early Gatsby machinery like amber around an insect.
+
+Six posts sit on the shelf. One chases developer-experience nirvana with Koa, Webpack, hot module replacement, and the Pokémon API. Another explains how Housing built a React Native app with more than 90 percent shared JavaScript. Two annual reviews count music with endearing seriousness: 10,972 listens in 2016; 28,379 minutes in 2018. The site did not merely say I liked music. It brought receipts.
+
+## The paper desk on `next`
+
+Open the current site and the room has changed. The wall is warm paper, the headings are Literata, the body is Source Sans, and amber has replaced neon pink. Dark mode is now a choice instead of a permanent weather system.
+
+<figure>
+  <Image
+    src="./next-home.png"
+    width={1440}
+    height={1000}
+    alt="The current f0rr0.dev homepage showing Sid Jain's warm, cream-colored résumé with current applied AI roles"
+  />
+  <figcaption>
+    The current `next` homepage. Less secret clubhouse, more living record—but
+    the amber links still glow.
+  </figcaption>
+</figure>
+
+The front door is no longer a greeting; it is the [résumé](/resume). It opens with ten-plus years of production systems, Applied AI at Namefi, human-in-the-loop content systems at Memorang, and a consultancy built to fifteen engineers. Company marks sit beside the work. Hands-on and leadership roles are labeled. There is a proper PDF button.
+
+Some old sentences have simply grown up. “I work at Lufthansa” is now a chapter about being Yilu's founding engineer, building a smart-travel platform for Lufthansa Group. The magenta `YUPPI.ES` wordmark now echoes in Yuppies Tech, a line of experience with a team, clients, and history. A name that once occupied the header now appears as a company.
+
+Under the paper surface, the site is unmistakably from another internet era: Next 16, React 19, MDX, structured data, generated social images, and a small collection of machine-readable doors. There is [RSS](/rss.xml), a [JSON résumé](/resume.json), a [plain-text profile for language models](/llms.txt), a sitemap, and Schema.org metadata. The résumé can even be handed directly to Claude Code or Codex for questions.
+
+The old About page called the site “primarily an experiment in using modern front-end tooling for blogging.” That may be the most durable line in the snapshot. _Modern_ moved; the experiment did not.
+
+The old site asked RescueTime and Last.fm to tell visitors who I was. The current site tells machines itself.
+
+The [blog](/blog) remains deliberately quieter than the résumé. Four old entries made the crossing with their charts, screenshots, Pokémon, webpack configs, and 2016 music discoveries intact. This post becomes the fifth—and, more importantly, moves the date at the top of the feed for the first time in 2,776 days.
+
+## Same fingerprints, different instruments
+
+Put the two portraits together and the contrast looks almost too tidy:
+
+| The final `master` frame           | The current `next` frame          |
+| ---------------------------------- | --------------------------------- |
+| `YUPPI.ES`                         | Sid Jain / `F0RR0`                |
+| About · Blog · Hire Me             | Blog · Résumé · GitHub            |
+| Berlin · Lufthansa                 | Mumbai · Namefi                   |
+| Inconsolata · midnight · neon pink | Literata · paper · amber          |
+| RescueTime and Last.fm streams     | JSON Resume and LLM context       |
+| Atom feed                          | RSS, sitemap, and structured data |
+| “Crunching latest data...”         | “Ask Claude Code or Codex”        |
+
+The continuities are better than the differences. The same email address survived. So did the GitHub handle, the narrow reading column, the open source, the dark palette after sunset, and the urge to make a life legible through data. The technical inventory became an outcome-heavy résumé, but the person who thought a five-bar equalizer belonged beside a recently played track is plainly still operating the controls.
+
+That is why the old branch is worth keeping. Not because every dependency aged gracefully, or because every link still answers, but because personal websites are among the few museums we are allowed to keep living inside. A frozen homepage can remember what felt important before memory edits the story into something cleaner.
+
+Someday this version will look equally quaint. “Ask an AI agent about me” may age like `webpack@beta`. The warm résumé might become another room we visit with fond embarrassment. Good. That is the bargain. A personal website should collect rings like a tree, even when the rings live in branches Git insists are unrelated.
+
+For now, the blog clock is moving again. The old homepage is still crunching the latest data; the living blog finally has something new to show.
+
+Not the fastest hot reload I have ever shipped. Perhaps the one worth waiting for.
