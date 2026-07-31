@@ -3,110 +3,189 @@ export const metadata = {
   date: "2026-08-13",
   author: "Sid Jain",
   summary:
-    "At Memorang, I built a semantic image search prototype that combined embeddings with typed PostgreSQL filters for clinical, product, and access constraints.",
+    "What two exploratory Memorang prototypes taught me about combining semantic retrieval with typed PostgreSQL filters for educational media.",
   tags: ["applied-ai", "postgresql", "search", "typescript"],
   draft: true,
 };
 
-At Memorang, I was working on an authoring platform for structured educational
-content. A question was rarely just text. It belonged to a versioned curriculum,
-carried answer choices and explanations, and connected to tags, source material,
-media, and assessment metadata. Finding a useful image for it looked like a
-natural job for embeddings, and they did find related concepts even when the
-question and media description used different words. The results also exposed
-the limits of similarity. A dermoscopic image could show the right kind of
-lesion and still be wrong for the lesson because it showed a different body
-location or skin phototype. It might also belong to an organization the editor
-was not allowed to access. An editor might ask for “a dermoscopic image relevant
-to this lesion, on the arm, for Fitzpatrick Type IV skin,” but the system still
-had to preserve a clinical idea, an exact body location, and a controlled skin
-phototype category all the way to the result.
+At Memorang, I worked on an authoring platform for structured educational content. A question was rarely just text. It belonged to a versioned curriculum, carried answer choices and explanations, and connected to tags, source material, media, and assessment metadata.
 
-## Separating similarity from constraints
+Finding a useful image for it looked like a natural job for embeddings. They did find related concepts when the question and media description used different words. The results also exposed the limits of similarity. A dermoscopic image could show the right lesion and still be wrong for the lesson because it showed a different body location or an incompatible, expert-assigned skin-phototype category. It might also belong to an organisation the editor wasn't allowed to access.
 
-The lesion and clinical concept belonged in the semantic query, while arm and
-Type IV were exact metadata constraints. Organization, project, visibility, and
-deletion state came from the application's access rules. Flattening all of that
-into the text sent to an embedding model would erase those distinctions. A
-vector can place “upper limb” near “arm,” which is useful when language varies,
-but it cannot guarantee that a record has the enumerated value required by the
-workflow. It should not determine whether an editor may see another
-organization's asset either.
+“Find a dermoscopic image relevant to this lesion, on the arm, for Type IV skin” is one sentence containing at least three different problems:
 
-SQL predicates solve the exact part of the problem, but they cannot reliably
-find an image related to an explanation when the words do not line up. Letting a
-language model generate unrestricted SQL would have made the system harder to
-reason about and secure without helping with this division. I split the query
-instead: semantic retrieval handled conceptual similarity, typed metadata
-filters enforced the editor's constraints, and application code added
-authorization independently so that model output could neither supply nor
-weaken it. If the parser could not understand an exact medical constraint, the
-search stopped or asked the editor to clarify. A broader result set would have
-silently discarded part of the request.
+1. the lesion and clinical concept are semantic intent;
+2. `Arm` and `TypeIV` are controlled metadata constraints; and
+3. organisation, project, visibility, and deletion state are access policy.
 
-## Building and checking the query path
+Trying to turn the whole sentence into either one vector or a blob of generated SQL seemed clever in exactly the wrong way.
 
-The application already contained much of the structure needed to make that
-split work. Stable operational fields such as status, version, organization,
-project, and timestamps were relational. Content that varied across question
-schemas lived in PostgreSQL JSONB. Tags, media, collections, and parent-child
-relationships remained relational because their identity and integrity
-mattered. Before adding a model to the query path, I built a typed filter
-contract over this hybrid schema. A caller could provide a known field, an
-allowlisted operator, and a value. The translator knew whether the field mapped
-to a column, a JSON path, or a relationship, and all values remained
-parameterized. An early version of the translator warned about an unknown field
-and continued without it. That was convenient, but a misspelled constraint could
-broaden the result set without making the failure visible. I changed the
-contract to reject the request, and model-generated filters went through the
-same validation. Editors did not need to know whether a request touched JSONB, a
-trigram index, a relationship, or a vector, but they did need to know when the
-system could not honor it.
+## What the prototypes actually were
 
-Editor search already crossed JSONB fields and relational tags. A query plan
-showed that hydrating those relationships during search was expensive, so I kept
-filtering and ranking on lightweight identifiers. After pagination, the
-application loaded the related content in one batched step. Semantic search
-returned through that existing query layer instead of introducing another way
-to load records. For each media record, I created a compact text representation
-from the fields that could change its meaning: title, description, diagnosis,
-media type, body location, and skin phototype. A question used its stem, correct
-answer, explanation, concept, diagnosis, and specialties. Timestamps and
-internal identifiers stayed out because they added no useful meaning to the
-embedding. I stored the canonical text beside its vector so I could inspect
-exactly what had been embedded when a result looked wrong. The vector index
-returned media identifiers, and the application loaded the current records
-through the existing query layer.
+This is a retrospective on two exploratory TypeScript prototypes from September 2024, with simplified and sanitised excerpts. The first put a typed query contract over a hybrid relational/[JSONB](https://www.postgresql.org/docs/current/datatype-json.html) content model. The second tried self-querying retrieval for image, audio, and video records using 1,536-dimensional embeddings.
 
-The model translated the editor's sentence into a semantic phrase and a small
-metadata expression drawn from the allowlisted schema. A parser rejected unknown
-fields, values, and operators before application-owned authorization was added.
-It never saw a database connection or wrote SQL. An invalid expression stopped
-the search or prompted a precise follow-up. I kept the prototype in PostgreSQL,
-where the source text, vector, filter, current record, and query plan could be
-inspected together. A separate retrieval service might have made sense later,
-but it was unnecessary until we knew whether the recommendations were useful to
-editors.
+They answered useful architectural questions. They were not a final production search system, and a few things I would now require were either rough or absent:
 
-To check the prototype, I used media that editors had previously attached to
-questions. For each question, the system retrieved a small candidate set and
-checked whether it recovered an earlier selection. Consistently missing those
-known associations suggested a problem with the representation or filtering,
-but historical choices were signals rather than ground truth. A new
-recommendation could be better than an old selection made from a smaller catalog
-or under constraints that had never been recorded. Nearest neighbors also tended
-to cluster around variants of the same asset, so a candidate list could look
-strong on paper while offering little real choice.
+- unknown filter keys were logged and dropped instead of failing the request;
+- the query constructor ran at temperature `0.7` and accepted a fairly broad comparator and logical-operator set;
+- the verifiable vector-search RPC did not itself enforce authentication or tenancy; and
+- an experimental maximal-marginal-relevance ranker existed, but wasn't wired into the self-query path.
 
-Historical attachments could expose a broken representation, but they could not
-tell us whether a new image was clinically appropriate. That required review by
-subject-matter experts. Editors also needed to tell us whether a suggestion
-saved time, whether they accepted or replaced it, and why. Those reviews could
-explain failures hidden by an aggregate retrieval score, from a missing
-controlled attribute or a poor text representation to an overly broad synonym
-or a constraint that belonged in the authoring model itself. Latency and parse
-failures still mattered, but neither measured the quality of the final editorial
-decision. For the original request, the system could retrieve a candidate for
-the right lesion, on the arm, for Fitzpatrick Type IV skin, then show the text
-and filters that put it there. The editor could review the recommendation before
-deciding what students would see.
+Those aren't footnotes to hide. They are much of what the prototypes taught me.
+
+## First, make exact queries boring
+
+Stable operational fields such as status, version, organisation, project, and timestamps were relational. Schema-dependent question content lived in JSONB. Tags, media, collections, and parent-child relationships remained relational because their identity and integrity mattered.
+
+Before involving a model, I made the filter language explicit. A simplified version looked like this:
+
+```ts
+type FilterOperator =
+  | "eq"
+  | "ne"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "like"
+  | "ilike"
+  | "contains";
+
+type FilterKey =
+  | "type"
+  | "status"
+  | "metadata.speciality_primary"
+  | "metadata.speciality_secondary";
+
+type FilterInput = {
+  key: FilterKey;
+  operator: FilterOperator;
+  value: unknown;
+};
+
+function buildNestedObject(path: string, value: unknown) {
+  return path.split(".").reduceRight((child, key) => ({ [key]: child }), value);
+}
+
+function jsonbContains(key: `metadata.${string}`, value: unknown) {
+  const path = key.slice("metadata.".length);
+  return sql`
+    ${items.metadata} @> ${sql.param(buildNestedObject(path, value))}::jsonb
+  `;
+}
+```
+
+The translator knew whether a key mapped to a column, a JSON path, or a relationship, and the SQL builder parameterised values. The intentionally small contract was easier to test and log than arbitrary SQL. It also let the product hide whether a field happened to live in JSONB.
+
+The POC's permissive behaviour was still a correctness bug waiting for a typo: it warned about an unknown field and continued without that constraint. If `body_location` becomes `body_loction`, silently returning broader results is not graceful degradation. A production parser should reject the complete expression or ask for clarification.
+
+Search also had to inspect nested answer explanations, sources, and tag labels. For partial labels I tried PostgreSQL's [`pg_trgm`](https://www.postgresql.org/docs/current/pgtrgm.html) with a GIN trigram index. One captured `EXPLAIN ANALYZE` returned the first 100 records in about `72.7 ms`. That isn't a universal latency claim; it is one recorded plan from one exploratory dataset.
+
+The plan was more interesting than the headline number. It showed the trigram index being used, while relationship hydration repeated work per returned item. Filtering and ranking lightweight IDs first, then hydrating related content in a batched step, was the obvious next shape. PostgreSQL was being quite direct with me there.
+
+## Then split meaning from constraints
+
+For each media record I built compact, labelled text from fields that could change its meaning: title, description, diagnosis, media type, body location, and skin phototype. Question text combined the stem, correct answer, explanation, concept, diagnosis, and specialties. Timestamps and internal IDs stayed out. I stored the canonical text beside its vector so a strange result could be traced back to what had actually been embedded.
+
+The language model's job was narrow in principle: turn an editor's sentence into a semantic phrase plus a metadata expression. It didn't receive a database connection or generate SQL. Deterministic code parsed the expression and translated allowed fields and operators into a retrieval filter.
+
+The prototype derived much of that contract from Zod. If I were tightening it now, I would make the allowed combinations smaller and more explicit, along these lines:
+
+```ts
+const proposedQuery = z
+  .object({
+    semanticQuery: z.string().min(1),
+    filters: z.array(
+      z.discriminatedUnion("field", [
+        z.object({
+          field: z.literal("body_location"),
+          op: z.literal("eq"),
+          value: z.enum([
+            "Scalp",
+            "Face",
+            "Neck",
+            "Arm",
+            "Hands",
+            "Trunk",
+            "Leg",
+          ]),
+        }),
+        z.object({
+          field: z.literal("skin_phototype"),
+          op: z.literal("eq"),
+          value: z.enum([
+            "TypeI",
+            "TypeII",
+            "TypeIII",
+            "TypeIV",
+            "TypeV",
+            "TypeVI",
+          ]),
+        }),
+      ])
+    ),
+  })
+  .strict();
+```
+
+This is a proposed hardened shape, not a claim that the September POC used this exact schema. In particular, `0.7` is a perfectly cheerful temperature for some prose and less charming for a query planner. In production I'd test a lower-variance structured-output path, version the schema and prompt together, bound retries, and treat parse failure as an ordinary product state.
+
+There is also a clinical caveat hidden inside the example. Fitzpatrick type should be controlled metadata assigned by a qualified clinician or editor. It must not be guessed from pixels, names, or ethnicity. The scale was devised around response to ultraviolet exposure and has [documented limitations across diverse populations](https://pubmed.ncbi.nlm.nih.gov/32186531/?dopt=Abstract). Even when it is useful in a particular editorial workflow, the system should show its provenance and allow review rather than turn it into machine-produced fact.
+
+## The access boundary belongs below retrieval
+
+The architectural rule is straightforward: organisation, project, visibility, and deletion predicates must come from the authenticated application or the database. A model-generated filter may narrow an already-authorised set. It must not establish the set.
+
+The sanitised RPC preserved with the prototype didn't implement that boundary, so I can't honestly write that tenancy was solved there. A production path would need mandatory application predicates or row-level-security policies applied independently of the model output, with tests proving that a missing or malformed semantic filter cannot widen access.
+
+That separation also changes fallback behaviour. If structured parsing fails, semantic-only retrieval might still be acceptable _inside_ mandatory tenant and visibility constraints. “Try something broader” is never permission to search another organisation's media.
+
+## A filtered-vector trap worth knowing about
+
+Keeping vectors in [pgvector](https://github.com/pgvector/pgvector) was appealing because the source record, filter, vector, and query plan stayed inspectable in one system. It doesn't remove the need to choose the search strategy.
+
+With exact nearest-neighbour search, PostgreSQL can apply predicates and compute distance without approximate-index recall trade-offs, though cost grows with the candidate set. With an HNSW or IVFFlat approximate index, pgvector documents that [filtering is applied after the approximate index scan](https://github.com/pgvector/pgvector#filtering). A narrow metadata filter can therefore return fewer than `k` useful rows because the qualifying neighbours weren't in the scanned candidates. Iterative scans, higher search parameters, partial indexes, partitioning, or exact search over a pre-filtered subset are possible responses; each changes latency or operational complexity.
+
+The prototype didn't preserve a benchmark strong enough to declare one answer. I would first measure exact search at the real catalogue and tenant sizes, then introduce an approximate index only when the workload justified it. “We use vectors” isn't yet a retrieval design.
+
+## Similarity isn't variety
+
+Nearest neighbours tended to return variants of the same asset. That can make a top-five list look numerically excellent and editorially dull.
+
+I experimented with maximal marginal relevance (MMR), where each next document balances relevance to the query against similarity to already selected results:
+
+`score(d) = λ · similarity(d, query) − (1 − λ) · max similarity(d, selected)`
+
+At `λ = 1`, ranking is pure relevance. Lower values increasingly penalise redundancy. The code existed in the POC, but it wasn't connected to the final self-querying route. I learnt something from it; I didn't ship an evaluated diversity policy.
+
+## What evaluation would have to prove
+
+Historical question-to-media attachments were available as a weak offline signal. Recovering an earlier selection in the top `k` could expose a broken representation or filter, but it wasn't ground truth. An old choice may have come from a smaller catalogue, and a different recommendation may be better. The prototype retained a harness, not a trustworthy final score, so I don't have a magic percentage to put here.
+
+A serious evaluation would combine:
+
+| Measure | Question it answers |
+| --- | --- |
+| Recall or hit rate at several values of `k` | Can the system recover known plausible assets? |
+| SME review | Is the result clinically and educationally appropriate? |
+| Editor acceptance, replacement, and reason | Did it save work, and where did it fail? |
+| Duplicate and diversity rate | Are five results actually five choices? |
+| Parse failures and fallback rate | Can editors understand and recover from ambiguity? |
+| End-to-end latency by tenant and filter | Does the complete path remain usable? |
+
+I would also stratify those results by media type, clinical category, metadata coverage, and tenant size. An average can hide the exact minority of cases where a controlled attribute matters most.
+
+## What production would require
+
+The experiments left a fairly practical list:
+
+- reject unknown filters rather than dropping them;
+- enforce authentication and tenancy below the model-generated plan;
+- version the embedding model, dimensions, text template, schema, and source-row revision;
+- preserve similarity score and rank while hydrating authoritative records;
+- choose exact or approximate vector search from measured filtered workloads;
+- make re-indexing resumable and observable;
+- evaluate retrieval, diversity, clinical suitability, and editor behaviour together; and
+- document deletion, retention, model-provider, and audit boundaries for the content sent through the pipeline.
+
+I still like the original idea. A structured editor request can become a useful semantic search without surrendering the structure that made the content trustworthy in the first place. The two POCs got far enough to show where that division could work—and, slightly more usefully, where the confident demo would have been lying.
