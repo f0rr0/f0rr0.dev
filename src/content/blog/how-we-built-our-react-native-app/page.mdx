@@ -156,7 +156,7 @@ As a starting point, however, the [official docs](https://facebook.github.io/rea
   and see what’s being sent across. This might help you understand what’s actually
   happening underneath and improve performance.
 
-```
+```js
 MessageQueue.spy(true)
 
 ```
@@ -175,7 +175,7 @@ MessageQueue.spy(true)
   redux-observable helped us mitigate some of those pains. Consider the following
   example:
 
-```
+```js
 
 export default function localitySelect(action$, store, { ajax }) {
   return action$
@@ -218,7 +218,7 @@ environment.
   and keeps them lean. Here’s an example that switches between a dark or light
   status bar on iOS based on the current screen:
 
-```
+```js
 
 const statusBarMiddleware = ({ getState }) => next => (action) => {
   if (!Object.values(NavigationActions).includes(action.type)) {
@@ -248,7 +248,7 @@ testers and designers). After experimenting and struggling with a bunch of
 approaches, we moved to Fastlane to automate this entire process. Following is
 an abridged version of our beta release cycle on iOS:
 
-```
+```ruby
 
 desc "Submit a new Beta Build to Crashlytics"
   lane :beta do |options|

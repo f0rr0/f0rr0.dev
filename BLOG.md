@@ -63,19 +63,29 @@ Gotchas:
 
 - GFM tables and footnotes are enabled.
 - Syntax highlighting uses Shiki via `rehype-pretty-code`.
+- Code blocks show their language and include a copy control. Long lines scroll
+  within the code frame instead of widening the page.
+- Add a lowercase language after the opening fence whenever possible. Blocks
+  without one are labeled as plain text.
 - Headings get slugs and clickable anchors.
-- Mermaid diagrams are supported with fenced blocks:
+- Mermaid diagrams are generated from fenced blocks and rendered with the
+  site's deterministic hand-drawn theme:
 
 ````md
 ```mermaid
 flowchart LR
+  accTitle: Request flow
+  accDescr: A request moves from the browser to the application.
   A --> B
 ```
 ````
 
-```
-
-If rendering fails, the raw code block is shown.
+- Add `accTitle` and `accDescr` so the generated SVG has a useful accessible
+  name and description.
+- Dense flowcharts can select `layout: elk` in Mermaid YAML frontmatter. The ELK
+  renderer is loaded only for diagrams that request it.
+- Diagrams automatically follow the site theme and provide horizontal
+  scrolling, zoom, and full-screen controls.
 
 ## RSS + SEO endpoints
 
@@ -92,4 +102,3 @@ Canonical URLs are derived from Vercel system environment variables when deploye
 3. (Optional) add `opengraph-image.png` and/or `twitter-image.png` next to the post.
 4. Reference images with `./` paths (Markdown) or `src="./..."` (JSX).
 5. Keep `draft: true` until ready to publish.
-```

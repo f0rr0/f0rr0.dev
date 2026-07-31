@@ -83,7 +83,7 @@ The final GitHub repository is linked [here](https://github.com/f0rr0/koa-webpac
 writing this, I discovered that the author of ’n’ is [TJ
 Holowaychuk](https://medium.com/u/bbb3c7ccb0a0) yet again.)
 
-```
+```bash
 sudo npm cache clean -f
 sudo npm install -g n
 sudo n latest
@@ -103,7 +103,7 @@ for source, and certain essential files for our development tools.
 Go ahead and clone the final repository to your machine to build the minimal
 server from source.
 
-```
+```bash
 
 git clone https://github.com/f0rr0/koa-webpack-boilerplate
 cd koa-webpack-boilerplate
@@ -141,7 +141,7 @@ file-type and pre-process it. Basically, what this means is, you can do the
 following in your front-end application with the
 [css-loader](https://github.com/webpack/css-loader):
 
-```
+```js
 
 require('css!./styles/main.css');
 
@@ -150,7 +150,7 @@ require('css!./styles/main.css');
 If this does not make you run naked in the streets, then I don’t know what will.
 You can even chain loaders to process files on the fly, like so:
 
-```
+```js
 
 require('style!css!sass!./styles/main.sass');
 
@@ -162,7 +162,7 @@ When used from the CLI, webpack looks for a configuration file named `webpack.co
 
 Note — You can view and install specific `dist-tags` for a package on `npm` like so:
 
-```
+```bash
 
 npm view <package-name> dist-tags
 npm install <package-name>@<dist-tag>
@@ -171,7 +171,7 @@ npm install <package-name>@<dist-tag>
 
 In the root directory of your repository:
 
-```
+```bash
 
 npm install -D webpack@beta
 
@@ -179,7 +179,7 @@ npm install -D webpack@beta
 
 This installs webpack as a **development dependency** to your package. Beginning from version 2+, the webpack config file can export a function which returns the configuration. The function is called by the CLI and the value passed via `--env` from the CLI is passed to the configuration function. Our minimal `webpack.config.js` will look like so:
 
-```
+```js
 
 const { resolve } = require('path');
 const { dependencies } = require('./package.json');
@@ -230,7 +230,7 @@ I’ll explain a couple of quirks related to a non-browser environment below:
 
 - **externals:** When writing a server and bundling it with webpack, we don’t want our dependencies to be resolved by webpack. Instead, they will become the dependencies of the bundle we generate. To accomplish this, we pull our dependencies from the `package.json` file and prefix them with `commonjs`. The Webpack generated import code for a prefixed fictional dependency named `xyz` will then look like so:
 
-```
+```js
 
 module.exports = require("xyz");
 
@@ -241,7 +241,7 @@ or `--save` option.
 
 - **target:** Setting the target for our bundle to _node_ compiles our modules to be run in a Node.js like environment. What this does is essentially the same as above. It prepends all native modules available in the current Node.js environment with `commonjs`. Internally, the names of all such modules available to the current process are obtained by:
 
-```
+```js
 
 process.binding("natives");
 
@@ -253,7 +253,7 @@ This returns an object with all the native modules like `dns`, `domain`, `events
 
 Babel is used in the [wild](https://babeljs.io/users/) by the likes of Facebook, Netflix, Airbnb and Yahoo. As mentioned earlier, we will use Babel to transpile our ES6/7 code. This is accomplished from within webpack via the `babel-loader`. Our config looks for files ending in `.js` in the `./src` directory and loads them with `babel-loader`. Before you can use it though, you need to install it:
 
-```
+```bash
 
 npm install -D babel-loader babel-core
 
@@ -265,7 +265,7 @@ If you updated your Node.js installation to the latest version, as mentioned ear
 
 The plugin we need is [babel-plugin-transform-async-to-generator](http://babeljs.io/docs/plugins/transform-async-to-generator/). The name is more than self-explanatory. Babel can be configured to use these plugins via the `.babelrc` file which lives in the root of our repository. Our tiny `.babelrc` file looks like so:
 
-```
+```json
 
 {
   "plugins": ["transform-async-to-generator"]
@@ -276,7 +276,7 @@ The plugin we need is [babel-plugin-transform-async-to-generator](http://babeljs
 Obviously, it needs to be installed as a **development dependency** before you
 can use it:
 
-```
+```bash
 
 npm install -D babel-plugin-transform-async-to-generator
 
@@ -286,7 +286,7 @@ npm install -D babel-plugin-transform-async-to-generator
 
 With our build tools in place, we can start writing the server finally. As mentioned earlier, Koa is a very minimal framework and does not offer much out of the box. Everything in Koa is middleware and there are quite a few of them. We will be using Koa 2 which can be installed with the `next` dist-tag. Go ahead and install Koa and a couple of middleware like so:
 
-```
+```bash
 
 npm install -S koa@next koa-route@next koa-logger@next
 
@@ -294,7 +294,7 @@ npm install -S koa@next koa-route@next koa-logger@next
 
 For the purpose of this article, we will be mocking a database with the [Pokeapi](https://pokeapi.co/). Since Koa expects `xyz` to return a Promise in all `await xyz` expressions, we will make use of [pokedex-promise-v2](https://github.com/PokeAPI/pokedex-promise-v2) which is simply a Promise based wrapper for the Pokeapi. Install it like so:
 
-```
+```bash
 
 npm install -S pokedex-promise-v2
 
@@ -303,7 +303,7 @@ npm install -S pokedex-promise-v2
 We will abstract our database logic into separate modules. Go ahead and create
 two new files in the `./src` directory.
 
-```
+```bash
 
 cd src
 touch pokemondb.js stats.js
@@ -313,7 +313,7 @@ touch pokemondb.js stats.js
 - **pokemondb.js** just exports a function that takes a string as an argument
   and returns a Promise.
 
-```
+```js
 
 import Pokedex from 'pokedex-promise-v2';
 
@@ -328,7 +328,7 @@ export default function get (pokemon) {
 - **stats.js** also exports a function that takes an object as an argument and
   return a string.
 
-```
+```js
 
 export default function stats (data) {
    return (
@@ -346,7 +346,7 @@ export default function stats (data) {
 With our mock database and helper method in place, we can go ahead and consume
 it in our server. The `index.js` looks like so:
 
-```
+```js
 
 import get from './pokemondb';
 import stats from './stats';
@@ -380,7 +380,7 @@ gracefully in a try-catch block.
 
 We will be using some neat npm run scripts to build and start our server.
 
-```
+```js
 
 'scripts': {
   'clean': 'rm -rf ./build',
@@ -397,7 +397,7 @@ a production build by passing `prod` via `--env` as mentioned earlier.
 Go ahead and run the following in the root of your repository and open
 `localhost:8000` in your browser.
 
-```
+```bash
 
 npm run build:prod
 npm start
@@ -423,7 +423,7 @@ Webpack in development mode with the `--watch` option. Webpack will now watch
 our files and generate a new bundle when we save changes. Run the `watch` script
 like so:
 
-```
+```bash
 
 npm run watch
 
@@ -432,7 +432,7 @@ npm run watch
 Webpack won’t exit since it keeps watching the files. Open a new shell in the
 root of your repository to start the server.
 
-```
+```bash
 
 npm start # in new shell tab
 
@@ -440,7 +440,7 @@ npm start # in new shell tab
 
 If you see an error like:
 
-```
+```text
 
 Error: listen EADDRINUSE :::8000
 
@@ -465,7 +465,7 @@ Note that we are currently using [webpack/hot/poll](https://github.com/webpack/w
 The watch script needs to be modified to enable HMR. This can also be done by
 using the `HotModuleReplacementPlugin` but don’t use both.
 
-```
+```js
 
 'watch': 'npm run clean && `npm bin`/webpack --env.dev --watch -- verbose --hot'
 
