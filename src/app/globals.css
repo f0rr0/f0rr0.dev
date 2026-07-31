@@ -146,6 +146,10 @@ body {
   .theme-transition * {
     transition: none;
   }
+
+  .prose .mermaid-placeholder-mark {
+    animation: none;
+  }
 }
 
 .prose {
@@ -181,30 +185,430 @@ body {
   text-decoration: underline;
 }
 
-.prose pre[data-theme] {
-  background-color: var(--shiki-light);
-  border-radius: 0.75rem;
-  padding: 1.25rem;
-  overflow-x: auto;
-}
-
 .prose pre,
 .prose code {
   font-family: var(--font-site-mono);
 }
 
-.dark .prose pre[data-theme] {
-  background-color: var(--shiki-dark);
+.prose figure[data-rehype-pretty-code-figure] {
+  margin: 2.25rem 0;
+}
+
+.prose .code-block {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--border) 88%, var(--foreground));
+  border-radius: 0.875rem;
+  background: color-mix(in oklab, var(--card) 92%, var(--muted));
+  box-shadow:
+    0 1px 2px rgb(41 37 36 / 8%),
+    0 16px 38px -32px rgb(41 37 36 / 38%);
+}
+
+.dark .prose .code-block {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 30%),
+    0 18px 42px -30px rgb(0 0 0 / 85%);
+}
+
+.prose .code-block-toolbar {
+  display: flex;
+  min-height: 2.625rem;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+  background: color-mix(in oklab, var(--muted) 72%, var(--card));
+  padding: 0.35rem 0.5rem 0.35rem 1rem;
+  font-family: var(--font-site-ui);
+}
+
+.prose .code-block-language {
+  margin-right: 0.25rem;
+  color: color-mix(in oklab, var(--muted-foreground) 88%, var(--foreground));
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.075em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.prose .code-block-copy {
+  display: inline-flex;
+  height: 1.875rem;
+  min-width: 4.625rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  padding: 0 0.5rem;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.prose .code-block-copy:hover {
+  border-color: color-mix(in oklab, var(--border) 86%, var(--foreground));
+  background: color-mix(in oklab, var(--card) 75%, transparent);
+  color: var(--foreground);
+}
+
+.prose .code-block-copy:focus-visible {
+  border-color: var(--ring);
+  outline: 2px solid color-mix(in oklab, var(--ring) 38%, transparent);
+  outline-offset: 1px;
+}
+
+.prose .code-block-copy svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  stroke-width: 1.8;
+}
+
+.prose .code-block pre[data-theme] {
+  max-width: 100%;
+  margin: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 48%, transparent)
+    transparent;
+  scrollbar-width: thin;
+}
+
+.prose .code-block pre[data-theme]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.prose .code-block pre[data-theme]::-webkit-scrollbar {
+  height: 0.75rem;
+}
+
+.prose .code-block pre[data-theme]::-webkit-scrollbar-track {
+  border-top: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+  background: color-mix(in oklab, var(--muted) 58%, transparent);
+}
+
+.prose .code-block pre[data-theme]::-webkit-scrollbar-thumb {
+  border: 0.2rem solid transparent;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--muted-foreground) 52%, transparent);
+  background-clip: padding-box;
+}
+
+.prose .code-block pre[data-theme] > code {
+  display: grid;
+  width: max-content;
+  min-width: 100%;
+  padding: 1.125rem 0 1.25rem;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.7;
+}
+
+.prose .code-block [data-line] {
+  min-width: 100%;
+  padding: 0 1.25rem;
+}
+
+.prose .code-block [data-highlighted-line] {
+  background: color-mix(in oklab, var(--primary) 10%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in oklab, var(--primary) 82%, transparent);
+}
+
+.prose .code-block [data-highlighted-chars] {
+  border-radius: 0.25rem;
+  background: color-mix(in oklab, var(--primary) 15%, transparent);
+  box-shadow: 0 0 0 0.125rem
+    color-mix(in oklab, var(--primary) 15%, transparent);
+}
+
+.prose code[data-theme],
+.prose code[data-theme] span {
+  color: var(--shiki-light);
+  font-style: var(--shiki-light-font-style);
+  font-weight: var(--shiki-light-font-weight);
+  text-decoration: var(--shiki-light-text-decoration);
+}
+
+.dark .prose code[data-theme],
+.dark .prose code[data-theme] span {
+  color: var(--shiki-dark);
+  font-style: var(--shiki-dark-font-style);
+  font-weight: var(--shiki-dark-font-weight);
+  text-decoration: var(--shiki-dark-text-decoration);
+}
+
+.prose .mermaid-block {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--border) 88%, var(--foreground));
+  border-radius: 0.875rem;
+  background: color-mix(in oklab, var(--card) 94%, var(--muted));
+  box-shadow:
+    0 1px 2px rgb(41 37 36 / 8%),
+    0 18px 42px -34px rgb(41 37 36 / 34%);
+}
+
+.dark .prose .mermaid-block {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 30%),
+    0 18px 42px -30px rgb(0 0 0 / 80%);
+}
+
+.prose .mermaid-toolbar {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+  background: color-mix(in oklab, var(--muted) 72%, var(--card));
+  padding: 0.35rem 0.5rem 0.35rem 1rem;
+  font-family: var(--font-site-ui);
+}
+
+.prose .mermaid-diagram-type {
+  overflow: hidden;
+  color: color-mix(in oklab, var(--foreground) 88%, var(--muted-foreground));
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prose .mermaid-toolbar-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.prose .mermaid-language {
+  margin-inline: 0.35rem 0.25rem;
+  color: color-mix(in oklab, var(--muted-foreground) 88%, var(--foreground));
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.075em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.prose .mermaid-control {
+  display: inline-flex;
+  height: 1.875rem;
+  min-width: 1.875rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  padding: 0 0.42rem;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font-family: var(--font-site-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease;
+}
+
+.prose .mermaid-control:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--border) 86%, var(--foreground));
+  background: color-mix(in oklab, var(--card) 75%, transparent);
+  color: var(--foreground);
+}
+
+.prose .mermaid-control:focus-visible {
+  border-color: var(--ring);
+  outline: 2px solid color-mix(in oklab, var(--ring) 38%, transparent);
+  outline-offset: 1px;
+}
+
+.prose .mermaid-control:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.prose .mermaid-control svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  stroke-width: 1.8;
+}
+
+.prose .mermaid-zoom-reset {
+  min-width: 3.9rem;
+}
+
+.prose .mermaid-viewport {
+  position: relative;
+  min-height: 11rem;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  background-color: color-mix(in oklab, var(--card) 94%, var(--background));
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--muted-foreground) 19%, transparent) 0.75px,
+    transparent 0.8px
+  );
+  background-position: 0.25rem 0.25rem;
+  background-size: 1rem 1rem;
+  padding: 1.75rem;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 52%, transparent)
+    color-mix(in oklab, var(--muted) 58%, transparent);
+  scrollbar-width: thin;
+}
+
+.prose .mermaid-viewport:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.prose .mermaid-viewport::-webkit-scrollbar {
+  height: 0.75rem;
+}
+
+.prose .mermaid-viewport::-webkit-scrollbar-track {
+  border-top: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+  background: color-mix(in oklab, var(--muted) 58%, transparent);
+}
+
+.prose .mermaid-viewport::-webkit-scrollbar-thumb {
+  border: 0.2rem solid transparent;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--muted-foreground) 52%, transparent);
+  background-clip: padding-box;
+}
+
+.prose .mermaid-canvas {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  align-items: flex-start;
+  justify-content: center;
+  transition: opacity 180ms ease;
+}
+
+.prose .mermaid-canvas .mermaid-svg {
+  display: block;
+  width: var(--mermaid-render-width);
+  max-width: none;
+  height: auto;
+  flex: none;
+  overflow: visible;
+  background: transparent;
+}
+
+.prose .mermaid-block[data-rendering="true"] .mermaid-canvas {
+  opacity: 0.58;
+}
+
+.prose .mermaid-placeholder,
+.prose .mermaid-error {
+  display: flex;
+  min-height: 7.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: var(--muted-foreground);
+  font-family: var(--font-site-ui);
+  font-size: 0.8125rem;
+}
+
+.prose .mermaid-placeholder-mark {
+  width: 2.25rem;
+  height: 1.4rem;
+  border: 2px solid color-mix(in oklab, var(--primary) 72%, transparent);
+  border-radius: 48% 54% 46% 52%;
+  animation: mermaid-sketch-pulse 1.35s ease-in-out infinite alternate;
+  transform: rotate(-3deg);
+}
+
+.prose .mermaid-error {
+  flex-direction: column;
+  gap: 0.2rem;
+  text-align: center;
+}
+
+.prose .mermaid-error strong {
+  color: var(--foreground);
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.prose .mermaid-error span {
+  font-size: 0.75rem;
+}
+
+.prose .mermaid-block:fullscreen {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  flex-direction: column;
+  border: 0;
+  border-radius: 0;
+  background: var(--background);
+}
+
+.prose .mermaid-block:fullscreen .mermaid-viewport {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  align-items: center;
+  padding: clamp(1rem, 4vw, 4rem);
+}
+
+.prose .mermaid-block:fullscreen .mermaid-canvas {
+  align-items: center;
+}
+
+@keyframes mermaid-sketch-pulse {
+  from {
+    opacity: 0.35;
+    transform: rotate(-3deg) scale(0.94);
+  }
+
+  to {
+    opacity: 0.9;
+    transform: rotate(2deg) scale(1.02);
+  }
 }
 
 .prose code:not(pre code) {
-  background: color-mix(in oklab, var(--muted) 75%, transparent);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  overflow-wrap: anywhere;
+  border: 1px solid color-mix(in oklab, var(--border) 86%, var(--foreground));
   border-radius: 0.375rem;
-  padding: 0.15rem 0.35rem;
+  background: color-mix(in oklab, var(--muted) 82%, var(--card));
+  padding: 0.12em 0.36em;
+  color: color-mix(in oklab, var(--foreground) 92%, var(--primary));
+  font-size: 0.875em;
+  font-weight: 500;
 }
 
-.dark .prose code:not(pre code) {
-  background: color-mix(in oklab, var(--muted) 85%, transparent);
+.prose code:not(pre code)::before,
+.prose code:not(pre code)::after {
+  content: none;
 }
 
 .prose a {
@@ -265,6 +669,97 @@ body {
 .prose .footnotes {
   font-size: 0.95rem;
   color: color-mix(in oklab, var(--foreground) 70%, transparent);
+}
+
+@media (max-width: 39.999rem) {
+  .prose .code-block-toolbar {
+    min-height: 2.5rem;
+  }
+
+  .prose .code-block pre[data-theme] > code {
+    padding-block: 1rem 1.125rem;
+    font-size: 0.8125rem;
+  }
+
+  .prose .code-block [data-line] {
+    padding-inline: 1rem;
+  }
+
+  .prose .mermaid-toolbar {
+    min-height: 2.625rem;
+    padding-left: 0.75rem;
+  }
+
+  .prose .mermaid-diagram-type {
+    font-size: 0.6875rem;
+  }
+
+  .prose .mermaid-language {
+    margin-inline: 0.25rem 0.125rem;
+    font-size: 0.625rem;
+  }
+
+  .prose .mermaid-control {
+    padding-inline: 0.35rem;
+  }
+
+  .prose .mermaid-zoom-reset {
+    min-width: 1.875rem;
+  }
+
+  .prose .mermaid-zoom-reset span {
+    display: none;
+  }
+
+  .prose .mermaid-viewport {
+    min-height: 9.5rem;
+    padding: 1.25rem 1rem;
+  }
+}
+
+@media print {
+  .prose .code-block {
+    box-shadow: none;
+  }
+
+  .prose .code-block-copy {
+    display: none;
+  }
+
+  .prose .code-block pre[data-theme] {
+    overflow: visible;
+    white-space: pre-wrap;
+  }
+
+  .prose .code-block pre[data-theme] > code {
+    width: auto;
+    overflow-wrap: anywhere;
+  }
+
+  .prose .mermaid-block {
+    break-inside: avoid;
+    box-shadow: none;
+  }
+
+  .prose .mermaid-toolbar {
+    display: none;
+  }
+
+  .prose .mermaid-viewport {
+    min-height: 0;
+    overflow: visible;
+    background: transparent;
+    padding: 0.75rem;
+  }
+
+  .prose .mermaid-canvas {
+    width: 100%;
+  }
+
+  .prose .mermaid-canvas .mermaid-svg {
+    width: 100%;
+    max-width: 100%;
+  }
 }
 
 :root {

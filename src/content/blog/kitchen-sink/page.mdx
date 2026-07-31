@@ -33,16 +33,39 @@ Create a folder, add `page.mdx`, and drop assets next to it.
 
 Use fenced blocks with a language for syntax highlighting.
 
-```ts
+```ts {9-15}
 type Post = {
+  slug: string;
   title: string;
   date: string;
 };
 
-const posts: Post[] = [{ title: "Hello", date: "2025-01-01" }];
+const posts: Post[] = [{ slug: "hello", title: "Hello", date: "2025-01-01" }];
+
+const canonicalUrl = new URL(
+  "/blog/" +
+    posts[0].slug +
+    "?preview=true&source=src/content/blog&theme=system&layout=article",
+  "https://f0rr0.dev"
+).toString();
 ```
 
-Inline code like `next.config.ts` is styled too.
+Highlighted lines call attention to the part being discussed. Inline code like
+`next.config.ts` is styled too, including longer names such as
+`createSyntaxHighlightedBlogPostPreview`.
+
+This shell command is intentionally kept on one line to exercise horizontal
+scrolling without widening the page:
+
+```bash
+curl --request GET --header "Accept: text/html" "http://127.0.0.1:3000/blog/kitchen-sink?preview=true&source=src/content/blog&theme=system&layout=article&syntax-highlighter=shiki"
+```
+
+Blocks without a language use a readable fallback:
+
+```
+src/content/blog/my-post/page.mdx
+```
 
 ## Images
 
@@ -66,11 +89,47 @@ GFM tables are enabled:
 
 ## Mermaid diagrams
 
-Use `mermaid` fenced blocks for diagrams:
+Mermaid diagrams use a deterministic hand-drawn treatment. Dense generated
+flowcharts can opt into ELK layout while remaining plain-text source:
 
 ```mermaid
+---
+config:
+  layout: elk
+---
 flowchart LR
-  Idea --> Sketch --> Prototype --> Ship
+  accTitle: From a rough idea to a dependable release
+  accDescr: A product idea branches through research and technical discovery, converges in a prototype, and continues through review, release, and observation.
+
+  Idea([Rough idea]) --> Question{Worth exploring?}
+  Question -->|User signal| Research[Research the problem]
+  Question -->|Technical signal| Spike[Run a technical spike]
+  Research --> Sketch[Sketch the smallest useful flow]
+  Spike --> Sketch
+  Sketch --> Prototype[Build a focused prototype]
+  Prototype --> Review{Ready to learn from?}
+  Review -->|Not yet| Sketch
+  Review -->|Yes| Ship[Release behind a guardrail]
+  Ship --> Observe[Observe real usage]
+  Observe --> Learn[Feed learning into the next idea]
+```
+
+Specialized diagram types retain their native geometry while sharing the same
+paper-like surface, colors, responsive scrolling, and controls:
+
+```mermaid
+sequenceDiagram
+  accTitle: Rendering a generated diagram in an article
+  accDescr: The reader opens an article, Next.js serves the page, and Mermaid turns generated source into a themed SVG.
+
+  actor Reader
+  participant Blog as Next.js article
+  participant Renderer as Mermaid
+
+  Reader->>Blog: Open article
+  Blog-->>Reader: Show the article shell
+  Blog->>Renderer: Send generated diagram source
+  Renderer-->>Reader: Draw the themed SVG
 ```
 
 ## Links
