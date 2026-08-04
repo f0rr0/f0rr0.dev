@@ -3,136 +3,133 @@ export const metadata = {
   date: "2026-08-06",
   author: "Sid Jain",
   summary:
-    "While building Veera on Brave’s fork, I learned how GN targets, source overlays, JNI and Mojo bindings, resources, and process lifetimes turn Chromium into an Android browser.",
+    "What a two-commit Veera proof of concept taught me about Brave’s Chromium overlay, GN targets, JNI and Mojo boundaries, resources, and runtime ownership.",
   tags: ["chromium", "brave", "android", "c++", "build-systems"],
   draft: true,
 };
 
 The first useful thing I built at Veera was a browser with less in it.
-Before Veera had a recognizable interface, I spent the earliest phase of the
-work making Brave look less like itself. I removed a piece, rebuilt, and followed
-whatever broke next. A compiler failure usually gave me somewhere to begin. A
-quiet build could be more worrying because it was not always clear which
-implementation had survived. My mental model of a browser fork was still too
-simple. I imagined a source tree with downstream changes layered on top, but the
-Android application emerged from GN targets, generated bindings, source
-substitutions, resources, and registrations spread across several processes.
 
-Brave offered a great deal that would have been wasteful to reproduce: Chromium
-integration, privacy work, and years of decisions about carrying a browser
-downstream. It also arrived as a product with its own assumptions. Before we
-invested in Veera's product surface, I needed to know whether we could separate
-those assumptions from the platform beneath them and maintain what remained with
-a small team.
+Before Veera had a recognisable interface, I spent the earliest phase of the work making Brave look less like itself. I removed a piece, rebuilt, and followed whatever broke next. A compiler failure usually gave me somewhere to begin. A quiet build could be more worrying because it wasn't always clear which implementation had survived.
+
+The version and scope matter here. I started with [Brave Core `1.51.40`](https://github.com/brave/brave-core/tree/v1.51.40), pinned to [Chromium `111.0.5563.64`](https://chromium.googlesource.com/chromium/src/+/111.0.5563.64). Across two exploratory commits touching 123 files, I removed enough Brave product machinery to produce a neutral Android browser that compiled, linked, packaged, launched, and could be inspected. This was a proof of concept, not the final architecture of the browser that shipped. The comments, disabled dependencies, and rough edges were a map for the next piece of work, not a patch stack I wanted to carry forever.
+
+Brave offered a great deal that would have been wasteful to reproduce: Chromium integration, selected privacy infrastructure, and years of decisions about carrying a browser downstream. It also arrived as a product with assumptions of its own. Before we invested in Veera's product surface, I needed to know whether a small team could separate those assumptions from the platform beneath them and understand what remained.
 
 ## Taking Brave apart
 
-Brave's fork behaved more like an overlay than a permanently modified copy of
-Chromium. It pinned an upstream revision, applied patches, added its own build
-targets, and substituted selected source files during compilation. I could see
-the reason for that structure. Keeping downstream changes identifiable makes an
-enormous upstream codebase easier to update than a permanently blended copy. The
-tradeoff was that the answer to “where does this feature live?” was rarely one
-directory. A product decision could enter the browser through a Brave-owned
-component, a patch against Chromium, a replacement source file, a generated
-binding, or a runtime registration. On Android, it could also survive in Java,
-XML, strings, icons, or packaging rules after the native implementation appeared
-to be gone. The source tree showed where files lived, but not all the ways they
-became part of the program.
+[Brave Core](https://github.com/brave/brave-core) behaves more like an overlay than a permanently blended copy of Chromium. It pins an upstream revision, applies patches, adds its own [GN](https://gn.googlesource.com/gn/+/main/docs/quick_start.md) targets, and substitutes selected source files during compilation. Brave's own [patching and `chromium_src` documentation](https://github.com/brave/brave-core/blob/master/docs/patching_and_chromium_src.md) is the best concise explanation of this arrangement.
 
-I started by subtracting. Adding a screen would show that we could build on top
-of the fork. Removing a product system would expose the paths that assembled it.
-The target was a stripped Android build that still compiled, packaged, launched,
-and behaved coherently. Brave Wallet became a useful case because it looked
-self-contained from the outside. There were recognizable activities, settings,
-menu entries, strings, and icons. Those visible parts disappeared quickly, while
-the code behind them continued to surface in the build. Behind the Android UI
-were generated JNI bindings between Java and C++, Mojo interfaces crossing
-component and process boundaries, native services created for each profile,
-renderer hooks, permission handlers, and dependencies spread across several GN
-targets. Removing one layer often revealed the next. A Java class could keep
-generated native glue alive, a factory could continue creating a service whose
-menu entry no longer existed, and a binder could preserve a route to code that
-appeared unreachable from the application.
+I could see why it was structured that way. Keeping downstream changes identifiable makes an enormous upstream codebase less painful to update. The trade-off was that the answer to “where does this feature live?” was rarely one directory. A product decision could enter the browser through:
 
-I stopped deleting by folder and began tracing reachability instead. Where was
-the feature first exposed? What created it? Which process used it? What generated
-code on its behalf? Which resources still described it? I worked from the
-product surface inward, taking one boundary at a time. Early changes were
-deliberately reversible. While I was still learning the architecture,
-temporarily excluding a source or dependency left a clearer trail than
-prematurely inventing a permanent configuration system. Once I understood the
-shape, those exploratory changes could become explicit build decisions. This
-took longer than deleting a directory, but each change left a clear trail for
-the next upstream update that touched the same area.
+- a Brave-owned component;
+- a patch against Chromium;
+- a replacement file under `chromium_src`;
+- a generated JNI or Mojo binding;
+- a browser, profile, tab, frame, or utility-process registration; or
+- an Android resource or packaging rule.
+
+On Android, Java, XML, strings, icons, and command IDs could keep referring to a feature after its native implementation appeared to be gone. The source tree showed where the files lived. It didn't show every route by which they became the program.
+
+I started by subtracting. Adding a screen would show that we could build on the fork; removing a product system would expose the paths that assembled it. Wallet was a useful case because it looked self-contained from the outside. The activities, settings, menu entries, strings, and icons disappeared quickly. Behind them were generated JNI inputs, [Mojo](https://chromium.googlesource.com/chromium/src/+/main/mojo/README.md) interfaces, profile services, renderer hooks, permission handlers, and dependencies in several GN targets.
+
+Rewards, Ads, IPFS and decentralised-DNS hooks exposed similar roots. I removed those product areas and the Android surfaces coupled to them, while deliberately retaining the Chromium browser foundation and selected Brave privacy infrastructure. “Less Brave” didn't mean pretending Brave Core wasn't there; it meant finding a boundary between a reusable browser base and Brave's product.
+
+## GN became the assembly plan
+
+I stopped deleting by folder and began tracing reachability. Where was the feature exposed? What created it? Which process used it? What generated code on its behalf? Which resources still described it?
+
+Early changes were deliberately reversible. A simplified fragment looked like this:
+
+```gn
+brave_chrome_java_deps = [
+  # Product-specific generated bindings removed for the POC:
+  # "//brave/components/brave_rewards/common/mojom:ledger_interfaces_java",
+  # "//brave/components/brave_wallet/common:mojom_java",
+
+  # Selected browser/privacy infrastructure retained:
+  "//brave/components/brave_shields/common:mojom_java",
+]
+
+generate_jni("jni_headers") {
+  sources = [
+    "//brave/android/java/org/chromium/chrome/browser/BraveSyncWorker.java",
+    # Rewards and Wallet JNI inputs removed here as their callers disappeared.
+  ]
+}
+```
+
+I wouldn't call commented-out edges a production configuration system. They were useful during dependency archaeology because every subtraction stayed visible while the compiler showed me the next one. Once the shape was clear, those decisions could become build flags, narrower interfaces, or maintained patches.
+
+Text search answered “where is this name mentioned?” GN answered “why is this target here?” These commands became regular navigation tools:
+
+```bash
+gn desc out/Android //brave:brave deps --tree
+gn refs out/Android //brave/components/brave_wallet/common:mojom_java
+gn path out/Android //brave:brave //brave/components/brave_wallet/common
+autoninja -C out/Android brave
+```
+
+The failure stage often told me which graph I had reached:
+
+| Failure                | What it usually exposed                                     |
+| ---------------------- | ----------------------------------------------------------- |
+| `gn gen`               | A missing label, invalid include, or broken target edge     |
+| Java/C++ compile       | A surviving caller, override, source, or generated input    |
+| Link                   | Registration remained after its implementation disappeared  |
+| Resource packaging     | XML, strings, icons, or commands still described old UI     |
+| Startup or interaction | A factory, observer, binder, or runtime assumption survived |
+
+That last row is important. GN describes the build graph; it doesn't prove the runtime behaviour. I still had to launch the APK, instrument registrations and initialisation paths, exercise the affected UI and browsing flows, and run behavioural checks. A dependency can be absent from one target while a fallback implementation, dynamically reached path, or stale resource keeps the product behaving differently from what the diff suggests.
 
 ## The green build I didn't trust
 
-One of the more unsettling results was a successful build after a downstream
-source override had disappeared.
-Brave's source-redirection mechanism could select a downstream implementation in
-place of Chromium's file at the same path. If that downstream file was removed,
-the build could quietly return to the Chromium implementation. Nothing was
-necessarily missing from the linker’s point of view. The browser compiled, but
-the binary might no longer contain the behavior we thought we had preserved. I
-had to verify which source had been selected, which registrations still ran, and
-what happened along the runtime path. Sometimes returning to Chromium's
-implementation was exactly what we wanted, but I still needed to see and record
-that choice rather than discover it later as an accidental change in behavior.
+One of the more unsettling results was a successful build after a downstream source override had disappeared.
 
-In a smaller codebase, deleting an implementation usually creates an obvious
-hole. Here, it could reveal a complete upstream implementation instead. The
-green build confirmed that the pieces still fit together, but it did not tell
-me which implementation I had shipped. From then on, I checked each subtraction
-twice: first that the affected targets still built and the application launched,
-then that the resulting behavior came from the layer we intended. A clean build
-was a checkpoint, not the end of the investigation.
+Brave's source-redirection mechanism can select a downstream implementation instead of Chromium's file at the same path. Remove the downstream file and the build may quietly return to Chromium's implementation. Nothing is necessarily missing from the linker's point of view. The browser compiles, but it may no longer contain the behaviour we thought we had preserved.
 
-## Following a feature through Chromium
+Sometimes that return to Chromium was exactly what I wanted. I still needed to see and record it, rather than discover it in QA as an accidental product decision. From then on I checked each subtraction twice: first that the relevant targets built and the application launched, then that the runtime path used the implementation we intended. Green is a lovely colour, but it can be a bit of a liar.
 
-Once I began reading GN as the assembly plan for the browser, failures became
-more useful. Text search showed where a name appeared. The build graph showed
-why a target existed, who depended on it, and which generated edge had pulled it
-into the binary. A missing JNI class often meant that the Java declaration and
-its generation target no longer agreed. A link failure could reveal a surviving
-registration whose implementation had gone. When the browser launched and then
-failed on a particular path, I would look for a factory, observer, or
-cross-process binding that compilation could not exercise. Each failure showed
-me where my model of the browser was still incomplete.
+## Java, C++, generated code, and process boundaries
 
-The picture became clearer when I classified code by lifetime rather than by
-folder. Some objects belonged to the browser process and existed from startup.
-Others were created once per profile, attached to a tab, or installed in a
-renderer frame. A feature that crossed those lifetimes was not scattered by
-accident. The distribution described who owned its state and when its behavior
-was active. That model also made removal more precise. Hiding a button removed
-an entry point. Removing a profile factory stopped user-scoped state from being
-created. Removing a tab helper prevented work from attaching to every page, and
-cleaning up renderer and utility registrations closed paths in other processes.
-I considered the feature gone when its visible surface and ownership graph
-finally agreed.
+The Android UI in this Chromium version was primarily Java and resources, while much of the browser state lived in native C++. [JNI](https://source.chromium.org/chromium/chromium/src/+/main:docs/android_jni.md) crossed that language boundary inside a process. Mojo connected typed components, often across processes. Treating the two as interchangeable was a quick way to repair the wrong layer.
 
-Chromium builds are expensive enough that bundling several ideas into one attempt
-is always tempting. It saves a build, then makes the result harder to explain
-when something fails. We invested in a tighter loop so that we could change one
-edge, observe one consequence, and keep the decision close to its cause. Faster
-iteration made the investigation much safer. Over time, the failures gave us a
-more useful map than the directory tree. We could see how a piece entered the
-browser, when it came alive, and what would surface if we removed it.
+A Java class annotated with `@NativeMethods` could keep its generated `*Jni` shim and C++ header alive through a `generate_jni` target. A `.mojom` definition could generate both Java and C++ interfaces, while a binder registered elsewhere kept the service reachable. Deleting only the Android screen didn't touch any of that.
 
-The stripped Android build was visually unremarkable. Its value was that we
-could explain it. We knew which parts came from Chromium, which behavior Brave
-added, where Veera could intervene, and which temporary choices still needed to
-become maintained patches. That understanding changed the work that followed.
-New product surfaces were no longer additions to an opaque fork. We could place
-them according to their lifetime, keep Android and native boundaries deliberate,
-and decide where a downstream change justified the future cost of carrying it.
-Upstream rebases would remain real engineering work, but they were no longer
-encounters with an unknown system.
+The architecture became easier to read when I classified code by lifetime:
 
-Taking the browser apart also changed what ownership meant to me. Colors, icons,
-and onboarding can make a fork look like a different product. The team owns it
-only when it can predict where behavior enters, trace it across boundaries, and
-change it deliberately. The first build did not look much like the Veera people
-would eventually use, but we finally understood how this Chromium browser was
-put together. Only then did adding pieces back feel like building Veera.
+```text
+browser process  -> global browser facilities
+profile          -> user-scoped services and preferences
+WebContents      -> per-tab behaviour
+RenderFrame      -> per-document renderer behaviour
+utility process  -> isolated service implementations
+```
+
+A feature spread across those layers wasn't necessarily scattered by accident. The distribution described who owned its state and when it was active. Hiding a button removed an entry point. Removing a profile factory stopped user-scoped state from being created. Removing a tab helper prevented work attaching to every page. Cleaning up renderer and utility registrations closed paths in other processes.
+
+I considered a product system absent only when the visible surface, build dependencies, generated bindings, and runtime ownership graph agreed. That was more work than deleting a directory, admittedly. It was also much less likely to leave a ghost service waking up for every tab.
+
+## Making the feedback loop survivable
+
+Chromium builds are expensive enough that they change how one debugs. If every experiment costs hours, it's tempting to combine five ideas into one build and then learn very little from the failure.
+
+We built a faster loop around narrow targets, compiler caching, reusable artefacts, and separating app-layer work from full browser builds. On the shipped project, that eventually enabled near-instant UI iteration for changes that would otherwise have waited on four-to-six-hour full builds. Clean release builds came down to roughly two hours using compiler caching, prebuilt artefacts, separate build lanes, and architecture-specific variants.
+
+Those were later delivery improvements, not results produced magically by the two exploratory commits. The POC gave me the map needed to make them sensible: which layer had changed, which target was narrow enough to rebuild, and which artefact could safely be reused.
+
+The work after this prototype was much broader. I led the Android browser through its Play Store launch and later established the iOS platform and release setup. There were product features, monitoring, QA, upstream updates, and the usual release-day negotiations with reality. None of that turns the original subtraction exercise into the final shipped architecture. It explains why those 123 files were worth disturbing in the first place.
+
+## What the proof of concept actually proved
+
+The bland first build answered a few specific questions:
+
+- Brave's Chromium integration could support a distinct Android browser.
+- Wallet, Rewards, Ads, IPFS, decentralised-DNS hooks, and their product surfaces could be separated from the browser base we wanted to evaluate.
+- Selected Brave privacy infrastructure could be retained deliberately.
+- GN, JNI, Mojo, Android resources, and runtime registrations could be traced as connected but different graphs.
+- We could make the feedback loop practical enough to build a product on top.
+
+It didn't prove that upstream rebases would become easy, that every dormant path had vanished forever, or that the exploratory exclusions were maintainable as written. Those were the next engineering jobs.
+
+The first build didn't yet look much like the Veera people would eventually use. It compiled, opened, browsed, and—after a surprising amount of staring at GN output—contained fewer unexplained things. For that week, that was the interesting screenshot.

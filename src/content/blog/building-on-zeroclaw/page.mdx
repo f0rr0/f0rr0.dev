@@ -3,124 +3,206 @@ export const metadata = {
   date: "2026-08-20",
   author: "Sid Jain",
   summary:
-    "I put ZeroClaw in our family Telegram group and asked it to choose lunch. It first had to learn when to speak, what to remember, and which decisions belonged to the family.",
+    "A weekend ZeroClaw hack that coordinates our split office/WFH household, turns pantry photos and Instamart orders into usable state, and helps our cook break the lunch loop.",
   tags: ["applied-ai", "rust", "ai-agents", "zeroclaw"],
   draft: true,
 };
 
-ZeroClaw had one job in our family group chat: decide what was for lunch.
-The trouble was that the family had usually started answering the question long
-before anyone asked it. One person had ruled out eggs, the cook had mentioned
-half a cabbage and some capsicum, and someone else remembered that yesterday's
-paneer felt too heavy. None of those messages was a meal plan on its own, but
-together they were the context behind “What should we make?” A model with access
-to recipes can answer that question in seconds. It can also suggest a dish
-nobody wants, assume an ingredient is still available, or ignore the person who
-will actually cook it.
+Every day, our family has roughly the same meeting without putting it on anyone's calendar: what should we make for lunch?
 
-That made lunch an unexpectedly good test for a personal assistant. I built a
-prototype on [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw), a Rust agent
-runtime, and placed it in the Telegram group where the conversation already
-happened. The useful context arrived in fragments, and some of it was already
-going stale. I began with meal recommendations, but the recipe itself soon
-became the easy part.
+We don't have this discussion around the kitchen counter. On most weekdays, some of us are working from the office and others are working from home. We also have a cook who comes in to prepare breakfast, lunch and dinner. The cook needs a clear plan; the rest of us are replying between calls, meetings and whatever else the day has decided to throw at us. Chat became the obvious coordination layer because it is the one room everybody can be in.
 
-## Listening without interrupting
+The conversation is asynchronous; the cook's schedule is not. Once lunch preparation starts, a brilliant reply from somebody at the office is mostly useful for tomorrow.
 
-An assistant that sees only messages addressed to it misses most of a group
-chat. One that replies whenever it notices something relevant quickly becomes
-unbearable. It needed to follow the conversation without behaving as though
-every message had been sent for its benefit. I separated the right to observe
-from the right to participate. Messages from the allowed group could be recorded
-as context without starting a visible assistant turn. A command or question
-addressed to the assistant could proceed immediately. For everything else, a
-small classifier decided whether the message called for a response or should
-simply become part of the recent conversation.
+Someone asks the cook what's available. A few vegetables are listed. One person wants something light, another doesn't feel like eating paneer again, somebody at the office sees the thread late, and the whole thing starts moving backwards. The person at home becomes an unwilling message broker. None of this is particularly tragic. It is, however, an impressive amount of daily back-and-forth for lunch.
 
-I treated that classification as a suggestion, then enforced it in code. When a
-reply was warranted, the runtime recorded a permit against the incoming message.
-The outbound Telegram path checked for that permit before sending anything. If
-the classifier returned malformed output, the provider failed, or the permit was
-missing, ZeroClaw stayed quiet.
-This was a better boundary than a line in the prompt. Prompt changes and new
-tool paths could alter the model's behavior, but the channel check still
-controlled whether a message left the system. It also left a record of why the
-assistant had spoken instead of making me reconstruct the decision from its
-answer later. The boundary matched the social rule of the group too. Remembering
-a pantry update did not require commenting on it, so most of ZeroClaw's work
-could remain invisible until somebody actually wanted its opinion.
+The safe dishes also have a habit of returning. We forget why something didn't work last week, which ingredients are actually left, or who had already ruled out what. Decision paralysis eventually beats novelty and we settle on one of the usual suspects.
 
-## Giving memory an expiry date
+After going through this loop enough times, I began wondering whether AI could do more than produce another confident list of recipes. All the useful context already existed: it was just scattered across messages from the office and home, pantry photos, old orders and the cook's memory. Could an assistant quietly gather it, turn the conversation into a complete decision the cook could act on, and remember enough to avoid the same discussion tomorrow?
 
-The first version of memory looked deceptively simple. Save the messages,
-retrieve the recent ones, and let the model reason over them. That worked for a
-short conversation, but raw chat made a poor long-term household model. A
-preference belonged to a person, feedback referred to a particular meal, and
-pantry observations needed sources and timestamps. The system also had to
-distinguish a dish the family chose from one they had merely discussed.
-I kept the original messages and built the household state beside them. The
-system could derive per-person preferences, recent meal episodes, feedback,
-pantry observations, and open decisions without erasing where each fact came
-from. Retrieval began with ordinary full-text search over messages and episodes.
-Semantic ranking could help when the wording differed. Any retrieved fact still
-pointed back to the message that supported it.
+It sounded like a fun weekend project. It also sounded like an excellent excuse to hack on [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw).
 
-Attribution needed stricter handling. “She does not like mushrooms” could not
-become a durable preference unless the system knew who “she” referred to. A
-passing dislike also could not become a dietary constraint. I kept ambiguous
-statements as questions and accepted hard constraints only from explicit,
-attributable messages. Asking for clarification was preferable to quietly
-inventing a profile of someone. The pantry made this problem more obvious. A
-grocery order showed that tomatoes had entered the house, not that they were
-still there. A photo captured one angle at one moment, and the cook's message
-was usually more current, although even that observation aged. I recorded the
-source and time of each observation, then reduced its weight according to age
-and perishability. The freshness model only needed to tell the assistant when it
-should ask. If capsicum had been mentioned that morning while paneer appeared
-only in an older order, ZeroClaw could say what it knew and ask the cook whether
-the paneer was still available. Each new source introduced more disagreement
-and staleness, but it also showed the system where its memory was weak.
+## Why ZeroClaw
 
-## Letting ZeroClaw choose
+I had already used ZeroClaw at work and spent enough time inside its Rust runtime to know where the interesting seams were. Two of my fixes had made it upstream: one for [authenticated Slack attachments and Socket Mode hardening](https://github.com/zeroclaw-labs/zeroclaw/pull/3086), and a much smaller one that made [Slack's `mention_only` setting work end to end](https://github.com/zeroclaw-labs/zeroclaw/pull/3715). So channels, attachments, reply policy and long-running agents were familiar territory.
 
-Once the context was in reasonable shape, meal suggestions became
-straightforward. In early tests, the model could interpret requests such as
-“something light but not boring,” connect them to recent feedback, and propose a
-few plausible dishes. I applied confirmed dietary constraints before ranking.
-Among the remaining options, I gave extra weight to the person whose preferences
-had been accommodated least often in recent meals, so one enthusiastic vote
-could not repeatedly dominate everyone else. The model could help interpret
-language and explain a tradeoff, while the constraints and ranking rule remained
-regular code.
+ZeroClaw already gave me a daemon, Telegram, model providers, tools, SQLite memory, scheduling and hooks around incoming messages. I could concentrate on the oddly specific household intelligence instead of starting with “first, build an agent framework”.
 
-Choosing a dish also changed durable state, which introduced another problem:
-saving that decision safely. Messaging systems retry deliveries, model calls
-time out, and workers restart. A conversation might simply end with, “We chose
-dal.” The assistant would record the decision and schedule one later question
-about how the meal went. If Telegram delivered that message twice, the household
-should not acquire two decisions and two reminders. The runtime therefore bound
-a write to the actual incoming message rather than trusting an identifier
-supplied by the model. Repeating the same operation returned the earlier result.
-Trying to reuse the message for a different change produced a conflict.
+The result lives publicly in [PR #8 on my ZeroClaw fork](https://github.com/f0rr0/zeroclaw/pull/8). The current diff adds 13,570 lines across 33 files. This got out of hand in the best possible way.
 
-Scheduling the follow-up added one complication. The meal state and the
-scheduler lived in separate stores, so they could not be committed atomically.
-The meal transaction recorded the intent to schedule a follow-up, and a worker
-reconciled that intent with a deterministic job name. The bookkeeping stayed
-invisible in the chat. A meal decision still produced one reminder, however many
-times the surrounding systems retried it. I could test these mechanical
-failures: an ambient message should become context without producing a reply, a
-duplicated decision should still create one follow-up, a missing permit should
-end in silence, and a confirmed constraint should survive the ranking path.
+## Listening is not the same as replying
 
-The questions that mattered more needed real conversations. Did ZeroClaw
-interrupt, miss a direct request, attribute a dislike to the wrong person, or
-claim that an old grocery order was still in the pantry? A weak suggestion was
-easy to ignore, but an assistant that kept interrupting the family would not
-last long. The cook's circumstances were the hardest to model because available
-time and effort could overturn every carefully ranked dish, and an edited
-message could make a recorded decision obsolete. The household would always be
-messier than its state model. ZeroClaw could read the scattered facts, keep
-track of uncertain memory, and offer a choice that reflected more than the
-latest message. That was the version worth keeping: it had clearly been
-listening, but left the final decision with the cook and the family.
+The assistant lives in the Telegram group where the discussion already happens. A representative exchange looks like this:
+
+```text
+Me: No eggs today, please.
+Cook: We have half a cabbage and some capsicum left.
+Family: Paneer was too heavy yesterday.
+Me: @mealbot, what should we make for lunch?
+```
+
+If the bot only sees the final mention, it misses almost everything that makes the answer useful. If it responds to every food-shaped message, it becomes the most enthusiastic and least welcome member of the family group.
+
+I split the two behaviours:
+
+```text
+message
+  -> store as household context
+  -> decide: ingest_only | respond
+  -> if respond: run the agent
+  -> if an outbound permit exists: reply in Telegram
+```
+
+Direct questions and commands can start an agent turn immediately. Ordinary messages pass through a small classifier that returns a deliberately boring schema:
+
+```json
+{
+  "decision": "respond | ingest_only",
+  "confidence": 0.0,
+  "intent": "meal | feedback | clarification | other",
+  "reason_code": "..."
+}
+```
+
+The default threshold is `0.72`; malformed output or a provider failure becomes `ingest_only`. Even a positive classification creates a reply permit that the outbound Telegram path checks before sending anything. A prompt saying “don't be annoying” is optimistic. A missing permit ending in silence is much more useful.
+
+This lets the bot hear the cook say that the cabbage is nearly finished without cheerfully explaining cabbage to everyone. When somebody later asks for lunch ideas, that message is waiting in context.
+
+## Learning who likes what
+
+A family is not one large user with internally inconsistent preferences. The assistant keeps per-person preference evidence, recent meals, feedback and temporary constraints separately.
+
+| Message                          | What it can become                               |
+| -------------------------------- | ------------------------------------------------ |
+| “No eggs today”                  | A temporary constraint attributed to the speaker |
+| “Paneer was too heavy yesterday” | Feedback tied to a person and a meal             |
+| “We have half a cabbage left”    | A timestamped pantry observation from the cook   |
+| “She doesn't like mushrooms”     | A question, until “she” resolves to someone      |
+
+That last case matters. The easiest implementation is to flatten every sentence into household memory and let retrieval sort it out later. It is also how one person's passing comment becomes everybody's permanent dislike. The branch stores the original message as evidence and only promotes a preference when it can attribute it with enough confidence. Ambiguous claims remain unresolved.
+
+The same separation helps with repetition. “We ate this recently”, “I didn't enjoy it”, and “everyone liked it” are different signals. The system records a meal episode, associates later feedback with it, and makes both available during the next round of suggestions.
+
+## The pantry was the fun part
+
+This is where the project stopped feeling like a recipe bot.
+
+Most meal assistants quietly assume somebody maintains a perfect inventory. I have never met this person. In our house, pantry state arrives in three rather more believable forms:
+
+1. The cook says what is left.
+2. Somebody sends a photo of the fridge, shelf or vegetables on the counter.
+3. Instamart remembers what we bought.
+
+I wired all three into one evidence pipeline:
+
+```text
+cook message ───────────────┐
+pantry photo ───────────────┼─> pantry observations
+order screenshot ──────────┤      + source
+Instamart order history ───┘      + time
+                                  + perishability
+                                         |
+                                         v
+                    likely_available | uncertain | likely_unavailable
+```
+
+The [image path](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/hooks/builtin/meal_ingress.rs#L615-L809) is especially satisfying. Drop a pantry photo or an order screenshot into the group and ZeroClaw queues it for extraction. A vision model has to return strict JSON containing the image kind, visible food items, rough quantity hints, observation time and a freshness profile. The prompt explicitly tells it not to invent food outside the frame, and non-food items such as soap are marked as such. Low-confidence images and items are ignored.
+
+A pantry photo can therefore produce observations shaped like:
+
+```json
+{
+  "image_kind": "pantry_photo",
+  "items": [
+    {
+      "item_name": "capsicum",
+      "quantity_hint": "2–3 visible",
+      "freshness_profile": "high",
+      "is_food": true,
+      "confidence": 0.91
+    }
+  ]
+}
+```
+
+Those observations are committed to the pantry store using the source message as an idempotency key. Retrying the image job doesn't mysteriously create three new capsicums. More importantly, the next meal recommendation can actually use what was visible in the photo. That small loop—send image, update pantry, get a better lunch suggestion—is ridiculously cool in practice.
+
+Instamart is connected rather than merely mentioned. A household member can link their account, after which the [meal tools can fetch recent order history](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/tools/meal_instamart_sync.rs#L532-L702) through the Instamart MCP integration. A pantry-related turn—or an empty pantry context—can trigger a bounded refresh for a connected user. Order items retain their original timestamps instead of all appearing magically fresh on sync day.
+
+Of course, buying tomatoes on Tuesday does not mean tomatoes still exist on Friday. The [pantry projection](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/meal/store.rs#L603-L650) gives each observation a source weight and then lets it decay with age. In simplified form:
+
+```text
+observation score =
+  source weight × extraction confidence × 2 ^ (-age / freshness half-life)
+```
+
+Direct photo evidence starts at `1.0`, a manual chat observation at `0.9`, and an Instamart order at `0.55`. Highly perishable items have a half-life of about 1.5 days; medium, low and very-low perishability profiles decay over roughly 5, 20 and 90 days. Multiple observations can reinforce one another, recorded use pushes availability down, and old observations eventually hit a hard cutoff. These are hand-tuned heuristics, not probabilities pretending to be science.
+
+This is not a magical fridge API. It is something more useful: a current best guess with enough provenance to say “capsicum is probably available; paneer needs checking”. The cook can correct it in one message and become the freshest source again.
+
+## Turning context into a decision
+
+Once the household context is assembled, I expose three main tools to the model:
+
+```text
+meal_context_read   -> preferences, feedback, recent meals and pantry state
+meal_options_rank   -> score a proposed set of dishes
+meal_memory_write   -> record the choice, feedback or a new observation
+```
+
+The model is good at interpreting requests such as “something light but not boring” and generating plausible candidates. It is not allowed to wave away a dietary constraint or decide that the loudest person's favourite should win every day.
+
+Confirmed hard constraints remove a dish before ranking. Ordinary code then considers per-person fit, pantry confidence, recent repetition and feedback. The remaining choices sort first by the least-happy person's score—a small fairness floor—and then by their total:
+
+```text
+score =
+    preference fit
+  + pantry confidence
+  + previous feedback
+  - recent repetition
+```
+
+The cook's messages remain part of the grounding context because “technically possible from the ingredient list” and “reasonable to cook today” are not the same thing. The assistant is there to get the group to a sensible shortlist and a visible decision, not to issue culinary decrees from a SQLite database.
+
+## Knowing when the meal decision is complete
+
+There was another bit of state hiding inside the chat: had we actually finished deciding?
+
+The completeness I cared about here was conversational, not nutritional. Had the family produced one decision that the cook could proceed with?
+
+A bot producing three good options has not completed anything. Neither has one person saying “looks good” while somebody else is still asking for a change. For our cook, the useful output is not an impressive recommendation—it is one clear answer.
+
+The [decision state in the branch](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/meal/store.rs#L2908-L2944) models this explicitly. Each household, local date and meal slot can have one open decision case:
+
+```text
+household_id:local_date:meal_slot:slot_instance
+                      |
+                      v
+                 decision open
+                      |
+         the discussion continues
+                      |
+         chosen meal -> record_episode(...)
+                      |
+                      v
+                decision closed
+```
+
+The case stays open while the group is discussing options. A `record_episode` operation is the closure signal: it [stores the chosen meal and tags, who decided it and the source message](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/meal/store.rs#L3109-L3163), then [timestamps the case as closed](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/meal/store.rs#L3423-L3443). A later rethink can become a new version rather than quietly rewriting how the first discussion ended.
+
+“Closed” has a deliberately narrow meaning. It says the coordination produced a recorded choice. It does not claim that the food has already been cooked, served or eaten.
+
+If Telegram retries a message or the model calls the write tool twice, the same operation returns the stored result instead of logging a second lunch. A separate `schedule_feedback_nudge` operation can create an outbox intent for later; a worker reconciles that with ZeroClaw's scheduler.
+
+So the loop finally closes:
+
+1. The group and cook converge on a meal.
+2. ZeroClaw records what was actually chosen.
+3. It asks how lunch went later.
+4. That feedback and the meal history influence tomorrow's options.
+
+The first version of this idea was “read the group from top to bottom and suggest lunch”, which is both vague and not really the problem. The problem was the repeated coordination: information arriving at different times, preferences belonging to different people, a pantry that changes underneath us, and no memory of how yesterday's choice went.
+
+This is still a weekend prototype. Photos and orders are evidence rather than truth, and our cook remains the final pantry sanity check. That is perfectly fine. The delightful part is that someone can send a photo, somebody else can have an Instamart account connected, the cook can mention what has run out, and the assistant turns all of it into one fresh, attributed view before suggesting lunch.
+
+Thirteen and a half thousand lines may be a ridiculous response to “what should we eat?”. Going through the same meeting every day was beginning to feel slightly more ridiculous.
