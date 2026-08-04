@@ -164,14 +164,14 @@ Historical question-to-media attachments were available as a weak offline signal
 
 A serious evaluation would combine:
 
-| Measure | Question it answers |
-| --- | --- |
-| Recall or hit rate at several values of `k` | Can the system recover known plausible assets? |
-| SME review | Is the result clinically and educationally appropriate? |
-| Editor acceptance, replacement, and reason | Did it save work, and where did it fail? |
-| Duplicate and diversity rate | Are five results actually five choices? |
-| Parse failures and fallback rate | Can editors understand and recover from ambiguity? |
-| End-to-end latency by tenant and filter | Does the complete path remain usable? |
+| Measure                                     | Question it answers                                     |
+| ------------------------------------------- | ------------------------------------------------------- |
+| Recall or hit rate at several values of `k` | Can the system recover known plausible assets?          |
+| SME review                                  | Is the result clinically and educationally appropriate? |
+| Editor acceptance, replacement, and reason  | Did it save work, and where did it fail?                |
+| Duplicate and diversity rate                | Are five results actually five choices?                 |
+| Parse failures and fallback rate            | Can editors understand and recover from ambiguity?      |
+| End-to-end latency by tenant and filter     | Does the complete path remain usable?                   |
 
 I would also stratify those results by media type, clinical category, metadata coverage, and tenant size. An average can hide the exact minority of cases where a controlled attribute matters most.
 

@@ -72,12 +72,12 @@ This lets the bot hear the cook say that the cabbage is nearly finished without 
 
 A family is not one large user with internally inconsistent preferences. The assistant keeps per-person preference evidence, recent meals, feedback and temporary constraints separately.
 
-| Message | What it can become |
-| --- | --- |
-| “No eggs today” | A temporary constraint attributed to the speaker |
-| “Paneer was too heavy yesterday” | Feedback tied to a person and a meal |
-| “We have half a cabbage left” | A timestamped pantry observation from the cook |
-| “She doesn't like mushrooms” | A question, until “she” resolves to someone |
+| Message                          | What it can become                               |
+| -------------------------------- | ------------------------------------------------ |
+| “No eggs today”                  | A temporary constraint attributed to the speaker |
+| “Paneer was too heavy yesterday” | Feedback tied to a person and a meal             |
+| “We have half a cabbage left”    | A timestamped pantry observation from the cook   |
+| “She doesn't like mushrooms”     | A question, until “she” resolves to someone      |
 
 That last case matters. The easiest implementation is to flatten every sentence into household memory and let retrieval sort it out later. It is also how one person's passing comment becomes everybody's permanent dislike. The branch stores the original message as evidence and only promotes a preference when it can attribute it with enough confidence. Ambiguous claims remain unresolved.
 

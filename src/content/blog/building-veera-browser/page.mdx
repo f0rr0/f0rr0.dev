@@ -72,12 +72,12 @@ autoninja -C out/Android brave
 
 The failure stage often told me which graph I had reached:
 
-| Failure | What it usually exposed |
-| --- | --- |
-| `gn gen` | A missing label, invalid include, or broken target edge |
-| Java/C++ compile | A surviving caller, override, source, or generated input |
-| Link | Registration remained after its implementation disappeared |
-| Resource packaging | XML, strings, icons, or commands still described old UI |
+| Failure                | What it usually exposed                                     |
+| ---------------------- | ----------------------------------------------------------- |
+| `gn gen`               | A missing label, invalid include, or broken target edge     |
+| Java/C++ compile       | A surviving caller, override, source, or generated input    |
+| Link                   | Registration remained after its implementation disappeared  |
+| Resource packaging     | XML, strings, icons, or commands still described old UI     |
 | Startup or interaction | A factory, observer, binder, or runtime assumption survived |
 
 That last row is important. GN describes the build graph; it doesn't prove the runtime behaviour. I still had to launch the APK, instrument registrations and initialisation paths, exercise the affected UI and browsing flows, and run behavioural checks. A dependency can be absent from one target while a fallback implementation, dynamically reached path, or stale resource keeps the product behaving differently from what the diff suggests.
