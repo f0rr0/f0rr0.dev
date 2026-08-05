@@ -27,6 +27,10 @@ const remarkStaticImageImports = new URL(
 ).pathname;
 const remarkMermaid = new URL("src/lib/remark-mermaid.mjs", import.meta.url)
   .pathname;
+const remarkEmbedGitHub = new URL(
+  "src/lib/remark-embed-github.mjs",
+  import.meta.url
+).pathname;
 
 const withMDX = createMDX({
   options: {
@@ -55,7 +59,12 @@ const withMDX = createMDX({
         },
       ],
     ],
-    remarkPlugins: [remarkStaticImageImports, remarkMermaid, "remark-gfm"],
+    remarkPlugins: [
+      remarkStaticImageImports,
+      remarkEmbedGitHub,
+      remarkMermaid,
+      "remark-gfm",
+    ],
   },
 });
 

@@ -640,6 +640,250 @@ body {
   margin-top: 0.75rem;
 }
 
+.prose .article-screenshot {
+  max-width: 28rem;
+  margin-inline: auto;
+}
+
+.prose .article-screenshot,
+.prose .article-screenshot-grid {
+  scroll-margin-top: 6rem;
+}
+
+.prose .article-screenshot img,
+.prose .article-screenshot-grid img {
+  width: 100%;
+  margin: 0;
+}
+
+.prose .article-screenshot-grid {
+  display: grid;
+  gap: 1.5rem;
+  margin: 2.25rem 0;
+}
+
+.prose .article-screenshot-grid figure {
+  min-width: 0;
+  margin: 0;
+}
+
+.prose .github-embed-grid {
+  display: grid;
+  gap: 1rem;
+  margin: 2.25rem 0;
+}
+
+.prose .github-embed {
+  display: flex;
+  min-width: 0;
+  min-height: 12rem;
+  flex-direction: column;
+  gap: 0.7rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--border) 88%, var(--foreground));
+  border-radius: 0.875rem;
+  background:
+    radial-gradient(
+      circle at 100% 0%,
+      color-mix(in oklab, var(--primary) 10%, transparent),
+      transparent 42%
+    ),
+    color-mix(in oklab, var(--card) 95%, var(--muted));
+  box-shadow:
+    0 1px 2px rgb(41 37 36 / 8%),
+    0 18px 42px -34px rgb(41 37 36 / 34%);
+  padding: 1.1rem;
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.dark .prose .github-embed {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 30%),
+    0 18px 42px -30px rgb(0 0 0 / 80%);
+}
+
+.prose .github-embed:hover {
+  border-color: color-mix(in oklab, var(--primary) 58%, var(--border));
+  box-shadow:
+    0 2px 4px rgb(41 37 36 / 10%),
+    0 22px 46px -32px rgb(41 37 36 / 42%);
+  transform: translateY(-1px);
+}
+
+.prose .github-embed:focus-visible {
+  border-color: var(--ring);
+  outline: 2px solid color-mix(in oklab, var(--ring) 38%, transparent);
+  outline-offset: 3px;
+}
+
+.prose .github-embed svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.prose .github-embed-header,
+.prose .github-embed-repository,
+.prose .github-embed-meta,
+.prose .github-embed-stats,
+.prose .github-embed-status,
+.prose .github-embed-language {
+  display: flex;
+  align-items: center;
+}
+
+.prose .github-embed-header {
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.prose .github-embed-repository {
+  min-width: 0;
+  gap: 0.45rem;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-family: var(--font-site-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prose .github-embed-repository svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  stroke-width: 1.8;
+}
+
+.prose .github-embed-status {
+  flex: none;
+  gap: 0.3rem;
+  border: 1px solid color-mix(in oklab, currentColor 34%, transparent);
+  border-radius: 999px;
+  padding: 0.28rem 0.55rem;
+  font-family: var(--font-site-ui);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: capitalize;
+}
+
+.prose .github-embed-status svg {
+  width: 0.75rem;
+  height: 0.75rem;
+  stroke-width: 2.2;
+}
+
+.prose .github-embed-status-merged {
+  background: color-mix(in oklab, oklch(55% 0.21 305) 12%, transparent);
+  color: light-dark(oklch(43% 0.19 305), oklch(78% 0.13 305));
+}
+
+.prose .github-embed-status-open {
+  background: color-mix(in oklab, oklch(62% 0.18 145) 12%, transparent);
+  color: light-dark(oklch(42% 0.14 145), oklch(78% 0.15 145));
+}
+
+.prose .github-embed-status-closed,
+.prose .github-embed-status-draft,
+.prose .github-embed-status-archived {
+  background: color-mix(in oklab, var(--muted) 72%, transparent);
+  color: var(--muted-foreground);
+}
+
+.prose .github-embed-title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--foreground);
+  font-family: var(--font-site-heading);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.prose .github-embed-description {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.prose .github-embed-meta {
+  gap: 0.45rem;
+  color: var(--muted-foreground);
+  font-family: var(--font-site-ui);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.prose .github-embed-stats {
+  min-height: 1.25rem;
+  margin-top: auto;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  color: var(--muted-foreground);
+  font-family: var(--font-site-ui);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.prose .github-embed-stats > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.prose .github-embed-stats svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  stroke-width: 1.8;
+}
+
+.prose .github-embed-additions {
+  color: light-dark(oklch(42% 0.14 145), oklch(78% 0.15 145));
+}
+
+.prose .github-embed-deletions {
+  color: light-dark(oklch(48% 0.18 25), oklch(75% 0.16 25));
+}
+
+.prose .github-embed-language {
+  gap: 0.35rem;
+}
+
+.prose .github-embed-language > span {
+  width: 0.55rem;
+  height: 0.55rem;
+  border: 1px solid color-mix(in oklab, var(--primary) 72%, var(--foreground));
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+@media (min-width: 40rem) {
+  .prose .article-screenshot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .prose .github-embed-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .prose table {
   border-collapse: separate;
   border-spacing: 0;

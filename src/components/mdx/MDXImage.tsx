@@ -6,12 +6,17 @@ const isRemoteSrc = (src: string) => /^https?:\/\//i.test(src);
 
 type MDXImageProps = Omit<
   ImgHTMLAttributes<HTMLImageElement>,
-  "src" | "width" | "height"
+  "src" | "width" | "height" | "sizes" | "loading"
 > & {
   src?: string | StaticImageData;
   width?: number | string;
   height?: number | string;
+  sizes?: string;
+  priority?: boolean;
+  loading?: "lazy" | "eager";
 };
+
+const DEFAULT_SIZES = "(min-width: 1024px) 896px, 100vw";
 
 const parseDimension = (value?: number | string) => {
   if (typeof value === "number") {
@@ -39,11 +44,19 @@ const isStaticImageData = (value: unknown): value is StaticImageData =>
 const isSvg = (src: string) =>
   src.split("?")[0]?.split("#")[0]?.toLowerCase().endsWith(".svg");
 
+const getPlaceholder = (image: StaticImageData | null) =>
+  image?.blurDataURL !== undefined && image.blurDataURL !== ""
+    ? "blur"
+    : "empty";
+
 export default function MDXImage({
   src,
   alt,
   width,
   height,
+  sizes,
+  priority,
+  loading,
   className,
   ...rest
 }: MDXImageProps) {
@@ -73,7 +86,7 @@ export default function MDXImage({
       <img
         src={resolvedSrc}
         alt={alt ?? ""}
-        loading="lazy"
+        loading={loading ?? "lazy"}
         decoding="async"
         className={className}
         {...rest}
@@ -87,8 +100,11 @@ export default function MDXImage({
       alt={alt ?? ""}
       width={parsedWidth}
       height={parsedHeight}
-      sizes="(min-width: 1024px) 768px, 100vw"
+      sizes={sizes ?? DEFAULT_SIZES}
+      placeholder={getPlaceholder(staticImage)}
+      priority={priority}
       className={className}
+      {...rest}
     />
   );
 }

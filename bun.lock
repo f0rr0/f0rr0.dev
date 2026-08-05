@@ -10,6 +10,7 @@
         "@mdx-js/react": "^3.1.1",
         "@mermaid-js/layout-elk": "0.1.9",
         "@next/mdx": "^16.2.12",
+        "@remark-embedder/core": "^3.0.3",
         "@t3-oss/env-nextjs": "^0.13.11",
         "@tailwindcss/typography": "^0.5.20",
         "class-variance-authority": "^0.7.1",
@@ -341,6 +342,8 @@
     "@oxlint/binding-win32-ia32-msvc": ["@oxlint/binding-win32-ia32-msvc@1.71.0", "", { "os": "win32", "cpu": "ia32" }, "sha512-W4HvOHGzVLHcrmFu+bMrJlho+/yrlX5ZNdJZqGe8MEldkQG+RHYhxxad9P4jvWAYFmIqUA5i9DQ8QsJqSU9GIw=="],
 
     "@oxlint/binding-win32-x64-msvc": ["@oxlint/binding-win32-x64-msvc@1.71.0", "", { "os": "win32", "cpu": "x64" }, "sha512-D2kyEIPHk/G/wiZLnwTVC/sVst+T/lKldVOjAFpgTIBUAOlry72e5OiapDbDBF4LfJLkN5ypJb/8Eu6yJzkveQ=="],
+
+    "@remark-embedder/core": ["@remark-embedder/core@3.0.3", "", { "dependencies": { "@babel/runtime": "^7.24.5", "@types/hast": "^3.0.4", "@types/mdast": "^4.0.4", "hast-util-from-parse5": "^8.0.1", "parse5": "^7.1.2", "unified": "^11.0.4", "unist-util-visit": "^5.0.0" } }, "sha512-izeW4GT5A/NgArjATndg1KKumL7IHLPZFQODJ07vSEHgCOBq2caMlnuvFGD+7ZmF4NCZks/HhZsYhfF46TOK5w=="],
 
     "@sec-ant/readable-stream": ["@sec-ant/readable-stream@0.4.1", "", {}, "sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg=="],
 
