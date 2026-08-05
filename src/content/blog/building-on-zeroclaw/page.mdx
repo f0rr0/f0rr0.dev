@@ -83,6 +83,18 @@ That last case matters. The easiest implementation is to flatten every sentence 
 
 The same separation helps with repetition. “We ate this recently”, “I didn't enjoy it”, and “everyone liked it” are different signals. The system records a meal episode, associates later feedback with it, and makes both available during the next round of suggestions.
 
+<figure id="preference-memory" className="article-screenshot">
+  <Image
+    src="./meal-preferences.png"
+    alt="Telegram conversation where ZeroClaw summarizes Sid and Shreya's meal preferences"
+    sizes="(min-width: 640px) 448px, 100vw"
+  />
+  <figcaption>
+    ZeroClaw separates stable, attributed preferences from observations inferred
+    from recent meals.
+  </figcaption>
+</figure>
+
 ## The pantry was the fun part
 
 This is where the project stopped feeling like a recipe bot.
@@ -140,6 +152,31 @@ Direct photo evidence starts at `1.0`, a manual chat observation at `0.9`, and a
 
 This is not a magical fridge API. It is something more useful: a current best guess with enough provenance to say “capsicum is probably available; paneer needs checking”. The cook can correct it in one message and become the freshest source again.
 
+<div id="pantry-freshness" className="article-screenshot-grid">
+  <figure>
+    <Image
+      src="./pantry-from-order-history.png"
+      alt="Telegram conversation showing ZeroClaw derive a pantry list from recent Instamart order history"
+      sizes="(min-width: 1024px) 436px, (min-width: 640px) calc(50vw - 3rem), 100vw"
+    />
+    <figcaption>
+      A grocery-history sync produces a pantry hypothesis, not a claim that every
+      item is still available.
+    </figcaption>
+  </figure>
+  <figure>
+    <Image
+      src="./pantry-freshness-check.png"
+      alt="Telegram conversation where ZeroClaw reports a chicken purchase date and refreshes inventory"
+      sizes="(min-width: 1024px) 436px, (min-width: 640px) calc(50vw - 3rem), 100vw"
+    />
+    <figcaption>
+      Purchase dates let ZeroClaw flag stale inventory and ask for a refresh
+      instead of assuming the chicken is usable.
+    </figcaption>
+  </figure>
+</div>
+
 ## Turning context into a decision
 
 Once the household context is assembled, I expose three main tools to the model:
@@ -163,6 +200,31 @@ score =
 ```
 
 The cook's messages remain part of the grounding context because “technically possible from the ingredient list” and “reasonable to cook today” are not the same thing. The assistant is there to get the group to a sensible shortlist and a visible decision, not to issue culinary decrees from a SQLite database.
+
+<div id="context-aware-recommendations" className="article-screenshot-grid">
+  <figure>
+    <Image
+      src="./lunch-from-fridge-photos.png"
+      alt="Telegram conversation with two fridge photos and ZeroClaw suggesting lunch dishes from visible vegetables"
+      sizes="(min-width: 1024px) 436px, (min-width: 640px) calc(50vw - 3rem), 100vw"
+    />
+    <figcaption>
+      Fridge photos provide momentary visual context; the recommendation explains
+      which visible ingredients drove it.
+    </figcaption>
+  </figure>
+  <figure>
+    <Image
+      src="./breakfast-from-pantry.png"
+      alt="Telegram conversation where ZeroClaw suggests breakfast options based on pantry ingredients"
+      sizes="(min-width: 1024px) 436px, (min-width: 640px) calc(50vw - 3rem), 100vw"
+    />
+    <figcaption>
+      The same pantry state supports a different decision at breakfast, with each
+      suggestion tied back to ingredients on hand.
+    </figcaption>
+  </figure>
+</div>
 
 ## Knowing when the meal decision is complete
 

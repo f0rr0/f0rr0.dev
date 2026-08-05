@@ -640,6 +640,40 @@ body {
   margin-top: 0.75rem;
 }
 
+.prose .article-screenshot {
+  max-width: 28rem;
+  margin-inline: auto;
+}
+
+.prose .article-screenshot,
+.prose .article-screenshot-grid {
+  scroll-margin-top: 6rem;
+}
+
+.prose .article-screenshot img,
+.prose .article-screenshot-grid img {
+  width: 100%;
+  margin: 0;
+}
+
+.prose .article-screenshot-grid {
+  display: grid;
+  gap: 1.5rem;
+  margin: 2.25rem 0;
+}
+
+.prose .article-screenshot-grid figure {
+  min-width: 0;
+  margin: 0;
+}
+
+@media (min-width: 40rem) {
+  .prose .article-screenshot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
 .prose table {
   border-collapse: separate;
   border-spacing: 0;
