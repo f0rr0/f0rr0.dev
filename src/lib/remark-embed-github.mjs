@@ -1,4 +1,7 @@
+import { Buffer } from "node:buffer";
+
 import remarkEmbedderModule from "@remark-embedder/core";
+import { codeToHtml } from "shiki";
 
 function resolveDefaultExport(value) {
   if (typeof value === "function") {
@@ -17,8 +20,51 @@ function resolveDefaultExport(value) {
 const remarkEmbedder = resolveDefaultExport(remarkEmbedderModule);
 
 const GITHUB_API_VERSION = "2026-03-10";
+const GITHUB_COMMIT_PATTERN = /^(?:[\da-f]{40}|[\da-f]{64})$/iu;
+const GITHUB_LINE_HASH_PATTERN = /^#L(\d+)(?:-L(\d+))?$/u;
 const REQUEST_TIMEOUT_MS = 5000;
 const embedCache = new Map();
+
+const languageByExtension = {
+  c: "c",
+  cc: "cpp",
+  cpp: "cpp",
+  cs: "csharp",
+  css: "css",
+  go: "go",
+  graphql: "graphql",
+  h: "c",
+  hpp: "cpp",
+  html: "html",
+  java: "java",
+  js: "javascript",
+  json: "json",
+  jsonc: "jsonc",
+  jsx: "jsx",
+  kt: "kotlin",
+  kts: "kotlin",
+  lua: "lua",
+  md: "markdown",
+  mdx: "mdx",
+  mjs: "javascript",
+  php: "php",
+  proto: "proto",
+  py: "python",
+  rb: "ruby",
+  rs: "rust",
+  scss: "scss",
+  sh: "bash",
+  sql: "sql",
+  swift: "swift",
+  toml: "toml",
+  ts: "typescript",
+  tsx: "tsx",
+  vue: "vue",
+  xml: "xml",
+  yaml: "yaml",
+  yml: "yaml",
+  zsh: "bash",
+};
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   day: "numeric",
@@ -36,6 +82,7 @@ const fullNumberFormatter = new Intl.NumberFormat("en");
 
 const icons = {
   branch: `<svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><line x1="6" x2="6" y1="3" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>`,
+  code: `<svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>`,
   fork: `<svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><circle cx="18" cy="6" r="3"></circle><path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"></path><path d="M12 12v3"></path></svg>`,
   issue: `<svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" x2="12" y1="8" y2="12"></line><line x1="12.01" x2="12.01" y1="16" y2="16"></line></svg>`,
   pullRequest: `<svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M13 6h3a2 2 0 0 1 2 2v7"></path><line x1="6" x2="6" y1="9" y2="21"></line></svg>`,
@@ -49,6 +96,112 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function decodePathSegment(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
+function getCodeLanguage(filePath) {
+  const fileName = filePath.split("/").at(-1)?.toLowerCase() ?? "";
+
+  if (fileName === "dockerfile") {
+    return "dockerfile";
+  }
+
+  if (fileName === "makefile") {
+    return "make";
+  }
+
+  const extension = fileName.includes(".") ? fileName.split(".").at(-1) : "";
+  return languageByExtension[extension] ?? "text";
+}
+
+function getLineLabel({ endLine, startLine }) {
+  return startLine === endLine
+    ? `Line ${startLine}`
+    : `Lines ${startLine}–${endLine}`;
+}
+
+function parseGitHubLineSelection(hash) {
+  const lineMatch = GITHUB_LINE_HASH_PATTERN.exec(hash);
+
+  if (lineMatch === null) {
+    return null;
+  }
+
+  const startLine = Number(lineMatch[1]);
+  const endLine = Number(lineMatch[2] ?? lineMatch[1]);
+
+  if (
+    !Number.isSafeInteger(startLine) ||
+    !Number.isSafeInteger(endLine) ||
+    startLine <= 0 ||
+    endLine < startLine
+  ) {
+    return null;
+  }
+
+  return { endLine, startLine };
+}
+
+function parseGitHubCodeReference(url, segments) {
+  if (segments.length < 5 || segments[2] !== "blob") {
+    return null;
+  }
+
+  if (url.search !== "" && url.search !== "?plain=1") {
+    return null;
+  }
+
+  const [ownerValue, repoValue, , commitValue, ...filePathValues] = segments;
+  const decodedSegments = [
+    ownerValue ?? "",
+    repoValue ?? "",
+    commitValue ?? "",
+    ...filePathValues,
+  ].map(decodePathSegment);
+
+  if (decodedSegments.some((segment) => segment === null || segment === "")) {
+    return null;
+  }
+
+  const [owner, repo, commit, ...decodedFilePath] = decodedSegments;
+
+  if (commit === null || !GITHUB_COMMIT_PATTERN.test(commit)) {
+    return null;
+  }
+
+  const lineSelection = parseGitHubLineSelection(url.hash);
+
+  if (lineSelection === null) {
+    return null;
+  }
+
+  const filePath = decodedFilePath.join("/");
+  const encodedFilePath = filePath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  const lineHash =
+    lineSelection.startLine === lineSelection.endLine
+      ? `#L${lineSelection.startLine}`
+      : `#L${lineSelection.startLine}-L${lineSelection.endLine}`;
+
+  return {
+    commit: commit.toLowerCase(),
+    endLine: lineSelection.endLine,
+    filePath,
+    href: `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/blob/${commit.toLowerCase()}/${encodedFilePath}${url.search}${lineHash}`,
+    kind: "code",
+    owner,
+    repo,
+    startLine: lineSelection.startLine,
+  };
 }
 
 function parseGitHubUrl(value) {
@@ -65,6 +218,12 @@ function parseGitHubUrl(value) {
   }
 
   const segments = url.pathname.split("/").filter(Boolean);
+
+  const codeReference = parseGitHubCodeReference(url, segments);
+
+  if (codeReference !== null) {
+    return codeReference;
+  }
 
   if (segments.length === 2) {
     const [owner, repoWithSuffix] = segments;
@@ -105,6 +264,73 @@ function parseGitHubUrl(value) {
   }
 
   return null;
+}
+
+function decodeGitHubFile(data) {
+  if (
+    data === null ||
+    typeof data !== "object" ||
+    data.type !== "file" ||
+    data.encoding !== "base64" ||
+    typeof data.content !== "string"
+  ) {
+    throw new TypeError("GitHub did not return embeddable file content");
+  }
+
+  return Buffer.from(data.content.replaceAll("\n", ""), "base64").toString(
+    "utf-8"
+  );
+}
+
+async function renderCodeReference(parsed, data) {
+  const source = decodeGitHubFile(data).replaceAll("\r\n", "\n");
+  const lines = source.split("\n");
+
+  if (parsed.startLine > lines.length) {
+    throw new RangeError("The referenced line is outside the GitHub file");
+  }
+
+  const endLine = Math.min(parsed.endLine, lines.length);
+  const excerpt = lines.slice(parsed.startLine - 1, endLine).join("\n");
+  const lineLabel = getLineLabel({
+    endLine,
+    startLine: parsed.startLine,
+  });
+  const highlightedCode = await codeToHtml(excerpt, {
+    defaultColor: false,
+    lang: getCodeLanguage(parsed.filePath),
+    themes: {
+      dark: "github-dark",
+      light: "github-light",
+    },
+    transformers: [
+      {
+        code(node) {
+          node.properties["data-theme"] = "github-light github-dark";
+        },
+        line(node, line) {
+          node.properties["data-line-number"] = String(
+            parsed.startLine + line - 1
+          );
+        },
+        name: "github-line-reference",
+        pre(node) {
+          node.properties["aria-label"] = `${parsed.filePath}, ${lineLabel}`;
+          node.properties["data-theme"] = "github-light github-dark";
+        },
+      },
+    ],
+  });
+
+  return `<figure class="github-code-embed">
+    <figcaption class="github-code-embed-caption">
+      <a class="github-code-embed-source" href="${escapeHtml(parsed.href)}" rel="noreferrer noopener" target="_blank">
+        <span class="github-code-embed-location">${icons.code}<span class="github-code-embed-repository">${escapeHtml(parsed.owner)} / ${escapeHtml(parsed.repo)}</span><span aria-hidden="true">/</span><span class="github-code-embed-path">${escapeHtml(parsed.filePath)}</span></span>
+        <span class="github-code-embed-lines">${escapeHtml(lineLabel)}</span>
+      </a>
+    </figcaption>
+    ${highlightedCode}
+  </figure>`;
 }
 
 function renderShell({ content, href, label }) {
@@ -175,7 +401,13 @@ function renderFallback(parsed) {
   const label =
     parsed.kind === "pull"
       ? `${parsed.owner}/${parsed.repo} pull request #${parsed.number}`
-      : `${parsed.owner}/${parsed.repo}`;
+      : parsed.kind === "code"
+        ? `${parsed.owner}/${parsed.repo}/${parsed.filePath}`
+        : `${parsed.owner}/${parsed.repo}`;
+  const description =
+    parsed.kind === "code"
+      ? `View ${getLineLabel(parsed).toLowerCase()} at commit ${parsed.commit.slice(0, 7)} on GitHub.`
+      : `View this ${parsed.kind === "pull" ? "pull request" : "repository"} on GitHub.`;
 
   return renderShell({
     content: `
@@ -183,7 +415,7 @@ function renderFallback(parsed) {
         <span class="github-embed-repository">${icons.branch}GitHub</span>
       </span>
       <span class="github-embed-title">${escapeHtml(label)}</span>
-      <span class="github-embed-description">View this ${parsed.kind === "pull" ? "pull request" : "repository"} on GitHub.</span>`,
+      <span class="github-embed-description">${escapeHtml(description)}</span>`,
     href: parsed.href,
     label: `Open ${label} on GitHub`,
   });
@@ -193,7 +425,12 @@ async function fetchGitHubResource(parsed) {
   const resourcePath =
     parsed.kind === "pull"
       ? `repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}/pulls/${parsed.number}`
-      : `repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}`;
+      : parsed.kind === "code"
+        ? `repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}/contents/${parsed.filePath
+            .split("/")
+            .map((segment) => encodeURIComponent(segment))
+            .join("/")}?ref=${encodeURIComponent(parsed.commit)}`
+        : `repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}`;
   const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
   const headers = {
     Accept: "application/vnd.github+json",
@@ -225,15 +462,23 @@ const githubTransformer = {
     }
 
     const data = await fetchGitHubResource(parsed);
-    return parsed.kind === "pull"
-      ? renderPullRequest(parsed, data)
-      : renderRepository(data);
+    if (parsed.kind === "pull") {
+      return renderPullRequest(parsed, data);
+    }
+
+    if (parsed.kind === "code") {
+      return await renderCodeReference(parsed, data);
+    }
+
+    return renderRepository(data);
   },
-  name: "github-repository-and-pull-request",
+  name: "github-repository-pull-request-and-code-reference",
   shouldTransform(url) {
     return parseGitHubUrl(url) !== null;
   },
 };
+
+export { githubTransformer, parseGitHubUrl };
 
 export default function remarkEmbedGitHub() {
   return remarkEmbedder({
