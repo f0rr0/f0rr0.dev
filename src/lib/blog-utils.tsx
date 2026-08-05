@@ -95,6 +95,11 @@ const stripMetadataExport = (source: string) =>
     .replace(/export const metadata = \{[\s\S]*?^[\t ]*\};?\s*/m, "")
     .trim();
 
+export const getBlogPostSource = cache(async (importPath: string) => {
+  const source = await fs.readFile(path.join(BLOG_DIR, importPath), "utf-8");
+  return stripMetadataExport(source);
+});
+
 const toDate = (value: string, slug: string) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -106,9 +111,8 @@ const toDate = (value: string, slug: string) => {
 };
 
 const getPostStats = async (importPath: string) => {
-  const source = await fs.readFile(path.join(BLOG_DIR, importPath), "utf-8");
-  const text = stripMetadataExport(source);
-  const stats = readingTime(text);
+  const source = await getBlogPostSource(importPath);
+  const stats = readingTime(source);
   return { readingTime: stats.text, wordCount: stats.words };
 };
 
