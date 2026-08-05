@@ -1,52 +1,10 @@
-import type { ComponentPropsWithoutRef } from "react";
+import type { ComponentPropsWithoutRef, CSSProperties } from "react";
 
 import CopyCodeButton from "@/components/mdx/CopyCodeButton";
-
-const languageNames: Record<string, string> = {
-  bash: "Bash",
-  c: "C",
-  cpp: "C++",
-  cs: "C#",
-  css: "CSS",
-  diff: "Diff",
-  dockerfile: "Dockerfile",
-  go: "Go",
-  graphql: "GraphQL",
-  html: "HTML",
-  java: "Java",
-  javascript: "JavaScript",
-  js: "JavaScript",
-  json: "JSON",
-  jsonc: "JSON with comments",
-  jsx: "JSX",
-  kotlin: "Kotlin",
-  lua: "Lua",
-  markdown: "Markdown",
-  md: "Markdown",
-  mdx: "MDX",
-  plaintext: "Plain text",
-  prisma: "Prisma",
-  py: "Python",
-  python: "Python",
-  regex: "Regular expression",
-  rs: "Rust",
-  ruby: "Ruby",
-  rust: "Rust",
-  sh: "Shell",
-  shell: "Shell",
-  sql: "SQL",
-  swift: "Swift",
-  text: "Plain text",
-  toml: "TOML",
-  ts: "TypeScript",
-  tsx: "TSX",
-  txt: "Plain text",
-  vue: "Vue",
-  xml: "XML",
-  yaml: "YAML",
-  yml: "YAML",
-  zsh: "Zsh",
-};
+import {
+  getCodeLanguageIconUrl,
+  getCodeLanguageName,
+} from "@/lib/code-languages";
 
 type CodeBlockProps = ComponentPropsWithoutRef<"pre"> & {
   "data-github-code-embed"?: string;
@@ -66,22 +24,37 @@ function GitHubMark() {
   );
 }
 
-function getLanguageName(language: string): string {
-  const normalizedLanguage = language.toLowerCase();
-  const knownName = languageNames[normalizedLanguage];
+interface LanguageLabelProps {
+  className: string;
+  language: string;
+}
 
-  if (knownName !== undefined) {
-    return knownName;
-  }
+function LanguageLabel({ className, language }: LanguageLabelProps) {
+  const iconUrl = getCodeLanguageIconUrl(language);
+  const iconStyle = {
+    "--code-language-icon": `url("${iconUrl}")`,
+  } as CSSProperties;
 
-  if (normalizedLanguage.length <= 4) {
-    return normalizedLanguage.toUpperCase();
-  }
-
-  return normalizedLanguage
-    .split(/[-_]/u)
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
+  return (
+    <span className={className}>
+      <span
+        aria-hidden="true"
+        className="code-block-language-icon"
+        style={iconStyle}
+      >
+        <img
+          alt=""
+          className="code-block-language-icon-color"
+          decoding="async"
+          height="16"
+          loading="lazy"
+          src={iconUrl}
+          width="16"
+        />
+      </span>
+      <span>{getCodeLanguageName(language)}</span>
+    </span>
+  );
 }
 
 export default function CodeBlock({
@@ -89,7 +62,7 @@ export default function CodeBlock({
   ...props
 }: Readonly<CodeBlockProps>) {
   const language = props["data-language"] ?? "plaintext";
-  const languageName = getLanguageName(language);
+  const languageName = getCodeLanguageName(language);
 
   if (props["data-github-code-embed"] === "true") {
     const owner = props["data-github-owner"] ?? "GitHub";
@@ -114,7 +87,10 @@ export default function CodeBlock({
             </span>
           </a>
           <div className="github-code-embed-meta">
-            <span className="github-code-embed-language">{languageName}</span>
+            <LanguageLabel
+              className="github-code-embed-language"
+              language={language}
+            />
             <CopyCodeButton language={languageName} />
           </div>
         </figcaption>
@@ -126,7 +102,7 @@ export default function CodeBlock({
   return (
     <div className="code-block" data-language={language}>
       <div className="code-block-toolbar">
-        <span className="code-block-language">{languageName}</span>
+        <LanguageLabel className="code-block-language" language={language} />
         <CopyCodeButton language={languageName} />
       </div>
       <pre {...props}>{children}</pre>
