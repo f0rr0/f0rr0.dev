@@ -54,7 +54,7 @@ export function BlogPostActions({
           aria-label={`Ask AI about ${title}`}
           render={
             <Button
-              className="group/ask-ai rounded-none px-2 text-muted-foreground shadow-none hover:text-foreground"
+              className="group/ask-ai px-2 text-muted-foreground shadow-none hover:text-foreground"
               size="sm"
               variant="ghost"
             />
@@ -131,7 +131,7 @@ export function BlogPostActions({
       <Separator className="mx-1" orientation="vertical" />
 
       <Button
-        className="rounded-none px-2 text-muted-foreground shadow-none hover:text-foreground"
+        className="px-2 text-muted-foreground shadow-none hover:text-foreground"
         render={
           <a
             aria-label="View this post as Markdown"
