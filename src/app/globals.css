@@ -674,40 +674,31 @@ body {
 }
 
 .prose .github-code-embed {
-  min-width: 0;
-  margin: 2.25rem 0;
-  overflow: hidden;
-  border: 1px solid color-mix(in oklab, var(--border) 88%, var(--foreground));
-  border-radius: 0.875rem;
-  background: color-mix(in oklab, var(--card) 92%, var(--muted));
-  box-shadow:
-    0 1px 2px rgb(41 37 36 / 8%),
-    0 16px 38px -32px rgb(41 37 36 / 38%);
+  margin: 1.25rem 0 2.25rem;
 }
 
-.dark .prose .github-code-embed {
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 30%),
-    0 18px 42px -30px rgb(0 0 0 / 85%);
-}
-
-.prose .github-code-embed-caption {
+.prose .github-code-embed-toolbar {
+  display: flex;
+  min-height: 2.75rem;
   margin: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   border-bottom: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
   background: color-mix(in oklab, var(--muted) 72%, var(--card));
+  padding: 0.4rem 0.5rem 0.4rem 0.65rem;
+  font-family: var(--font-site-ui);
 }
 
 .prose .github-code-embed-source {
   display: flex;
-  min-height: 2.625rem;
+  flex: 1 1 auto;
+  min-width: 0;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.45rem 0.75rem 0.45rem 1rem;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.45rem;
   color: var(--muted-foreground);
-  font-family: var(--font-site-ui);
-  font-size: 0.75rem;
-  line-height: 1.3;
   text-decoration: none;
   transition:
     background-color 150ms ease,
@@ -720,75 +711,47 @@ body {
 }
 
 .prose .github-code-embed-source:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
+  outline: 2px solid color-mix(in oklab, var(--ring) 42%, transparent);
+  outline-offset: 1px;
 }
 
-.prose .github-code-embed-location {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.prose .github-code-embed-location svg {
-  width: 0.95rem;
-  height: 0.95rem;
+.prose .github-code-embed-source svg {
+  width: 1rem;
+  height: 1rem;
   flex: none;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
+  fill: currentColor;
 }
 
-.prose .github-code-embed-repository {
-  flex: none;
-  font-weight: 600;
-}
-
-.prose .github-code-embed-path {
+.prose .github-code-embed-source-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.prose .github-code-embed-lines {
+.prose .github-code-embed-meta {
+  display: flex;
   flex: none;
-  font-variant-numeric: tabular-nums;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--muted-foreground);
+}
+
+.prose .github-code-embed-source-label,
+.prose .github-code-embed-language {
+  font-size: 0.6875rem;
   font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.prose .github-code-embed-language {
+  padding: 0 0.4rem;
 }
 
 .prose .github-code-embed pre[data-theme] {
-  max-width: 100%;
   max-height: 32rem;
-  margin: 0;
-  overflow: auto;
+  overflow-y: auto;
   overscroll-behavior: contain;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 48%, transparent)
-    transparent;
-  scrollbar-width: thin;
-}
-
-.prose .github-code-embed pre[data-theme]:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
-}
-
-.prose .github-code-embed pre[data-theme] > code {
-  display: grid;
-  width: max-content;
-  min-width: 100%;
-  padding: 1.125rem 0 1.25rem;
-  background: transparent;
-  color: var(--foreground);
-  font-size: 0.875rem;
-  font-weight: 400;
-  line-height: 1.7;
 }
 
 .prose .github-code-embed [data-line-number] {
@@ -799,10 +762,10 @@ body {
 
 .prose .github-code-embed [data-line-number]::before {
   display: inline-block;
-  width: 4.25rem;
-  margin-right: 1rem;
+  width: 3.75rem;
+  margin-right: 0.875rem;
   border-right: 1px solid color-mix(in oklab, var(--border) 78%, transparent);
-  padding-right: 0.85rem;
+  padding-right: 0.75rem;
   color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
   content: attr(data-line-number);
   font-variant-numeric: tabular-nums;
@@ -1071,20 +1034,13 @@ body {
     padding-inline: 1rem;
   }
 
+  .prose .github-code-embed-toolbar {
+    gap: 0.25rem;
+    padding-inline: 0.4rem;
+  }
+
   .prose .github-code-embed-source {
-    min-height: 2.5rem;
-    gap: 0.75rem;
-    padding-inline: 0.75rem;
-  }
-
-  .prose .github-code-embed-repository,
-  .prose .github-code-embed-location > [aria-hidden="true"] {
-    display: none;
-  }
-
-  .prose .github-code-embed pre[data-theme] > code {
-    padding-block: 1rem 1.125rem;
-    font-size: 0.8125rem;
+    padding-left: 0.35rem;
   }
 
   .prose .github-code-embed [data-line-number] {

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
 
 import {
+  dedentCode,
   githubTransformer,
   parseGitHubUrl,
 } from "../src/lib/remark-embed-github.mjs";
@@ -14,6 +15,26 @@ afterEach(() => {
 });
 
 describe("GitHub code reference embeds", () => {
+  test("removes indentation shared by the selected lines", () => {
+    expect(
+      dedentCode(
+        [
+          "        let score = calculate();",
+          "        if score > 0 {",
+          "            store(score);",
+          "        }",
+        ].join("\n")
+      )
+    ).toBe(
+      [
+        "let score = calculate();",
+        "if score > 0 {",
+        "    store(score);",
+        "}",
+      ].join("\n")
+    );
+  });
+
   test("accepts commit-pinned line permalinks", () => {
     const parsed = parseGitHubUrl(
       `https://github.com/f0rr0/zeroclaw/blob/${commit}/src/meal/store.rs#L603-L605`
@@ -96,7 +117,8 @@ describe("GitHub code reference embeds", () => {
     expect(requestedUrl).toBe(
       `https://api.github.com/repos/f0rr0/zeroclaw/contents/src/meal/store.rs?ref=${commit}`
     );
-    expect(html).toContain("github-code-embed");
+    expect(html).toContain('data-github-code-embed="true"');
+    expect(html).toContain('data-language="rust"');
     expect(html).toContain('data-line-number="2"');
     expect(html).toContain('data-line-number="4"');
     expect(html).not.toContain("fn before");

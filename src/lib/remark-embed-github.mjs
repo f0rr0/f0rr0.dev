@@ -82,7 +82,6 @@ const fullNumberFormatter = new Intl.NumberFormat("en");
 
 const icons = {
   branch: `<svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><line x1="6" x2="6" y1="3" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>`,
-  code: `<svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>`,
   fork: `<svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><circle cx="18" cy="6" r="3"></circle><path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"></path><path d="M12 12v3"></path></svg>`,
   issue: `<svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" x2="12" y1="8" y2="12"></line><line x1="12.01" x2="12.01" y1="16" y2="16"></line></svg>`,
   pullRequest: `<svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M13 6h3a2 2 0 0 1 2 2v7"></path><line x1="6" x2="6" y1="9" y2="21"></line></svg>`,
@@ -125,6 +124,27 @@ function getLineLabel({ endLine, startLine }) {
   return startLine === endLine
     ? `Line ${startLine}`
     : `Lines ${startLine}–${endLine}`;
+}
+
+function dedentCode(value) {
+  const lines = value.split("\n");
+  let indentation = Number.POSITIVE_INFINITY;
+
+  for (const line of lines) {
+    const firstContentIndex = line.search(/\S/u);
+
+    if (firstContentIndex !== -1) {
+      indentation = Math.min(indentation, firstContentIndex);
+    }
+  }
+
+  if (!Number.isFinite(indentation) || indentation === 0) {
+    return value;
+  }
+
+  return lines
+    .map((line) => (line.trim() === "" ? "" : line.slice(indentation)))
+    .join("\n");
 }
 
 function parseGitHubLineSelection(hash) {
@@ -291,14 +311,17 @@ async function renderCodeReference(parsed, data) {
   }
 
   const endLine = Math.min(parsed.endLine, lines.length);
-  const excerpt = lines.slice(parsed.startLine - 1, endLine).join("\n");
+  const excerpt = dedentCode(
+    lines.slice(parsed.startLine - 1, endLine).join("\n")
+  );
   const lineLabel = getLineLabel({
     endLine,
     startLine: parsed.startLine,
   });
+  const language = getCodeLanguage(parsed.filePath);
   const highlightedCode = await codeToHtml(excerpt, {
     defaultColor: false,
-    lang: getCodeLanguage(parsed.filePath),
+    lang: language,
     themes: {
       dark: "github-dark",
       light: "github-light",
@@ -306,6 +329,7 @@ async function renderCodeReference(parsed, data) {
     transformers: [
       {
         code(node) {
+          node.properties["data-language"] = language;
           node.properties["data-theme"] = "github-light github-dark";
         },
         line(node, line) {
@@ -316,21 +340,20 @@ async function renderCodeReference(parsed, data) {
         name: "github-line-reference",
         pre(node) {
           node.properties["aria-label"] = `${parsed.filePath}, ${lineLabel}`;
+          node.properties["data-github-code-embed"] = "true";
+          node.properties["data-github-href"] = parsed.href;
+          node.properties["data-github-lines"] = lineLabel;
+          node.properties["data-github-owner"] = parsed.owner;
+          node.properties["data-github-path"] = parsed.filePath;
+          node.properties["data-github-repo"] = parsed.repo;
+          node.properties["data-language"] = language;
           node.properties["data-theme"] = "github-light github-dark";
         },
       },
     ],
   });
 
-  return `<figure class="github-code-embed">
-    <figcaption class="github-code-embed-caption">
-      <a class="github-code-embed-source" href="${escapeHtml(parsed.href)}" rel="noreferrer noopener" target="_blank">
-        <span class="github-code-embed-location">${icons.code}<span class="github-code-embed-repository">${escapeHtml(parsed.owner)} / ${escapeHtml(parsed.repo)}</span><span aria-hidden="true">/</span><span class="github-code-embed-path">${escapeHtml(parsed.filePath)}</span></span>
-        <span class="github-code-embed-lines">${escapeHtml(lineLabel)}</span>
-      </a>
-    </figcaption>
-    ${highlightedCode}
-  </figure>`;
+  return highlightedCode;
 }
 
 function renderShell({ content, href, label }) {
@@ -478,7 +501,7 @@ const githubTransformer = {
   },
 };
 
-export { githubTransformer, parseGitHubUrl };
+export { dedentCode, githubTransformer, parseGitHubUrl };
 
 export default function remarkEmbedGitHub() {
   return remarkEmbedder({
