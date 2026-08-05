@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ComponentType } from "react";
 
+import { BlogPostActions } from "@/components/blog/blog-post-actions";
 import { JsonLd } from "@/components/json-ld";
 import MDXImage from "@/components/mdx/MDXImage";
 import { SiteMain } from "@/components/site-page";
@@ -97,7 +98,7 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
     notFound();
   }
 
-  const { importPath, metadata, date, updatedAt, readingTime } = post;
+  const { importPath, metadata, date, readingTime } = post;
 
   const module = await importBlogPostModule<BlogPostModule>(importPath).catch(
     () => null
@@ -128,8 +129,8 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
   return (
     <SiteMain className="relative">
       <JsonLd data={jsonLd} />
-      <article className="flex flex-col gap-12">
-        <header className="flex max-w-4xl flex-col gap-6">
+      <article className="flex flex-col gap-10">
+        <header className="flex max-w-4xl flex-col gap-5">
           {metadata.tags !== undefined && metadata.tags.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {metadata.tags.map((tag) => (
@@ -139,34 +140,25 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
               ))}
             </div>
           ) : null}
-          <div className="space-y-4">
-            <h1 className="text-balance max-w-4xl font-serif text-3xl font-bold tracking-tight sm:text-4xl">
-              {metadata.title}
-            </h1>
-            <p className="max-w-3xl text-base text-muted-foreground">
-              {metadata.summary}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-            <span>
+          <h1 className="text-balance max-w-4xl font-serif text-3xl font-bold tracking-tight sm:text-4xl">
+            {metadata.title}
+          </h1>
+          <div
+            className="grid border-y border-border sm:grid-cols-[1fr_auto]"
+            data-slot="blog-post-rail"
+          >
+            <div className="flex min-h-10 items-center gap-3 px-2 text-sm text-muted-foreground">
               <time dateTime={date.toISOString()}>
                 {formatDate(date, siteConfig.language)}
               </time>
-            </span>
-            <Separator orientation="vertical" className="h-4" />
-            <span>{metadata.author}</span>
-            <Separator orientation="vertical" className="h-4" />
-            <span>{readingTime}</span>
-            <Separator orientation="vertical" className="h-4" />
-            <span>{post.wordCount.toLocaleString()} words</span>
-            {updatedAt === undefined ? null : (
-              <>
-                <Separator orientation="vertical" className="h-4" />
-                <span>
-                  Updated {formatDate(updatedAt, siteConfig.language)}
-                </span>
-              </>
-            )}
+              <Separator orientation="vertical" />
+              <span>{readingTime}</span>
+            </div>
+            <BlogPostActions
+              markdownHref={`/blog/${slug}.md`}
+              sourceUrl={publicUrl(`/blog/${slug}.md`)}
+              title={metadata.title}
+            />
           </div>
         </header>
         <div className="prose min-w-0 w-full max-w-4xl prose-h2:text-2xl prose-h3:text-xl prose-p:leading-relaxed">

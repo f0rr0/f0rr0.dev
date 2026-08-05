@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
   },
   outputFileTracingIncludes: {
     "/blog/[slug]": ["./src/content/**/*"],
+    "/blog/[slug]/markdown": ["./src/content/**/*"],
     "/blog/[slug]/opengraph-image": ["./src/content/**/*"],
     "/blog/[slug]/share-image": ["./src/content/**/*"],
     "/blog/[slug]/twitter-image": ["./src/content/**/*"],
@@ -19,6 +20,12 @@ const nextConfig: NextConfig = {
     "/sitemap.xml": ["./src/content/**/*"],
   },
   reactCompiler: true,
+  rewrites: async () => [
+    {
+      destination: "/blog/:slug/markdown",
+      source: "/blog/:slug.md",
+    },
+  ],
 };
 
 const remarkStaticImageImports = new URL(
