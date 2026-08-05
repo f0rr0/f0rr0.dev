@@ -63,6 +63,7 @@ export default function CodeBlock({
 
     return (
       <figure className="code-block github-code-embed" data-language={language}>
+        <pre {...props}>{children}</pre>
         <figcaption className="github-code-embed-toolbar">
           <a
             aria-label={`View ${owner}/${repo}/${filePath}, ${lineLabel}, on GitHub`}
@@ -84,18 +85,17 @@ export default function CodeBlock({
             <CopyCodeButton language={languageName} />
           </div>
         </figcaption>
-        <pre {...props}>{children}</pre>
       </figure>
     );
   }
 
   return (
     <div className="code-block" data-language={language}>
+      <pre {...props}>{children}</pre>
       <div className="code-block-toolbar">
         <LanguageLabel className="code-block-language" language={language} />
         <CopyCodeButton language={languageName} />
       </div>
-      <pre {...props}>{children}</pre>
     </div>
   );
 }

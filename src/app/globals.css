@@ -217,7 +217,7 @@ body {
   align-items: center;
   justify-content: flex-end;
   gap: 0.25rem;
-  border-bottom: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+  border-top: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
   background: color-mix(in oklab, var(--muted) 72%, var(--card));
   padding: 0.35rem 0.5rem 0.35rem 1rem;
   font-family: var(--font-site-ui);
@@ -397,7 +397,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  border-bottom: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+  border-top: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
   background: color-mix(in oklab, var(--muted) 72%, var(--card));
   padding: 0.35rem 0.5rem 0.35rem 1rem;
   font-family: var(--font-site-ui);
@@ -700,7 +700,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  border-bottom: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+  border-top: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
   background: color-mix(in oklab, var(--muted) 72%, var(--card));
   padding: 0.35rem 0.5rem 0.35rem 0.65rem;
   font-family: var(--font-site-ui);
