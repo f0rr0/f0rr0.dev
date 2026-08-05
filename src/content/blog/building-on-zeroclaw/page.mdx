@@ -24,7 +24,15 @@ It sounded like a fun weekend project. It also sounded like an excellent excuse 
 
 ## Why ZeroClaw
 
-I had already used ZeroClaw at work and spent enough time inside its Rust runtime to know where the interesting seams were. Two of my fixes had made it upstream: one for [authenticated Slack attachments and Socket Mode hardening](https://github.com/zeroclaw-labs/zeroclaw/pull/3086), and a much smaller one that made [Slack's `mention_only` setting work end to end](https://github.com/zeroclaw-labs/zeroclaw/pull/3715). So channels, attachments, reply policy and long-running agents were familiar territory.
+I had already used ZeroClaw at work and spent enough time inside its Rust runtime to know where the interesting seams were. Two of my fixes had made it upstream: one for authenticated Slack attachments and Socket Mode hardening, and a much smaller one that made Slack's `mention_only` setting work end to end. So channels, attachments, reply policy and long-running agents were familiar territory.
+
+<div className="github-embed-grid">
+
+https://github.com/zeroclaw-labs/zeroclaw/pull/3086
+
+https://github.com/zeroclaw-labs/zeroclaw/pull/3715
+
+</div>
 
 ZeroClaw already gave me a daemon, Telegram, model providers, tools, SQLite memory, scheduling and hooks around incoming messages. I could concentrate on the oddly specific household intelligence instead of starting with “first, build an agent framework”.
 
@@ -45,12 +53,19 @@ If the bot only sees the final mention, it misses almost everything that makes t
 
 I split the two behaviours:
 
-```text
-message
-  -> store as household context
-  -> decide: ingest_only | respond
-  -> if respond: run the agent
-  -> if an outbound permit exists: reply in Telegram
+```mermaid
+stateDiagram-v2
+  accTitle: Telegram message handling
+  accDescr: Every message becomes household context. A classifier decides whether to stop after ingestion or run the agent, whose reply still requires an outbound permit.
+  state "Store household context" as Context
+  state "Run the agent" as Agent
+  state "Stay silent" as Silent
+  state "Reply in Telegram" as Reply
+  [*] --> Context: Incoming message
+  Context --> Silent: ingest_only
+  Context --> Agent: respond
+  Agent --> Reply: Outbound permit
+  Agent --> Silent: No permit
 ```
 
 Direct questions and commands can start an agent turn immediately. Ordinary messages pass through a small classifier that returns a deliberately boring schema:
@@ -107,15 +122,13 @@ Most meal assistants quietly assume somebody maintains a perfect inventory. I ha
 
 I wired all three into one evidence pipeline:
 
-```text
-cook message ───────────────┐
-pantry photo ───────────────┼─> pantry observations
-order screenshot ──────────┤      + source
-Instamart order history ───┘      + time
-                                  + perishability
-                                         |
-                                         v
-                    likely_available | uncertain | likely_unavailable
+```mermaid
+flowchart TB
+  accTitle: Pantry evidence pipeline
+  accDescr: Cook messages, pantry photos, order screenshots, and Instamart history become timestamped pantry observations with source and perishability metadata, then project into an availability estimate.
+  Sources["Cook messages · Pantry photos · Instamart orders"]
+  Sources --> Observe["Timestamped observations<br/>source · confidence · perishability"]
+  Observe --> Project["Availability estimate<br/>available · uncertain · unavailable"]
 ```
 
 The [image path](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/hooks/builtin/meal_ingress.rs#L615-L809) is especially satisfying. Drop a pantry photo or an order screenshot into the group and ZeroClaw queues it for extraction. A vision model has to return strict JSON containing the image kind, visible food items, rough quantity hints, observation time and a freshness profile. The prompt explicitly tells it not to invent food outside the frame, and non-food items such as soap are marked as such. Low-confidence images and items are ignored.
@@ -181,11 +194,11 @@ This is not a magical fridge API. It is something more useful: a current best gu
 
 Once the household context is assembled, I expose three main tools to the model:
 
-```text
-meal_context_read   -> preferences, feedback, recent meals and pantry state
-meal_options_rank   -> score a proposed set of dishes
-meal_memory_write   -> record the choice, feedback or a new observation
-```
+| Tool                | Purpose                                                   |
+| ------------------- | --------------------------------------------------------- |
+| `meal_context_read` | Read preferences, feedback, recent meals and pantry state |
+| `meal_options_rank` | Score a proposed set of dishes                            |
+| `meal_memory_write` | Record the choice, feedback or a new observation          |
 
 The model is good at interpreting requests such as “something light but not boring” and generating plausible candidates. It is not allowed to wave away a dietary constraint or decide that the loudest person's favourite should win every day.
 
@@ -236,18 +249,16 @@ A bot producing three good options has not completed anything. Neither has one p
 
 The [decision state in the branch](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/meal/store.rs#L2908-L2944) models this explicitly. Each household, local date and meal slot can have one open decision case:
 
-```text
-household_id:local_date:meal_slot:slot_instance
-                      |
-                      v
-                 decision open
-                      |
-         the discussion continues
-                      |
-         chosen meal -> record_episode(...)
-                      |
-                      v
-                decision closed
+```mermaid
+stateDiagram-v2
+  accTitle: Meal decision lifecycle
+  accDescr: One household meal slot opens a decision case. Discussion continues until a chosen meal is recorded, which closes the case.
+  state "Decision open" as Open
+  state "Decision closed" as Closed
+  [*] --> Open: Household + date + meal slot
+  Open --> Open: Discussion continues
+  Open --> Closed: Chosen meal / record_episode(...)
+  Closed --> [*]
 ```
 
 The case stays open while the group is discussing options. A `record_episode` operation is the closure signal: it [stores the chosen meal and tags, who decided it and the source message](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/meal/store.rs#L3109-L3163), then [timestamps the case as closed](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/meal/store.rs#L3423-L3443). A later rethink can become a new version rather than quietly rewriting how the first discussion ended.

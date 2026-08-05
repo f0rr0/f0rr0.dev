@@ -24,6 +24,7 @@
     "@mdx-js/react": "^3.1.1",
     "@mermaid-js/layout-elk": "0.1.9",
     "@next/mdx": "^16.2.12",
+    "@remark-embedder/core": "^3.0.3",
     "@t3-oss/env-nextjs": "^0.13.11",
     "@tailwindcss/typography": "^0.5.20",
     "class-variance-authority": "^0.7.1",
