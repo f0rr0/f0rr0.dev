@@ -158,7 +158,6 @@ As a starting point, however, the [official docs](https://facebook.github.io/rea
 
 ```js
 MessageQueue.spy(true)
-
 ```
 
 - **setNativeProps —** From the official docs — “`setNativeProps` is the React
@@ -176,7 +175,6 @@ MessageQueue.spy(true)
   example:
 
 ```js
-
 export default function localitySelect(action$, store, { ajax }) {
   return action$
     .ofType('LOCALITY_AUTOCOMPLETE')
@@ -201,7 +199,6 @@ export default function localitySelect(action$, store, { ajax }) {
         )
     })
 }
-
 ```
 
 We were able to contain most of the side-effect code in a single function rather
@@ -219,7 +216,6 @@ environment.
   status bar on iOS based on the current screen:
 
 ```js
-
 const statusBarMiddleware = ({ getState }) => next => (action) => {
   if (!Object.values(NavigationActions).includes(action.type)) {
     return next(action)
@@ -232,7 +228,6 @@ const statusBarMiddleware = ({ getState }) => next => (action) => {
   }
   return result
 }
-
 ```
 
 ### Build Pipeline
@@ -249,7 +244,6 @@ approaches, we moved to Fastlane to automate this entire process. Following is
 an abridged version of our beta release cycle on iOS:
 
 ```ruby
-
 desc "Submit a new Beta Build to Crashlytics"
   lane :beta do |options|
     automatic_code_signing(
@@ -299,7 +293,6 @@ desc "Submit a new Beta Build to Crashlytics"
       build_number: humanable_build_number
     )
   end
-
 ```
 
 This piece of code handles code-signing, registering devices for testing,

@@ -87,7 +87,6 @@ Holowaychuk](https://medium.com/u/bbb3c7ccb0a0) yet again.)
 sudo npm cache clean -f
 sudo npm install -g n
 sudo n latest
-
 ```
 
 To use some npm commands without `sudo` you might have to [fix
@@ -104,13 +103,11 @@ Go ahead and clone the final repository to your machine to build the minimal
 server from source.
 
 ```bash
-
 git clone https://github.com/f0rr0/koa-webpack-boilerplate
 cd koa-webpack-boilerplate
 npm install
 npm run build:prod
 npm start
-
 ```
 
 If you want to be articulate and follow from scratch, the following GIF will help:
@@ -142,18 +139,14 @@ following in your front-end application with the
 [css-loader](https://github.com/webpack/css-loader):
 
 ```js
-
 require('css!./styles/main.css');
-
 ```
 
 If this does not make you run naked in the streets, then I don’t know what will.
 You can even chain loaders to process files on the fly, like so:
 
 ```js
-
 require('style!css!sass!./styles/main.sass');
-
 ```
 
 This one-liner appropriately parses the SASS file to CSS and injects it into the DOM in a style tag. To learn more about webpack, read [Pete Hunt](https://medium.com/u/3b799f227b58)’s [webpack-howto](https://github.com/petehunt/webpack-howto).
@@ -163,24 +156,19 @@ When used from the CLI, webpack looks for a configuration file named `webpack.co
 Note — You can view and install specific `dist-tags` for a package on `npm` like so:
 
 ```bash
-
 npm view <package-name> dist-tags
 npm install <package-name>@<dist-tag>
-
 ```
 
 In the root directory of your repository:
 
 ```bash
-
 npm install -D webpack@beta
-
 ```
 
 This installs webpack as a **development dependency** to your package. Beginning from version 2+, the webpack config file can export a function which returns the configuration. The function is called by the CLI and the value passed via `--env` from the CLI is passed to the configuration function. Our minimal `webpack.config.js` will look like so:
 
 ```js
-
 const { resolve } = require('path');
 const { dependencies } = require('./package.json');
 const BabiliPlugin = require("babili-webpack-plugin");
@@ -221,7 +209,6 @@ module.exports = (env = { dev: true }) => ({
     ] : [],
     externals: nodeModules
 });
-
 ```
 
 The various configuration options are well documented
@@ -231,9 +218,7 @@ I’ll explain a couple of quirks related to a non-browser environment below:
 - **externals:** When writing a server and bundling it with webpack, we don’t want our dependencies to be resolved by webpack. Instead, they will become the dependencies of the bundle we generate. To accomplish this, we pull our dependencies from the `package.json` file and prefix them with `commonjs`. The Webpack generated import code for a prefixed fictional dependency named `xyz` will then look like so:
 
 ```js
-
 module.exports = require("xyz");
-
 ```
 
 To ensure that this behaviour is consistent, install dependencies with the `-S`
@@ -242,9 +227,7 @@ or `--save` option.
 - **target:** Setting the target for our bundle to _node_ compiles our modules to be run in a Node.js like environment. What this does is essentially the same as above. It prepends all native modules available in the current Node.js environment with `commonjs`. Internally, the names of all such modules available to the current process are obtained by:
 
 ```js
-
 process.binding("natives");
-
 ```
 
 This returns an object with all the native modules like `dns`, `domain`, `events`, `fs`, `http` etc.
@@ -254,9 +237,7 @@ This returns an object with all the native modules like `dns`, `domain`, `events
 Babel is used in the [wild](https://babeljs.io/users/) by the likes of Facebook, Netflix, Airbnb and Yahoo. As mentioned earlier, we will use Babel to transpile our ES6/7 code. This is accomplished from within webpack via the `babel-loader`. Our config looks for files ending in `.js` in the `./src` directory and loads them with `babel-loader`. Before you can use it though, you need to install it:
 
 ```bash
-
 npm install -D babel-loader babel-core
-
 ```
 
 This installs `babel-loader`, again, as a **development dependency**. `babel-loader` in turn lists `babel-core` as its peer dependency which needs to be installed. This is the babel compiler core which exposes the Node.js API. At a high level, Babel runs in three stages: parsing, transforming, and generation. Out of the box, Babel does not transform anything. It just parses code and spits it out exactly the same. To make Babel transform code, we need to (you guessed it!) install plugins.
@@ -266,20 +247,16 @@ If you updated your Node.js installation to the latest version, as mentioned ear
 The plugin we need is [babel-plugin-transform-async-to-generator](http://babeljs.io/docs/plugins/transform-async-to-generator/). The name is more than self-explanatory. Babel can be configured to use these plugins via the `.babelrc` file which lives in the root of our repository. Our tiny `.babelrc` file looks like so:
 
 ```json
-
 {
   "plugins": ["transform-async-to-generator"]
 }
-
 ```
 
 Obviously, it needs to be installed as a **development dependency** before you
 can use it:
 
 ```bash
-
 npm install -D babel-plugin-transform-async-to-generator
-
 ```
 
 #### Catch ’em All With Koa
@@ -287,34 +264,27 @@ npm install -D babel-plugin-transform-async-to-generator
 With our build tools in place, we can start writing the server finally. As mentioned earlier, Koa is a very minimal framework and does not offer much out of the box. Everything in Koa is middleware and there are quite a few of them. We will be using Koa 2 which can be installed with the `next` dist-tag. Go ahead and install Koa and a couple of middleware like so:
 
 ```bash
-
 npm install -S koa@next koa-route@next koa-logger@next
-
 ```
 
 For the purpose of this article, we will be mocking a database with the [Pokeapi](https://pokeapi.co/). Since Koa expects `xyz` to return a Promise in all `await xyz` expressions, we will make use of [pokedex-promise-v2](https://github.com/PokeAPI/pokedex-promise-v2) which is simply a Promise based wrapper for the Pokeapi. Install it like so:
 
 ```bash
-
 npm install -S pokedex-promise-v2
-
 ```
 
 We will abstract our database logic into separate modules. Go ahead and create
 two new files in the `./src` directory.
 
 ```bash
-
 cd src
 touch pokemondb.js stats.js
-
 ```
 
 - **pokemondb.js** just exports a function that takes a string as an argument
   and returns a Promise.
 
 ```js
-
 import Pokedex from 'pokedex-promise-v2';
 
 const P = new Pokedex();
@@ -322,14 +292,12 @@ const P = new Pokedex();
 export default function get (pokemon) {
    return P.getPokemonByName(pokemon);
 };
-
 ```
 
 - **stats.js** also exports a function that takes an object as an argument and
   return a string.
 
 ```js
-
 export default function stats (data) {
    return (
       `
@@ -340,14 +308,12 @@ export default function stats (data) {
       `
    );
 }
-
 ```
 
 With our mock database and helper method in place, we can go ahead and consume
 it in our server. The `index.js` looks like so:
 
 ```js
-
 import get from './pokemondb';
 import stats from './stats';
 import Koa from 'koa';
@@ -368,7 +334,6 @@ app.use(logger())
    .use(route.get('/:name', getPokemonFromAPI))
    .listen(8000);
 console.log('Listening on Port 8000');
-
 ```
 
 The main point of interest here is the asynchronous `getPokemonFromAPI`
@@ -381,14 +346,12 @@ gracefully in a try-catch block.
 We will be using some neat npm run scripts to build and start our server.
 
 ```js
-
 'scripts': {
   'clean': 'rm -rf ./build',
   'build:prod': 'npm run clean && `npm bin`/webpack --env.prod',
   'watch': 'npm run clean && `npm bin`/webpack --watch --verbose',
   'start': 'node ./build/server.js'
 }
-
 ```
 
 Besides `start` and `clean`, which are trivial, we will use `build:prod` to make
@@ -398,10 +361,8 @@ Go ahead and run the following in the root of your repository and open
 `localhost:8000` in your browser.
 
 ```bash
-
 npm run build:prod
 npm start
-
 ```
 
 Well, there isn’t much to see because our server returned a 404.
@@ -424,26 +385,20 @@ our files and generate a new bundle when we save changes. Run the `watch` script
 like so:
 
 ```bash
-
 npm run watch
-
 ```
 
 Webpack won’t exit since it keeps watching the files. Open a new shell in the
 root of your repository to start the server.
 
 ```bash
-
 npm start # in new shell tab
-
 ```
 
 If you see an error like:
 
 ```text
-
 Error: listen EADDRINUSE :::8000
-
 ```
 
 Make sure you exit all currently running servers (Ctrl+C) before starting a
@@ -466,9 +421,7 @@ The watch script needs to be modified to enable HMR. This can also be done by
 using the `HotModuleReplacementPlugin` but don’t use both.
 
 ```js
-
 'watch': 'npm run clean && `npm bin`/webpack --env.dev --watch -- verbose --hot'
-
 ```
 
 We don’t need to do much to handle the updated dependencies in our main
