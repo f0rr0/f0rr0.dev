@@ -435,6 +435,32 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
       ref={frameRef}
       tabIndex={-1}
     >
+      <div
+        aria-label={`${diagramType}. Scroll horizontally to inspect larger diagrams.`}
+        className="mermaid-viewport"
+        tabIndex={diagram === null ? -1 : 0}
+      >
+        {diagram === null ? null : (
+          <div
+            className="mermaid-canvas"
+            dangerouslySetInnerHTML={{ __html: diagram.svg }}
+            ref={canvasRef}
+            style={diagramStyle}
+          />
+        )}
+        {status === "loading" && diagram === null ? (
+          <div aria-live="polite" className="mermaid-placeholder" role="status">
+            <span aria-hidden="true" className="mermaid-placeholder-mark" />
+            <span>Drawing diagram…</span>
+          </div>
+        ) : null}
+        {status === "error" ? (
+          <div className="mermaid-error" role="alert">
+            <strong>Diagram unavailable</strong>
+            <span>The Mermaid source could not be rendered.</span>
+          </div>
+        ) : null}
+      </div>
       <div className="mermaid-toolbar">
         <span className="mermaid-diagram-type">{diagramType}</span>
         <div className="mermaid-toolbar-actions">
@@ -497,32 +523,6 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
           </button>
           <span className="mermaid-language">Mermaid</span>
         </div>
-      </div>
-      <div
-        aria-label={`${diagramType}. Scroll horizontally to inspect larger diagrams.`}
-        className="mermaid-viewport"
-        tabIndex={diagram === null ? -1 : 0}
-      >
-        {diagram === null ? null : (
-          <div
-            className="mermaid-canvas"
-            dangerouslySetInnerHTML={{ __html: diagram.svg }}
-            ref={canvasRef}
-            style={diagramStyle}
-          />
-        )}
-        {status === "loading" && diagram === null ? (
-          <div aria-live="polite" className="mermaid-placeholder" role="status">
-            <span aria-hidden="true" className="mermaid-placeholder-mark" />
-            <span>Drawing diagram…</span>
-          </div>
-        ) : null}
-        {status === "error" ? (
-          <div className="mermaid-error" role="alert">
-            <strong>Diagram unavailable</strong>
-            <span>The Mermaid source could not be rendered.</span>
-          </div>
-        ) : null}
       </div>
     </figure>
   );
