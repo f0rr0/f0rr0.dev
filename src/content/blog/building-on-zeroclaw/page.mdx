@@ -155,12 +155,16 @@ Those observations are committed to the pantry store using the source message as
 
 Instamart is connected rather than merely mentioned. A household member can link their account, after which the [meal tools can fetch recent order history](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/tools/meal_instamart_sync.rs#L532-L702) through the Instamart MCP integration. A pantry-related turn—or an empty pantry context—can trigger a bounded refresh for a connected user. Order items retain their original timestamps instead of all appearing magically fresh on sync day.
 
-Of course, buying tomatoes on Tuesday does not mean tomatoes still exist on Friday. The [pantry projection](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/meal/store.rs#L603-L650) gives each observation a source weight and then lets it decay with age. In simplified form:
+Of course, buying tomatoes on Tuesday does not mean tomatoes still exist on Friday. The pantry projection gives each observation a source weight and then lets it decay with age. In simplified form:
 
 ```text
 observation score =
   source weight × extraction confidence × 2 ^ (-age / freshness half-life)
 ```
+
+The implementation compounds multiple observations, discounts recorded use and then applies a hard cutoff:
+
+https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/meal/store.rs#L603-L631
 
 Direct photo evidence starts at `1.0`, a manual chat observation at `0.9`, and an Instamart order at `0.55`. Highly perishable items have a half-life of about 1.5 days; medium, low and very-low perishability profiles decay over roughly 5, 20 and 90 days. Multiple observations can reinforce one another, recorded use pushes availability down, and old observations eventually hit a hard cutoff. These are hand-tuned heuristics, not probabilities pretending to be science.
 
