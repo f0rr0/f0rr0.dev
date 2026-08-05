@@ -41,17 +41,7 @@ function LanguageLabel({ className, language }: LanguageLabelProps) {
         aria-hidden="true"
         className="code-block-language-icon"
         style={iconStyle}
-      >
-        <img
-          alt=""
-          className="code-block-language-icon-color"
-          decoding="async"
-          height="16"
-          loading="lazy"
-          src={iconUrl}
-          width="16"
-        />
-      </span>
+      />
       <span>{getCodeLanguageName(language)}</span>
     </span>
   );
