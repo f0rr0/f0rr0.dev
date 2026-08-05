@@ -125,10 +125,11 @@ I wired all three into one evidence pipeline:
 ```mermaid
 flowchart TB
   accTitle: Pantry evidence pipeline
-  accDescr: Cook messages, pantry photos, order screenshots, and Instamart history become timestamped pantry observations with source and perishability metadata, then project into an availability estimate.
-  Sources["Cook messages · Pantry photos · Instamart orders"]
-  Sources --> Observe["Timestamped observations<br/>source · confidence · perishability"]
-  Observe --> Project["Availability estimate<br/>available · uncertain · unavailable"]
+  accDescr: Evidence from a cook update, pantry photo, or Instamart order becomes an item observation. Its confidence falls with age according to the source and perishability, producing a current pantry status.
+  Evidence["Evidence arrives<br/>Cook update · Pantry photo · Instamart order"]
+  Evidence --> Observe["Store an item observation<br/>source · time · confidence · perishability"]
+  Observe --> Age["Age the evidence<br/>newer and more direct counts more"]
+  Age --> Status["Current pantry status<br/>Likely available<br/>Needs checking<br/>Likely unavailable"]
 ```
 
 The [image path](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/hooks/builtin/meal_ingress.rs#L615-L809) is especially satisfying. Drop a pantry photo or an order screenshot into the group and ZeroClaw queues it for extraction. A vision model has to return strict JSON containing the image kind, visible food items, rough quantity hints, observation time and a freshness profile. The prompt explicitly tells it not to invent food outside the frame, and non-food items such as soap are marked as such. Low-confidence images and items are ignored.
@@ -250,15 +251,13 @@ A bot producing three good options has not completed anything. Neither has one p
 The [decision state in the branch](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/meal/store.rs#L2908-L2944) models this explicitly. Each household, local date and meal slot can have one open decision case:
 
 ```mermaid
-stateDiagram-v2
+flowchart TB
   accTitle: Meal decision lifecycle
-  accDescr: One household meal slot opens a decision case. Discussion continues until a chosen meal is recorded, which closes the case.
-  state "Decision open" as Open
-  state "Decision closed" as Closed
-  [*] --> Open: Household + date + meal slot
-  Open --> Open: Discussion continues
-  Open --> Closed: Chosen meal / record_episode(...)
-  Closed --> [*]
+  accDescr: A household, date, and meal slot identify one decision case. It stays open during discussion, then recording the chosen meal closes it.
+  Slot["Household + date + meal slot"] --> Open["Decision open"]
+  Open --> Discuss["Discuss options<br/>until one meal is chosen"]
+  Discuss --> Record["record_episode(...)<br/>store the chosen meal"]
+  Record --> Closed["Decision closed"]
 ```
 
 The case stays open while the group is discussing options. A `record_episode` operation is the closure signal: it [stores the chosen meal and tags, who decided it and the source message](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/meal/store.rs#L3109-L3163), then [timestamps the case as closed](https://github.com/f0rr0/zeroclaw/blob/3e5eed1208b9b444830febcfeecb82a8f3259a3d/src/meal/store.rs#L3423-L3443). A later rethink can become a new version rather than quietly rewriting how the first discussion ended.
