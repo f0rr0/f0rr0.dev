@@ -19,13 +19,14 @@ interface QaConfig {
   expectedAssetBasePath: string;
   expectedCanvasHeight: number;
   expectedCanvasWidth: number;
+  expectedEndpointEncoding: "lossless" | "lossy";
   expectedEndpointNames: string[];
   expectedManifestVersion: number;
-  expectedModel: string;
+  expectedSourceSite: string;
+  expectedSourceTheme: string;
   maxRuntimePayloadBytes: number;
   neutralPosterMustMatchCenter: boolean;
   posterFilename: string;
-  requireLosslessEndpoints: boolean;
   runtimePosterFilename: string;
 }
 
@@ -77,9 +78,9 @@ interface ReleaseManifest {
   };
   center: string;
   endpoints: ReleaseEndpoint[];
-  model: string;
   poster: string;
   processing: {
+    backgroundRemoval: string;
     blend: boolean;
     bodyLock: boolean;
     crop: boolean;
@@ -90,6 +91,11 @@ interface ReleaseManifest {
     resize: boolean;
     rotate: boolean;
     warp: boolean;
+  };
+  source: {
+    copiedByteForByte: boolean;
+    site: string;
+    theme: string;
   };
   schemaVersion: number;
   version: number;
@@ -407,23 +413,27 @@ async function main() {
     "release-contract",
     manifest.schemaVersion === 1 &&
       manifest.version === qaConfig.expectedManifestVersion &&
-      manifest.model === qaConfig.expectedModel &&
+      manifest.source.site === qaConfig.expectedSourceSite &&
+      manifest.source.theme === qaConfig.expectedSourceTheme &&
       manifest.assetBasePath === qaConfig.expectedAssetBasePath &&
       manifest.center === "center" &&
       manifest.poster === qaConfig.posterFilename,
-    "The release manifest must identify the approved V13 GPT Image 2 asset set.",
+    "The release manifest must identify the approved V13 reference asset set.",
     {
       actual: {
         assetBasePath: manifest.assetBasePath,
         center: manifest.center,
-        model: manifest.model,
+        source: manifest.source,
         poster: manifest.poster,
         version: manifest.version,
       },
       expected: {
         assetBasePath: qaConfig.expectedAssetBasePath,
         center: "center",
-        model: qaConfig.expectedModel,
+        source: {
+          site: qaConfig.expectedSourceSite,
+          theme: qaConfig.expectedSourceTheme,
+        },
         poster: qaConfig.posterFilename,
         version: qaConfig.expectedManifestVersion,
       },
@@ -431,16 +441,20 @@ async function main() {
   );
   addCheck(
     checks,
-    "immutable-endpoint-contract",
-    !manifest.processing.crop &&
+    "source-asset-contract",
+    manifest.source.copiedByteForByte &&
+      manifest.processing.backgroundRemoval === "none" &&
+      !manifest.processing.crop &&
       !manifest.processing.recenter &&
+      !manifest.processing.resize &&
       !manifest.processing.rotate &&
       !manifest.processing.warp &&
       !manifest.processing.bodyLock &&
       !manifest.processing.opticalFlow &&
       !manifest.processing.interpolate &&
-      !manifest.processing.blend,
-    "V13 must declare uncropped, unwarped, and unblended generated endpoints.",
+      !manifest.processing.blend &&
+      manifest.processing.opaqueRgbPreserved,
+    "V13 must declare byte-for-byte reference endpoints with no source processing.",
     manifest.processing
   );
   addCheck(
@@ -448,8 +462,11 @@ async function main() {
     "manifest-canvas",
     manifest.canvas.width === qaConfig.expectedCanvasWidth &&
       manifest.canvas.height === qaConfig.expectedCanvasHeight,
-    "The manifest canvas must be the approved 1254px square.",
-    { actual: manifest.canvas, expected: [1254, 1254] }
+    "The manifest canvas must match the approved source dimensions.",
+    {
+      actual: manifest.canvas,
+      expected: [qaConfig.expectedCanvasWidth, qaConfig.expectedCanvasHeight],
+    }
   );
   addCheck(
     checks,
@@ -565,19 +582,19 @@ async function main() {
     checks,
     "endpoint-dimensions",
     decodedEndpoints.length === 9 && wrongDimensions.length === 0,
-    "Every endpoint must be exactly 1254×1254.",
+    "Every endpoint must match the approved source dimensions.",
     wrongDimensions
   );
 
-  const nonLosslessEndpoints = decodedEndpoints
-    .filter((asset) => asset.webpEncoding !== "lossless")
+  const unexpectedEndpointEncodings = decodedEndpoints
+    .filter((asset) => asset.webpEncoding !== qaConfig.expectedEndpointEncoding)
     .map((asset) => ({ encoding: asset.webpEncoding, file: asset.file }));
   addCheck(
     checks,
-    "lossless-endpoints",
-    !qaConfig.requireLosslessEndpoints || nonLosslessEndpoints.length === 0,
-    "Every endpoint must use lossless VP8L WebP encoding.",
-    nonLosslessEndpoints
+    "endpoint-encoding",
+    unexpectedEndpointEncodings.length === 0,
+    "Every endpoint must use the approved WebP encoding.",
+    unexpectedEndpointEncodings
   );
 
   const emptyEndpoints = decodedEndpoints
@@ -603,7 +620,7 @@ async function main() {
     checks,
     "unique-endpoints",
     duplicateEncodedGroups.length === 0 && duplicateDecodedGroups.length === 0,
-    "All nine compass endpoints must contain unique generated portraits.",
+    "All nine compass endpoints must contain unique reference portraits.",
     {
       decodedDuplicates: duplicateDecodedGroups,
       encodedDuplicates: duplicateEncodedGroups,
@@ -630,7 +647,8 @@ async function main() {
   const posterHasApprovedDimensions =
     poster?.width === qaConfig.expectedCanvasWidth &&
     poster.height === qaConfig.expectedCanvasHeight;
-  const posterIsLossless = poster?.webpEncoding === "lossless";
+  const posterHasApprovedEncoding =
+    poster?.webpEncoding === qaConfig.expectedEndpointEncoding;
   const posterMatchesCenter =
     poster?.fileSha256 === center?.fileSha256 &&
     poster?.rgbaSha256 === center?.rgbaSha256;
@@ -638,7 +656,9 @@ async function main() {
     checks,
     "neutral-poster-center-parity",
     !qaConfig.neutralPosterMustMatchCenter ||
-      (posterHasApprovedDimensions && posterIsLossless && posterMatchesCenter),
+      (posterHasApprovedDimensions &&
+        posterHasApprovedEncoding &&
+        posterMatchesCenter),
     "The neutral poster must be a byte-for-byte and decoded-pixel copy of center.webp.",
     {
       centerFileSha256: center?.fileSha256 ?? null,
@@ -815,7 +835,7 @@ async function main() {
     })),
     manifest: {
       assetBasePath: manifest.assetBasePath,
-      model: manifest.model,
+      source: manifest.source,
       version: manifest.version,
     },
     poster: poster
@@ -872,7 +892,7 @@ async function main() {
   }
 
   console.log(
-    `Verified nine GPT Image 2 endpoints and ${decodedTransitions.length} approved transition frames with ${checks.length} deterministic QA checks.`
+    `Verified nine reference endpoints and ${decodedTransitions.length} approved transition frames with ${checks.length} deterministic QA checks.`
   );
   console.log(`Report: ${reportPath}`);
   console.log(`Contact sheet: ${contactSheetPath}`);

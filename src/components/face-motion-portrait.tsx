@@ -407,7 +407,7 @@ export function FaceMotionPortrait({
     >
       <div
         aria-describedby={instructionId}
-        aria-label="Portrait of Sid Jain wearing his signature round sunglasses"
+        aria-label="Interactive portrait following pointer movement"
         className="relative isolate size-[7.5rem] touch-none select-none overflow-hidden rounded-full bg-muted/40 shadow-site-soft ring-1 ring-border/80"
         data-face-motion-loading={eager ? "eager" : "auto"}
         data-face-motion-pose="center"

@@ -1,11 +1,16 @@
 {
   "schemaVersion": 1,
   "version": 13,
-  "model": "gpt-image-2",
   "assetBasePath": "/resume/face-motion/v13",
+  "source": {
+    "site": "https://dahbiahmed.com",
+    "theme": "light",
+    "downloadManifestSha256": "18b18e52e8ee68a8a630d3561ece5eb1a8979ae2823eab0a2ed9ebee7a8ee988",
+    "copiedByteForByte": true
+  },
   "canvas": {
-    "width": 1254,
-    "height": 1254
+    "width": 240,
+    "height": 240
   },
   "center": "center",
   "poster": "portrait-neutral.webp",
@@ -22,67 +27,68 @@
     "canonicalEdges": 16,
     "transitionFramesPerEdge": 3,
     "frameIntervalMs": 50,
-    "payloadBytes": 457690,
+    "sourceBytes": 750226,
+    "payloadBytes": 588932,
     "encoding": "lossy WebP with alpha"
   },
   "processing": {
-    "backgroundRemoval": "border-connected or adaptive saturated-magenta alpha extraction",
+    "backgroundRemoval": "none",
     "crop": false,
     "recenter": false,
-    "resize": true,
+    "resize": false,
     "rotate": false,
     "warp": false,
     "bodyLock": false,
     "opticalFlow": false,
     "interpolate": false,
     "blend": false,
-    "opaqueRgbPreserved": false
+    "opaqueRgbPreserved": true
   },
   "endpoints": [
     {
       "pose": "top-left",
       "file": "top-left.webp",
-      "fileSha256": "c1b4e8f6d813e1a7b864d6cfdfe6fc9cca7ad87738f0e4fb63f20f805d23ccf3"
+      "fileSha256": "7c162458fb90ca52e37fac98c7739e1dbd8f2665fcbb0bafcf6024fa7bffe567"
     },
     {
       "pose": "top",
       "file": "top.webp",
-      "fileSha256": "2bff470e6130cc6bc02835f5a1e891b2f4907ec8aca09054a51ccd1957e42cd9"
+      "fileSha256": "d49f92dd6fc3a0c42cf15b821c39ed783d6bf4dbcf62c306d8d02fafafaea810"
     },
     {
       "pose": "top-right",
       "file": "top-right.webp",
-      "fileSha256": "05f0a86dd90624aea86214da8b3a2b154067ead194d7b3f2f6bdf05aa9d7ecd9"
+      "fileSha256": "fa4a3f3e8634d63f17f97be6e0bffc5f37f088d035986622cd01f2e8d29dbc56"
     },
     {
       "pose": "left",
       "file": "left.webp",
-      "fileSha256": "da9a3c1c3cb66a5277df118e1e50093b348cab1a6dd8eb7f7f828c15a4fa5e9a"
+      "fileSha256": "c9f745f174549d03e8820ead71e65a0c9c799b49e2fab96acc5c9dc77d54af81"
     },
     {
       "pose": "center",
       "file": "center.webp",
-      "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4"
+      "fileSha256": "ba60ddc5e083f8f33744a798270859e2fd1947241ef20c9de7ef00c2dc87e1d9"
     },
     {
       "pose": "right",
       "file": "right.webp",
-      "fileSha256": "3c08e8bb182d96e0154a22a7af7929d481837f9d92103123a99b145f0a0fd33e"
+      "fileSha256": "6bb5e09bdf8b67a87f014793417b55ac4e5d2168caee7da49cddf5c6c102cdf3"
     },
     {
       "pose": "bottom-left",
       "file": "bottom-left.webp",
-      "fileSha256": "ce59d7da8f145a90ea7193b54304e60e35a7a7d85c4ca938332172377335e505"
+      "fileSha256": "73fd50e570938e553e22d464a35f89f527d2e2cb14b27af403d1b30ea1b3193a"
     },
     {
       "pose": "bottom",
       "file": "bottom.webp",
-      "fileSha256": "6685db61a800ffb29870a7286599d81d2f21396b45e5e192acb659536f7cf712"
+      "fileSha256": "909f3245cd54980bdb237bc2379f9081919e19a06f0963b6c8a62fa97a147430"
     },
     {
       "pose": "bottom-right",
       "file": "bottom-right.webp",
-      "fileSha256": "390c7fe733b44feead8c850ac06f0c97ad5906b67999429a5955fb26e59ee24a"
+      "fileSha256": "84e76f557aa8e9b08008c2c24d9e6d8cf347d0e210565365283a00451359d741"
     }
   ]
 }

@@ -1,37 +1,33 @@
 # Face-motion V13
 
-V13 contains nine `1254×1254` GPT Image 2 endpoints and complete reference-style motion coverage: eight center spokes plus eight adjacent outer-ring edges, with three authored transition frames per edge. Reverse travel reuses the same frames in reverse order. Seven accepted endpoints remain byte-for-byte unchanged; `top.webp` and `bottom.webp` were corrected to true frontal up/down poses so the vertical axis has enough angular range for three graded steps without snapping back.
+V13 now deploys the downloaded light-theme portrait set from [dahbiahmed.com](https://dahbiahmed.com/) instead of the generated Sid portrait set. All nine endpoints and all 48 authored transition cells are byte-for-byte copies of the corresponding reference files.
 
-## Transition generation
+The motion graph matches the reference implementation: eight center spokes, eight adjacent outer-ring edges, and three authored transition frames per canonical edge. Reverse travel uses the same three cells in reverse order.
 
-The 39 transitions on 13 edges with a vertical component were regenerated as high-quality `gpt-image-2` Image API edits. Each accepted edge job produced one `3072×1024` three-panel strip containing the 25%, 50%, and 75% poses together. Generating the ordered triplet jointly made equal pitch and yaw spacing an explicit image-level constraint instead of three independent guesses. Nine stable cells remain unchanged: six on the two pure-horizontal edges and three on `left` → `top-left`, where new attempts either exceeded the unchanged diagonal endpoint or introduced yaw drift.
+## Source mapping
 
-- Images 1 and 2 were the adjacent V13 endpoints and were authoritative for Sid's identity, hair, glasses, wardrobe, lighting, framing, scale, and crop.
-- Image 3 was a five-frame strip assembled from the exact matching light-theme motion on [dahbiahmed.com](https://dahbiahmed.com/): start, 25%, 50%, 75%, and end. It was authoritative only for head pose and evenly graded motion progress.
-- The prompt explicitly prohibited transferring the reference subject's identity, hair, glasses, clothing, styling, body proportions, or framing.
-- Four sequences use the better-spaced 25% and 50% panels from an earlier accepted strip plus the endpoint-safe 75% panel from a tighter redo; no frame is blended or warped. The accepted `right` → `bottom-right` strip was generated from the two Sid endpoints only after the pose strip repeatedly caused overshoot.
-- The top and bottom endpoints were generated separately at `1280×1280` from their prior endpoint, center, matching diagonal Sid portraits, and the reference site's axial pose, with the latter used only for pitch and gaze.
+- Endpoints keep their original pose names: `center.webp`, `top.webp`, `top-right.webp`, and so on.
+- Reference transition names such as `center_to_topright_1.webp` are copied to the runtime build-input convention `transition-center-top-right-1.webp` without decoding or re-encoding.
+- `portrait-neutral.webp` is an exact copy of the reference `center.webp`.
+- The source download inventory is recorded in `downloads/dahbiahmed-face-motion/MANIFEST.json`; its SHA-256 is pinned in `manifest.json` and `PROVENANCE.json`.
 
-The accepted chroma-key PNG strips remain offline edit masters. Panel extraction, magenta alpha removal, and uniform downsampling produce the committed `240×240` lossy WebP transition cells with alpha. The corrected axis endpoints are committed as `1254×1254` lossless WebPs. No optical flow, geometric warp, body lock, crossfade, or post-generation frame blending is used.
+Every source frame is a `240×240` lossy WebP with alpha. The committed 57-frame source set totals 750,226 bytes.
 
 ## Runtime delivery
 
 The browser displays a `120×120` circular portrait from one decoded 2× atlas:
 
-- `face-motion-poster.webp`: 240×240, 5,932 bytes
-- `face-motion-atlas.webp`: 1920×1920, 57 populated 240×240 cells in an 8×8 grid, 451,758 bytes
-- Total runtime image payload: **457,690 bytes**
+- `face-motion-poster.webp`: 240×240, 10,928 bytes
+- `face-motion-atlas.webp`: 1920×1920, 57 populated 240×240 cells in an 8×8 grid, 578,004 bytes
+- Total runtime image payload: **588,932 bytes**
 
-For comparison, the downloaded reference site's two 57-image themes total 1,446,302 bytes. The 48 committed transition source cells total 421,376 bytes and are build inputs, not separately preloaded by the browser.
-
-The first transition frame is committed immediately, followed by frames at 50 ms and 100 ms and the endpoint at 150 ms. The runtime retains latest-target retargeting, reversible active edges, shortest-path routing, touch support, live scroll/resize geometry, reduced-motion handling, and a static-poster failure fallback. Switching only the background position of an already decoded atlas removes the old per-image white flash.
+The first transition frame is committed immediately, followed by frames at 50 ms and 100 ms and the endpoint at 150 ms. The single predecoded atlas prevents the former per-image white flash while retaining reversible edges, shortest-path routing, touch input, reduced-motion handling, and a static-poster failure fallback.
 
 ## Records
 
-- Runtime and endpoint inventory: [`manifest.json`](manifest.json)
+- Runtime and source inventory: [`manifest.json`](manifest.json)
 - Atlas cell map and source hashes: [`face-motion-atlas.json`](face-motion-atlas.json)
-- Generation provenance: [`PROVENANCE.json`](PROVENANCE.json)
-- Exact transition prompts: [`TRANSITION-PROMPTS.md`](TRANSITION-PROMPTS.md)
+- Source provenance: [`PROVENANCE.json`](PROVENANCE.json)
 - Validation notes: [`VALIDATION.md`](VALIDATION.md)
 
-Run `bun run build:face-motion-atlas` to rebuild the poster and atlas from the committed cells, then `bun run verify:face-motion` to recreate the deterministic QA report and contact sheet.
+Run `bun run build:face-motion-atlas` to rebuild the poster and atlas from the committed reference cells, then `bun run verify:face-motion` to recreate the deterministic QA report and contact sheet.
