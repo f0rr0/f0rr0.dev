@@ -1,6 +1,6 @@
 export const FACE_MOTION_CONFIG = {
   assetBasePath: "/resume/face-motion/v13",
-  assetRevision: "20260815b",
+  assetRevision: "20260815c",
   centerPose: "center",
   deadZoneRatio: 0.5,
   frameIntervalMs: 36,

@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
       },
       {
         pathname: "/resume/face-motion/v13/**",
-        search: "?rev=20260815b",
+        search: "?rev=20260815c",
       },
     ],
   },

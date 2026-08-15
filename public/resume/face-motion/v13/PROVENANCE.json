@@ -3,11 +3,11 @@
   "release": 13,
   "generationModel": "gpt-image-2",
   "generatedAt": "2026-08-15",
-  "method": "V12 compass set with a corrected GPT Image 2 horizontal left endpoint; the final right endpoint is a direct masked GPT Image 2 high-quality edit of an exact horizontal mirror of that accepted left asset, with changes restricted to internal hair, lens, collar, fold, button, and pocket details; the accepted right-to-bottom-right midpoint is uniformly aligned to the new endpoint",
+  "method": "V12 compass set with a corrected GPT Image 2 horizontal left endpoint; the final right endpoint is a new direct high-quality GPT Image 2 output generated from only the fixed top-right and bottom-right endpoints, with equal reference authority and an explicit horizontal 3 o'clock pose plus fixed shirt construction; the accepted right-to-bottom-right midpoint remains unchanged",
   "constraints": {
     "crop": false,
     "recenter": false,
-    "uniformResize": "left generation source: 1280x1280 to 1254x1254; mirrored-right Image API input: 1254x1254 to 1280x1280, accepted generated source: 1280x1280 to 1254x1254; accepted right-to-bottom-right midpoint: final uniform 1254x1254 to 1273x1273 endpoint-alignment scale",
+    "uniformResize": "left generation source: 1280x1280 to 1254x1254; fixed right-diagonal Image API references: 1254x1254 to 1280x1280; accepted generated right source: 1280x1280 to 1254x1254, then uniform 1254x1254 to 1376x1376 endpoint-alignment scale; accepted right-to-bottom-right midpoint: final uniform 1254x1254 to 1273x1273 alignment scale",
     "rotate": false,
     "warp": false,
     "bodyLock": false,
@@ -38,21 +38,16 @@
     },
     {
       "pose": "right",
-      "sourceGeneration": "output/imagegen/face-motion-v13-mirrored-right/image_2.png",
-      "sourceSha256": "2bb753ed860be9c817b95c639c9536b2532fcee20ce686ce2189299309539f03",
-      "mirroredBase": "exact horizontal mirror of left.webp before the Image API edit",
-      "mirroredBaseSha256": "ada7424bc62c20dc03d9801f50e23c5c62a08c541bdcc0283e2fb8eddd7b9dab",
-      "editMask": "the subject silhouette and spatial geometry are locked; editable regions expose only internal crown strand groupings, lens interiors, local collar and overshirt folds/buttons, and the lower pocket regions",
-      "editMaskSha256": "959182830a4d8c2f58592a8f75cbe4ea78102a8bac1817f5e165ec17fda76d42",
-      "fileSha256": "0e4c8c6e02b74e06d504dc0c28ca645ef8fef4c4239b2fd8763686b4f0bbd815",
-      "alphaBbox": [60, 108, 1184, 1254],
+      "sourceGeneration": "output/imagegen/face-motion-v13-right-from-diagonals/image_1.png",
+      "sourceSha256": "75f5054eb72fac07a7ffec705f18a19cac3cda702bf0840fccc9044142555e20",
+      "alignment": "border-key normalized the 1280x1280 generated source to 1254x1254, uniformly resized it to 1376x1376, then extracted the final 1254x1254 canvas beginning at x=73, y=28; no anisotropic warp or compositing",
+      "fileSha256": "f6bb46a8010b0332588e1cf54d4dedd5310a9aa3904a8edf1e6b35fc0ef650ed",
+      "alphaBbox": [77, 119, 1183, 1254],
       "inputs": [
-        "exact horizontal mirror of left.webp: masked edit target and absolute authority for pose, identity, face/head scale, hair silhouette, shoulder span, torso, collar, subject placement, and crop",
-        "top-right.webp: fixed supporting reference only for natural right-side crown texture and strand variation",
-        "center.webp: fixed supporting identity, lighting, and wardrobe reference only",
-        "bottom-right.webp: fixed supporting reference only for natural lens reflections and screen-right pocket placement"
+        "top-right.webp: fixed accepted reference with equal authority for identity, camera distance, face/head scale, hair, body framing, clothing construction, lighting, placement, and crop",
+        "bottom-right.webp: fixed accepted reference with equal authority for identity, camera distance, face/head scale, hair, body framing, clothing construction, lighting, placement, and crop"
       ],
-      "prompt": "PROMPTS.md#right-mirrored-left-base-with-masked-detail-variation"
+      "prompt": "PROMPTS.md#right-generated-from-the-two-fixed-diagonals-only"
     }
   ],
   "rebuiltTransition": {
@@ -66,7 +61,7 @@
     "fileSha256": "0cd5bbcdfd6a458c27525cdc710398ef28a317c9091fe01c1f273cc1c8e2e6a7",
     "alphaBbox": [63, 127, 1183, 1254],
     "inputs": [
-      "corrected right endpoint source: authoritative start pose, identity, scale, hair, wardrobe, lighting, and framing",
+      "historical corrected right endpoint source used when this accepted midpoint was generated: authoritative start pose, identity, scale, hair, wardrobe, lighting, and framing",
       "bottom-right.webp: authoritative end pose, scale, placement, hair, wardrobe, lighting, and framing",
       "center.webp: supporting identity and wardrobe reference"
     ],

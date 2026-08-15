@@ -52,7 +52,7 @@ Constraints: change only the masked lower-body region; preserve every unmasked h
 Avoid: any head or face change; larger face; smaller face; head movement; pose drift; whole-subject resize; zooming out; narrow or inset shoulders; small torso; inward shoulder drift; altered hair; altered glasses; changed beard; upward or downward gaze; recentering; streaks; blocks; bands; smears; halos; white, black, gray, transparent, or checkerboard background; duplicate accessories; text; logos; watermark
 ```
 
-## Right: mirrored-left base with masked detail variation
+## Superseded right mirrored-left detail edit
 
 ```text
 Use case: identity-preserve
@@ -68,6 +68,25 @@ Required glasses: preserve rims, temples, size, and coordinates exactly; alter o
 Required clothing: preserve shoulder span, torso, collar, neckline, fabric color, and outer silhouette exactly; remove the mirrored screen-left chest pocket and add the same understated pocket on screen-right; vary only a few masked microfolds and button details
 Constraints: edit only the transparent portions of the supplied mask; preserve all unmasked pixels as closely as possible; exactly one person; exactly one pair of round sunglasses; white crew-neck T-shirt; charcoal open overshirt; no change to skin, facial proportions, beard silhouette, head size, body size, or lighting
 Avoid: any generative reframing; zooming; head movement; face change; pose drift; altered hair outline; lower or narrower crown; shoulder drift; torso resize; collar shift; changed crop; upward or downward gaze; duplicate glasses; warped rims; extra pockets; obvious mirrored artifacts; strong lens glare; streaks; blocks; bands; smears; halos; white, black, gray, transparent, or checkerboard background; extra accessories; text; logos; watermark
+```
+
+## Right: generated from the two fixed diagonals only
+
+```text
+Use case: identity-preserve
+Asset type: exact horizontal-right endpoint for a smooth interactive website portrait
+Primary request: Generate one new portrait of this same person at the exact visual midpoint between Image 1 and Image 2. The new face, chin, eyeglass bridge, and eye gaze must point perfectly horizontally toward screen-right at 3 o'clock, with zero upward or downward component. This is a new midpoint portrait synthesized from the two references, not an edit of either reference.
+Input images: Image 1 is the fixed accepted top-right portrait and Image 2 is the fixed accepted bottom-right portrait. They are the only references and have equal authority. Interpolate their identity, camera distance, face/head scale, hair silhouette, subject position, shoulders, torso, collar, clothing construction, lighting, and crop exactly halfway. Never mirror either image. Do not introduce clothing geometry that is absent from both references.
+Scene/backdrop: perfectly flat solid #FF00FF chroma-key background covering every background pixel edge to edge, with no gradient, texture, shadow, floor, halo, or color variation
+Subject: exactly the same adult man, facial identity, skin tone, beard shape, round gold-rim sunglasses, tall dense swept dark hair, white crew-neck T-shirt, and open charcoal overshirt shown in both references
+Style/medium: natural high-resolution studio portrait photography matching both supplied portraits exactly
+Composition/framing: square 1280 by 1280 canvas; place the complete head, shoulders, collar, torso, and bottom crop at the true geometric and perceptual midpoint of Images 1 and 2; keep the same camera distance and natural body scale; do not zoom in or out; keep the full hair silhouette inside the canvas
+Required pose: unmistakably horizontal screen-right 3 o'clock head direction and gaze; level eyeglass bridge; level chin; nose points laterally screen-right; no raised chin, lowered chin, upward gaze, or downward gaze
+Required face and hair: preserve the exact identity and natural facial proportions shared by both references; interpolate the full outer hair silhouette, crown height, width, side volume, density, sweep, and fine curl texture halfway between the two fixed references; no compressed crown or abrupt side crease
+Required glasses: exactly one pair of round gold-rim sunglasses with two crisp lenses, one bridge, and two natural temples; keep size and placement halfway between the references; no duplicate, smeared, warped, or floating rims
+Required clothing construction: preserve the garment construction shared by both references exactly. The charcoal overshirt chest pocket must remain on screen-right, as in both images. The visible button placket and both visible dark buttons must remain on screen-left, as in both images. Keep collar points, placket seams, button order, pocket shape, pocket seam, white T-shirt neckline, shoulder width, and torso framing consistent. Do not swap, mirror, duplicate, remove, or relocate any button, placket, seam, or pocket.
+Constraints: use only Images 1 and 2 as references; exactly one person; no additional accessories; preserve identity, wardrobe, lighting, color, photographic texture, and bottom crop; output the complete portrait against only the flat #FF00FF background
+Avoid: top-right pose; bottom-right pose; any upward or downward component; mirrored shirt; pocket on screen-left; buttons on screen-right; changed button count; extra buttons; missing buttons; extra pocket; missing pocket; clothing asymmetry inconsistent with both references; large close-up face; small zoomed-out body; shoulder drift; altered collar; low or narrow crown; pose drift; recentering; streaks; blocks; bands; smears; halos; white, black, gray, transparent, or checkerboard background; text; logos; watermark
 ```
 
 ## Right to bottom-right midpoint
