@@ -14,11 +14,11 @@ PASS: nine `1254×1254` lossless WebP endpoints were built from accepted GPT Ima
 | top-right    |  `[72, 92, 1192, 1254]` |       739,480 |          6,687 |    729,288 |
 | left         | `[67, 109, 1194, 1254]` |       738,197 |         11,265 |    856,716 |
 | center       |  `[69, 99, 1196, 1254]` |       724,528 |          5,973 |    760,630 |
-| right        |  `[69, 76, 1191, 1254]` |       753,040 |         12,515 |    918,682 |
+| right        | `[92, 101, 1163, 1254]` |       724,695 |         10,547 |    853,592 |
 | bottom-left  | `[74, 128, 1199, 1254]` |       732,368 |          6,483 |    725,340 |
 | bottom       | `[69, 115, 1196, 1254]` |       724,959 |          5,686 |    719,452 |
 | bottom-right | `[59, 145, 1182, 1254]` |       706,047 |          6,352 |    715,492 |
 
-Visual inspection confirmed crisp lenses and metal rims without doubled or vertically smeared eyewear, clearly horizontal 9 and 3 o'clock side poses, full crown continuity from each untouched diagonal reference, visible authored up/down movement, and the generated white crew-neck plus charcoal open overshirt in all nine endpoints. The rebuilt `right` to `bottom-right` transition remains a visible lossless `1254×1254` frame with alpha bounds `[79, 117, 1188, 1254]`.
+Visual inspection confirmed crisp lenses and metal rims without doubled or vertically smeared eyewear, clearly horizontal 9 and 3 o'clock side poses, full crown continuity from each untouched diagonal reference, visible authored up/down movement, and the generated white crew-neck plus charcoal open overshirt in all nine endpoints. The smaller corrected right face remains naturally proportioned against its neighbors. The regenerated `right` to `bottom-right` transition is a visible lossless `1254×1254` frame with alpha bounds `[77, 122, 1173, 1254]`, 715,429 opaque pixels, 10,842 partial pixels, and 797,790 bytes. Its outer bounds progress in near-equal steps between the endpoints, with no opaque background or blank frame.
 
 Run `bun run verify:face-motion` to recreate the machine-readable QA report and contact sheet in `build/face-motion-qa/`.

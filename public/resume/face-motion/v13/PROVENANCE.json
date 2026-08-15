@@ -3,11 +3,11 @@
   "release": 13,
   "generationModel": "gpt-image-2",
   "generatedAt": "2026-08-15",
-  "method": "V12 compass set with corrected GPT Image 2 horizontal left and right endpoints, then border-connected magenta alpha extraction and lossless WebP export",
+  "method": "V12 compass set with corrected GPT Image 2 horizontal left and right endpoints plus a regenerated right-to-bottom-right midpoint, then border-connected magenta alpha extraction and lossless WebP export",
   "constraints": {
     "crop": false,
     "recenter": false,
-    "uniformResize": "left and right sources only: 1280x1280 to 1254x1254",
+    "uniformResize": "left and right sources: 1280x1280 to 1254x1254; regenerated right-to-bottom-right midpoint: uniform 2.9% pre-key scale followed by canvas alignment and 1280x1280 to 1254x1254 normalization",
     "rotate": false,
     "warp": false,
     "bodyLock": false,
@@ -38,12 +38,13 @@
     },
     {
       "pose": "right",
-      "sourceGeneration": "output/imagegen/face-motion-v13-correction/right/image_2.png",
-      "sourceSha256": "d0e6d3eff5b9e343b85e37f81456f127289446994d0fbd96f7c06e677fcdb4ab",
-      "fileSha256": "37a9cb94c9b525a4531a9d5fe6a4f715679fea9656d4c770ce04991d4e762753",
-      "alphaBbox": [69, 76, 1191, 1254],
+      "sourceGeneration": "output/imagegen/face-motion-v13-right-fix/right/image_1.png",
+      "sourceSha256": "ef7a8f5734808eced5565863065725ecb8d5bc2905401abb1c0156492b0677a7",
+      "fileSha256": "ca2886e0e61e8ea197670a3df8e6cb98745f8c0eba32fa9ddb9c2234b91ae3f6",
+      "alphaBbox": [92, 101, 1163, 1254],
       "inputs": [
-        "prior V13 right endpoint: edit target for framing, scale, crop, shoulders, wardrobe, and horizontal pose correction",
+        "prior V13 right endpoint: edit target for horizontal pose, expression, wardrobe, lighting, and framing",
+        "bottom-right.webp: fixed scale, camera-distance, shoulder-proportion, and placement reference only",
         "top-right.webp: fixed hair-only reference for crown height, width, side fullness, texture, and identity",
         "center.webp: supporting identity, lighting, and wardrobe reference"
       ],
@@ -52,10 +53,19 @@
   ],
   "rebuiltTransition": {
     "edge": "right_to_bottom-right",
-    "sourceGeneration": "output/imagegen/face-motion-v12-transitions/dense/ring-right-bottom-right-m.png",
-    "sourceSha256": "642cedf967ef19b3be90f3ec53994c5d06397e9a1aae49f69ddb3b076e8e19a2",
+    "generatedSource": "output/imagegen/face-motion-v13-right-fix/transition/image_1.png",
+    "generatedSourceSha256": "c5f26dc34b91ed6cecbda6e664d86e0fe5ea4f3588ff7573a87af42822fcec56",
+    "sourceGeneration": "tmp/imagegen/face-motion-v13-right-fix/transition-image-1-aligned-source.png",
+    "sourceSha256": "06858bf07d84d2b52b4601ba51b838aeb55c21b37c1cb6e6bd958fafe87a350b",
+    "alignment": "uniformly resized generated 1280x1280 source to 1317x1317, then extracted a 1280x1280 canvas at x=22, y=16 before alpha extraction",
     "file": "transition-right-bottom-right-1.webp",
-    "fileSha256": "6c14035da4f4a8c287177837cde21a098578728c2e7b4d402acc56c85cc09511",
-    "alphaBbox": [79, 117, 1188, 1254]
+    "fileSha256": "5f28e7fc13b5ccbf4105a316c2293a6fa361505258ecae137b6888d49415485a",
+    "alphaBbox": [77, 122, 1173, 1254],
+    "inputs": [
+      "corrected right endpoint source: authoritative start pose, identity, scale, hair, wardrobe, lighting, and framing",
+      "bottom-right.webp: authoritative end pose, scale, placement, hair, wardrobe, lighting, and framing",
+      "center.webp: supporting identity and wardrobe reference"
+    ],
+    "prompt": "PROMPTS.md#right-to-bottom-right-midpoint"
   }
 }
