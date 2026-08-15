@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "release": 13,
+  "generationModel": "gpt-image-2",
+  "generatedAt": "2026-08-15",
+  "method": "V12 compass set with freshly regenerated GPT Image 2 left and right endpoints, then border-connected magenta alpha extraction and lossless WebP export",
+  "constraints": {
+    "crop": false,
+    "recenter": false,
+    "uniformResize": "left and right sources only: 1280x1280 to 1254x1254",
+    "rotate": false,
+    "warp": false,
+    "bodyLock": false,
+    "opticalFlow": false,
+    "interpolate": false,
+    "blend": false
+  },
+  "alphaExtraction": {
+    "background": "flat #FF00FF chroma key",
+    "innerThreshold": 24,
+    "outerThreshold": 10,
+    "partialEdgeRgb": "nearest fully opaque subject pixel",
+    "fullyTransparentRgb": "zeroed before lossless WebP encoding"
+  },
+  "regeneratedEndpoints": [
+    {
+      "pose": "left",
+      "sourceGeneration": "output/imagegen/face-motion-v13/left-source-v2.png",
+      "sourceSha256": "99dcf309983088bf1148bccca20225119f86dbaf63c538f6128efe52d80f7989",
+      "fileSha256": "77192405b2c3649b18c5f6cd66c994682995de845b28f0adc75420f02c37bbdc",
+      "alphaBbox": [69, 96, 1196, 1254],
+      "inputs": [
+        "clean V12 left source: authoritative pose, scale, crop, shoulders, gaze, and wardrobe",
+        "top-left.webp: authoritative hair silhouette, crown height, texture, and identity reference",
+        "center.webp: supporting identity, lighting, and wardrobe reference"
+      ],
+      "prompt": "PROMPTS.md#left"
+    },
+    {
+      "pose": "right",
+      "sourceGeneration": "output/imagegen/face-motion-v13/right-source-v2.png",
+      "sourceSha256": "1a815bb25463b92af84593729a44bb7b4c047d747cd058cabd23a67c460f0966",
+      "fileSha256": "60813949b445de3f7d9ac65e6479f24effc6c66cd87c9b7935381c3fc3f6e78c",
+      "alphaBbox": [68, 98, 1194, 1254],
+      "inputs": [
+        "clean V12 right source: authoritative pose, scale, crop, shoulders, gaze, and wardrobe",
+        "top-right.webp: authoritative hair silhouette, crown height, texture, and identity reference",
+        "center.webp: supporting identity, lighting, and wardrobe reference"
+      ],
+      "prompt": "PROMPTS.md#right"
+    }
+  ],
+  "rebuiltTransition": {
+    "edge": "right_to_bottom-right",
+    "sourceGeneration": "output/imagegen/face-motion-v12-transitions/dense/ring-right-bottom-right-m.png",
+    "sourceSha256": "642cedf967ef19b3be90f3ec53994c5d06397e9a1aae49f69ddb3b076e8e19a2",
+    "file": "transition-right-bottom-right-1.webp",
+    "fileSha256": "6c14035da4f4a8c287177837cde21a098578728c2e7b4d402acc56c85cc09511",
+    "alphaBbox": [79, 117, 1188, 1254]
+  }
+}

@@ -106,11 +106,7 @@ const baseAlpha = chromaAlpha(base);
 const donorAlpha = chromaAlpha(donor);
 const output = Buffer.from(base.data);
 
-const darkHairBounds = (
-  image: RawImage,
-  alpha: Uint8Array,
-  limit: number
-) => {
+const darkHairBounds = (image: RawImage, alpha: Uint8Array, limit: number) => {
   let bottom = -1;
   let left = image.width;
   let right = -1;
@@ -152,8 +148,7 @@ const donorOffsetX = Math.round(
   (baseHairBounds.left + baseHairBounds.right) / 2 -
     (donorHairBounds.left + donorHairBounds.right) / 2
 );
-const donorOffsetY =
-  baseHairBounds.top - donorHairBounds.top - targetCrownLift;
+const donorOffsetY = baseHairBounds.top - donorHairBounds.top - targetCrownLift;
 
 // Keep additions close to the endpoint's existing hair mass. GPT edits can
 // contain low-contrast artifacts in an otherwise flat chroma background; a
@@ -278,10 +273,7 @@ for (let y = 0; y < base.height; y += 1) {
         : (maxHairExpansion - hairDistance) /
           (maxHairExpansion - solidExpansion);
     const weight =
-      donorCoverage *
-      (1 - originalCoverage) *
-      verticalWeight *
-      distanceWeight;
+      donorCoverage * (1 - originalCoverage) * verticalWeight * distanceWeight;
 
     if (weight <= 0) {
       continue;

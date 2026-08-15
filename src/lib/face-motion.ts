@@ -1,6 +1,6 @@
 export const FACE_MOTION_CONFIG = {
-  assetBasePath: "/resume/face-motion/v12",
-  assetRevision: "20260813d",
+  assetBasePath: "/resume/face-motion/v13",
+  assetRevision: "20260815a",
   centerPose: "center",
   deadZoneRatio: 0.5,
   frameIntervalMs: 36,
@@ -30,10 +30,7 @@ export const FACE_MOTION_POSES = Object.freeze([
 
 export const FACE_MOTION_SOURCE_BY_POSE = Object.freeze(
   Object.fromEntries(
-    FACE_MOTION_POSES.map((pose) => [
-      pose,
-      faceMotionAsset(`${pose}.webp`),
-    ])
+    FACE_MOTION_POSES.map((pose) => [pose, faceMotionAsset(`${pose}.webp`)])
   ) as Record<FaceMotionPose, string>
 );
 
@@ -43,9 +40,7 @@ export const FACE_MOTION_POSE_SOURCES = Object.freeze(
 
 export const FACE_MOTION_NEUTRAL_SRC =
   FACE_MOTION_SOURCE_BY_POSE[FACE_MOTION_CONFIG.centerPose];
-export const FACE_MOTION_POSTER_SRC = faceMotionAsset(
-  "portrait-neutral.webp"
-);
+export const FACE_MOTION_POSTER_SRC = faceMotionAsset("portrait-neutral.webp");
 export const FACE_MOTION_AVATAR_SRC = FACE_MOTION_NEUTRAL_SRC;
 
 export const FACE_MOTION_CANONICAL_EDGES = Object.freeze([
@@ -79,9 +74,7 @@ export type FaceMotionFrame = FaceMotionPose | FaceMotionIntermediateFrame;
  * Empty edges remain valid: the runtime advances directly to the endpoint.
  */
 export const FACE_MOTION_EDGE_FRAMES = Object.freeze({
-  center_to_bottom: [
-    faceMotionAsset("transition-center-bottom-1.webp"),
-  ],
+  center_to_bottom: [faceMotionAsset("transition-center-bottom-1.webp")],
   center_to_left: [
     faceMotionAsset("transition-center-left-1.webp"),
     faceMotionAsset("transition-center-left-2.webp"),
@@ -91,18 +84,14 @@ export const FACE_MOTION_EDGE_FRAMES = Object.freeze({
     faceMotionAsset("transition-center-top-2.webp"),
     faceMotionAsset("transition-center-top-3.webp"),
   ],
-  "center_to_top-left": [
-    faceMotionAsset("transition-center-top-left-1.webp"),
-  ],
+  "center_to_top-left": [faceMotionAsset("transition-center-top-left-1.webp")],
   "center_to_top-right": [
     faceMotionAsset("transition-center-top-right-1.webp"),
   ],
   "right_to_bottom-right": [
     faceMotionAsset("transition-right-bottom-right-1.webp"),
   ],
-}) as Readonly<
-  Partial<Record<FaceMotionCanonicalEdgeKey, readonly string[]>>
->;
+}) as Readonly<Partial<Record<FaceMotionCanonicalEdgeKey, readonly string[]>>>;
 
 export const FACE_MOTION_ALL_SOURCES = Object.freeze([
   ...FACE_MOTION_POSE_SOURCES,

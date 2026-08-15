@@ -78,7 +78,7 @@ interface CheckResult {
   passed: boolean;
 }
 
-const DEFAULT_ASSET_DIRECTORY = path.resolve("public/resume/face-motion/v12");
+const DEFAULT_ASSET_DIRECTORY = path.resolve("public/resume/face-motion/v13");
 const DEFAULT_CONFIG_PATH = path.resolve("scripts/face-motion-qa.config.json");
 const DEFAULT_OUTPUT_DIRECTORY = path.resolve("build/face-motion-qa");
 const TRANSITION_FILENAME = /^transition-[a-z-]+-\d+\.webp$/;
@@ -216,15 +216,16 @@ function transitionSequenceIssues(files: string[]) {
 
     stepsByEdge.set(edge, [
       ...(stepsByEdge.get(edge) ?? []),
-      Number.parseInt(stepText, 10),
+      Math.trunc(Number(stepText)),
     ]);
   }
 
   return [...stepsByEdge.entries()]
     .map(([edge, steps]) => {
       const sorted = steps.toSorted((left, right) => left - right);
-      const expected = Array.from({ length: sorted.length }, (_, index) =>
-        index + 1
+      const expected = Array.from(
+        { length: sorted.length },
+        (_, index) => index + 1
       );
       return sorted.every((step, index) => step === expected[index])
         ? null
@@ -357,7 +358,7 @@ async function main() {
       manifest.assetBasePath === qaConfig.expectedAssetBasePath &&
       manifest.center === "center" &&
       manifest.poster === qaConfig.posterFilename,
-    "The release manifest must identify the approved V12 GPT Image 2 asset set.",
+    "The release manifest must identify the approved V13 GPT Image 2 asset set.",
     {
       actual: {
         assetBasePath: manifest.assetBasePath,
@@ -380,15 +381,13 @@ async function main() {
     "immutable-endpoint-contract",
     !manifest.processing.crop &&
       !manifest.processing.recenter &&
-      !manifest.processing.resize &&
       !manifest.processing.rotate &&
       !manifest.processing.warp &&
       !manifest.processing.bodyLock &&
       !manifest.processing.opticalFlow &&
       !manifest.processing.interpolate &&
-      !manifest.processing.blend &&
-      manifest.processing.opaqueRgbPreserved,
-    "V12 must declare unwarped, unblended, immutable generated endpoints.",
+      !manifest.processing.blend,
+    "V13 must declare uncropped, unwarped, and unblended generated endpoints.",
     manifest.processing
   );
   addCheck(
@@ -665,7 +664,7 @@ async function main() {
   }
 
   console.log(
-    `Verified nine immutable GPT Image 2 endpoints and ${decodedTransitions.length} approved transition frames with ${checks.length} deterministic QA checks.`
+    `Verified nine GPT Image 2 endpoints and ${decodedTransitions.length} approved transition frames with ${checks.length} deterministic QA checks.`
   );
   console.log(`Report: ${reportPath}`);
   console.log(`Contact sheet: ${contactSheetPath}`);

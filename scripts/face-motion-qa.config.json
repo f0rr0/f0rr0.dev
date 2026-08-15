@@ -2,7 +2,7 @@
   "approvedCenterRgbaSha256": "2850c25383c74365edaf87718cc4800a84726cfde576294e63969a6d816c7273",
   "centerFilename": "center.webp",
   "contactSheetCellSize": 220,
-  "expectedAssetBasePath": "/resume/face-motion/v12",
+  "expectedAssetBasePath": "/resume/face-motion/v13",
   "expectedCanvasHeight": 1254,
   "expectedCanvasWidth": 1254,
   "expectedEndpointNames": [
@@ -16,7 +16,7 @@
     "bottom",
     "bottom-right"
   ],
-  "expectedManifestVersion": 12,
+  "expectedManifestVersion": 13,
   "expectedModel": "gpt-image-2",
   "neutralPosterMustMatchCenter": true,
   "posterFilename": "portrait-neutral.webp",

@@ -67,11 +67,11 @@ const EXPECTED_EDGE_SET = new Set(
   EXPECTED_EDGES.map(([from, to]) => undirectedEdgeKey(from, to))
 );
 
-describe("V12 reference-compatible compass mapping", () => {
+describe("V13 reference-compatible compass mapping", () => {
   test("declares one exact rest pose and eight clockwise screen-space poses", () => {
     expect(FACE_MOTION_CONFIG).toMatchObject({
-      assetBasePath: "/resume/face-motion/v12",
-      assetRevision: "20260813d",
+      assetBasePath: "/resume/face-motion/v13",
+      assetRevision: "20260815a",
       centerPose: "center",
       deadZoneRatio: 0.5,
       frameIntervalMs: 36,
@@ -92,9 +92,9 @@ describe("V12 reference-compatible compass mapping", () => {
     );
     expect(poseFromClientPointer(centerX + 160, centerY, rect)).toBe("right");
     expect(poseFromClientPointer(centerX, centerY - 160, rect)).toBe("top");
-    expect(
-      poseFromClientPointer(centerX + 319, centerY, rect, 320)
-    ).toBe("center");
+    expect(poseFromClientPointer(centerX + 319, centerY, rect, 320)).toBe(
+      "center"
+    );
     expect(poseFromClientPointer(centerX + 320, centerY, rect, 320)).toBe(
       "right"
     );
@@ -125,9 +125,7 @@ describe("V12 reference-compatible compass mapping", () => {
 
       for (const radius of [61, 240, 10_000]) {
         const point = pointAt(angle, radius);
-        expect(poseFromPointer(point.x, point.y, 0, 0, 60)).toBe(
-          expectedPose
-        );
+        expect(poseFromPointer(point.x, point.y, 0, 0, 60)).toBe(expectedPose);
       }
     }
   });
@@ -190,13 +188,13 @@ describe("V12 reference-compatible compass mapping", () => {
   });
 });
 
-describe("V12 immutable endpoint assets", () => {
+describe("V13 endpoint assets", () => {
   test("maps each of the nine poses to one unique versioned endpoint", () => {
     expect(FACE_MOTION_POSE_SOURCES).toHaveLength(9);
     expect(new Set(FACE_MOTION_POSE_SOURCES).size).toBe(9);
 
     for (const pose of EXPECTED_POSES) {
-      const expectedSource = `/resume/face-motion/v12/${pose}.webp?rev=20260813d`;
+      const expectedSource = `/resume/face-motion/v13/${pose}.webp?rev=20260815a`;
       expect(FACE_MOTION_SOURCE_BY_POSE[pose]).toBe(expectedSource);
       expect(FACE_MOTION_POSE_SOURCES).toContain(expectedSource);
       expect(faceMotionFrameSource(pose)).toBe(expectedSource);
@@ -206,11 +204,11 @@ describe("V12 immutable endpoint assets", () => {
   test("uses the exact center endpoint for rest and avatar fallbacks", () => {
     expect(FACE_MOTION_NEUTRAL_SRC).toBe(FACE_MOTION_SOURCE_BY_POSE.center);
     expect(FACE_MOTION_NEUTRAL_SRC).toBe(
-      "/resume/face-motion/v12/center.webp?rev=20260813d"
+      "/resume/face-motion/v13/center.webp?rev=20260815a"
     );
     expect(FACE_MOTION_AVATAR_SRC).toBe(FACE_MOTION_NEUTRAL_SRC);
     expect(FACE_MOTION_POSTER_SRC).toBe(
-      "/resume/face-motion/v12/portrait-neutral.webp?rev=20260813d"
+      "/resume/face-motion/v13/portrait-neutral.webp?rev=20260815a"
     );
   });
 
@@ -231,20 +229,24 @@ describe("V12 immutable endpoint assets", () => {
     );
 
     for (const source of FACE_MOTION_ALL_SOURCES) {
-      expect(source).toStartWith("/resume/face-motion/v12/");
-      expect(source).toEndWith(".webp?rev=20260813d");
+      expect(source).toStartWith("/resume/face-motion/v13/");
+      expect(source).toEndWith(".webp?rev=20260815a");
     }
   });
 });
 
-describe("V12 symmetric compass graph", () => {
+describe("V13 symmetric compass graph", () => {
   test("declares the same 8 center spokes and 8 adjacent ring edges as the reference", () => {
     expect(FACE_MOTION_CANONICAL_EDGES.map((edge) => [...edge])).toEqual(
       EXPECTED_EDGES
     );
-    expect(new Set(FACE_MOTION_CANONICAL_EDGES.map(([from, to]) =>
-      undirectedEdgeKey(from, to)
-    )).size).toBe(16);
+    expect(
+      new Set(
+        FACE_MOTION_CANONICAL_EDGES.map(([from, to]) =>
+          undirectedEdgeKey(from, to)
+        )
+      ).size
+    ).toBe(16);
 
     expect(faceMotionNeighbors("center")).toEqual(EXPECTED_RING);
     for (const pose of EXPECTED_RING) {
@@ -317,7 +319,7 @@ describe("V12 symmetric compass graph", () => {
   });
 });
 
-describe("V12 latest-target state machine", () => {
+describe("V13 latest-target state machine", () => {
   test("starts at the exact center and advances a direct edge one frame per tick", () => {
     const machine = new CompassFaceMachine({ intermediates: 3 });
 
@@ -353,12 +355,7 @@ describe("V12 latest-target state machine", () => {
       machine.advance(),
       machine.advance(),
       machine.advance(),
-    ]).toEqual([
-      "center_to_left_1",
-      "center",
-      "center_to_right_1",
-      "right",
-    ]);
+    ]).toEqual(["center_to_left_1", "center", "center_to_right_1", "right"]);
   });
 
   test("uses the newest target instead of building a stale input queue", () => {
@@ -397,7 +394,7 @@ describe("V12 latest-target state machine", () => {
     expect(frames).not.toContain("left");
   });
 
-  test("supports the endpoint-only V12 build without inventing blended frames", () => {
+  test("supports the V13 build without inventing blended frames", () => {
     const machine = new CompassFaceMachine({
       intermediates: (from, to) => faceMotionEdgeSources(from, to).length,
     });
@@ -416,7 +413,7 @@ describe("V12 latest-target state machine", () => {
   });
 });
 
-describe("V12 single-image browser runtime", () => {
+describe("V13 single-image browser runtime", () => {
   test("renders exactly one replaceable image and no blended image stack", async () => {
     const componentSource = await readFile(
       new URL("../src/components/face-motion-portrait.tsx", import.meta.url),
