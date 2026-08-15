@@ -98,6 +98,326 @@
     @apply text-xs font-semibold uppercase tracking-[0.22em] text-primary;
   }
 
+  .home-section {
+    margin-top: clamp(5rem, 8vw, 6rem);
+    scroll-margin-top: 2rem;
+  }
+
+  .activity-week {
+    opacity: 0.12;
+    transform-origin: bottom;
+  }
+
+  .activity-week[data-level="1"] {
+    opacity: 0.35;
+  }
+
+  .activity-week[data-level="2"] {
+    opacity: 0.55;
+  }
+
+  .activity-week[data-level="3"] {
+    opacity: 0.75;
+  }
+
+  .activity-week[data-level="4"] {
+    opacity: 1;
+  }
+
+  .sacred-timeline {
+    --timeline-axis: 0.5rem;
+    position: relative;
+  }
+
+  .sacred-timeline::before {
+    position: absolute;
+    top: 0.5rem;
+    bottom: 0.5rem;
+    left: var(--timeline-axis);
+    width: 1px;
+    background: color-mix(in oklab, var(--primary) 58%, var(--border));
+    content: "";
+  }
+
+  .sacred-timeline-item {
+    --entry-space: 3rem;
+    --node-size: 0.625rem;
+    position: relative;
+    display: grid;
+    grid-template-columns: 1rem minmax(0, 1fr);
+    column-gap: 1rem;
+  }
+
+  .sacred-timeline-item[data-importance="lead"] {
+    --entry-space: 4rem;
+    --node-size: 0.875rem;
+  }
+
+  .sacred-timeline-item[data-importance="compact"] {
+    --entry-space: 2.25rem;
+    --node-size: 0.3125rem;
+  }
+
+  .sacred-timeline-date {
+    grid-column: 2;
+    color: var(--muted-foreground);
+    font-family: var(--font-site-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    line-height: 1.5;
+    text-transform: uppercase;
+  }
+
+  .sacred-timeline-node {
+    position: relative;
+    z-index: 1;
+    grid-row: 1 / span 2;
+    grid-column: 1;
+    justify-self: center;
+    width: var(--node-size);
+    height: var(--node-size);
+    margin-top: 0.2rem;
+    border: 2px solid var(--background);
+    border-radius: 999px;
+    background: var(--primary);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 76%, var(--border));
+    transition:
+      background-color 180ms ease,
+      box-shadow 180ms ease,
+      transform 180ms ease;
+  }
+
+  .sacred-timeline-node::after {
+    position: absolute;
+    top: calc(50% - 0.5px);
+    left: 100%;
+    width: 1.25rem;
+    height: 1px;
+    background: color-mix(in oklab, var(--primary) 38%, var(--border));
+    content: "";
+  }
+
+  .sacred-timeline-item[data-cadence="streak"] .sacred-timeline-node {
+    width: 0.75rem;
+    height: 1.75rem;
+    margin-top: -0.3rem;
+  }
+
+  .sacred-timeline-item:hover .sacred-timeline-node,
+  .sacred-timeline-item:focus-within .sacred-timeline-node {
+    background: var(--brand-hover);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 14%, transparent);
+    transform: scale(1.08);
+  }
+
+  .sacred-timeline-item[data-private="true"] .sacred-timeline-node {
+    background: var(--background);
+    box-shadow: 0 0 0 1px var(--muted-foreground);
+  }
+
+  .sacred-timeline-content {
+    grid-column: 2;
+    padding: 0.35rem 0 var(--entry-space);
+  }
+
+  .sacred-timeline-item:last-child .sacred-timeline-content {
+    padding-bottom: 0;
+  }
+
+  .sacred-timeline-title {
+    margin-top: 0.5rem;
+    color: var(--foreground);
+    font-family: var(--font-site-serif);
+    font-size: 1.45rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.18;
+  }
+
+  [data-importance="lead"] .sacred-timeline-title {
+    font-size: clamp(1.8rem, 5vw, 2.25rem);
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+  }
+
+  .sacred-timeline-summary {
+    max-width: 42rem;
+    margin-top: 0.6rem;
+    color: var(--muted-foreground);
+    font-size: 0.9375rem;
+    line-height: 1.65;
+  }
+
+  [data-importance="lead"] .sacred-timeline-summary {
+    font-size: 1rem;
+  }
+
+  .sacred-timeline-dispatches {
+    display: grid;
+    border-block: 1px solid var(--border);
+  }
+
+  .sacred-timeline-dispatch {
+    display: grid;
+    grid-template-columns: 3.25rem minmax(0, 1fr);
+    column-gap: 0.75rem;
+    align-items: start;
+    padding-block: 0.875rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .sacred-timeline-dispatch:first-child {
+    border-top: 0;
+  }
+
+  .sacred-timeline-dispatch-title {
+    margin-top: 0.25rem;
+    color: var(--foreground);
+    font-family: var(--font-site-serif);
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+  }
+
+  .sacred-timeline-dispatch-date {
+    grid-row: 1 / span 2;
+    grid-column: 1;
+    padding-top: 0.05rem;
+    color: var(--muted-foreground);
+    font-family: var(--font-site-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.08em;
+    line-height: 1.5;
+    text-transform: uppercase;
+  }
+
+  .sacred-timeline-dispatch-kind {
+    grid-row: 1;
+    grid-column: 2;
+    color: var(--primary);
+    font-family: var(--font-site-ui);
+    font-size: 0.625rem;
+    font-weight: 650;
+    letter-spacing: 0.12em;
+    line-height: 1.5;
+    text-transform: uppercase;
+  }
+
+  .sacred-timeline-dispatch-body {
+    min-width: 0;
+    grid-row: 2;
+    grid-column: 2;
+    padding-top: 0.25rem;
+  }
+
+  .sacred-timeline-dispatch-link {
+    display: inline-flex;
+    min-height: 1.5rem;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 0.125rem;
+    color: inherit;
+    text-decoration-line: underline;
+    text-decoration-color: var(--border);
+    text-underline-offset: 0.25rem;
+    transition:
+      color 180ms ease,
+      text-decoration-color 180ms ease;
+  }
+
+  .sacred-timeline-dispatch-link:hover {
+    color: var(--brand-hover);
+    text-decoration-color: var(--brand-hover);
+  }
+
+  .sacred-timeline-dispatch-link:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 0.25rem;
+  }
+
+  .sacred-timeline-dispatch-summary {
+    margin-top: 0.4rem;
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  [data-importance="compact"] .sacred-timeline-node {
+    border-width: 1px;
+  }
+
+  @media (min-width: 40rem) {
+    .sacred-timeline {
+      --timeline-axis: 7.6875rem;
+    }
+
+    .sacred-timeline::before {
+      left: var(--timeline-axis);
+    }
+
+    .sacred-timeline-item {
+      grid-template-columns: 6.25rem 1.375rem minmax(0, 1fr);
+      column-gap: 0.75rem;
+    }
+
+    .sacred-timeline-date {
+      grid-row: 1;
+      grid-column: 1;
+      padding-top: 0.05rem;
+      text-align: right;
+    }
+
+    .sacred-timeline-node {
+      grid-row: 1;
+      grid-column: 2;
+      justify-self: center;
+    }
+
+    .sacred-timeline-content {
+      grid-row: 1;
+      grid-column: 3;
+      padding: 0 0 var(--entry-space) 0.75rem;
+    }
+  }
+
+  @media (min-width: 48rem) {
+    .sacred-timeline-dispatch {
+      grid-template-columns: 4.25rem 5.25rem minmax(0, 1fr);
+      column-gap: 0.75rem;
+    }
+
+    .sacred-timeline-dispatch-date {
+      grid-row: 1;
+      grid-column: 1;
+    }
+
+    .sacred-timeline-dispatch-kind {
+      grid-row: 1;
+      grid-column: 2;
+    }
+
+    .sacred-timeline-dispatch-body {
+      grid-row: 1;
+      grid-column: 3;
+      padding-top: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .activity-week {
+      animation: activity-rise 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sacred-timeline-node,
+    .group\/link svg,
+    .sacred-timeline-dispatch-link {
+      transition: none;
+    }
+  }
+
   @media (min-width: 40rem) {
     .site-container {
       padding-inline: 2rem;
@@ -108,6 +428,17 @@
     .site-container {
       padding-inline: 3rem;
     }
+  }
+}
+
+@keyframes activity-rise {
+  from {
+    opacity: 0.08;
+    transform: scaleY(0.35);
+  }
+
+  to {
+    transform: scaleY(1);
   }
 }
 
@@ -130,6 +461,10 @@
 }
 
 body {
+  --font-site-ui: var(--font-site-body);
+  --font-site-mono:
+    ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", Menlo,
+    Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-family: var(--font-site-body);
 }
 
