@@ -18,7 +18,7 @@ Constraints: exactly one person; exactly one pair of round sunglasses with crisp
 Avoid: top-left pose; upward-leading gaze; upward chin; low or narrow crown; compressed hair; abrupt hairline transition; missing side volume; pose drift; zooming; recentering; streaks; rectangular blocks; horizontal or vertical bands; smears; halos; white, black, gray, transparent, or checkerboard background; duplicate or warped glasses; extra accessories; text; logos; watermark
 ```
 
-## Right
+## Superseded right scale correction
 
 ```text
 Use case: identity-preserve
@@ -35,7 +35,7 @@ Constraints: exactly one person; exactly one pair of round sunglasses with crisp
 Avoid: large close-up face; oversized head; top-right pose; bottom-right pose; upward or downward gaze; low or narrow crown; compressed hair; abrupt hairline transition; zooming in; recentering drift; streaks; rectangular blocks; bands; smears; halos; white, black, gray, transparent, or checkerboard background; duplicate or warped glasses; extra accessories; text; logos; watermark
 ```
 
-## Right body-framing correction
+## Superseded right body-framing correction
 
 ```text
 Use case: identity-preserve
@@ -50,6 +50,24 @@ Required head: preserve Image 1's smaller natural face/head scale, full crown he
 Required body: match Image 2's full shoulder span and torso framing; the body must not appear zoomed out, inset, narrowed, or farther from the camera
 Constraints: change only the masked lower-body region; preserve every unmasked head/face/hair pixel as closely as possible; exactly one person; exactly one pair of round sunglasses; white crew-neck T-shirt; charcoal open overshirt; preserve lighting and natural body proportions
 Avoid: any head or face change; larger face; smaller face; head movement; pose drift; whole-subject resize; zooming out; narrow or inset shoulders; small torso; inward shoulder drift; altered hair; altered glasses; changed beard; upward or downward gaze; recentering; streaks; blocks; bands; smears; halos; white, black, gray, transparent, or checkerboard background; duplicate accessories; text; logos; watermark
+```
+
+## Right: mirrored-left base with masked detail variation
+
+```text
+Use case: identity-preserve
+Asset type: mirrored horizontal right endpoint for a smooth interactive website portrait
+Primary request: Image 1 is the exact horizontally mirrored left portrait and is already the correct final right-side geometry. Make only small masked interior-detail edits so it does not look like a mechanically mirrored duplicate: subtly vary the internal crown hair-strand clumping, give the two sunglass lenses slightly different natural dark studio reflections, relocate the charcoal overshirt chest pocket from screen-left to screen-right, and vary a few local overshirt folds and button details. Preserve the exact mirrored silhouette, pose, face, body framing, scale, and crop.
+Input images: Image 1 is the masked edit target and is the absolute authority for every spatial property: canvas, subject coordinates, horizontal screen-right 3 o'clock head and eye direction, face/head scale, facial identity, expression, beard, eyeglass geometry, complete outer hair silhouette, shoulder tips, torso width, collar, neckline, body placement, and bottom crop. Image 2 is the fixed top-right endpoint and is a supporting reference only for natural right-side crown texture and strand variation; never copy its upward pose or change Image 1's hair silhouette. Image 3 is the fixed center endpoint and is a supporting identity, lighting, and wardrobe reference only. Image 4 is the fixed bottom-right endpoint and is a supporting reference only for natural right-side lens reflections and screen-right pocket placement; never copy its downward pose, scale, or body placement.
+Scene/backdrop: perfectly flat solid #FF00FF chroma-key background covering every background pixel edge to edge, with no texture or variation
+Style/medium: natural high-resolution studio portrait photography matching the supplied person exactly
+Composition/framing: pixel-lock Image 1's outer silhouette and framing; do not move, scale, rotate, crop, widen, narrow, or recenter any part of the person
+Required pose: preserve Image 1's unmistakably horizontal screen-right 3 o'clock face and eye direction exactly; level eyeglass bridge and chin; no upward or downward component
+Required hair: preserve the complete outer hair boundary exactly; change only a few internal strand groupings and highlights inside the masked crown so the texture is not a literal mirror copy
+Required glasses: preserve rims, temples, size, and coordinates exactly; alter only the subtle interior lens reflections within the mask
+Required clothing: preserve shoulder span, torso, collar, neckline, fabric color, and outer silhouette exactly; remove the mirrored screen-left chest pocket and add the same understated pocket on screen-right; vary only a few masked microfolds and button details
+Constraints: edit only the transparent portions of the supplied mask; preserve all unmasked pixels as closely as possible; exactly one person; exactly one pair of round sunglasses; white crew-neck T-shirt; charcoal open overshirt; no change to skin, facial proportions, beard silhouette, head size, body size, or lighting
+Avoid: any generative reframing; zooming; head movement; face change; pose drift; altered hair outline; lower or narrower crown; shoulder drift; torso resize; collar shift; changed crop; upward or downward gaze; duplicate glasses; warped rims; extra pockets; obvious mirrored artifacts; strong lens glare; streaks; blocks; bands; smears; halos; white, black, gray, transparent, or checkerboard background; extra accessories; text; logos; watermark
 ```
 
 ## Right to bottom-right midpoint

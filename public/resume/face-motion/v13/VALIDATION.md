@@ -1,6 +1,6 @@
 # V13 endpoint validation
 
-PASS: nine `1254×1254` lossless WebP endpoints were built from accepted GPT Image 2 magenta-background originals.
+PASS: nine `1254×1254` lossless WebP endpoints were built from accepted GPT Image 2 magenta-background outputs; the final right output uses an exact mirrored-left base with a tightly masked high-quality GPT Image 2 detail edit.
 
 - No crop, recenter, rotation, facial warp, body lock, optical flow, interpolation, or frame blending was performed.
 - Alpha is derived from border-connected magenta only. The regenerated `1280×1280` side sources were uniformly normalized to the release's `1254×1254` canvas.
@@ -14,11 +14,11 @@ PASS: nine `1254×1254` lossless WebP endpoints were built from accepted GPT Ima
 | top-right    |  `[72, 92, 1192, 1254]` |       739,480 |          6,687 |    729,288 |
 | left         | `[67, 109, 1194, 1254]` |       738,197 |         11,265 |    856,716 |
 | center       |  `[69, 99, 1196, 1254]` |       724,528 |          5,973 |    760,630 |
-| right        | `[83, 103, 1177, 1254]` |       730,873 |          9,901 |    826,820 |
+| right        | `[60, 108, 1184, 1254]` |       732,071 |         10,096 |    841,832 |
 | bottom-left  | `[74, 128, 1199, 1254]` |       732,368 |          6,483 |    725,340 |
 | bottom       | `[69, 115, 1196, 1254]` |       724,959 |          5,686 |    719,452 |
 | bottom-right | `[59, 145, 1182, 1254]` |       706,047 |          6,352 |    715,492 |
 
-Visual inspection confirmed crisp lenses and metal rims without doubled or vertically smeared eyewear, clearly horizontal 9 and 3 o'clock side poses, full crown continuity from each untouched diagonal reference, visible authored up/down movement, and the generated white crew-neck plus charcoal open overshirt in all nine endpoints. The final right is a direct GPT Image 2 output whose masked edit preserves the smaller head while restoring shoulder and torso framing. The aligned `right` to `bottom-right` transition is a visible lossless `1254×1254` frame with alpha bounds `[73, 124, 1179, 1254]`, 714,530 opaque pixels, 12,804 partial pixels, and 792,124 bytes. Right, midpoint, and bottom-right widths are 1,094, 1,106, and 1,123 pixels, while hair-top and subject-height movement advances in exact 21-pixel steps, with no opaque background or blank frame.
+Visual inspection confirmed crisp lenses and metal rims without doubled or vertically smeared eyewear, clearly horizontal 9 and 3 o'clock side poses, full crown continuity from each untouched diagonal reference, visible authored up/down movement, and the white crew-neck plus charcoal open overshirt in all nine endpoints. The final right is a direct high-quality `gpt-image-2` output based on the exact horizontal mirror of the accepted left; its mask permits only restrained internal hair, lens, collar, fold, button, and pocket changes, including a natural screen-right pocket. The aligned `right` to `bottom-right` transition is a visible lossless `1254×1254` frame with alpha bounds `[63, 127, 1183, 1254]`, 713,076 opaque pixels, 14,115 partial pixels, and 775,896 bytes. Right, midpoint, and bottom-right widths are 1,124, 1,120, and 1,123 pixels, while their subject tops advance 108, 127, and 145 pixels, with no opaque background or blank frame.
 
 Run `bun run verify:face-motion` to recreate the machine-readable QA report and contact sheet in `build/face-motion-qa/`.
