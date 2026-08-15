@@ -8,7 +8,7 @@ export function SiteMobileMenu({
   currentPath,
   navItems,
 }: Readonly<{
-  activeHref: "/blog" | "/resume";
+  activeHref?: "/blog" | "/resume";
   currentPath: "/" | "/blog" | "/resume";
   navItems: readonly ResumeNavItem[];
 }>) {
@@ -43,6 +43,7 @@ export function SiteMobileMenu({
               ) : (
                 <Link
                   href={item.href}
+                  prefetch={false}
                   aria-current={isCurrent ? "page" : undefined}
                   className={className}
                 >
