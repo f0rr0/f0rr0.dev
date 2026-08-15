@@ -3,11 +3,11 @@
   "release": 13,
   "generationModel": "gpt-image-2",
   "generatedAt": "2026-08-15",
-  "method": "V12 compass set with corrected GPT Image 2 horizontal left and right endpoints plus a regenerated right-to-bottom-right midpoint, then border-connected magenta alpha extraction and lossless WebP export",
+  "method": "V12 compass set with corrected GPT Image 2 horizontal left and right endpoints plus a regenerated right-to-bottom-right midpoint; the final right endpoint is a direct masked GPT Image 2 edit that preserves the accepted smaller head while restoring the prior right endpoint's body framing",
   "constraints": {
     "crop": false,
     "recenter": false,
-    "uniformResize": "left and right sources: 1280x1280 to 1254x1254; regenerated right-to-bottom-right midpoint: uniform 2.9% pre-key scale followed by canvas alignment and 1280x1280 to 1254x1254 normalization",
+    "uniformResize": "left and right generation sources: 1280x1280 to 1254x1254; regenerated right-to-bottom-right midpoint: uniform 2.9% pre-key scale plus a final uniform 1.1% endpoint-alignment scale",
     "rotate": false,
     "warp": false,
     "bodyLock": false,
@@ -38,17 +38,18 @@
     },
     {
       "pose": "right",
-      "sourceGeneration": "output/imagegen/face-motion-v13-right-fix/right/image_1.png",
-      "sourceSha256": "ef7a8f5734808eced5565863065725ecb8d5bc2905401abb1c0156492b0677a7",
-      "fileSha256": "ca2886e0e61e8ea197670a3df8e6cb98745f8c0eba32fa9ddb9c2234b91ae3f6",
-      "alphaBbox": [92, 101, 1163, 1254],
+      "sourceGeneration": "output/imagegen/face-motion-v13-right-body-direct/image_2.png",
+      "sourceSha256": "2584298aeb9e874cf2569b321fe7351e0e4c2c0f72bbba3758042c52b0f244d2",
+      "editMask": "head and upper neck preserved; lower-body edit begins below y=500 with a 200-pixel transition into the fully editable body region",
+      "fileSha256": "35494cb1455e505f239a21d01f3c46715d6c7302b9d0951e713c50e0e577713d",
+      "alphaBbox": [83, 103, 1177, 1254],
       "inputs": [
-        "prior V13 right endpoint: edit target for horizontal pose, expression, wardrobe, lighting, and framing",
-        "bottom-right.webp: fixed scale, camera-distance, shoulder-proportion, and placement reference only",
-        "top-right.webp: fixed hair-only reference for crown height, width, side fullness, texture, and identity",
-        "center.webp: supporting identity, lighting, and wardrobe reference"
+        "accepted smaller V13 right endpoint: masked edit target and sole authority for head, face, hair, neck, glasses, beard, level 3 o'clock pose, and lighting",
+        "prior V13 right endpoint: fixed body-framing reference for shoulder tips, torso width, collar, clothing geometry, placement, and bottom crop",
+        "top-right.webp: fixed supporting hair-identity reference only",
+        "bottom-right.webp: fixed supporting body-proportion reference only"
       ],
-      "prompt": "PROMPTS.md#right"
+      "prompt": "PROMPTS.md#right-body-framing-correction"
     }
   ],
   "rebuiltTransition": {
@@ -57,10 +58,10 @@
     "generatedSourceSha256": "c5f26dc34b91ed6cecbda6e664d86e0fe5ea4f3588ff7573a87af42822fcec56",
     "sourceGeneration": "tmp/imagegen/face-motion-v13-right-fix/transition-image-1-aligned-source.png",
     "sourceSha256": "06858bf07d84d2b52b4601ba51b838aeb55c21b37c1cb6e6bd958fafe87a350b",
-    "alignment": "uniformly resized generated 1280x1280 source to 1317x1317, then extracted a 1280x1280 canvas at x=22, y=16 before alpha extraction",
+    "alignment": "uniformly resized generated 1280x1280 source to 1317x1317, then extracted a 1280x1280 canvas at x=22, y=16 before alpha extraction; after restoring the right body framing, uniformly resized the keyed 1254x1254 midpoint to 1268x1268 and extracted a 1254x1254 canvas at x=7, y=0",
     "file": "transition-right-bottom-right-1.webp",
-    "fileSha256": "5f28e7fc13b5ccbf4105a316c2293a6fa361505258ecae137b6888d49415485a",
-    "alphaBbox": [77, 122, 1173, 1254],
+    "fileSha256": "d025149d4a452b8c082c9cb284084bcc8cca569f18bc3ef797293c16007bcb12",
+    "alphaBbox": [73, 124, 1179, 1254],
     "inputs": [
       "corrected right endpoint source: authoritative start pose, identity, scale, hair, wardrobe, lighting, and framing",
       "bottom-right.webp: authoritative end pose, scale, placement, hair, wardrobe, lighting, and framing",

@@ -35,6 +35,23 @@ Constraints: exactly one person; exactly one pair of round sunglasses with crisp
 Avoid: large close-up face; oversized head; top-right pose; bottom-right pose; upward or downward gaze; low or narrow crown; compressed hair; abrupt hairline transition; zooming in; recentering drift; streaks; rectangular blocks; bands; smears; halos; white, black, gray, transparent, or checkerboard background; duplicate or warped glasses; extra accessories; text; logos; watermark
 ```
 
+## Right body-framing correction
+
+```text
+Use case: identity-preserve
+Asset type: final horizontal right endpoint for a smooth interactive website portrait
+Primary request: Edit only the masked lower-body region of Image 1. Keep Image 1's accepted smaller head, face, hair, sunglasses, beard, neck, level 3 o'clock pose, and their exact scale and coordinates unchanged. Restore the shoulder width, torso scale, collar geometry, clothing placement, subject width, and bottom crop from Image 2 so the body no longer looks zoomed out.
+Input images: Image 1 is the masked edit target and is the sole authority for the entire head, face, hair, neck, gaze, expression, identity, lighting, and horizontal 3 o'clock pose. Do not alter any unmasked head pixel or change the head's scale or position. Image 2 is the fixed body-framing reference and is authoritative only for shoulder-tip coordinates, torso width, collar and neckline position, clothing geometry, subject placement, camera crop, and bottom edge; do not copy its larger face. Image 3 is the fixed top-right endpoint and is a supporting hair-identity reference only; never copy its upward pose. Image 4 is the fixed bottom-right endpoint and is a supporting body-proportion reference only; never copy its downward pose.
+Scene/backdrop: perfectly flat solid #FF00FF chroma-key background covering every background pixel edge to edge, with no texture or variation
+Style/medium: natural high-resolution studio portrait photography matching the supplied person exactly
+Composition/framing: widen and restore only the body beneath the locked head; shoulder tips, torso width, collar, neckline, clothing, and bottom crop must match Image 2; keep the head and neck exactly where they are in Image 1
+Required pose: preserve Image 1's horizontal screen-right 3 o'clock face and eye direction exactly; no upward or downward component; level eyeglass bridge; level chin
+Required head: preserve Image 1's smaller natural face/head scale, full crown height, side volume, identity, beard, glasses, expression, and coordinates exactly
+Required body: match Image 2's full shoulder span and torso framing; the body must not appear zoomed out, inset, narrowed, or farther from the camera
+Constraints: change only the masked lower-body region; preserve every unmasked head/face/hair pixel as closely as possible; exactly one person; exactly one pair of round sunglasses; white crew-neck T-shirt; charcoal open overshirt; preserve lighting and natural body proportions
+Avoid: any head or face change; larger face; smaller face; head movement; pose drift; whole-subject resize; zooming out; narrow or inset shoulders; small torso; inward shoulder drift; altered hair; altered glasses; changed beard; upward or downward gaze; recentering; streaks; blocks; bands; smears; halos; white, black, gray, transparent, or checkerboard background; duplicate accessories; text; logos; watermark
+```
+
 ## Right to bottom-right midpoint
 
 ```text
