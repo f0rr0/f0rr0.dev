@@ -1,6 +1,6 @@
 export const FACE_MOTION_CONFIG = {
   assetBasePath: "/resume/face-motion/v13",
-  assetRevision: "20260815e",
+  assetRevision: "20260815f",
   atlasCellSizePx: 240,
   atlasColumns: 8,
   atlasRows: 8,

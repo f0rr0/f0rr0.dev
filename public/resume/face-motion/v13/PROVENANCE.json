@@ -1,64 +1,110 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "release": 13,
-  "generationModel": "gpt-image-2",
   "generatedAt": "2026-08-15",
-  "method": "All nine accepted V13 endpoints remain byte-for-byte unchanged. Forty-eight authored transition frames were generated as separate high-quality gpt-image-2 edits: the two adjacent V13 endpoints are authoritative for Sid and the matching dahbiahmed.com transition is authoritative only for pose and motion progress. The accepted right-to-bottom-right edge uses a stricter exact-pose redo selected after side-by-side QA.",
-  "constraints": {
-    "crop": false,
-    "recenter": false,
-    "uniformResize": "Generated 1280x1280 chroma-key transition sources were uniformly normalized to 240x240 runtime-source cells; accepted endpoints remain 1254x1254 lossless masters and are uniformly downsampled only while building the 240px atlas cells.",
-    "rotate": false,
-    "warp": false,
-    "bodyLock": false,
-    "opticalFlow": false,
-    "interpolate": false,
-    "blend": false
-  },
-  "alphaExtraction": {
-    "background": "flat #FF00FF chroma key",
-    "innerThreshold": 24,
-    "outerThreshold": 10,
-    "partialEdgeRgb": "nearest fully opaque subject pixel",
-    "fullyTransparentRgb": "zeroed before 240px lossy WebP with alpha encoding"
-  },
-  "regeneratedEndpoints": [
-    {
-      "pose": "left",
-      "sourceGeneration": "output/imagegen/face-motion-v13-correction/left/image_1.png",
-      "sourceSha256": "28fc0e266c1c17420c712253fb351215e32d34deefe0989f3c8acc3a8710d410",
-      "fileSha256": "da9a3c1c3cb66a5277df118e1e50093b348cab1a6dd8eb7f7f828c15a4fa5e9a",
-      "alphaBbox": [67, 109, 1194, 1254],
-      "inputs": [
-        "prior V13 left endpoint: edit target for framing, scale, crop, shoulders, wardrobe, and horizontal pose correction",
-        "top-left.webp: fixed hair-only reference for crown height, width, side fullness, texture, and identity",
-        "center.webp: supporting identity, lighting, and wardrobe reference"
-      ],
-      "prompt": "PROMPTS.md#left"
-    },
-    {
-      "pose": "right",
-      "sourceGeneration": "output/imagegen/face-motion-v13-right-three-quarter/image_3.png",
-      "sourceSha256": "afe79643d8e756c9afaf1459aa9f112e55f50e68b00a99b365fc1d4184ede20b",
-      "alignment": "border-key normalized the 1280x1280 generated source to 1254x1254, retained that scale, and applied only a rigid 12-pixel-left and 5-pixel-down canvas translation; no rescaling, anisotropic warp, compositing, or content regeneration",
-      "fileSha256": "3c08e8bb182d96e0154a22a7af7929d481837f9d92103123a99b145f0a0fd33e",
-      "alphaBbox": [71, 119, 1186, 1254],
-      "inputs": [
-        "top-right.webp: fixed accepted reference with equal authority for identity, camera distance, face/head scale, hair, body framing, clothing construction, lighting, placement, and crop",
-        "bottom-right.webp: fixed accepted reference with equal authority for identity, camera distance, face/head scale, hair, body framing, clothing construction, lighting, placement, and crop"
-      ],
-      "postGenerationQa": "left.webp was visually compared only for opposite-direction yaw magnitude and was not sent to the Image API; candidate 1 was rejected for reading down-right and candidate 2 for reading too frontal, while candidate 3 was selected for level pitch, clear rightward yaw, and reference-matched framing",
-      "prompt": "PROMPTS.md#right-preserve-diagonal-yaw-and-interpolate-pitch-only"
+  "generationModel": "gpt-image-2",
+  "method": "Thirty-nine cells on 13 vertical-component edges were regenerated as ordered three-panel strips so 25%, 50%, and 75% pitch/yaw steps could be judged together. Nine stable cells were retained. The former near-level top and bottom endpoints were replaced with true frontal up/down endpoints.",
+  "referencePolicy": {
+    "site": "https://dahbiahmed.com",
+    "downloadedTheme": "light",
+    "localDirectory": "downloads/dahbiahmed-face-motion/profile/nobg",
+    "role": "pose direction and evenly graded motion pacing only",
+    "excluded": "identity, face, hair, glasses, expression, clothing, monochrome treatment, body proportions, and framing",
+    "contactSheets": {
+      "original": "build/face-motion-reference-parity/original-reference/reference-atlas-contact-sheet.png",
+      "release": "build/face-motion-reference-parity/graded-candidates/contact-sheets/candidate-atlas-contact-sheet.png"
     }
-  ],
+  },
+  "endpoints": {
+    "unchanged": [
+      {
+        "file": "top-left.webp",
+        "fileSha256": "c1b4e8f6d813e1a7b864d6cfdfe6fc9cca7ad87738f0e4fb63f20f805d23ccf3",
+        "pose": "top-left"
+      },
+      {
+        "file": "top-right.webp",
+        "fileSha256": "05f0a86dd90624aea86214da8b3a2b154067ead194d7b3f2f6bdf05aa9d7ecd9",
+        "pose": "top-right"
+      },
+      {
+        "file": "left.webp",
+        "fileSha256": "da9a3c1c3cb66a5277df118e1e50093b348cab1a6dd8eb7f7f828c15a4fa5e9a",
+        "pose": "left"
+      },
+      {
+        "file": "center.webp",
+        "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
+        "pose": "center"
+      },
+      {
+        "file": "right.webp",
+        "fileSha256": "3c08e8bb182d96e0154a22a7af7929d481837f9d92103123a99b145f0a0fd33e",
+        "pose": "right"
+      },
+      {
+        "file": "bottom-left.webp",
+        "fileSha256": "ce59d7da8f145a90ea7193b54304e60e35a7a7d85c4ca938332172377335e505",
+        "pose": "bottom-left"
+      },
+      {
+        "file": "bottom-right.webp",
+        "fileSha256": "390c7fe733b44feead8c850ac06f0c97ad5906b67999429a5955fb26e59ee24a",
+        "pose": "bottom-right"
+      }
+    ],
+    "correctedAxis": [
+      {
+        "pose": "top",
+        "model": "gpt-image-2",
+        "quality": "high",
+        "size": "1280x1280",
+        "inputs": [
+          "prior V13 top endpoint: appearance, framing, scale, and edit target",
+          "center.webp: frontal yaw, identity, body framing, and scale",
+          "top-right.webp and top-left.webp: symmetric diagonal pitch context",
+          "downloaded original-reference top.webp: pure-top pose mechanics only"
+        ],
+        "rawGeneration": {
+          "file": "output/imagegen/face-motion-reference-parity/graded-sequences/top-endpoint.png",
+          "sha256": "c91bb5fb12c009ac5d312fa2ce42e7ea1fe7bd49b1ab81dbbe5b6b9280284c1d"
+        },
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/top-endpoint.txt",
+          "sha256": "d1d6fa49eee7858423302703c47f058e2291ff73be444fb1a90c693a154867af"
+        },
+        "releaseFile": "top.webp",
+        "releaseFileSha256": "2bff470e6130cc6bc02835f5a1e891b2f4907ec8aca09054a51ccd1957e42cd9",
+        "releaseEncoding": "1254x1254 lossless WebP with alpha",
+        "alphaExtraction": "Adaptive saturated-magenta alpha classification with partial-edge color recovery; subject RGB is unchanged for opaque pixels."
+      },
+      {
+        "pose": "bottom",
+        "model": "gpt-image-2",
+        "quality": "high",
+        "size": "1280x1280",
+        "inputs": [
+          "prior V13 bottom endpoint: appearance, framing, scale, and edit target",
+          "center.webp: frontal yaw, identity, body framing, and scale",
+          "bottom-right.webp and bottom-left.webp: symmetric diagonal pitch context",
+          "downloaded original-reference bottom.webp: pure-bottom pose mechanics only"
+        ],
+        "rawGeneration": {
+          "file": "output/imagegen/face-motion-reference-parity/graded-sequences/bottom-endpoint.png",
+          "sha256": "62c49bb27ce143e1257a1833538b1ebf882c51eb1a67138592bee3287e41429e"
+        },
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/bottom-endpoint.txt",
+          "sha256": "b2baf70f8a0118133dbb355cbd548fc7645430e8f18463fa1063874ff72c4a7b"
+        },
+        "releaseFile": "bottom.webp",
+        "releaseFileSha256": "6685db61a800ffb29870a7286599d81d2f21396b45e5e192acb659536f7cf712",
+        "releaseEncoding": "1254x1254 lossless WebP with alpha",
+        "alphaExtraction": "Adaptive saturated-magenta alpha classification with partial-edge color recovery; subject RGB is unchanged for opaque pixels."
+      }
+    ]
+  },
   "transitionSet": {
-    "generation": {
-      "model": "gpt-image-2",
-      "quality": "high",
-      "size": "1280x1280",
-      "jobs": 48,
-      "oneOutputPerJob": true
-    },
     "graph": {
       "poses": 9,
       "canonicalEdges": 16,
@@ -66,1556 +112,750 @@
       "authoredFrames": 48,
       "reversePlayback": "same authored frames in reverse order"
     },
-    "referencePolicy": {
-      "site": "https://dahbiahmed.com",
-      "theme": "light",
-      "role": "pose and motion progression only"
+    "regeneration": {
+      "model": "gpt-image-2",
+      "quality": "high",
+      "outputGeometry": "3072x1024; three exact 1024x1024 panels",
+      "jobs": 13,
+      "generatedFrames": 39,
+      "jointSequenceConstraint": "Each strip contains 25%, 50%, and 75% together with strict endpoint envelopes and visible equal-step pose progression.",
+      "deployedEncoding": "240x240 lossy WebP with alpha"
     },
-    "promptArchive": "TRANSITION-PROMPTS.md",
-    "offlineMasters": "1280x1280 PNG generation outputs are retained outside the deployed runtime asset directory for future edits.",
-    "deployedCells": {
-      "width": 240,
-      "height": 240,
-      "format": "lossy WebP with alpha",
-      "totalBytes": 400512
+    "selectionPolicy": {
+      "fullLatestStripEdges": 8,
+      "hybridEdges": [
+        "bottom-bottom-left",
+        "bottom-right-bottom",
+        "center-bottom-left",
+        "center-top-left"
+      ],
+      "endpointOnlyStripEdges": ["right-bottom-right"],
+      "hybridRule": "Use the more readable 25% and 50% panels from the prior joint-strip attempt and the endpoint-safe 75% panel from the tighter redo. Panels are cropped directly; no blend, warp, or interpolation."
     },
-    "frames": [
+    "retainedEdges": [
       {
-        "key": "center_to_top_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-center-top-1.webp",
-        "releaseFileSha256": "0d7212b435c8a0ea6f5f669cd9ebc713abc8446db64889160e3e6d5d7e5e1c49",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-top-1.png",
-        "sourceGenerationSha256": "398a68e498dba58176dca01fe074603c9650aa4a850a4e1d8bfe7c4d0b5c6ba1",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_top_1.txt",
-        "promptSha256": "beb1df24fa24f50a5e95057afa598c784f01398e692559f18831f10bc59ea765",
-        "subjectReferences": [
+        "edge": "center-right",
+        "frames": [
           {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
+            "fraction": 0.25,
+            "releaseFile": "transition-center-right-1.webp",
+            "releaseFileSha256": "9a7204ce48660dd47c4a8bd88c963c14d8aa95f2468834187e7a49f6e305df5e",
+            "selection": "retained pre-gradation-pass asset"
           },
           {
-            "pose": "top",
-            "file": "top.webp",
-            "fileSha256": "c4583dbb90e5b0137f04c22eca9f74fa8b57ef223b909c7e59fd255ffaa11a11",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
+            "fraction": 0.5,
+            "releaseFile": "transition-center-right-2.webp",
+            "releaseFileSha256": "6355a0225ffb60b4659d7ba8bee257da0e3013cfbc9f4bcdfdd54bf2da84c28d",
+            "selection": "retained pre-gradation-pass asset"
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-center-right-3.webp",
+            "releaseFileSha256": "56eb3b03479f71001116756a07b4e8836d3dc17d5db0244f765df0d31bbcf8b4",
+            "selection": "retained pre-gradation-pass asset"
           }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_top_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_top_1.webp",
-          "sha256": "1cce895173de0d1cf670f755939027ff1fe3119a7f2dec69f9b0ffe46de4dc87",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
+        ]
       },
       {
-        "key": "center_to_top_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-center-top-2.webp",
-        "releaseFileSha256": "d69cf4d4b4981208eaff6ae45d1bda606e6485589169c9b7227af3f0541b4641",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-top-2.png",
-        "sourceGenerationSha256": "651f4409f366de687d3e1ecf8f2464a9123fe869786e7bc59ead1b3533b3c6de",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_top_2.txt",
-        "promptSha256": "18f81a4e3d1211ba1aba6ded1b22dfd1e74a71dd646bb3270fe05d6277d44f4c",
-        "subjectReferences": [
+        "edge": "center-left",
+        "frames": [
           {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
+            "fraction": 0.25,
+            "releaseFile": "transition-center-left-1.webp",
+            "releaseFileSha256": "4fbf5434f6e2fe558670a4b9c664f3d4467a96c7a1cc81234980c6634b16c1cd",
+            "selection": "retained pre-gradation-pass asset"
           },
           {
-            "pose": "top",
-            "file": "top.webp",
-            "fileSha256": "c4583dbb90e5b0137f04c22eca9f74fa8b57ef223b909c7e59fd255ffaa11a11",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
+            "fraction": 0.5,
+            "releaseFile": "transition-center-left-2.webp",
+            "releaseFileSha256": "25360b2c7f48c2aa6f70f5aae64565a240e52a819daff1665d966d264ec134ba",
+            "selection": "retained pre-gradation-pass asset"
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-center-left-3.webp",
+            "releaseFileSha256": "ce0ca25f0f188e188c34b183319b39b27e71c1ee7257f215bba0182da63dc9b8",
+            "selection": "retained pre-gradation-pass asset"
           }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_top_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_top_2.webp",
-          "sha256": "c184b7884a397109fb1e438a2d1a2523e18119dc81e65e5d94f5a695fa24d461",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
+        ]
       },
       {
-        "key": "center_to_top_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-center-top-3.webp",
-        "releaseFileSha256": "c80ace4c06d3d26a81954dc752f50a1d31ba36dff2707f7fc3c02f12d0c77fc8",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-top-3.png",
-        "sourceGenerationSha256": "2d80b1cadcd351d1c6066e9f4347643cade38612919b9c0650d22a3ea70a9054",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_top_3.txt",
-        "promptSha256": "bc34bb384a08eb961dc3495cab3bf4af2e2ae5142d914aac525bcedf96cc21c0",
-        "subjectReferences": [
+        "edge": "left-top-left",
+        "frames": [
           {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
+            "fraction": 0.25,
+            "releaseFile": "transition-left-top-left-1.webp",
+            "releaseFileSha256": "1a9a85ca9a52d60492c0b78d5d88eedf83741a34d2e86e15ab5b3e6dff801df7",
+            "selection": "retained pre-gradation-pass asset"
           },
           {
-            "pose": "top",
-            "file": "top.webp",
-            "fileSha256": "c4583dbb90e5b0137f04c22eca9f74fa8b57ef223b909c7e59fd255ffaa11a11",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_top_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_top_3.webp",
-          "sha256": "f199ad2b052c2bdad8e08212e6e5d004df0fd85e22b350f6738b5eae9e912148",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_top-right_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-center-top-right-1.webp",
-        "releaseFileSha256": "92b6424c67cd2d08fb1a02f1775c0e634d10a2474787a079cae839272e6c769c",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-top-right-1.png",
-        "sourceGenerationSha256": "4e462d2482ec7f5a1928f3b3481a673706c1006baaf0b9704573e5a5d8199c6a",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_top-right_1.txt",
-        "promptSha256": "ec71e962c65855f43ad5102eec55692326d6b50ec22b434ac8b4b0faf5c56183",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
+            "fraction": 0.5,
+            "releaseFile": "transition-left-top-left-2.webp",
+            "releaseFileSha256": "a19d3c71789d5e0df68bad73521a037916ce170ac29cdb28292cdb2dba17880b",
+            "selection": "retained pre-gradation-pass asset"
           },
           {
-            "pose": "top-right",
-            "file": "top-right.webp",
-            "fileSha256": "05f0a86dd90624aea86214da8b3a2b154067ead194d7b3f2f6bdf05aa9d7ecd9",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
+            "fraction": 0.75,
+            "releaseFile": "transition-left-top-left-3.webp",
+            "releaseFileSha256": "884ca3579c79acdf03b71e619f3e5df6c82e94fdfe43851937c054f3c43ed0a7",
+            "selection": "retained pre-gradation-pass asset"
           }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_topright_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_topright_1.webp",
-          "sha256": "0ebe7bb90f0e4202494ca83bd4d213bf83a3a474d762460f3c53fbc22604e950",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_top-right_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-center-top-right-2.webp",
-        "releaseFileSha256": "df420e2c368c32545cb0f4e42a76b1d342f280cfed28d0870fc2caf57ac68f10",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-top-right-2.png",
-        "sourceGenerationSha256": "10738b1e3718ca2e147700abbc48857fd554b8c9741c0437e6942248d17c94b0",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_top-right_2.txt",
-        "promptSha256": "9b6375f30df7d9d635c4ee555cc5843ec2145a0a35c622dc52381b6c1873c3be",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top-right",
-            "file": "top-right.webp",
-            "fileSha256": "05f0a86dd90624aea86214da8b3a2b154067ead194d7b3f2f6bdf05aa9d7ecd9",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_topright_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_topright_2.webp",
-          "sha256": "6fac672ca6ae3133cff133c9d4c6f5b1050c549304753ef63f397a4436f460a1",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_top-right_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-center-top-right-3.webp",
-        "releaseFileSha256": "5fe8d1529f8efc3d68b7422cf25f7602835ad026dff15416e052b42e86fc9515",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-top-right-3.png",
-        "sourceGenerationSha256": "7c96e37a5116f84463ea07b697385a32bff52fcb8d9df3506cf89ca6db50d5bb",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_top-right_3.txt",
-        "promptSha256": "0ba493ba14acdee04a1c211faba5ff5cb714a5553fdc6c90117d0756248f9dbf",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top-right",
-            "file": "top-right.webp",
-            "fileSha256": "05f0a86dd90624aea86214da8b3a2b154067ead194d7b3f2f6bdf05aa9d7ecd9",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_topright_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_topright_3.webp",
-          "sha256": "1bd27a1b2966fda8b0e71fc03b462539e1c58622b0d4e5d05b4593873a1e07f5",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_right_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-center-right-1.webp",
-        "releaseFileSha256": "9a7204ce48660dd47c4a8bd88c963c14d8aa95f2468834187e7a49f6e305df5e",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-right-1.png",
-        "sourceGenerationSha256": "407b3fe596c2426704b206074db3271c7684cf33f173812bad3fe76c8d706f13",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_right_1.txt",
-        "promptSha256": "61e6293975839df212505b3eceb3f2675df7cff9c8c3c5a80407841ce5c8b585",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "right",
-            "file": "right.webp",
-            "fileSha256": "3c08e8bb182d96e0154a22a7af7929d481837f9d92103123a99b145f0a0fd33e",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_right_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_right_1.webp",
-          "sha256": "a643a93fcb0ba5b3b29a8c0cdaf05d4812a677204f4df1f930f423773e8924e8",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_right_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-center-right-2.webp",
-        "releaseFileSha256": "6355a0225ffb60b4659d7ba8bee257da0e3013cfbc9f4bcdfdd54bf2da84c28d",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-right-2.png",
-        "sourceGenerationSha256": "d4520fa713b073477af0b1c5080a5839955e93d2b6d4f7639f5f1f81085ba9b4",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_right_2.txt",
-        "promptSha256": "15593aeec3586a258157555a488b45a18d0a798871a02925417f94f51bc46761",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "right",
-            "file": "right.webp",
-            "fileSha256": "3c08e8bb182d96e0154a22a7af7929d481837f9d92103123a99b145f0a0fd33e",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_right_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_right_2.webp",
-          "sha256": "fb6089ed544ce8cb5ebd62cbfbd5ee38e49a6e8521cc358e04c4cebde50f3dc3",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_right_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-center-right-3.webp",
-        "releaseFileSha256": "56eb3b03479f71001116756a07b4e8836d3dc17d5db0244f765df0d31bbcf8b4",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-right-3.png",
-        "sourceGenerationSha256": "9ed1925da7f70545a22192ec576cb6538d3583c19458af6a095607aaff891a07",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_right_3.txt",
-        "promptSha256": "1151a47d88a66632aca5fb20055d6deb2ada29e0c70a41d58d37976502c83edc",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "right",
-            "file": "right.webp",
-            "fileSha256": "3c08e8bb182d96e0154a22a7af7929d481837f9d92103123a99b145f0a0fd33e",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_right_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_right_3.webp",
-          "sha256": "b39495f76c9ad35be941b589869674b731008c0f72d87141eb6d0c6f61451039",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_bottom-right_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-center-bottom-right-1.webp",
-        "releaseFileSha256": "dc515254acb024aad5efbff7901199a9ab8913870fcd0111a207de876a602e68",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-bottom-right-1.png",
-        "sourceGenerationSha256": "0750ae833ffff6e73c580c4ef9cb6f75438e7e5e96437f5af24ed88191e79721",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_bottom-right_1.txt",
-        "promptSha256": "d84867edc19b86c3f930b52dfb023c19b7f919e803dc13a2ccc7237c85166135",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom-right",
-            "file": "bottom-right.webp",
-            "fileSha256": "390c7fe733b44feead8c850ac06f0c97ad5906b67999429a5955fb26e59ee24a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_bottomright_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_bottomright_1.webp",
-          "sha256": "f71f65a243ee3a7f3437bf446507ed21474084369b5993f9176a15b9a2a01690",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_bottom-right_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-center-bottom-right-2.webp",
-        "releaseFileSha256": "837141c627dd14a073522a606e49a1bc165fbace89c4bf9a5090804f07c1b207",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-bottom-right-2.png",
-        "sourceGenerationSha256": "0b14822a8d81c3cf78fa9619a1b1279e32ad1092979ce290348aafd4284f69ca",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_bottom-right_2.txt",
-        "promptSha256": "677d4fd519e8267fd7606e335fc88b0e69af00cdce1c3184fbc22c9c3f9e4041",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom-right",
-            "file": "bottom-right.webp",
-            "fileSha256": "390c7fe733b44feead8c850ac06f0c97ad5906b67999429a5955fb26e59ee24a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_bottomright_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_bottomright_2.webp",
-          "sha256": "94444aff3160a79ab60a0ddfeee3b89df630cccdd9e1c86c771a120ccc66e9f9",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_bottom-right_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-center-bottom-right-3.webp",
-        "releaseFileSha256": "f5e608d6335e4a23b9dd94a3944df2ff83ff1f9a0d6281a90ef94052512a299c",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-bottom-right-3.png",
-        "sourceGenerationSha256": "109f5597473ee9c65095abfda68e0edaf5f6b934d8154e25f09319b8241ce9d9",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_bottom-right_3.txt",
-        "promptSha256": "7112b828520d062bdf166a37bbf575679b76353839a007d46da8fa08640501e9",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom-right",
-            "file": "bottom-right.webp",
-            "fileSha256": "390c7fe733b44feead8c850ac06f0c97ad5906b67999429a5955fb26e59ee24a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_bottomright_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_bottomright_3.webp",
-          "sha256": "c2934d619d5a18d0af89b75ed23e080fe3a86a0aed970217eb41d85f69c3e72e",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_bottom_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-center-bottom-1.webp",
-        "releaseFileSha256": "f2788f3bcb858d6157bc7a3b93338332cb5b6681c22e54b8c36db41bd52f25b8",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-bottom-1.png",
-        "sourceGenerationSha256": "b2c17530a5045efc2626676ff410128a8cdc7b3a9b4e8e17f9732997217c0a27",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_bottom_1.txt",
-        "promptSha256": "991cc39d55e59e14141eec2906a8c7d35af3edaad2ed58a6cee305dd2d87ff44",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom",
-            "file": "bottom.webp",
-            "fileSha256": "83e7159b290e15355598bace707c4a6ed7c1a266b9d5edee48856ea2d895e16f",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_bottom_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_bottom_1.webp",
-          "sha256": "5f9a61413746452c35103880430808dd4ff1e25cee9032604fe3c0bb0bd2be2b",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_bottom_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-center-bottom-2.webp",
-        "releaseFileSha256": "e5a9d55095ea93929c02ffc1cf1e5df2116eb3a81624ecb50fc26ff0ab4d7b73",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-bottom-2.png",
-        "sourceGenerationSha256": "76246a4e05a44b9da91c08b813987dd76fbc2f0ade440ba848fe4f61d520d0bf",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_bottom_2.txt",
-        "promptSha256": "9957cd4999315f29f0e7522e37704b01ca88331e44e8cf916658277cb4289347",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom",
-            "file": "bottom.webp",
-            "fileSha256": "83e7159b290e15355598bace707c4a6ed7c1a266b9d5edee48856ea2d895e16f",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_bottom_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_bottom_2.webp",
-          "sha256": "d1574cb561477eb9762466789c3d3b7e624637f60bb073284d4de02ac3b0e8da",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_bottom_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-center-bottom-3.webp",
-        "releaseFileSha256": "a50080c8380511f36ce415e2c450260338a556d985888d25640732f11e6ad7fb",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-bottom-3.png",
-        "sourceGenerationSha256": "968b829335b669474bc40db0d2383fa6c9637f8bcf0d5a91c4359c4a6e6a3e24",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_bottom_3.txt",
-        "promptSha256": "e7a9499d5260d613f8f6ba84760a2a119503556dc4568de354a1800da0989007",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom",
-            "file": "bottom.webp",
-            "fileSha256": "83e7159b290e15355598bace707c4a6ed7c1a266b9d5edee48856ea2d895e16f",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_bottom_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_bottom_3.webp",
-          "sha256": "5542fc400f301856894448692993a0657cf2cacac441ce9e586cb43853263a88",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_bottom-left_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-center-bottom-left-1.webp",
-        "releaseFileSha256": "65cec28a77bcb5a3e97c402a415c4c1ce9f5b14fd11fe1329515d7cee9dcf278",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-bottom-left-1.png",
-        "sourceGenerationSha256": "17c790628ab234a360791824d407035e1a63275bda0602eb56fd56440632222e",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_bottom-left_1.txt",
-        "promptSha256": "b4df46d5ec4625c4ce60e71c5460451f34c5d83d6f18f9b288721fc60a1e5a51",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom-left",
-            "file": "bottom-left.webp",
-            "fileSha256": "ce59d7da8f145a90ea7193b54304e60e35a7a7d85c4ca938332172377335e505",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_bottomleft_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_bottomleft_1.webp",
-          "sha256": "1e0e8efc94b7ff552a699cf83bb0d0c66e6e135ae29e12805e08b2c40125e185",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_bottom-left_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-center-bottom-left-2.webp",
-        "releaseFileSha256": "e9140c2b44783dc48199fa40a52f12f97c92d07128c5b6b083a7d1b47ee88714",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-bottom-left-2.png",
-        "sourceGenerationSha256": "3dea662141685ef6c88e96a8f86790567bd13d523146f7cdb009dfeb7586a514",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_bottom-left_2.txt",
-        "promptSha256": "042094fdcb44c442f9dae9fa29e0fafbeb20edb8482c43d4b20b51b13a16ff9c",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom-left",
-            "file": "bottom-left.webp",
-            "fileSha256": "ce59d7da8f145a90ea7193b54304e60e35a7a7d85c4ca938332172377335e505",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_bottomleft_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_bottomleft_2.webp",
-          "sha256": "3ff792d3f860017ec05acce86260036f479ffbe0cd3e6337e1e16e7dd5a6b738",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_bottom-left_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-center-bottom-left-3.webp",
-        "releaseFileSha256": "26db1b02ce5f71a05685f10a468b8c14cc551a50ae74c0532ef2d682672187e3",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-bottom-left-3.png",
-        "sourceGenerationSha256": "e72193aa30f43689fa48c129dd587a85abcdddac5c726283b4adcd8cb115a534",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_bottom-left_3.txt",
-        "promptSha256": "f0224f855b3aacf23a9a2b82b309f3299c30b6fc68c1dd71805563492769cfdf",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom-left",
-            "file": "bottom-left.webp",
-            "fileSha256": "ce59d7da8f145a90ea7193b54304e60e35a7a7d85c4ca938332172377335e505",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_bottomleft_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_bottomleft_3.webp",
-          "sha256": "5a5315676c6c0c5d2b1bb15c649dc4f27fe76b044dc762d9a4c84eb6cff2af09",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_left_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-center-left-1.webp",
-        "releaseFileSha256": "4fbf5434f6e2fe558670a4b9c664f3d4467a96c7a1cc81234980c6634b16c1cd",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-left-1.png",
-        "sourceGenerationSha256": "ed800152d768113afc8ecc4cc4fbbd60b4d3358b60bb7b99cd29b05bdb8c1f08",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_left_1.txt",
-        "promptSha256": "a3b64af09acadd71767296701c59046a2fad288f4539549694a7f2ca2c41faa0",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "left",
-            "file": "left.webp",
-            "fileSha256": "da9a3c1c3cb66a5277df118e1e50093b348cab1a6dd8eb7f7f828c15a4fa5e9a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_left_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_left_1.webp",
-          "sha256": "e2ef715008aa53060ba3948b14acdbec2dd44c5a5f2a3feaf6d3f21e77827b44",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_left_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-center-left-2.webp",
-        "releaseFileSha256": "25360b2c7f48c2aa6f70f5aae64565a240e52a819daff1665d966d264ec134ba",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-left-2.png",
-        "sourceGenerationSha256": "694f73842681307530030eb4bc25f79b2f35eda602fa0b387ce05b9345b03c29",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_left_2.txt",
-        "promptSha256": "d9490faaf91b6454b5cb98ed38418d822a20233b13a5ace9164170aab831152b",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "left",
-            "file": "left.webp",
-            "fileSha256": "da9a3c1c3cb66a5277df118e1e50093b348cab1a6dd8eb7f7f828c15a4fa5e9a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_left_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_left_2.webp",
-          "sha256": "d97f3324b38fc8f41a4bdb3928d744536fb36cf1ab8680355d051a131ef2a66a",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_left_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-center-left-3.webp",
-        "releaseFileSha256": "ce0ca25f0f188e188c34b183319b39b27e71c1ee7257f215bba0182da63dc9b8",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-left-3.png",
-        "sourceGenerationSha256": "a8bbf15b575186ed852110dceb81d85133ae931a947c6921fb95bdd51cc0807a",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_left_3.txt",
-        "promptSha256": "93270d07c6bbe34e945713ea6bfc9a05198df82464ed18a938b5e7ce44452a01",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "left",
-            "file": "left.webp",
-            "fileSha256": "da9a3c1c3cb66a5277df118e1e50093b348cab1a6dd8eb7f7f828c15a4fa5e9a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_left_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_left_3.webp",
-          "sha256": "a54e2aec2592657e255df7a6f3a7933c4b8eb7a35156777dbe02ee7a5cde1eeb",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_top-left_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-center-top-left-1.webp",
-        "releaseFileSha256": "b641e1b39cc5471ff6f4c4269ee507d3486ebcb49a12d3e26f078463fbf074bb",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-top-left-1.png",
-        "sourceGenerationSha256": "32bdb6cbeabbe82f7930d97c8eaedc957dd2f6fd7b6dd638208b7009e9657389",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_top-left_1.txt",
-        "promptSha256": "42d942e41730185274ab476835e8ce58670705f896e95246d48a79bed360946c",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top-left",
-            "file": "top-left.webp",
-            "fileSha256": "c1b4e8f6d813e1a7b864d6cfdfe6fc9cca7ad87738f0e4fb63f20f805d23ccf3",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_topleft_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_topleft_1.webp",
-          "sha256": "87a1d6034ae16b43ca58e262fc5cc04478a6d9f44838ef5aefd42191bc905652",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_top-left_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-center-top-left-2.webp",
-        "releaseFileSha256": "27fcd872a79fb38baa20e3090298240afb07adbf9dc2acdd8b1f52403cf6eea2",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-top-left-2.png",
-        "sourceGenerationSha256": "50c578e699783eda9b054fc907acbba88214172a8bb0e55fa608bdfd1fe96c50",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_top-left_2.txt",
-        "promptSha256": "ea365fd077c3c5cbbfc24a5e771955ea7dd29edcc3279e0ab21a2c21950bfba6",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top-left",
-            "file": "top-left.webp",
-            "fileSha256": "c1b4e8f6d813e1a7b864d6cfdfe6fc9cca7ad87738f0e4fb63f20f805d23ccf3",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_topleft_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_topleft_2.webp",
-          "sha256": "e8f986107e55c153fd6e0709e70aa01b24a66ae4200836f409457a024ee58c64",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "center_to_top-left_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-center-top-left-3.webp",
-        "releaseFileSha256": "427d23405fda044d06030055b251e74a7de6fcb58059cb13308b13842015509f",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-center-top-left-3.png",
-        "sourceGenerationSha256": "c72efb6cc3804cc0dc1be8e1c6b073eac6f2816825e3a493bd9c1af15d7c7c04",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/center_to_top-left_3.txt",
-        "promptSha256": "d1a679a0b9a40e68ee8619c347b236316a7aa6f5233ff968fad649f1602b820b",
-        "subjectReferences": [
-          {
-            "pose": "center",
-            "file": "center.webp",
-            "fileSha256": "5ad8419e7c03e9ff679977bf903f78fe9fd7fb10f6f66d87843bdf1fa28e86e4",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top-left",
-            "file": "top-left.webp",
-            "fileSha256": "c1b4e8f6d813e1a7b864d6cfdfe6fc9cca7ad87738f0e4fb63f20f805d23ccf3",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/center_to_topleft_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/center_to_topleft_3.webp",
-          "sha256": "6b50608c8448e9fad40f401ff3d47abb8d11c668ca9f1e15cb3347e52516c80e",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "top_to_top-right_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-top-top-right-1.webp",
-        "releaseFileSha256": "5da0394c5c24af42c14763a8f9190638778bf804f48d72829e91f6179320717b",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-top-top-right-1.png",
-        "sourceGenerationSha256": "4d17bf9aadd3822ebb525bf8930a6ddf06fdbb443669840adaab5e4e1926a0dc",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/top_to_top-right_1.txt",
-        "promptSha256": "45e2939652c492c71888417b9fb136161b3ba554f8162605e21df31da591318e",
-        "subjectReferences": [
-          {
-            "pose": "top",
-            "file": "top.webp",
-            "fileSha256": "c4583dbb90e5b0137f04c22eca9f74fa8b57ef223b909c7e59fd255ffaa11a11",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top-right",
-            "file": "top-right.webp",
-            "fileSha256": "05f0a86dd90624aea86214da8b3a2b154067ead194d7b3f2f6bdf05aa9d7ecd9",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/top_to_topright_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/top_to_topright_1.webp",
-          "sha256": "21505c60bfbe8de628c06d634316610dfc1c639663a169340c811c2c4c85eee8",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "top_to_top-right_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-top-top-right-2.webp",
-        "releaseFileSha256": "089c6440d0f4d3d55a56c2f92c676d73b67cef0b3b8df653dcbb178ea29e7ea9",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-top-top-right-2.png",
-        "sourceGenerationSha256": "87e1f7b7a72063ee48b52b2ae6058e10fdd84934057d15ba8457db8815123316",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/top_to_top-right_2.txt",
-        "promptSha256": "1d55ef484c3abc080f83ebf07e856717d05065cb6df80b6ff22cbb1ec0ad12a2",
-        "subjectReferences": [
-          {
-            "pose": "top",
-            "file": "top.webp",
-            "fileSha256": "c4583dbb90e5b0137f04c22eca9f74fa8b57ef223b909c7e59fd255ffaa11a11",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top-right",
-            "file": "top-right.webp",
-            "fileSha256": "05f0a86dd90624aea86214da8b3a2b154067ead194d7b3f2f6bdf05aa9d7ecd9",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/top_to_topright_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/top_to_topright_2.webp",
-          "sha256": "f24dbeb6e9da66b53f13b258004cc708fb04106846fdefae64d66b72b7f09a14",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "top_to_top-right_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-top-top-right-3.webp",
-        "releaseFileSha256": "348b9d2764a4ab1583d4a84c60ce8b287aa89b63a81569e01438f7463b7911bf",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-top-top-right-3.png",
-        "sourceGenerationSha256": "0fbea54e320d5a33af7f5724dbcc07fd1883ac608c2441b9441ad39e7e9457c9",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/top_to_top-right_3.txt",
-        "promptSha256": "775a0c0759f0789e5d6308b54507282ca3f3f75aac9336ff3f61a0c8725b11f2",
-        "subjectReferences": [
-          {
-            "pose": "top",
-            "file": "top.webp",
-            "fileSha256": "c4583dbb90e5b0137f04c22eca9f74fa8b57ef223b909c7e59fd255ffaa11a11",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top-right",
-            "file": "top-right.webp",
-            "fileSha256": "05f0a86dd90624aea86214da8b3a2b154067ead194d7b3f2f6bdf05aa9d7ecd9",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/top_to_topright_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/top_to_topright_3.webp",
-          "sha256": "95d3a78099d00a487ee97396dd5284844ae008d3a8a76ea263e2b6f5a5996d3c",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "top-right_to_right_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-top-right-right-1.webp",
-        "releaseFileSha256": "e65dc3435b754f2967cf9f2bf0c639a36bd2853b5d408fd3be9b2d68f3cfc99b",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-top-right-right-1.png",
-        "sourceGenerationSha256": "a20d9453353b6c0dfc9bca8eaf25b7eeb244698a6ff644ca1cd866a89637d961",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/top-right_to_right_1.txt",
-        "promptSha256": "4f723f8827bc21547ab391af72795bae6acd8d6607f85c4eab42d68d301c66d2",
-        "subjectReferences": [
-          {
-            "pose": "top-right",
-            "file": "top-right.webp",
-            "fileSha256": "05f0a86dd90624aea86214da8b3a2b154067ead194d7b3f2f6bdf05aa9d7ecd9",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "right",
-            "file": "right.webp",
-            "fileSha256": "3c08e8bb182d96e0154a22a7af7929d481837f9d92103123a99b145f0a0fd33e",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/topright_to_right_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/topright_to_right_1.webp",
-          "sha256": "bd8c86e8325031cfdfdc9db1378779e1f7a420f0cf3cea64c1208e3539db7943",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "top-right_to_right_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-top-right-right-2.webp",
-        "releaseFileSha256": "073c0e775472cbaeb3a916fc80dbecc0abcb33d8577a7b69901ad5270029de7e",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-top-right-right-2.png",
-        "sourceGenerationSha256": "63fce92ae76018a48359d16c7a9bad85ce41ce944a15a45a0bcd4f5d09c8b5d3",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/top-right_to_right_2.txt",
-        "promptSha256": "d238966c4b504ad0efe6869e74f3a4757e292b9a736ffb83bc428b6b4cf10575",
-        "subjectReferences": [
-          {
-            "pose": "top-right",
-            "file": "top-right.webp",
-            "fileSha256": "05f0a86dd90624aea86214da8b3a2b154067ead194d7b3f2f6bdf05aa9d7ecd9",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "right",
-            "file": "right.webp",
-            "fileSha256": "3c08e8bb182d96e0154a22a7af7929d481837f9d92103123a99b145f0a0fd33e",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/topright_to_right_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/topright_to_right_2.webp",
-          "sha256": "919d80eea2fb8c8e7deb5d0efd1558d31986ac59eceb138e0457ce513a0c2232",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "top-right_to_right_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-top-right-right-3.webp",
-        "releaseFileSha256": "e08c9e76f6939e655179102d8e66ea7639022dd2ddabf242326ca8be61a16a7c",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-top-right-right-3.png",
-        "sourceGenerationSha256": "79effab94851fb1d4911cbda979cf4d4c87feaf1590c70e1227e2a57414b2feb",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/top-right_to_right_3.txt",
-        "promptSha256": "0e02ee68673744df77f55f1eac699d1854926aa16afd3e49a25fd56b33306be4",
-        "subjectReferences": [
-          {
-            "pose": "top-right",
-            "file": "top-right.webp",
-            "fileSha256": "05f0a86dd90624aea86214da8b3a2b154067ead194d7b3f2f6bdf05aa9d7ecd9",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "right",
-            "file": "right.webp",
-            "fileSha256": "3c08e8bb182d96e0154a22a7af7929d481837f9d92103123a99b145f0a0fd33e",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/topright_to_right_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/topright_to_right_3.webp",
-          "sha256": "0793497c5e8dde2a6266963292caea9910f4969796e2ac18ddafd3d12b116feb",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "right_to_bottom-right_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-right-bottom-right-1.webp",
-        "releaseFileSha256": "2264cc2ba734f12a332bb627017ad114302e9bf19021953903809f6b14ab284f",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/redo-transition-right-bottom-right-1.png",
-        "sourceGenerationSha256": "509955fec027a8227835b4e6707b4a63d7c1942467f84d3f5944ebdfc2717db8",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/right_to_bottom-right_1_exact-pose.txt",
-        "promptSha256": "a1eb55f72e768ebf9a2e187b6c535a8c3e67b707eea9db1b4b3972f9d293f8ff",
-        "subjectReferences": [
-          {
-            "pose": "right",
-            "file": "right.webp",
-            "fileSha256": "3c08e8bb182d96e0154a22a7af7929d481837f9d92103123a99b145f0a0fd33e",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom-right",
-            "file": "bottom-right.webp",
-            "fileSha256": "390c7fe733b44feead8c850ac06f0c97ad5906b67999429a5955fb26e59ee24a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/right_to_bottomright_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/right_to_bottomright_1.webp",
-          "sha256": "7aafb700523bd3fe71e450c4c5d11c619ab5d7bdad7f67ba8d1ce35257ea36b4",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Exact-pose redo accepted: reference-site frame is authoritative for pose; V13 endpoints remain authoritative for subject, hair, wardrobe, framing, and scale."
-      },
-      {
-        "key": "right_to_bottom-right_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-right-bottom-right-2.webp",
-        "releaseFileSha256": "45d33b5b556fffc228b3a1bd1c83c9457c4c898445692003b1c560b0681dbff4",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/redo-transition-right-bottom-right-2.png",
-        "sourceGenerationSha256": "016ce3fa68186b1b518d54a17e11984e1f3c5724194043494c53b82e4ee7e7d4",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/right_to_bottom-right_2_exact-pose.txt",
-        "promptSha256": "04cb8b26d04d1732c884d379da3b8c25791301d1a987d9873b1fba4d99b52fe1",
-        "subjectReferences": [
-          {
-            "pose": "right",
-            "file": "right.webp",
-            "fileSha256": "3c08e8bb182d96e0154a22a7af7929d481837f9d92103123a99b145f0a0fd33e",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom-right",
-            "file": "bottom-right.webp",
-            "fileSha256": "390c7fe733b44feead8c850ac06f0c97ad5906b67999429a5955fb26e59ee24a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/right_to_bottomright_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/right_to_bottomright_2.webp",
-          "sha256": "27c6e45c8d8d0034a6df352af953cbd58ed5aa05d392c9a81a0dcad90cf44de9",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Exact-pose redo accepted: reference-site frame is authoritative for pose; V13 endpoints remain authoritative for subject, hair, wardrobe, framing, and scale."
-      },
-      {
-        "key": "right_to_bottom-right_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-right-bottom-right-3.webp",
-        "releaseFileSha256": "fe39f02a5cd83762b38176467d9574f9d267e9afa338440caa2055c3d318d272",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/redo-transition-right-bottom-right-3.png",
-        "sourceGenerationSha256": "815e65c5640a00ab54bb4f3bd8473102ea2ef6af8946eb60e8a4ca256a5abc9b",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/right_to_bottom-right_3_exact-pose.txt",
-        "promptSha256": "2a87f3f5028635d4c26098bd058046185e783b2e20e3ef737c5cbd8ac5109488",
-        "subjectReferences": [
-          {
-            "pose": "right",
-            "file": "right.webp",
-            "fileSha256": "3c08e8bb182d96e0154a22a7af7929d481837f9d92103123a99b145f0a0fd33e",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom-right",
-            "file": "bottom-right.webp",
-            "fileSha256": "390c7fe733b44feead8c850ac06f0c97ad5906b67999429a5955fb26e59ee24a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/right_to_bottomright_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/right_to_bottomright_3.webp",
-          "sha256": "6db4adfcc1ddd03b2f72a895fbd5b24442fa73bdd5bba561f497de0dbacaca10",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Exact-pose redo accepted: reference-site frame is authoritative for pose; V13 endpoints remain authoritative for subject, hair, wardrobe, framing, and scale."
-      },
-      {
-        "key": "bottom-right_to_bottom_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-bottom-right-bottom-1.webp",
-        "releaseFileSha256": "ac7349491766b722c2ce2fe2143fac7879f731a71cd55aeed5ace5f8116a1836",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-bottom-right-bottom-1.png",
-        "sourceGenerationSha256": "a28b5cd9904acf765c6c26a07b0aef2bff206f8e27eddab6a23bdd22f222b89a",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/bottom-right_to_bottom_1.txt",
-        "promptSha256": "5e79d6d1c0968a4b4aba1515122fd08acb4336dbe0f5d8d139b8a51de399baa2",
-        "subjectReferences": [
-          {
-            "pose": "bottom-right",
-            "file": "bottom-right.webp",
-            "fileSha256": "390c7fe733b44feead8c850ac06f0c97ad5906b67999429a5955fb26e59ee24a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom",
-            "file": "bottom.webp",
-            "fileSha256": "83e7159b290e15355598bace707c4a6ed7c1a266b9d5edee48856ea2d895e16f",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/bottomright_to_bottom_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/bottomright_to_bottom_1.webp",
-          "sha256": "44c0c6182f6f36b937b874666513a019647b1d30e2b8821a6f345ef3ad85f4c0",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "bottom-right_to_bottom_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-bottom-right-bottom-2.webp",
-        "releaseFileSha256": "c51752020999106f00972579b152f62399465a20b70c7dcb968f6098f8587ab1",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-bottom-right-bottom-2.png",
-        "sourceGenerationSha256": "09c98c2953ff09924519d4567c5733da69416087f293825bf315678bae5107c9",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/bottom-right_to_bottom_2.txt",
-        "promptSha256": "8e7ed689b6afe8c4b7ea81bad9aa8bcdf73f9839c85aabafbc05a82f9493433c",
-        "subjectReferences": [
-          {
-            "pose": "bottom-right",
-            "file": "bottom-right.webp",
-            "fileSha256": "390c7fe733b44feead8c850ac06f0c97ad5906b67999429a5955fb26e59ee24a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom",
-            "file": "bottom.webp",
-            "fileSha256": "83e7159b290e15355598bace707c4a6ed7c1a266b9d5edee48856ea2d895e16f",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/bottomright_to_bottom_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/bottomright_to_bottom_2.webp",
-          "sha256": "361668be475bd301c3dc2d0191729e7d2679e73580c02d90f2e10d04dfc46b3c",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "bottom-right_to_bottom_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-bottom-right-bottom-3.webp",
-        "releaseFileSha256": "aa1bf34cdbb1cb565c46605031307c2b6cc7768e3305279818e4bbbd1700bc49",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-bottom-right-bottom-3.png",
-        "sourceGenerationSha256": "65241836407425a7b8d1d37c5c77a6eb12e0e6bc82fcff4b042b761ec96170af",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/bottom-right_to_bottom_3.txt",
-        "promptSha256": "bd957c8b650fad58f6989e3526e500ebb562982b2cb49eef9ce045d292cdfa4e",
-        "subjectReferences": [
-          {
-            "pose": "bottom-right",
-            "file": "bottom-right.webp",
-            "fileSha256": "390c7fe733b44feead8c850ac06f0c97ad5906b67999429a5955fb26e59ee24a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom",
-            "file": "bottom.webp",
-            "fileSha256": "83e7159b290e15355598bace707c4a6ed7c1a266b9d5edee48856ea2d895e16f",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/bottomright_to_bottom_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/bottomright_to_bottom_3.webp",
-          "sha256": "ca413b88f8fe43f2019f37760aefcf80c0db468a21bf5e8ee8999c390e43cdd2",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "bottom_to_bottom-left_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-bottom-bottom-left-1.webp",
-        "releaseFileSha256": "03be1aa59ccbd43ea5623860f8794f24cd397a9ead7df10e1f54f614d5bb64e6",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-bottom-bottom-left-1.png",
-        "sourceGenerationSha256": "2086406cf7a8dde6e3659b51cd67c1e372a27b0d5cb530c2ff5845a341f9eeb4",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/bottom_to_bottom-left_1.txt",
-        "promptSha256": "5e9bcb0b8b8cd87b8cd12532147b7f13a625dfd8acdb49f0339c30271cf8d23f",
-        "subjectReferences": [
-          {
-            "pose": "bottom",
-            "file": "bottom.webp",
-            "fileSha256": "83e7159b290e15355598bace707c4a6ed7c1a266b9d5edee48856ea2d895e16f",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom-left",
-            "file": "bottom-left.webp",
-            "fileSha256": "ce59d7da8f145a90ea7193b54304e60e35a7a7d85c4ca938332172377335e505",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/bottom_to_bottomleft_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/bottom_to_bottomleft_1.webp",
-          "sha256": "4154585e5103066ab6226cf0a3f9a2db0a04a7e9a9e4c7090dfa67bc3d19cd2c",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "bottom_to_bottom-left_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-bottom-bottom-left-2.webp",
-        "releaseFileSha256": "e48f4122fa7d56e994b705ab848c4f576a8d2606d8accaebacd27295dde580cc",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-bottom-bottom-left-2.png",
-        "sourceGenerationSha256": "3b8b467327064a6bb6dfff51a50153c4721d7f763ff36fd293d59f83bc0683e3",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/bottom_to_bottom-left_2.txt",
-        "promptSha256": "0bc8a5d50e0830f5674c7061f21fe5df4e04f4144fc9bf465d2fc306524fb123",
-        "subjectReferences": [
-          {
-            "pose": "bottom",
-            "file": "bottom.webp",
-            "fileSha256": "83e7159b290e15355598bace707c4a6ed7c1a266b9d5edee48856ea2d895e16f",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom-left",
-            "file": "bottom-left.webp",
-            "fileSha256": "ce59d7da8f145a90ea7193b54304e60e35a7a7d85c4ca938332172377335e505",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/bottom_to_bottomleft_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/bottom_to_bottomleft_2.webp",
-          "sha256": "084231ead2c5b27806e4e10eacc4e5ab78bdc2bac99a7a890d45125a0ade85f3",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "bottom_to_bottom-left_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-bottom-bottom-left-3.webp",
-        "releaseFileSha256": "fa70028c2537e44a4d5bdce4f3d9d91877915eaba3dbe242f8f9ae6c51883d56",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-bottom-bottom-left-3.png",
-        "sourceGenerationSha256": "877b058602323791c3f551fdb25fb1fa2cfe4372c0998200838ec402c519dab7",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/bottom_to_bottom-left_3.txt",
-        "promptSha256": "4599dde2e08574cba4d3b3066f4c6bc621fc59c99b259c56f5b17f75fb73cfb0",
-        "subjectReferences": [
-          {
-            "pose": "bottom",
-            "file": "bottom.webp",
-            "fileSha256": "83e7159b290e15355598bace707c4a6ed7c1a266b9d5edee48856ea2d895e16f",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "bottom-left",
-            "file": "bottom-left.webp",
-            "fileSha256": "ce59d7da8f145a90ea7193b54304e60e35a7a7d85c4ca938332172377335e505",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/bottom_to_bottomleft_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/bottom_to_bottomleft_3.webp",
-          "sha256": "4a3986a76363dc0d1863fe284294414cb04cd2a0b29672cf7aafe177fa9e3180",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "bottom-left_to_left_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-bottom-left-left-1.webp",
-        "releaseFileSha256": "219b304fa9ae4265da5e8bdd1ce9e857688d276949f7291a717bad3986acb9fb",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-bottom-left-left-1.png",
-        "sourceGenerationSha256": "0d755222da47527d5afdae53154e3956b28105532a75c8f078fd74fef03e467a",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/bottom-left_to_left_1.txt",
-        "promptSha256": "99a7ba1e0e47212ef805e10e6a362bb33bb9c9f121c539cc72861485c2ce1ada",
-        "subjectReferences": [
-          {
-            "pose": "bottom-left",
-            "file": "bottom-left.webp",
-            "fileSha256": "ce59d7da8f145a90ea7193b54304e60e35a7a7d85c4ca938332172377335e505",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "left",
-            "file": "left.webp",
-            "fileSha256": "da9a3c1c3cb66a5277df118e1e50093b348cab1a6dd8eb7f7f828c15a4fa5e9a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/bottomleft_to_left_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/bottomleft_to_left_1.webp",
-          "sha256": "c1632a67798d024b2e69afc9bd45d22af2a7f190571e9b02be8e084b1f5f49de",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "bottom-left_to_left_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-bottom-left-left-2.webp",
-        "releaseFileSha256": "0fc05c217c23dbd9bd5ebcf43ee5dba7ad8b0bc88fb93c039bcced41cf172001",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-bottom-left-left-2.png",
-        "sourceGenerationSha256": "1a1eab7866cef39d5f38ab230b57958a4fc03639b99822c1f9a722f6f688db41",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/bottom-left_to_left_2.txt",
-        "promptSha256": "343eba740b12f00a67c8bb88cdaf3da7153db98ceb54e9124c207c109560bf6d",
-        "subjectReferences": [
-          {
-            "pose": "bottom-left",
-            "file": "bottom-left.webp",
-            "fileSha256": "ce59d7da8f145a90ea7193b54304e60e35a7a7d85c4ca938332172377335e505",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "left",
-            "file": "left.webp",
-            "fileSha256": "da9a3c1c3cb66a5277df118e1e50093b348cab1a6dd8eb7f7f828c15a4fa5e9a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/bottomleft_to_left_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/bottomleft_to_left_2.webp",
-          "sha256": "11e416045f34afa77d8b717e02af9277e78619b3338b7bbd247bb1ba01472fc5",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "bottom-left_to_left_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-bottom-left-left-3.webp",
-        "releaseFileSha256": "35407371c81bfe28c1aa24a5b33b22fc8d6e65e8eda7a09d131a79b706811837",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-bottom-left-left-3.png",
-        "sourceGenerationSha256": "b79a003817d1b7a4c25bf77de27d0702e1dd1ef5051fde5056b2975301cedd35",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/bottom-left_to_left_3.txt",
-        "promptSha256": "194fda5089e53d99614d29884f45a15949e9fc73012eae54f1540907f90dd93e",
-        "subjectReferences": [
-          {
-            "pose": "bottom-left",
-            "file": "bottom-left.webp",
-            "fileSha256": "ce59d7da8f145a90ea7193b54304e60e35a7a7d85c4ca938332172377335e505",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "left",
-            "file": "left.webp",
-            "fileSha256": "da9a3c1c3cb66a5277df118e1e50093b348cab1a6dd8eb7f7f828c15a4fa5e9a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/bottomleft_to_left_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/bottomleft_to_left_3.webp",
-          "sha256": "9acd53b7e839a1ab23c567188f621397f648b9bdb09b2875a9c2b5a852e55ba8",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "left_to_top-left_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-left-top-left-1.webp",
-        "releaseFileSha256": "1a9a85ca9a52d60492c0b78d5d88eedf83741a34d2e86e15ab5b3e6dff801df7",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-left-top-left-1.png",
-        "sourceGenerationSha256": "3b26ff41b04a74519f19b0451304061d31c1e72932b80ca1d3623d5fcd9e6512",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/left_to_top-left_1.txt",
-        "promptSha256": "5447ce00095c7b50947655352579a5f250c67b81fa57cb0ce32653ad2d33a8ba",
-        "subjectReferences": [
-          {
-            "pose": "left",
-            "file": "left.webp",
-            "fileSha256": "da9a3c1c3cb66a5277df118e1e50093b348cab1a6dd8eb7f7f828c15a4fa5e9a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top-left",
-            "file": "top-left.webp",
-            "fileSha256": "c1b4e8f6d813e1a7b864d6cfdfe6fc9cca7ad87738f0e4fb63f20f805d23ccf3",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/left_to_topleft_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/left_to_topleft_1.webp",
-          "sha256": "58a2177f4821b50c8bde84e68b7c9ba41bb8d3bbb3196f59f2cb2db680ea9eff",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "left_to_top-left_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-left-top-left-2.webp",
-        "releaseFileSha256": "a19d3c71789d5e0df68bad73521a037916ce170ac29cdb28292cdb2dba17880b",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-left-top-left-2.png",
-        "sourceGenerationSha256": "8dfeb74082fc8a83cc266ac8e9b53110b0033b3109152f6ffa8f48c94c98d067",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/left_to_top-left_2.txt",
-        "promptSha256": "1d5656074a43fe2f0758e4a79c9608cc8baa877ccad005182ee2b2156082939f",
-        "subjectReferences": [
-          {
-            "pose": "left",
-            "file": "left.webp",
-            "fileSha256": "da9a3c1c3cb66a5277df118e1e50093b348cab1a6dd8eb7f7f828c15a4fa5e9a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top-left",
-            "file": "top-left.webp",
-            "fileSha256": "c1b4e8f6d813e1a7b864d6cfdfe6fc9cca7ad87738f0e4fb63f20f805d23ccf3",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/left_to_topleft_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/left_to_topleft_2.webp",
-          "sha256": "eafbbe8f5bb900aea5085acf81a14c3581b145a21bab0143daa1037d87a133d8",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "left_to_top-left_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-left-top-left-3.webp",
-        "releaseFileSha256": "884ca3579c79acdf03b71e619f3e5df6c82e94fdfe43851937c054f3c43ed0a7",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-left-top-left-3.png",
-        "sourceGenerationSha256": "4281d275919ee75cdce15c57229805880295ef610db6c701f68175a1c224f314",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/left_to_top-left_3.txt",
-        "promptSha256": "fbbb9893395222b69c98b6e13e1f727c90fa253cf0a0acec3d7dcf7c476d6ded",
-        "subjectReferences": [
-          {
-            "pose": "left",
-            "file": "left.webp",
-            "fileSha256": "da9a3c1c3cb66a5277df118e1e50093b348cab1a6dd8eb7f7f828c15a4fa5e9a",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top-left",
-            "file": "top-left.webp",
-            "fileSha256": "c1b4e8f6d813e1a7b864d6cfdfe6fc9cca7ad87738f0e4fb63f20f805d23ccf3",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/left_to_topleft_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/left_to_topleft_3.webp",
-          "sha256": "3d49c4b67f60ee17077de934c080eccbdb70efb1391d18f1d1efa915d2399668",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "top-left_to_top_1",
-        "fraction": 0.25,
-        "releaseFile": "transition-top-left-top-1.webp",
-        "releaseFileSha256": "9b7fa6409efed75895cf9e7da9b51e213aa4cf9b93acfcd8d8203efe1374ac7f",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-top-left-top-1.png",
-        "sourceGenerationSha256": "99de3b967a71968cf7492e65c5f33d416275476b8acd18dc42b01344ef334880",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/top-left_to_top_1.txt",
-        "promptSha256": "e53b55d4564556815bea1f0fcf0064b6d0bd18ba92c2c1da56d12a5cddd5e7f2",
-        "subjectReferences": [
-          {
-            "pose": "top-left",
-            "file": "top-left.webp",
-            "fileSha256": "c1b4e8f6d813e1a7b864d6cfdfe6fc9cca7ad87738f0e4fb63f20f805d23ccf3",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top",
-            "file": "top.webp",
-            "fileSha256": "c4583dbb90e5b0137f04c22eca9f74fa8b57ef223b909c7e59fd255ffaa11a11",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/topleft_to_top_1.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/topleft_to_top_1.webp",
-          "sha256": "c3664758ac1b0e5262c4cd478f4334f2718e27e5fd3e193e7b0379bf15e978ab",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "top-left_to_top_2",
-        "fraction": 0.5,
-        "releaseFile": "transition-top-left-top-2.webp",
-        "releaseFileSha256": "4b10b4496f6a799dd52057016116b4c23149482c90275e36268f09478a353a3a",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-top-left-top-2.png",
-        "sourceGenerationSha256": "cde63dd0e326530e0a2c6be9f5c0478bb14bf7ed618a6f9d50f2d52a94e48f0b",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/top-left_to_top_2.txt",
-        "promptSha256": "75d8b81ecdf107c959bc83f8ba85aeb2ca0081e95caf733bb21afcb3d100e45a",
-        "subjectReferences": [
-          {
-            "pose": "top-left",
-            "file": "top-left.webp",
-            "fileSha256": "c1b4e8f6d813e1a7b864d6cfdfe6fc9cca7ad87738f0e4fb63f20f805d23ccf3",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top",
-            "file": "top.webp",
-            "fileSha256": "c4583dbb90e5b0137f04c22eca9f74fa8b57ef223b909c7e59fd255ffaa11a11",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/topleft_to_top_2.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/topleft_to_top_2.webp",
-          "sha256": "e2fd737e67279e5f18698eb210f4490350fbd3befce74d09de4eda3a71209b6d",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
-      },
-      {
-        "key": "top-left_to_top_3",
-        "fraction": 0.75,
-        "releaseFile": "transition-top-left-top-3.webp",
-        "releaseFileSha256": "d2d63d8468dd490fd69b5c3da0ca1f0acfa4b555db57fb9dfd6ca35209351f0d",
-        "sourceGeneration": "output/imagegen/face-motion-reference-parity/transition-top-left-top-3.png",
-        "sourceGenerationSha256": "af519f1a5e296f2d5cb645f14769213553c8f6907ef619cdc1bb1fccc700a6ec",
-        "prompt": "tmp/imagegen/face-motion-reference-parity/prompts/top-left_to_top_3.txt",
-        "promptSha256": "4db0526953554185f141620a32c7521741b5865224d2344c3ffdd54907bc83c8",
-        "subjectReferences": [
-          {
-            "pose": "top-left",
-            "file": "top-left.webp",
-            "fileSha256": "c1b4e8f6d813e1a7b864d6cfdfe6fc9cca7ad87738f0e4fb63f20f805d23ccf3",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          },
-          {
-            "pose": "top",
-            "file": "top.webp",
-            "fileSha256": "c4583dbb90e5b0137f04c22eca9f74fa8b57ef223b909c7e59fd255ffaa11a11",
-            "role": "actual subject, identity, hair, glasses, wardrobe, lighting, framing, scale, and crop"
-          }
-        ],
-        "poseReference": {
-          "sourceSite": "https://dahbiahmed.com",
-          "relative": "profile/nobg/transitions/topleft_to_top_3.webp",
-          "url": "https://dahbiahmed.com/profile/nobg/transitions/topleft_to_top_3.webp",
-          "sha256": "046c0e9e9396012954287f0b9effe4c0014b8cbb718170728e1987ec0e8e1d5f",
-          "role": "pose mechanics and motion progression only"
-        },
-        "selection": "Primary reference-compatible generation accepted"
+        ]
       }
-    ]
+    ],
+    "regeneratedEdges": [
+      {
+        "edge": "center-top",
+        "endpoints": ["center", "top"],
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/center-top.txt",
+          "sha256": "89ed3c500d02fd1b4f4337efcb87af25221296b6cadacd9eeae334ffbf8a780d"
+        },
+        "poseReferenceStrip": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/reference-strips/center-top.png",
+          "sha256": "8f101b431b3edf0b08447984116c56b02217714080e49de2eaa1a61d33e56b52"
+        },
+        "acceptedSources": [
+          {
+            "panel": 1,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-top.png",
+            "sourceStripSha256": "aeda2739933a807d222e3cda6837a3e325686a5ac7da715b4f05a26791a0f061"
+          },
+          {
+            "panel": 2,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-top.png",
+            "sourceStripSha256": "aeda2739933a807d222e3cda6837a3e325686a5ac7da715b4f05a26791a0f061"
+          },
+          {
+            "panel": 3,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-top.png",
+            "sourceStripSha256": "aeda2739933a807d222e3cda6837a3e325686a5ac7da715b4f05a26791a0f061"
+          }
+        ],
+        "frames": [
+          {
+            "fraction": 0.25,
+            "releaseFile": "transition-center-top-1.webp",
+            "releaseFileSha256": "67a3016f7bb67d159e6c12e6cc341854cca91f0dfc570360ab38293641881160",
+            "sourcePanel": 1
+          },
+          {
+            "fraction": 0.5,
+            "releaseFile": "transition-center-top-2.webp",
+            "releaseFileSha256": "22c175bb01d715320b523d38a87599aaa5843b862b53c8921bd43fdadbf9e5a8",
+            "sourcePanel": 2
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-center-top-3.webp",
+            "releaseFileSha256": "1fdd9c1222a0a0b2fbb64f289147b0d2de9b84b2678657472ff88f83aa7f5176",
+            "sourcePanel": 3
+          }
+        ]
+      },
+      {
+        "edge": "center-top-right",
+        "endpoints": ["center", "top-right"],
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/center-top-right.txt",
+          "sha256": "6b68249396bf3efe3e9fd71e1a9509dd613416933d11c154c7a32537fcd7fbc7"
+        },
+        "poseReferenceStrip": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/reference-strips/center-top-right.png",
+          "sha256": "13f1a34010c083825e1ba16ee6bb1fc5743887fcebfb6a5b03db74bd8322e2d0"
+        },
+        "acceptedSources": [
+          {
+            "panel": 1,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-top-right.png",
+            "sourceStripSha256": "0c92a47158672fc628803a4f1cc7b29630e1e334adee64fb97fa536fd24b42bb"
+          },
+          {
+            "panel": 2,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-top-right.png",
+            "sourceStripSha256": "0c92a47158672fc628803a4f1cc7b29630e1e334adee64fb97fa536fd24b42bb"
+          },
+          {
+            "panel": 3,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-top-right.png",
+            "sourceStripSha256": "0c92a47158672fc628803a4f1cc7b29630e1e334adee64fb97fa536fd24b42bb"
+          }
+        ],
+        "frames": [
+          {
+            "fraction": 0.25,
+            "releaseFile": "transition-center-top-right-1.webp",
+            "releaseFileSha256": "8059e7e8101898ef6de0cfb5751d252ec9741c94a2b4641e25970a4a1f41ef2c",
+            "sourcePanel": 1
+          },
+          {
+            "fraction": 0.5,
+            "releaseFile": "transition-center-top-right-2.webp",
+            "releaseFileSha256": "6e81d91044f60f2807cdd916cbf032c20b54386fec12f9bb12907e56e921b6e1",
+            "sourcePanel": 2
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-center-top-right-3.webp",
+            "releaseFileSha256": "9905fe5aa07dbdcb2efdc607e15ac12536458faf23db26d55b8316da5065cab6",
+            "sourcePanel": 3
+          }
+        ]
+      },
+      {
+        "edge": "center-bottom-right",
+        "endpoints": ["center", "bottom-right"],
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/center-bottom-right.txt",
+          "sha256": "15b2f41fd9c525ab037943963a215d22c9d8e4959310e73643684c2f4094c198"
+        },
+        "poseReferenceStrip": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/reference-strips/center-bottom-right.png",
+          "sha256": "c7b67ca70488e357c967957eb004a0dad2d33398069de3f589e4276d2caa8874"
+        },
+        "acceptedSources": [
+          {
+            "panel": 1,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-bottom-right.png",
+            "sourceStripSha256": "74bb964d7462e852cba12b7be46ece7cbf922100b8cf4b321c0ce0c45892cac8"
+          },
+          {
+            "panel": 2,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-bottom-right.png",
+            "sourceStripSha256": "74bb964d7462e852cba12b7be46ece7cbf922100b8cf4b321c0ce0c45892cac8"
+          },
+          {
+            "panel": 3,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-bottom-right.png",
+            "sourceStripSha256": "74bb964d7462e852cba12b7be46ece7cbf922100b8cf4b321c0ce0c45892cac8"
+          }
+        ],
+        "frames": [
+          {
+            "fraction": 0.25,
+            "releaseFile": "transition-center-bottom-right-1.webp",
+            "releaseFileSha256": "107910b4310df6221aed46b4a72163c1bbe45591a7b802401e3d0a6ab5db039a",
+            "sourcePanel": 1
+          },
+          {
+            "fraction": 0.5,
+            "releaseFile": "transition-center-bottom-right-2.webp",
+            "releaseFileSha256": "189a32ec5f9131196f75f5a344d18bcc365f515cc34f5421cee2ed11b522b39a",
+            "sourcePanel": 2
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-center-bottom-right-3.webp",
+            "releaseFileSha256": "9946ccba0b61b186064416a18f92e6545825d77ccacbc16cd1b6524311542ce4",
+            "sourcePanel": 3
+          }
+        ]
+      },
+      {
+        "edge": "center-bottom",
+        "endpoints": ["center", "bottom"],
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/center-bottom.txt",
+          "sha256": "27875abd8d757cb04236d7a1c8fe6bb3bff4eaaad468f751452470889ef113d8"
+        },
+        "poseReferenceStrip": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/reference-strips/center-bottom.png",
+          "sha256": "9d2ba90bc1f3103b75005a10b99d299ecf2408e9872a0b0b9f36ad1da51438b7"
+        },
+        "acceptedSources": [
+          {
+            "panel": 1,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-bottom.png",
+            "sourceStripSha256": "10ff4769acff4d2a125002492cbf7070c21162a71e747b57bbbcdf7838ff04f3"
+          },
+          {
+            "panel": 2,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-bottom.png",
+            "sourceStripSha256": "10ff4769acff4d2a125002492cbf7070c21162a71e747b57bbbcdf7838ff04f3"
+          },
+          {
+            "panel": 3,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-bottom.png",
+            "sourceStripSha256": "10ff4769acff4d2a125002492cbf7070c21162a71e747b57bbbcdf7838ff04f3"
+          }
+        ],
+        "frames": [
+          {
+            "fraction": 0.25,
+            "releaseFile": "transition-center-bottom-1.webp",
+            "releaseFileSha256": "7bf19614b6a0fc34c943c4c21a8a6bb1ec1608e6f89b714bd0ea8911eb84c6b0",
+            "sourcePanel": 1
+          },
+          {
+            "fraction": 0.5,
+            "releaseFile": "transition-center-bottom-2.webp",
+            "releaseFileSha256": "e0c11b5009ba39ba1b1d89b533de3ba1e5140eaff4f2eb015074f4aa20be1c61",
+            "sourcePanel": 2
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-center-bottom-3.webp",
+            "releaseFileSha256": "bfa0392c0d41af3d7909c4208b28438ae122e6381dbfd322f94d57ecf1780018",
+            "sourcePanel": 3
+          }
+        ]
+      },
+      {
+        "edge": "center-bottom-left",
+        "endpoints": ["center", "bottom-left"],
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/center-bottom-left.txt",
+          "sha256": "cbbb431847213f245d0f614627a0e39b15f8baf72e78faec1d9d824a93c0caa1"
+        },
+        "poseReferenceStrip": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/reference-strips/center-bottom-left.png",
+          "sha256": "836097b9d5461d46bf13ce85832db654ad3b30a559f1c39f601241f9be226e2f"
+        },
+        "acceptedSources": [
+          {
+            "panel": 1,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/rejected/overshoot-v2/center-bottom-left.png",
+            "sourceStripSha256": "e7818db81a3aa261b84a14afc2c90650eac9b7940cf3b405f8e6c1bf42e45ada"
+          },
+          {
+            "panel": 2,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/rejected/overshoot-v2/center-bottom-left.png",
+            "sourceStripSha256": "e7818db81a3aa261b84a14afc2c90650eac9b7940cf3b405f8e6c1bf42e45ada"
+          },
+          {
+            "panel": 3,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-bottom-left.png",
+            "sourceStripSha256": "2644953361e0ac726d160575fee23f14f2b31885936c739cb0690dffe0465022"
+          }
+        ],
+        "frames": [
+          {
+            "fraction": 0.25,
+            "releaseFile": "transition-center-bottom-left-1.webp",
+            "releaseFileSha256": "777b58601d4b40b824a73bfae3725231af9a117d1a77447903e97ed1ff01c3a5",
+            "sourcePanel": 1
+          },
+          {
+            "fraction": 0.5,
+            "releaseFile": "transition-center-bottom-left-2.webp",
+            "releaseFileSha256": "0f540d89ebe67593d0da1d88e64fa28d789479a87eab73b4f52ef4ca4cf49f1d",
+            "sourcePanel": 2
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-center-bottom-left-3.webp",
+            "releaseFileSha256": "358c293ca1e161b69fc1250b47395ec12c50320ec5c547a42948b3e399c70463",
+            "sourcePanel": 3
+          }
+        ]
+      },
+      {
+        "edge": "center-top-left",
+        "endpoints": ["center", "top-left"],
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/center-top-left.txt",
+          "sha256": "8acd2daa2779175553e43dcbdbecda1f4349d5f6bfc601306f9441c0828bbc88"
+        },
+        "poseReferenceStrip": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/reference-strips/center-top-left.png",
+          "sha256": "b3c6c282616ee2bc9d0a42b0346b9a34bc1e908fa4266c71e0a9c0d1e31f3187"
+        },
+        "acceptedSources": [
+          {
+            "panel": 1,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/rejected/overshoot-v2/center-top-left.png",
+            "sourceStripSha256": "49588c998b5e28ef394f7b2c9ca7ca8d981a5b11c5ad257c9f4a22db52e1e601"
+          },
+          {
+            "panel": 2,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/rejected/overshoot-v2/center-top-left.png",
+            "sourceStripSha256": "49588c998b5e28ef394f7b2c9ca7ca8d981a5b11c5ad257c9f4a22db52e1e601"
+          },
+          {
+            "panel": 3,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/center-top-left.png",
+            "sourceStripSha256": "55e10146b1cc7d0c3c809bf105cd13e99e389eb88754e1cd02fe193d101b7d67"
+          }
+        ],
+        "frames": [
+          {
+            "fraction": 0.25,
+            "releaseFile": "transition-center-top-left-1.webp",
+            "releaseFileSha256": "78221be77253f5721826574348489e8853d0de89e4fd8288f98ebc12cc8da970",
+            "sourcePanel": 1
+          },
+          {
+            "fraction": 0.5,
+            "releaseFile": "transition-center-top-left-2.webp",
+            "releaseFileSha256": "51dcb058685936bc5190131fb6a59d1a75dd792f40bfa37cd27f42cbf393e527",
+            "sourcePanel": 2
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-center-top-left-3.webp",
+            "releaseFileSha256": "028366bb78c7aaea0dba6bcca8c0d1fc3093422b2aa1645f3a58d04424ebc781",
+            "sourcePanel": 3
+          }
+        ]
+      },
+      {
+        "edge": "top-top-right",
+        "endpoints": ["top", "top-right"],
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/top-top-right.txt",
+          "sha256": "b50fdd02517eb5b5d25ceda5ed234425a351bf56f0d5c5df3e574ee4313758cf"
+        },
+        "poseReferenceStrip": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/reference-strips/top-top-right.png",
+          "sha256": "a41463c232a5e0bbc5d48ef4a5848e45d64607ab906793ad80017f7153334513"
+        },
+        "acceptedSources": [
+          {
+            "panel": 1,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/top-top-right.png",
+            "sourceStripSha256": "54f018996d2e00b6c87b76cafd48919c9ab4e67ed9c67060930e3f8bb43ce003"
+          },
+          {
+            "panel": 2,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/top-top-right.png",
+            "sourceStripSha256": "54f018996d2e00b6c87b76cafd48919c9ab4e67ed9c67060930e3f8bb43ce003"
+          },
+          {
+            "panel": 3,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/top-top-right.png",
+            "sourceStripSha256": "54f018996d2e00b6c87b76cafd48919c9ab4e67ed9c67060930e3f8bb43ce003"
+          }
+        ],
+        "frames": [
+          {
+            "fraction": 0.25,
+            "releaseFile": "transition-top-top-right-1.webp",
+            "releaseFileSha256": "5c8b8d5df8004422a574ded4cca24ac80a0d5f13b89b6794e9e07e6bf3296f8a",
+            "sourcePanel": 1
+          },
+          {
+            "fraction": 0.5,
+            "releaseFile": "transition-top-top-right-2.webp",
+            "releaseFileSha256": "a474a7d854febfacb117a0039bbbbd3e33bc2383b20b3c3726bfb37d173aa4ea",
+            "sourcePanel": 2
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-top-top-right-3.webp",
+            "releaseFileSha256": "c1f6b66725012d34dedff9efb7a552516f7f30df9180a803f7075a0d3293a17c",
+            "sourcePanel": 3
+          }
+        ]
+      },
+      {
+        "edge": "top-right-right",
+        "endpoints": ["top-right", "right"],
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/top-right-right.txt",
+          "sha256": "fa75074cb9a25b9a2e467968e3275e081da075523e8b2e33b6dadc989617dd18"
+        },
+        "poseReferenceStrip": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/reference-strips/top-right-right.png",
+          "sha256": "5315e2e0572341268bed9f67935de1b1e607e7ec7facb2da9e8c5ce8db4aab71"
+        },
+        "acceptedSources": [
+          {
+            "panel": 1,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/top-right-right.png",
+            "sourceStripSha256": "86ce5b7555da21592b93980bf9ffafd6ff9bccfaba9568d70d59dda4986b4fb7"
+          },
+          {
+            "panel": 2,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/top-right-right.png",
+            "sourceStripSha256": "86ce5b7555da21592b93980bf9ffafd6ff9bccfaba9568d70d59dda4986b4fb7"
+          },
+          {
+            "panel": 3,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/top-right-right.png",
+            "sourceStripSha256": "86ce5b7555da21592b93980bf9ffafd6ff9bccfaba9568d70d59dda4986b4fb7"
+          }
+        ],
+        "frames": [
+          {
+            "fraction": 0.25,
+            "releaseFile": "transition-top-right-right-1.webp",
+            "releaseFileSha256": "821e16a7888e686675b8dac3df1b66dbde41dcda4b4f1979b2f72c55cd686257",
+            "sourcePanel": 1
+          },
+          {
+            "fraction": 0.5,
+            "releaseFile": "transition-top-right-right-2.webp",
+            "releaseFileSha256": "548430682a29af8acbfb83c13b68f1b56d9fbec0412117ebb1684c7ff88402b5",
+            "sourcePanel": 2
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-top-right-right-3.webp",
+            "releaseFileSha256": "671e5870e22be98d67ff9cc69ff301a50bd372f53b5720e38765f5a07a44e4cd",
+            "sourcePanel": 3
+          }
+        ]
+      },
+      {
+        "edge": "right-bottom-right",
+        "endpoints": ["right", "bottom-right"],
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/right-bottom-right-endpoints-only.txt",
+          "sha256": "90628f19187d2b925c355fe999482774ce210d0e12c8dad635152f5cda39101c"
+        },
+        "poseReferenceStrip": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/reference-strips/right-bottom-right.png",
+          "role": "rejected for this edge after causing endpoint overshoot",
+          "sha256": "12fc1679e3818b9a091abca9610a0755110b44a70a4945ee8a786cddfd82082c"
+        },
+        "acceptedSources": [
+          {
+            "panel": 1,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/in-envelope-v3/right-bottom-right-endpoints-only.png",
+            "sourceStripSha256": "a3dc9503439f7ee30bfcd4e386aa279f5acccc97d0098880e408108448b61642"
+          },
+          {
+            "panel": 2,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/in-envelope-v3/right-bottom-right-endpoints-only.png",
+            "sourceStripSha256": "a3dc9503439f7ee30bfcd4e386aa279f5acccc97d0098880e408108448b61642"
+          },
+          {
+            "panel": 3,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/in-envelope-v3/right-bottom-right-endpoints-only.png",
+            "sourceStripSha256": "a3dc9503439f7ee30bfcd4e386aa279f5acccc97d0098880e408108448b61642"
+          }
+        ],
+        "frames": [
+          {
+            "fraction": 0.25,
+            "releaseFile": "transition-right-bottom-right-1.webp",
+            "releaseFileSha256": "1c09379dafbe64db7bd8b9ca2719cea5ead94ba2ebb6454f8b9653b522fa0685",
+            "sourcePanel": 1
+          },
+          {
+            "fraction": 0.5,
+            "releaseFile": "transition-right-bottom-right-2.webp",
+            "releaseFileSha256": "b592608cfe11f1e1ab529008891cfd3d9516de09f594c9678afc280a530e9dce",
+            "sourcePanel": 2
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-right-bottom-right-3.webp",
+            "releaseFileSha256": "6666d7895fe8a2755ad4b20524a325e7426da39e6a0157c5413a91a50361aab4",
+            "sourcePanel": 3
+          }
+        ]
+      },
+      {
+        "edge": "bottom-right-bottom",
+        "endpoints": ["bottom-right", "bottom"],
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/bottom-right-bottom.txt",
+          "sha256": "77e5f12f2032750bde0d92e802167cf6cf9e2aef130cb535f9caaa325eeb9e62"
+        },
+        "poseReferenceStrip": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/reference-strips/bottom-right-bottom.png",
+          "sha256": "6477841f95c0773bc3a9fdefc6f0310dc35e5894cd2c068b72eb9a98c7eefed7"
+        },
+        "acceptedSources": [
+          {
+            "panel": 1,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/rejected/overshoot-v2/bottom-right-bottom.png",
+            "sourceStripSha256": "0b572b76371180013cbb896c180ef6ba572795e931cf8b3c71b87b3910420358"
+          },
+          {
+            "panel": 2,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/rejected/overshoot-v2/bottom-right-bottom.png",
+            "sourceStripSha256": "0b572b76371180013cbb896c180ef6ba572795e931cf8b3c71b87b3910420358"
+          },
+          {
+            "panel": 3,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/bottom-right-bottom.png",
+            "sourceStripSha256": "3326e991018dace7db8af550176004c38e4275160c98ccec02a82ef3dee01a1e"
+          }
+        ],
+        "frames": [
+          {
+            "fraction": 0.25,
+            "releaseFile": "transition-bottom-right-bottom-1.webp",
+            "releaseFileSha256": "1edeacac1f1bd6659e079014527dea2434245c37bbb90f284a60764bf2ae3d2f",
+            "sourcePanel": 1
+          },
+          {
+            "fraction": 0.5,
+            "releaseFile": "transition-bottom-right-bottom-2.webp",
+            "releaseFileSha256": "d94e9a7692cace09ee6854b29e905c13075f038b3c9ee633ae4af94344daaaed",
+            "sourcePanel": 2
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-bottom-right-bottom-3.webp",
+            "releaseFileSha256": "a29fab768b80806b78b38dcccf9244ec9a8c0a2204abcfc772656d658e0e4870",
+            "sourcePanel": 3
+          }
+        ]
+      },
+      {
+        "edge": "bottom-bottom-left",
+        "endpoints": ["bottom", "bottom-left"],
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/bottom-bottom-left.txt",
+          "sha256": "ccb32b8778d94d8de4734dd4ab9cbbc9d1b311402ba30e6336f5f39a7eae3fbe"
+        },
+        "poseReferenceStrip": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/reference-strips/bottom-bottom-left.png",
+          "sha256": "2ea701746ac743638ac7dac32f77301d94f5559dfbd66ff01c0f6a2180a477c6"
+        },
+        "acceptedSources": [
+          {
+            "panel": 1,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/rejected/overshoot-v2/bottom-bottom-left.png",
+            "sourceStripSha256": "ff4c558115908a7292bebcf3cbdfbecb86230efb3010ccdbcb0f8007f4e2babe"
+          },
+          {
+            "panel": 2,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/rejected/overshoot-v2/bottom-bottom-left.png",
+            "sourceStripSha256": "ff4c558115908a7292bebcf3cbdfbecb86230efb3010ccdbcb0f8007f4e2babe"
+          },
+          {
+            "panel": 3,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/bottom-bottom-left.png",
+            "sourceStripSha256": "24e972f13e2e7ac4bd7b0ba58b3630541a3a9a614909ea4c3379be20713667c7"
+          }
+        ],
+        "frames": [
+          {
+            "fraction": 0.25,
+            "releaseFile": "transition-bottom-bottom-left-1.webp",
+            "releaseFileSha256": "2e1638de3a1730e9943696a7c650f06e30d2f339f3f64436c9640205b676aeed",
+            "sourcePanel": 1
+          },
+          {
+            "fraction": 0.5,
+            "releaseFile": "transition-bottom-bottom-left-2.webp",
+            "releaseFileSha256": "f0193b552b5a405979c18a3049afa7b4bedc791ee303760266e6c82be3333f66",
+            "sourcePanel": 2
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-bottom-bottom-left-3.webp",
+            "releaseFileSha256": "36a4066d2d6530b5ab8e41bd02c747ed805b5d041dda047ec2a303ace6f8619f",
+            "sourcePanel": 3
+          }
+        ]
+      },
+      {
+        "edge": "bottom-left-left",
+        "endpoints": ["bottom-left", "left"],
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/bottom-left-left.txt",
+          "sha256": "3e644297409c6fc0f390394c93dc3bf082f3d33d20055873526102e10a2a5c9e"
+        },
+        "poseReferenceStrip": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/reference-strips/bottom-left-left.png",
+          "sha256": "64cf60f8cb43f06b08a458e0558f34389c4947b968ed8e5434d94d5e59cf2149"
+        },
+        "acceptedSources": [
+          {
+            "panel": 1,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/bottom-left-left.png",
+            "sourceStripSha256": "603bf317ce07a21ba26418487c339afb0ea71ac27b5eb68c15a52d92dd27dce3"
+          },
+          {
+            "panel": 2,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/bottom-left-left.png",
+            "sourceStripSha256": "603bf317ce07a21ba26418487c339afb0ea71ac27b5eb68c15a52d92dd27dce3"
+          },
+          {
+            "panel": 3,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/bottom-left-left.png",
+            "sourceStripSha256": "603bf317ce07a21ba26418487c339afb0ea71ac27b5eb68c15a52d92dd27dce3"
+          }
+        ],
+        "frames": [
+          {
+            "fraction": 0.25,
+            "releaseFile": "transition-bottom-left-left-1.webp",
+            "releaseFileSha256": "cfce1b52f81707acc3ea71b28966b73e45be06552fc4077360995a7d96ab9a0c",
+            "sourcePanel": 1
+          },
+          {
+            "fraction": 0.5,
+            "releaseFile": "transition-bottom-left-left-2.webp",
+            "releaseFileSha256": "1114f10bd37d6a25aca0863240679e456fc188c8a65893f9f2d27d7b32226b25",
+            "sourcePanel": 2
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-bottom-left-left-3.webp",
+            "releaseFileSha256": "c72049c915651469280029586a9e0ee95cc1cc61b5fd4809f246b0b43e6c2ece",
+            "sourcePanel": 3
+          }
+        ]
+      },
+      {
+        "edge": "top-left-top",
+        "endpoints": ["top-left", "top"],
+        "prompt": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/prompts/top-left-top.txt",
+          "sha256": "a210db722b14f0fdf7839c2e0dd02303f2d10e6c5df5917f5c30f440cef051e2"
+        },
+        "poseReferenceStrip": {
+          "file": "tmp/imagegen/face-motion-reference-parity/graded-sequences/reference-strips/top-left-top.png",
+          "sha256": "feedb4ce121f25a3fcd0d31e05f5f0073decf49ce75318eade7dbe15133668c9"
+        },
+        "acceptedSources": [
+          {
+            "panel": 1,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/top-left-top.png",
+            "sourceStripSha256": "994bd83d48a3a7f63988761e7a54a9ecd06db1a516b2949a59e6191a0b83fc23"
+          },
+          {
+            "panel": 2,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/top-left-top.png",
+            "sourceStripSha256": "994bd83d48a3a7f63988761e7a54a9ecd06db1a516b2949a59e6191a0b83fc23"
+          },
+          {
+            "panel": 3,
+            "sourceStrip": "output/imagegen/face-motion-reference-parity/graded-sequences/top-left-top.png",
+            "sourceStripSha256": "994bd83d48a3a7f63988761e7a54a9ecd06db1a516b2949a59e6191a0b83fc23"
+          }
+        ],
+        "frames": [
+          {
+            "fraction": 0.25,
+            "releaseFile": "transition-top-left-top-1.webp",
+            "releaseFileSha256": "6dd5471e7de421e5bb30056d152b083562407194e462eba07bce719e58a89ce6",
+            "sourcePanel": 1
+          },
+          {
+            "fraction": 0.5,
+            "releaseFile": "transition-top-left-top-2.webp",
+            "releaseFileSha256": "03de4bf49d7cc69916b7a81b8e149d65071c9ad5275f8b9968c27ca8359cea24",
+            "sourcePanel": 2
+          },
+          {
+            "fraction": 0.75,
+            "releaseFile": "transition-top-left-top-3.webp",
+            "releaseFileSha256": "399a6f79930f474aafb95056a1356cf52c30f846de1dc97af0521f594c24993b",
+            "sourcePanel": 3
+          }
+        ]
+      }
+    ],
+    "deployedCells": {
+      "count": 48,
+      "totalBytes": 421376
+    }
+  },
+  "processing": {
+    "panelExtraction": true,
+    "uniformResize": true,
+    "chromaAlphaExtraction": true,
+    "rotate": false,
+    "geometricWarp": false,
+    "opticalFlow": false,
+    "interpolation": false,
+    "frameBlend": false
   }
 }
