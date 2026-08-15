@@ -41,7 +41,7 @@
     {
       "pose": "left",
       "file": "left.webp",
-      "fileSha256": "77192405b2c3649b18c5f6cd66c994682995de845b28f0adc75420f02c37bbdc"
+      "fileSha256": "da9a3c1c3cb66a5277df118e1e50093b348cab1a6dd8eb7f7f828c15a4fa5e9a"
     },
     {
       "pose": "center",
@@ -51,7 +51,7 @@
     {
       "pose": "right",
       "file": "right.webp",
-      "fileSha256": "60813949b445de3f7d9ac65e6479f24effc6c66cd87c9b7935381c3fc3f6e78c"
+      "fileSha256": "37a9cb94c9b525a4531a9d5fe6a4f715679fea9656d4c770ce04991d4e762753"
     },
     {
       "pose": "bottom-left",
