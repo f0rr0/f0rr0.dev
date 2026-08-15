@@ -33,6 +33,7 @@ export function SiteHeader({
               alt=""
               className="h-10 w-10 rounded-full object-cover ring-2 ring-border transition-shadow group-hover:ring-primary"
               height={40}
+              unoptimized
               width={40}
             />
             <span className="hidden text-lg font-bold sm:block">

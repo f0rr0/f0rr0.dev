@@ -1,10 +1,12 @@
 {
-  "approvedCenterRgbaSha256": "2850c25383c74365edaf87718cc4800a84726cfde576294e63969a6d816c7273",
+  "approvedCenterRgbaSha256": "0f30b76151546617eb7f978b9cec7f3493b9948d888fbaf229e5d1465bc72aeb",
+  "atlasFilename": "face-motion-atlas.webp",
+  "atlasManifestFilename": "face-motion-atlas.json",
   "centerFilename": "center.webp",
   "contactSheetCellSize": 220,
-  "expectedAssetBasePath": "/resume/face-motion/v12",
-  "expectedCanvasHeight": 1254,
-  "expectedCanvasWidth": 1254,
+  "expectedAssetBasePath": "/resume/face-motion/v13",
+  "expectedCanvasHeight": 240,
+  "expectedCanvasWidth": 240,
   "expectedEndpointNames": [
     "top-left",
     "top",
@@ -16,9 +18,12 @@
     "bottom",
     "bottom-right"
   ],
-  "expectedManifestVersion": 12,
-  "expectedModel": "gpt-image-2",
+  "expectedEndpointEncoding": "lossy",
+  "expectedManifestVersion": 13,
+  "expectedSourceSite": "https://dahbiahmed.com",
+  "expectedSourceTheme": "light",
+  "maxRuntimePayloadBytes": 1500000,
   "neutralPosterMustMatchCenter": true,
   "posterFilename": "portrait-neutral.webp",
-  "requireLosslessEndpoints": true
+  "runtimePosterFilename": "face-motion-poster.webp"
 }

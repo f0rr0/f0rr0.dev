@@ -255,7 +255,7 @@ export function ResumePageContent({
       {includeProfileJsonLd ? <JsonLd data={profileJsonLd} /> : null}
       <SiteShell activeHref="/resume" currentPath={currentPath}>
         <SitePage title="Résumé" action={<ResumeDownloadButton />}>
-          <section className="grid items-start gap-8 print:block lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-10">
+          <section className="grid items-start gap-8 print:block lg:grid-cols-[minmax(0,1fr)_120px] lg:gap-10">
             <div className="order-2 min-w-0 print:block lg:order-1 lg:pt-2">
               <p className={resumeBodyText}>{summary}</p>
               <p className={`mt-3 ${resumeBodyText}`}>

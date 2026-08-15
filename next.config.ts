@@ -13,8 +13,8 @@ const nextConfig: NextConfig = {
         search: "",
       },
       {
-        pathname: "/resume/face-motion/v12/**",
-        search: "?rev=20260813d",
+        pathname: "/resume/face-motion/v13/**",
+        search: "?rev=20260815d",
       },
     ],
   },

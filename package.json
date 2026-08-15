@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "bun run verify:face-motion && next build",
+    "build:face-motion-atlas": "bun scripts/build-face-motion-atlas.ts",
     "start": "next start",
     "test": "bun test",
     "verify:face-motion": "bun scripts/verify-face-motion-assets.ts",

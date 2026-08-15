@@ -4,11 +4,12 @@ import { useEffect, useId, useRef } from "react";
 
 import {
   CompassFaceMachine,
-  FACE_MOTION_ALL_SOURCES,
+  FACE_MOTION_ATLAS_SRC,
   FACE_MOTION_CONFIG,
-  FACE_MOTION_NEUTRAL_SRC,
+  FACE_MOTION_POSTER_SRC,
+  FACE_MOTION_RUNTIME_SOURCES,
+  faceMotionAtlasPosition,
   faceMotionEdgeSources,
-  faceMotionFrameSource,
   poseFromClientPointer,
 } from "@/lib/face-motion";
 import type { FaceMotionFrame, FaceMotionPose } from "@/lib/face-motion";
@@ -50,7 +51,7 @@ export function FaceMotionPortrait({
   eager = false,
 }: Readonly<FaceMotionPortraitProps>) {
   const instructionId = useId();
-  const portraitRef = useRef<HTMLImageElement>(null);
+  const portraitRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,6 +76,7 @@ export function FaceMotionPortrait({
       intermediates: (from, to) => faceMotionEdgeSources(from, to).length,
     });
     let destroyed = false;
+    let isAtlasReady = false;
     let isReady = false;
     let isReducedMotion = motionPreference.matches;
     let preloadPromise: Promise<void> | null = null;
@@ -107,24 +109,28 @@ export function FaceMotionPortrait({
       }
     };
 
-    const commitSource = (source: string, pose: FaceMotionPose) => {
-      if (portrait.getAttribute("src") !== source) {
-        portrait.setAttribute("src", source);
-      }
-
+    const commitPoster = (pose: FaceMotionPose) => {
+      portrait.style.backgroundImage = `url("${FACE_MOTION_POSTER_SRC}")`;
+      portrait.style.backgroundPosition = "center";
+      portrait.style.backgroundSize = "contain";
+      portrait.dataset.faceMotionFrame = FACE_MOTION_CONFIG.centerPose;
+      const source = FACE_MOTION_POSTER_SRC;
       setSourceDataset(source);
       setPoseDataset(pose);
     };
 
     const commitFrame = (frame: FaceMotionFrame) => {
-      const source = faceMotionFrameSource(frame);
-
-      if (source === null) {
-        setStatus("degraded");
+      if (!isAtlasReady) {
         return;
       }
 
-      commitSource(source, machine.getPose());
+      const position = faceMotionAtlasPosition(frame);
+      portrait.style.backgroundImage = `url("${FACE_MOTION_ATLAS_SRC}")`;
+      portrait.style.backgroundPosition = `${position.xPercent}% ${position.yPercent}%`;
+      portrait.style.backgroundSize = `${FACE_MOTION_CONFIG.atlasColumns * 100}% ${FACE_MOTION_CONFIG.atlasRows * 100}%`;
+      portrait.dataset.faceMotionFrame = frame;
+      setSourceDataset(FACE_MOTION_ATLAS_SRC);
+      setPoseDataset(machine.getPose());
     };
 
     const scheduleNextStep = () => {
@@ -173,7 +179,11 @@ export function FaceMotionPortrait({
           intermediates: (from, to) => faceMotionEdgeSources(from, to).length,
         });
         setTargetDataset(FACE_MOTION_CONFIG.centerPose);
-        commitSource(FACE_MOTION_NEUTRAL_SRC, FACE_MOTION_CONFIG.centerPose);
+        if (isAtlasReady) {
+          commitFrame(FACE_MOTION_CONFIG.centerPose);
+        } else {
+          commitPoster(FACE_MOTION_CONFIG.centerPose);
+        }
         return;
       }
 
@@ -190,7 +200,7 @@ export function FaceMotionPortrait({
         latestPointer.clientY,
         stage.getBoundingClientRect()
       );
-      setTarget(target, target === FACE_MOTION_CONFIG.centerPose);
+      setTarget(target, true);
     };
 
     const handleWindowPointerMove = (event: PointerEvent) => {
@@ -264,31 +274,30 @@ export function FaceMotionPortrait({
 
     const preloadAllSources = async () => {
       const results = await Promise.allSettled(
-        FACE_MOTION_ALL_SOURCES.map(decodeImageSource)
+        FACE_MOTION_RUNTIME_SOURCES.map(decodeImageSource)
       );
 
       if (destroyed) {
         return;
       }
 
-      let failedAssetCount = 0;
-
       for (const result of results) {
         if (result.status === "fulfilled") {
           decodedImages.push(result.value);
-        } else {
-          failedAssetCount += 1;
         }
       }
 
-      isReady = true;
-      setStatus(
-        isReducedMotion
-          ? "reduced-motion"
-          : failedAssetCount > 0
-            ? "degraded"
-            : "ready"
-      );
+      isAtlasReady = results.at(-1)?.status === "fulfilled";
+      isReady = isAtlasReady;
+
+      if (!isAtlasReady) {
+        setStatus("degraded");
+        commitPoster(FACE_MOTION_CONFIG.centerPose);
+        return;
+      }
+
+      commitFrame(machine.getFrame());
+      setStatus(isReducedMotion ? "reduced-motion" : "ready");
 
       if (!isReducedMotion) {
         retargetFromLatestPointer();
@@ -318,14 +327,6 @@ export function FaceMotionPortrait({
         retargetFromLatestPointer();
       } else {
         void loadAllSources();
-      }
-    };
-
-    const handlePortraitError = () => {
-      setStatus("degraded");
-
-      if (portrait.getAttribute("src") !== FACE_MOTION_NEUTRAL_SRC) {
-        resetToCenter(true);
       }
     };
 
@@ -361,31 +362,16 @@ export function FaceMotionPortrait({
     );
     window.addEventListener("blur", handleWindowBlur);
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    portrait.addEventListener("error", handlePortraitError);
     motionPreference.addEventListener("change", handleMotionPreference);
 
-    setSourceDataset(FACE_MOTION_NEUTRAL_SRC);
+    setSourceDataset(FACE_MOTION_POSTER_SRC);
     setPoseDataset(FACE_MOTION_CONFIG.centerPose);
     setTargetDataset(FACE_MOTION_CONFIG.centerPose);
 
     if (isReducedMotion) {
       setStatus("reduced-motion");
-    } else if (eager) {
-      void loadAllSources();
     } else {
-      const loadAfterNeutral = async () => {
-        try {
-          await portrait.decode();
-        } catch {
-          // The preloader below reports individual asset failures.
-        }
-
-        if (!destroyed) {
-          await loadAllSources();
-        }
-      };
-
-      void loadAfterNeutral();
+      void loadAllSources();
     }
 
     return () => {
@@ -408,7 +394,6 @@ export function FaceMotionPortrait({
       );
       window.removeEventListener("blur", handleWindowBlur);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      portrait.removeEventListener("error", handlePortraitError);
       motionPreference.removeEventListener("change", handleMotionPreference);
     };
   }, [eager]);
@@ -422,29 +407,26 @@ export function FaceMotionPortrait({
     >
       <div
         aria-describedby={instructionId}
-        aria-label="Portrait of Sid Jain wearing his signature round sunglasses"
-        className="relative isolate aspect-square w-[min(20rem,calc(100vw-4rem))] max-w-full touch-none select-none overflow-hidden rounded-[2rem] bg-muted/40 shadow-site-soft ring-1 ring-border/80"
+        aria-label="Interactive portrait following pointer movement"
+        className="relative isolate size-[7.5rem] touch-none select-none overflow-hidden rounded-full bg-muted/40 shadow-site-soft ring-1 ring-border/80"
+        data-face-motion-loading={eager ? "eager" : "auto"}
         data-face-motion-pose="center"
-        data-face-motion-source={FACE_MOTION_NEUTRAL_SRC}
+        data-face-motion-source={FACE_MOTION_POSTER_SRC}
         data-face-motion-status="loading"
         data-face-motion-target="center"
         ref={stageRef}
         role="img"
       >
-        <img
-          alt=""
+        <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+          className="pointer-events-none absolute inset-0 bg-contain bg-center bg-no-repeat"
+          data-face-motion-frame="center"
           data-face-motion-pose="center"
-          data-face-motion-source={FACE_MOTION_NEUTRAL_SRC}
+          data-face-motion-source={FACE_MOTION_POSTER_SRC}
           data-face-motion-status="loading"
           data-face-motion-target="center"
-          decoding="async"
-          draggable={false}
-          fetchPriority={eager ? "high" : "auto"}
-          loading={eager ? "eager" : "lazy"}
           ref={portraitRef}
-          src={FACE_MOTION_NEUTRAL_SRC}
+          style={{ backgroundImage: `url("${FACE_MOTION_POSTER_SRC}")` }}
         />
       </div>
       <figcaption

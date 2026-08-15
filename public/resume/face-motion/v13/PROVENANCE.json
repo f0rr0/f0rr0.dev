@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 3,
+  "release": 13,
+  "updatedAt": "2026-08-15",
+  "method": "Byte-for-byte deployment of the downloaded light-theme reference endpoints and transition cells.",
+  "source": {
+    "site": "https://dahbiahmed.com",
+    "theme": "light",
+    "localDirectory": "downloads/dahbiahmed-face-motion/profile/nobg",
+    "downloadManifest": "downloads/dahbiahmed-face-motion/MANIFEST.json",
+    "downloadManifestSha256": "18b18e52e8ee68a8a630d3561ece5eb1a8979ae2823eab0a2ed9ebee7a8ee988",
+    "sourceFrames": 57,
+    "sourceBytes": 750226,
+    "dimensions": "240x240",
+    "encoding": "lossy WebP with alpha"
+  },
+  "mapping": {
+    "endpoints": "Reference endpoint filenames are unchanged.",
+    "transitions": "Reference compact names are renamed to transition-{from}-{to}-{step}.webp; file contents are unchanged.",
+    "neutralPoster": "portrait-neutral.webp is an exact copy of reference center.webp.",
+    "reversePlayback": "The same three canonical-edge cells are read in reverse order."
+  },
+  "processing": {
+    "sourceFiles": "none",
+    "atlas": "The 57 exact source cells are decoded, packed into an 8x8 transparent canvas, and encoded as one lossy-alpha WebP.",
+    "runtimePoster": "The center cell is encoded with the same runtime WebP settings as the atlas."
+  },
+  "removedSet": {
+    "subject": "Sid Jain",
+    "generationModel": "gpt-image-2",
+    "status": "No generated Sid endpoint or transition remains in the deployed V13 feature."
+  }
+}

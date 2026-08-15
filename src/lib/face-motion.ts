@@ -1,9 +1,13 @@
 export const FACE_MOTION_CONFIG = {
-  assetBasePath: "/resume/face-motion/v12",
-  assetRevision: "20260813d",
+  assetBasePath: "/resume/face-motion/v13",
+  assetRevision: "20260815g",
+  atlasCellSizePx: 240,
+  atlasColumns: 8,
+  atlasRows: 8,
   centerPose: "center",
   deadZoneRatio: 0.5,
-  frameIntervalMs: 36,
+  displaySizePx: 120,
+  frameIntervalMs: 50,
 } as const;
 
 const faceMotionAsset = (file: string) =>
@@ -30,10 +34,7 @@ export const FACE_MOTION_POSES = Object.freeze([
 
 export const FACE_MOTION_SOURCE_BY_POSE = Object.freeze(
   Object.fromEntries(
-    FACE_MOTION_POSES.map((pose) => [
-      pose,
-      faceMotionAsset(`${pose}.webp`),
-    ])
+    FACE_MOTION_POSES.map((pose) => [pose, faceMotionAsset(`${pose}.webp`)])
   ) as Record<FaceMotionPose, string>
 );
 
@@ -44,9 +45,14 @@ export const FACE_MOTION_POSE_SOURCES = Object.freeze(
 export const FACE_MOTION_NEUTRAL_SRC =
   FACE_MOTION_SOURCE_BY_POSE[FACE_MOTION_CONFIG.centerPose];
 export const FACE_MOTION_POSTER_SRC = faceMotionAsset(
-  "portrait-neutral.webp"
+  "face-motion-poster.webp"
 );
-export const FACE_MOTION_AVATAR_SRC = FACE_MOTION_NEUTRAL_SRC;
+export const FACE_MOTION_ATLAS_SRC = faceMotionAsset("face-motion-atlas.webp");
+export const FACE_MOTION_AVATAR_SRC = FACE_MOTION_POSTER_SRC;
+export const FACE_MOTION_RUNTIME_SOURCES = Object.freeze([
+  FACE_MOTION_POSTER_SRC,
+  FACE_MOTION_ATLAS_SRC,
+]);
 
 export const FACE_MOTION_CANONICAL_EDGES = Object.freeze([
   ["center", "top"],
@@ -74,35 +80,19 @@ export type FaceMotionCanonicalEdgeKey =
 export type FaceMotionIntermediateFrame = `${string}_to_${string}_${number}`;
 export type FaceMotionFrame = FaceMotionPose | FaceMotionIntermediateFrame;
 
-/**
- * Optional intermediate assets, always listed in canonical forward order.
- * Empty edges remain valid: the runtime advances directly to the endpoint.
- */
-export const FACE_MOTION_EDGE_FRAMES = Object.freeze({
-  center_to_bottom: [
-    faceMotionAsset("transition-center-bottom-1.webp"),
-  ],
-  center_to_left: [
-    faceMotionAsset("transition-center-left-1.webp"),
-    faceMotionAsset("transition-center-left-2.webp"),
-  ],
-  center_to_top: [
-    faceMotionAsset("transition-center-top-1.webp"),
-    faceMotionAsset("transition-center-top-2.webp"),
-    faceMotionAsset("transition-center-top-3.webp"),
-  ],
-  "center_to_top-left": [
-    faceMotionAsset("transition-center-top-left-1.webp"),
-  ],
-  "center_to_top-right": [
-    faceMotionAsset("transition-center-top-right-1.webp"),
-  ],
-  "right_to_bottom-right": [
-    faceMotionAsset("transition-right-bottom-right-1.webp"),
-  ],
-}) as Readonly<
-  Partial<Record<FaceMotionCanonicalEdgeKey, readonly string[]>>
->;
+/** Three authored frames per canonical edge, listed in forward order. */
+export const FACE_MOTION_EDGE_FRAMES = Object.freeze(
+  Object.fromEntries(
+    FACE_MOTION_CANONICAL_EDGES.map(([from, to]) => [
+      `${from}_to_${to}`,
+      Object.freeze(
+        Array.from({ length: 3 }, (_, index) =>
+          faceMotionAsset(`transition-${from}-${to}-${index + 1}.webp`)
+        )
+      ),
+    ])
+  ) as Record<FaceMotionCanonicalEdgeKey, readonly string[]>
+);
 
 export const FACE_MOTION_ALL_SOURCES = Object.freeze([
   ...FACE_MOTION_POSE_SOURCES,
@@ -336,6 +326,43 @@ export function faceMotionFrameSource(frame: FaceMotionFrame): string | null {
   }
 
   return null;
+}
+
+export const FACE_MOTION_ATLAS_FRAME_ORDER = Object.freeze([
+  ...FACE_MOTION_POSES,
+  ...FACE_MOTION_CANONICAL_EDGES.flatMap(([from, to]) =>
+    Array.from({ length: 3 }, (_, index) =>
+      edgeFrameKey(from, to, index + 1, 3)
+    )
+  ),
+] as readonly FaceMotionFrame[]);
+
+const FACE_MOTION_ATLAS_INDEX = new Map<FaceMotionFrame, number>(
+  FACE_MOTION_ATLAS_FRAME_ORDER.map((frame, index) => [frame, index])
+);
+
+export function faceMotionAtlasFrameIndex(frame: FaceMotionFrame): number {
+  const index = FACE_MOTION_ATLAS_INDEX.get(frame);
+
+  if (index === undefined) {
+    throw new Error(`Unknown face-motion atlas frame: ${frame}`);
+  }
+
+  return index;
+}
+
+export function faceMotionAtlasPosition(frame: FaceMotionFrame) {
+  const index = faceMotionAtlasFrameIndex(frame);
+  const column = index % FACE_MOTION_CONFIG.atlasColumns;
+  const row = Math.floor(index / FACE_MOTION_CONFIG.atlasColumns);
+
+  return {
+    column,
+    index,
+    row,
+    xPercent: (column / Math.max(1, FACE_MOTION_CONFIG.atlasColumns - 1)) * 100,
+    yPercent: (row / Math.max(1, FACE_MOTION_CONFIG.atlasRows - 1)) * 100,
+  } as const;
 }
 
 export class CompassFaceMachine {

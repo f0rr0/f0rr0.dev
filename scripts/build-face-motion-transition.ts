@@ -3,6 +3,8 @@ import path from "node:path";
 
 import sharp from "sharp";
 
+import { FACE_MOTION_CONFIG } from "../src/lib/face-motion";
+
 const [input, output] = process.argv.slice(2);
 
 if (!(input && output)) {
@@ -27,8 +29,7 @@ let tail = 0;
 const scoreAt = (index: number) => {
   const offset = index * info.channels;
   return (
-    Math.min(data[offset] ?? 0, data[offset + 2] ?? 0) -
-    (data[offset + 1] ?? 0)
+    Math.min(data[offset] ?? 0, data[offset + 2] ?? 0) - (data[offset + 1] ?? 0)
   );
 };
 
@@ -76,7 +77,9 @@ for (let index = 0; index < alpha.length; index += 1) {
   }
 
   const distance = Math.max(0, Math.min(1, scoreAt(index) / 24));
-  alpha[index] = Math.round(255 * (1 - distance * distance * (3 - 2 * distance)));
+  alpha[index] = Math.round(
+    255 * (1 - distance * distance * (3 - 2 * distance))
+  );
 }
 
 // Remove tiny disconnected key-colour islands that GPT sometimes authors
@@ -95,12 +98,7 @@ const isMagentaSpeckCandidate = (index: number) => {
   const red = data[offset] ?? 0;
   const green = data[offset + 1] ?? 0;
   const blue = data[offset + 2] ?? 0;
-  return (
-    red > 110 &&
-    blue > 90 &&
-    red - green > 30 &&
-    blue - green > 25
-  );
+  return red > 110 && blue > 90 && red - green > 30 && blue - green > 25;
 };
 
 for (let seed = 0; seed < alpha.length; seed += 1) {
@@ -206,18 +204,27 @@ for (let index = 0; index < alpha.length; index += 1) {
   const inputOffset = colorIndex * info.channels;
   const outputOffset = index * 4;
   rgba[outputOffset] = pixelAlpha === 0 ? 0 : (data[inputOffset] ?? 0);
-  rgba[outputOffset + 1] =
-    pixelAlpha === 0 ? 0 : (data[inputOffset + 1] ?? 0);
-  rgba[outputOffset + 2] =
-    pixelAlpha === 0 ? 0 : (data[inputOffset + 2] ?? 0);
+  rgba[outputOffset + 1] = pixelAlpha === 0 ? 0 : (data[inputOffset + 1] ?? 0);
+  rgba[outputOffset + 2] = pixelAlpha === 0 ? 0 : (data[inputOffset + 2] ?? 0);
   rgba[outputOffset + 3] = pixelAlpha;
 }
 
 await sharp(rgba, {
   raw: { channels: 4, height: info.height, width: info.width },
 })
-  .resize(1254, 1254, { fit: "fill", kernel: sharp.kernel.lanczos3 })
-  .webp({ effort: 6, lossless: true, smartSubsample: false })
+  .resize(
+    FACE_MOTION_CONFIG.atlasCellSizePx,
+    FACE_MOTION_CONFIG.atlasCellSizePx,
+    { fit: "fill", kernel: sharp.kernel.lanczos3 }
+  )
+  .webp({
+    alphaQuality: 100,
+    effort: 6,
+    quality: 82,
+    smartSubsample: true,
+  })
   .toFile(output);
 
-console.log(`Built lossless transition asset: ${output}`);
+console.log(
+  `Built ${FACE_MOTION_CONFIG.atlasCellSizePx}px lossy-alpha transition asset: ${output}`
+);
