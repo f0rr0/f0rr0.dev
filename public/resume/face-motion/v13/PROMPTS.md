@@ -70,7 +70,7 @@ Constraints: edit only the transparent portions of the supplied mask; preserve a
 Avoid: any generative reframing; zooming; head movement; face change; pose drift; altered hair outline; lower or narrower crown; shoulder drift; torso resize; collar shift; changed crop; upward or downward gaze; duplicate glasses; warped rims; extra pockets; obvious mirrored artifacts; strong lens glare; streaks; blocks; bands; smears; halos; white, black, gray, transparent, or checkerboard background; extra accessories; text; logos; watermark
 ```
 
-## Right: generated from the two fixed diagonals only
+## Superseded strict-profile right from the two fixed diagonals
 
 ```text
 Use case: identity-preserve
@@ -87,6 +87,26 @@ Required glasses: exactly one pair of round gold-rim sunglasses with two crisp l
 Required clothing construction: preserve the garment construction shared by both references exactly. The charcoal overshirt chest pocket must remain on screen-right, as in both images. The visible button placket and both visible dark buttons must remain on screen-left, as in both images. Keep collar points, placket seams, button order, pocket shape, pocket seam, white T-shirt neckline, shoulder width, and torso framing consistent. Do not swap, mirror, duplicate, remove, or relocate any button, placket, seam, or pocket.
 Constraints: use only Images 1 and 2 as references; exactly one person; no additional accessories; preserve identity, wardrobe, lighting, color, photographic texture, and bottom crop; output the complete portrait against only the flat #FF00FF background
 Avoid: top-right pose; bottom-right pose; any upward or downward component; mirrored shirt; pocket on screen-left; buttons on screen-right; changed button count; extra buttons; missing buttons; extra pocket; missing pocket; clothing asymmetry inconsistent with both references; large close-up face; small zoomed-out body; shoulder drift; altered collar; low or narrow crown; pose drift; recentering; streaks; blocks; bands; smears; halos; white, black, gray, transparent, or checkerboard background; text; logos; watermark
+```
+
+## Right: preserve diagonal yaw and interpolate pitch only
+
+```text
+Use case: identity-preserve
+Asset type: corrected right endpoint for a smooth interactive website portrait
+Primary request: Generate one new portrait of this same person by interpolating only the vertical head pitch and eye elevation between Image 1 and Image 2. Keep the moderate right-facing three-quarter yaw already shared by both references. The result must look level and horizontally rightward, but must not rotate farther into a 90-degree side profile.
+Input images: Image 1 is the fixed accepted top-right portrait and Image 2 is the fixed accepted bottom-right portrait. They are the only image references and have equal authority. Both already show the correct moderate three-quarter right yaw, camera angle, identity, clothing construction, and framing. Preserve that shared yaw exactly while placing head pitch, chin height, eyeglass tilt, and gaze halfway between their upward and downward values. Never mirror either image. Do not use or infer any additional reference image.
+Scene/backdrop: perfectly flat solid #FF00FF chroma-key background covering every background pixel edge to edge, with no gradient, texture, shadow, floor, halo, or color variation
+Subject: exactly the same adult man, facial identity, skin tone, beard shape, round gold-rim sunglasses, tall dense swept dark hair, white crew-neck T-shirt, and open charcoal overshirt shown in both references
+Style/medium: natural high-resolution studio portrait photography matching both supplied portraits exactly
+Composition/framing: square 1280 by 1280 canvas; place the complete head, shoulders, collar, torso, and bottom crop at the true midpoint of Images 1 and 2; preserve their camera distance and natural body scale; do not zoom in or out; keep the full hair silhouette inside the canvas
+Required orientation: a moderate right-facing three-quarter view, approximately 35 to 45 degrees of yaw from the camera, matching the yaw present in both references. Preserve a clearly visible front plane of the face and both cheeks. Both sunglass lenses must remain fully visible, with the narrower lens still at least roughly 70 percent of the apparent width of the wider lens. The nose may lead screen-right but the portrait must not read as a strict side silhouette. Keep the eyeglass bridge and chin level and the eyes directed rightward without upward or downward lead.
+Required pitch interpolation: change only vertical pitch and gaze elevation relative to the two references. Image 1 looks up-right and Image 2 looks down-right; the new frame must sit exactly halfway, with a level head and level eye line. Do not add horizontal rotation while removing the vertical angle.
+Required face and hair: preserve the exact identity and natural facial proportions shared by both references; interpolate the outer hair silhouette, crown height, width, side volume, density, sweep, and fine curl texture halfway between the two fixed references; no compressed crown or abrupt side crease
+Required glasses: exactly one pair of round gold-rim sunglasses with two crisp, substantially visible lenses, one bridge, and two natural temples; no edge-on far lens; no duplicate, smeared, warped, or floating rims
+Required clothing construction: preserve the garment construction shared by both references exactly. The charcoal overshirt chest pocket must remain on screen-right. The visible button placket and both visible dark buttons must remain on screen-left. Keep collar points, placket seams, button order, pocket shape, pocket seam, white T-shirt neckline, shoulder width, and torso framing consistent. Do not swap, mirror, duplicate, remove, or relocate any button, placket, seam, or pocket.
+Constraints: use only Images 1 and 2 as references; exactly one person; no additional accessories; preserve identity, wardrobe, lighting, color, photographic texture, and bottom crop; output the complete portrait against only the flat #FF00FF background
+Avoid: 90-degree profile; strict side view; full profile; edge-on far eye or lens; excessive rightward yaw; face turned farther right than either reference; top-right pitch; bottom-right pitch; upward or downward gaze; mirrored shirt; pocket on screen-left; buttons on screen-right; changed button count; extra buttons; missing buttons; extra pocket; missing pocket; large close-up face; small zoomed-out body; shoulder drift; altered collar; low or narrow crown; recentering; streaks; blocks; bands; smears; halos; white, black, gray, transparent, or checkerboard background; text; logos; watermark
 ```
 
 ## Right to bottom-right midpoint

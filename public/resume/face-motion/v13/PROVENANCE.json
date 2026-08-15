@@ -3,11 +3,11 @@
   "release": 13,
   "generationModel": "gpt-image-2",
   "generatedAt": "2026-08-15",
-  "method": "V12 compass set with a corrected GPT Image 2 horizontal left endpoint; the final right endpoint is a new direct high-quality GPT Image 2 output generated from only the fixed top-right and bottom-right endpoints, with equal reference authority and an explicit horizontal 3 o'clock pose plus fixed shirt construction; the accepted right-to-bottom-right midpoint remains unchanged",
+  "method": "V12 compass set with a corrected GPT Image 2 horizontal left endpoint; the final right endpoint is a new direct high-quality GPT Image 2 output generated from only the fixed top-right and bottom-right endpoints, preserving their shared moderate three-quarter right yaw while interpolating only vertical pitch and gaze elevation; left.webp is used only for post-generation visual orientation QA; the accepted right-to-bottom-right midpoint remains unchanged",
   "constraints": {
     "crop": false,
     "recenter": false,
-    "uniformResize": "left generation source: 1280x1280 to 1254x1254; fixed right-diagonal Image API references: 1254x1254 to 1280x1280; accepted generated right source: 1280x1280 to 1254x1254, then uniform 1254x1254 to 1376x1376 endpoint-alignment scale; accepted right-to-bottom-right midpoint: final uniform 1254x1254 to 1273x1273 alignment scale",
+    "uniformResize": "left generation source: 1280x1280 to 1254x1254; fixed right-diagonal Image API references: 1254x1254 to 1280x1280; accepted generated right source: 1280x1280 to 1254x1254 with no further scaling; accepted right-to-bottom-right midpoint: final uniform 1254x1254 to 1273x1273 alignment scale",
     "rotate": false,
     "warp": false,
     "bodyLock": false,
@@ -38,16 +38,17 @@
     },
     {
       "pose": "right",
-      "sourceGeneration": "output/imagegen/face-motion-v13-right-from-diagonals/image_1.png",
-      "sourceSha256": "75f5054eb72fac07a7ffec705f18a19cac3cda702bf0840fccc9044142555e20",
-      "alignment": "border-key normalized the 1280x1280 generated source to 1254x1254, uniformly resized it to 1376x1376, then extracted the final 1254x1254 canvas beginning at x=73, y=28; no anisotropic warp or compositing",
-      "fileSha256": "f6bb46a8010b0332588e1cf54d4dedd5310a9aa3904a8edf1e6b35fc0ef650ed",
-      "alphaBbox": [77, 119, 1183, 1254],
+      "sourceGeneration": "output/imagegen/face-motion-v13-right-three-quarter/image_3.png",
+      "sourceSha256": "afe79643d8e756c9afaf1459aa9f112e55f50e68b00a99b365fc1d4184ede20b",
+      "alignment": "border-key normalized the 1280x1280 generated source to 1254x1254, retained that scale, and applied only a rigid 12-pixel-left and 5-pixel-down canvas translation; no rescaling, anisotropic warp, compositing, or content regeneration",
+      "fileSha256": "3c08e8bb182d96e0154a22a7af7929d481837f9d92103123a99b145f0a0fd33e",
+      "alphaBbox": [71, 119, 1186, 1254],
       "inputs": [
         "top-right.webp: fixed accepted reference with equal authority for identity, camera distance, face/head scale, hair, body framing, clothing construction, lighting, placement, and crop",
         "bottom-right.webp: fixed accepted reference with equal authority for identity, camera distance, face/head scale, hair, body framing, clothing construction, lighting, placement, and crop"
       ],
-      "prompt": "PROMPTS.md#right-generated-from-the-two-fixed-diagonals-only"
+      "postGenerationQa": "left.webp was visually compared only for opposite-direction yaw magnitude and was not sent to the Image API; candidate 1 was rejected for reading down-right and candidate 2 for reading too frontal, while candidate 3 was selected for level pitch, clear rightward yaw, and reference-matched framing",
+      "prompt": "PROMPTS.md#right-preserve-diagonal-yaw-and-interpolate-pitch-only"
     }
   ],
   "rebuiltTransition": {

@@ -71,7 +71,7 @@ describe("V13 reference-compatible compass mapping", () => {
   test("declares one exact rest pose and eight clockwise screen-space poses", () => {
     expect(FACE_MOTION_CONFIG).toMatchObject({
       assetBasePath: "/resume/face-motion/v13",
-      assetRevision: "20260815c",
+      assetRevision: "20260815d",
       centerPose: "center",
       deadZoneRatio: 0.5,
       frameIntervalMs: 36,
@@ -194,7 +194,7 @@ describe("V13 endpoint assets", () => {
     expect(new Set(FACE_MOTION_POSE_SOURCES).size).toBe(9);
 
     for (const pose of EXPECTED_POSES) {
-      const expectedSource = `/resume/face-motion/v13/${pose}.webp?rev=20260815c`;
+      const expectedSource = `/resume/face-motion/v13/${pose}.webp?rev=20260815d`;
       expect(FACE_MOTION_SOURCE_BY_POSE[pose]).toBe(expectedSource);
       expect(FACE_MOTION_POSE_SOURCES).toContain(expectedSource);
       expect(faceMotionFrameSource(pose)).toBe(expectedSource);
@@ -204,11 +204,11 @@ describe("V13 endpoint assets", () => {
   test("uses the exact center endpoint for rest and avatar fallbacks", () => {
     expect(FACE_MOTION_NEUTRAL_SRC).toBe(FACE_MOTION_SOURCE_BY_POSE.center);
     expect(FACE_MOTION_NEUTRAL_SRC).toBe(
-      "/resume/face-motion/v13/center.webp?rev=20260815c"
+      "/resume/face-motion/v13/center.webp?rev=20260815d"
     );
     expect(FACE_MOTION_AVATAR_SRC).toBe(FACE_MOTION_NEUTRAL_SRC);
     expect(FACE_MOTION_POSTER_SRC).toBe(
-      "/resume/face-motion/v13/portrait-neutral.webp?rev=20260815c"
+      "/resume/face-motion/v13/portrait-neutral.webp?rev=20260815d"
     );
   });
 
@@ -230,7 +230,7 @@ describe("V13 endpoint assets", () => {
 
     for (const source of FACE_MOTION_ALL_SOURCES) {
       expect(source).toStartWith("/resume/face-motion/v13/");
-      expect(source).toEndWith(".webp?rev=20260815c");
+      expect(source).toEndWith(".webp?rev=20260815d");
     }
   });
 });
