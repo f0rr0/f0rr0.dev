@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import ThemeToggle from "@/components/ThemeToggle";
 import { resumeData } from "@/content/resume";
+import { FACE_MOTION_AVATAR_SRC } from "@/lib/face-motion";
 
 import { SiteMobileMenu } from "./site-mobile-menu";
 
@@ -28,7 +29,7 @@ export function SiteHeader({
             className="group flex items-center gap-3"
           >
             <Image
-              src={resumeData.person.image}
+              src={FACE_MOTION_AVATAR_SRC}
               alt=""
               className="h-10 w-10 rounded-full object-cover ring-2 ring-border transition-shadow group-hover:ring-primary"
               height={40}

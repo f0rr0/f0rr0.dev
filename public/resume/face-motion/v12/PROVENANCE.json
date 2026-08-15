@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "release": 12,
+  "generationModel": "gpt-image-2",
+  "method": "3x3 GPT Image 2 endpoints; targeted GPT Image 2 side-hair correction; border-connected chroma alpha",
+  "constraints": {
+    "crop": false,
+    "recenter": false,
+    "scale": false,
+    "rotate": false,
+    "warp": false,
+    "bodyLock": false,
+    "opticalFlow": false,
+    "interpolate": false,
+    "blend": false,
+    "opaqueRgbPreserved": true
+  },
+  "alphaExtraction": {
+    "innerThreshold": 24,
+    "outerThreshold": 10,
+    "feather": 1.4,
+    "partialEdgeRgb": "nearest fully opaque pixel from the same immutable source; opaque RGB untouched"
+  },
+  "endpoints": [
+    {
+      "pose": "top-left",
+      "sourceGeneration": "exec-ccb5f751-1bb9-446f-9bbd-b1c4afab4bf5.png",
+      "sourceSha256": "962961de3ba5d2e3906a91c62d5036a144453a17bbae17b9f7c2e1d9a51b68b2",
+      "keyedMasterSha256": "a0a4e42afd126dfe35bf42d7c416c7c86ae009c0ac1dbb70e715ab01bcfff740",
+      "alphaBbox": [69, 98, 1191, 1254]
+    },
+    {
+      "pose": "top",
+      "sourceGeneration": "exec-e6cbe6b8-c9d5-41e1-9414-0d27ddc66d11.png",
+      "sourceSha256": "ca23dd0e6d1fc06b21071682d2f29b20b49d1e33aaeadc4fcd81ea324b3f3952",
+      "keyedMasterSha256": "a7bef7700b30df19dd14649d1ed3c6dcfd7f525c5d324693d741f5b97d3e6cfd",
+      "alphaBbox": [71, 111, 1194, 1254]
+    },
+    {
+      "pose": "top-right",
+      "sourceGeneration": "exec-3f467a80-7a7f-4cc3-917c-d22a55e022ff.png",
+      "sourceSha256": "888d7b8d2ac3df8ee9b89ee9742db9e31b2091b47c4211fdf68ff5767d90b351",
+      "keyedMasterSha256": "5ef1ae6d56197543b1077ce0466ba4fe84832f1212509e8835f93cebd1ff7417",
+      "alphaBbox": [72, 92, 1192, 1254]
+    },
+    {
+      "pose": "left",
+      "sourceGeneration": "output/imagegen/face-motion-v12-transitions/dense2/left-hair-final-v7.png",
+      "sourceSha256": "e1a84aa15373fd200751cad19553d7daf294395e34adabf6e29346aca6d5f409",
+      "keyedMasterSha256": "143c1a012e7cc7845932f8ea426f9514190988e27135540a925c2afe69069ba9",
+      "alphaBbox": [71, 96, 1194, 1253],
+      "correction": "only registered GPT Image 2-authored crown pixels outside the immutable original endpoint silhouette; face, glasses, wardrobe, crop, scale, and pose retain original pixels"
+    },
+    {
+      "pose": "center",
+      "sourceGeneration": "exec-83d7d7fc-3601-4ce0-912f-c7ee2dce35ad.png",
+      "sourceSha256": "370a7d52f8f665321d9d08fbb0aad936318e81e1f0860720e463fed23016079e",
+      "keyedMasterSha256": "9fc6733e5fe79930e686ee8a8011c0d2f360a6620f4d8f3c21995953a5aff2a7",
+      "alphaBbox": [69, 99, 1196, 1254]
+    },
+    {
+      "pose": "right",
+      "sourceGeneration": "output/imagegen/face-motion-v12-transitions/dense2/right-hair-final-v7.png",
+      "sourceSha256": "5ddd3f707c4a44d04d677aa21323f5ffbbf769a168b902a91120a7a29b57513b",
+      "keyedMasterSha256": "ff839121a91538aae32b562a4bf5695d7273c8b49eb1c8d66c06a694a2531ae9",
+      "alphaBbox": [70, 92, 1191, 1253],
+      "correction": "only registered GPT Image 2-authored crown pixels outside the immutable original endpoint silhouette; isolated magenta key specks removed; face, glasses, wardrobe, crop, scale, and pose retain original pixels"
+    },
+    {
+      "pose": "bottom-left",
+      "sourceGeneration": "exec-0ab086f9-2890-4bf9-b667-45c6c8c97200.png",
+      "sourceSha256": "325cb59c0483d6f514921870a399e82abfcb319a3649fd856ed7959b9c6c7dbe",
+      "keyedMasterSha256": "ffe47b40ab878553ee98c89b7ae98dad720d5bcdd4c592e8e5fb39acac333c16",
+      "alphaBbox": [74, 128, 1199, 1254]
+    },
+    {
+      "pose": "bottom",
+      "sourceGeneration": "exec-c88bad67-f1de-48a4-83aa-16c49bc24316.png",
+      "sourceSha256": "4dc951afcf6329f9bb4890c9e46e7f95b07da2f1bab45a4fb8088fbcbb3219e0",
+      "keyedMasterSha256": "a075b1c931daba739ea14e6d763457378f0932624246ae12f4d7d97af8ee9ebe",
+      "alphaBbox": [69, 115, 1196, 1254]
+    },
+    {
+      "pose": "bottom-right",
+      "sourceGeneration": "exec-9e465e6d-3134-4334-bb5d-77358ed7f3f2.png",
+      "sourceSha256": "1b16aa28c34f00389981a947d407bd89e8f150c4d1b4264190f13990f549cd10",
+      "keyedMasterSha256": "d93e61860ff80768e801adf86bcdb3c074a1c59c37103f79652637cfdde519d2",
+      "alphaBbox": [59, 145, 1182, 1254]
+    }
+  ]
+}
