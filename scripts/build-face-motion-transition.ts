@@ -3,6 +3,8 @@ import path from "node:path";
 
 import sharp from "sharp";
 
+import { FACE_MOTION_CONFIG } from "../src/lib/face-motion";
+
 const [input, output] = process.argv.slice(2);
 
 if (!(input && output)) {
@@ -210,8 +212,19 @@ for (let index = 0; index < alpha.length; index += 1) {
 await sharp(rgba, {
   raw: { channels: 4, height: info.height, width: info.width },
 })
-  .resize(1254, 1254, { fit: "fill", kernel: sharp.kernel.lanczos3 })
-  .webp({ effort: 6, lossless: true, smartSubsample: false })
+  .resize(
+    FACE_MOTION_CONFIG.atlasCellSizePx,
+    FACE_MOTION_CONFIG.atlasCellSizePx,
+    { fit: "fill", kernel: sharp.kernel.lanczos3 }
+  )
+  .webp({
+    alphaQuality: 100,
+    effort: 6,
+    quality: 82,
+    smartSubsample: true,
+  })
   .toFile(output);
 
-console.log(`Built lossless transition asset: ${output}`);
+console.log(
+  `Built ${FACE_MOTION_CONFIG.atlasCellSizePx}px lossy-alpha transition asset: ${output}`
+);

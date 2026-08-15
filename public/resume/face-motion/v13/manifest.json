@@ -9,6 +9,22 @@
   },
   "center": "center",
   "poster": "portrait-neutral.webp",
+  "runtime": {
+    "display": {
+      "width": 120,
+      "height": 120,
+      "devicePixelRatio": 2
+    },
+    "poster": "face-motion-poster.webp",
+    "atlas": "face-motion-atlas.webp",
+    "atlasManifest": "face-motion-atlas.json",
+    "frames": 57,
+    "canonicalEdges": 16,
+    "transitionFramesPerEdge": 3,
+    "frameIntervalMs": 50,
+    "payloadBytes": 432904,
+    "encoding": "lossy WebP with alpha"
+  },
   "processing": {
     "backgroundRemoval": "border-connected magenta alpha only",
     "crop": false,

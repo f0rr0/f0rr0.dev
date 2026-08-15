@@ -1,6 +1,6 @@
-# V13 side-generation prompts
+# V13 endpoint-generation history
 
-The selected endpoints and right-to-bottom-right midpoint were generated through the Image API with `gpt-image-2`, high quality, a `1280×1280` canvas, and PNG output. Input order is significant and is documented below. The diagonal inputs were fixed references and were not edited.
+The selected left and right endpoints were generated through the Image API with `gpt-image-2`, high quality, a `1280×1280` canvas, and PNG output. Input order is significant and is documented below. The diagonal inputs were fixed references and were not edited. The historical right-to-bottom-right midpoint prompt remains below for audit history, but that single frame is superseded by the three-frame reference-compatible transition set recorded in [`TRANSITION-PROMPTS.md`](TRANSITION-PROMPTS.md).
 
 ## Left
 

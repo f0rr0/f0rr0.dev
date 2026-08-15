@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import {
   CompassFaceMachine,
   FACE_MOTION_ALL_SOURCES,
+  FACE_MOTION_ATLAS_FRAME_ORDER,
+  FACE_MOTION_ATLAS_SRC,
   FACE_MOTION_AVATAR_SRC,
   FACE_MOTION_CANONICAL_EDGES,
   FACE_MOTION_CONFIG,
@@ -13,10 +15,13 @@ import {
   FACE_MOTION_POSE_SOURCES,
   FACE_MOTION_POSTER_SRC,
   FACE_MOTION_RING,
+  FACE_MOTION_RUNTIME_SOURCES,
   FACE_MOTION_SOURCE_BY_POSE,
   canonicalFaceMotionEdge,
   edgeFrameKey,
   faceMotionEdgeSources,
+  faceMotionAtlasFrameIndex,
+  faceMotionAtlasPosition,
   faceMotionFrameSource,
   faceMotionNeighbors,
   poseFromClientPointer,
@@ -71,10 +76,14 @@ describe("V13 reference-compatible compass mapping", () => {
   test("declares one exact rest pose and eight clockwise screen-space poses", () => {
     expect(FACE_MOTION_CONFIG).toMatchObject({
       assetBasePath: "/resume/face-motion/v13",
-      assetRevision: "20260815d",
+      assetRevision: "20260815e",
+      atlasCellSizePx: 240,
+      atlasColumns: 8,
+      atlasRows: 8,
       centerPose: "center",
       deadZoneRatio: 0.5,
-      frameIntervalMs: 36,
+      displaySizePx: 120,
+      frameIntervalMs: 50,
     });
     expect([...FACE_MOTION_RING]).toEqual(EXPECTED_RING);
     expect([...FACE_MOTION_POSES]).toEqual(EXPECTED_POSES);
@@ -194,7 +203,7 @@ describe("V13 endpoint assets", () => {
     expect(new Set(FACE_MOTION_POSE_SOURCES).size).toBe(9);
 
     for (const pose of EXPECTED_POSES) {
-      const expectedSource = `/resume/face-motion/v13/${pose}.webp?rev=20260815d`;
+      const expectedSource = `/resume/face-motion/v13/${pose}.webp?rev=20260815e`;
       expect(FACE_MOTION_SOURCE_BY_POSE[pose]).toBe(expectedSource);
       expect(FACE_MOTION_POSE_SOURCES).toContain(expectedSource);
       expect(faceMotionFrameSource(pose)).toBe(expectedSource);
@@ -204,12 +213,19 @@ describe("V13 endpoint assets", () => {
   test("uses the exact center endpoint for rest and avatar fallbacks", () => {
     expect(FACE_MOTION_NEUTRAL_SRC).toBe(FACE_MOTION_SOURCE_BY_POSE.center);
     expect(FACE_MOTION_NEUTRAL_SRC).toBe(
-      "/resume/face-motion/v13/center.webp?rev=20260815d"
+      "/resume/face-motion/v13/center.webp?rev=20260815e"
     );
-    expect(FACE_MOTION_AVATAR_SRC).toBe(FACE_MOTION_NEUTRAL_SRC);
+    expect(FACE_MOTION_AVATAR_SRC).toBe(FACE_MOTION_POSTER_SRC);
     expect(FACE_MOTION_POSTER_SRC).toBe(
-      "/resume/face-motion/v13/portrait-neutral.webp?rev=20260815d"
+      "/resume/face-motion/v13/face-motion-poster.webp?rev=20260815e"
     );
+    expect(FACE_MOTION_ATLAS_SRC).toBe(
+      "/resume/face-motion/v13/face-motion-atlas.webp?rev=20260815e"
+    );
+    expect(FACE_MOTION_RUNTIME_SOURCES).toEqual([
+      FACE_MOTION_POSTER_SRC,
+      FACE_MOTION_ATLAS_SRC,
+    ]);
   });
 
   test("has no duplicate endpoint or approved transition URLs", () => {
@@ -230,7 +246,21 @@ describe("V13 endpoint assets", () => {
 
     for (const source of FACE_MOTION_ALL_SOURCES) {
       expect(source).toStartWith("/resume/face-motion/v13/");
-      expect(source).toEndWith(".webp?rev=20260815d");
+      expect(source).toEndWith(".webp?rev=20260815e");
+    }
+  });
+
+  test("packs all 57 endpoint and transition frames into an 8 by 8 atlas", () => {
+    expect(FACE_MOTION_ATLAS_FRAME_ORDER).toHaveLength(57);
+    expect(new Set(FACE_MOTION_ATLAS_FRAME_ORDER).size).toBe(57);
+
+    for (const [index, frame] of FACE_MOTION_ATLAS_FRAME_ORDER.entries()) {
+      expect(faceMotionAtlasFrameIndex(frame)).toBe(index);
+      expect(faceMotionAtlasPosition(frame)).toMatchObject({
+        column: index % 8,
+        index,
+        row: Math.floor(index / 8),
+      });
     }
   });
 });
@@ -413,17 +443,17 @@ describe("V13 latest-target state machine", () => {
   });
 });
 
-describe("V13 single-image browser runtime", () => {
-  test("renders exactly one replaceable image and no blended image stack", async () => {
+describe("V13 single-atlas browser runtime", () => {
+  test("renders one CSS atlas layer with no blended image stack", async () => {
     const componentSource = await readFile(
       new URL("../src/components/face-motion-portrait.tsx", import.meta.url),
       "utf-8"
     );
-    const imageElements = componentSource.match(/<img\b/g) ?? [];
-
-    expect(imageElements).toHaveLength(1);
-    expect(componentSource).toMatch(/faceMotionFrameSource/);
-    expect(componentSource).toMatch(/\.src\s*=/);
+    expect(componentSource).not.toMatch(/<img\b/);
+    expect(componentSource).toMatch(/faceMotionAtlasPosition/);
+    expect(componentSource).toMatch(/backgroundPosition/);
+    expect(componentSource).toMatch(/backgroundSize/);
+    expect(componentSource).toMatch(/FACE_MOTION_ATLAS_SRC/);
     expect(componentSource).not.toMatch(/cross\s*-?fade/i);
     expect(componentSource).not.toMatch(/transition-opacity/);
     expect(componentSource).not.toMatch(/mixBlendMode/);
@@ -454,7 +484,7 @@ describe("V13 single-image browser runtime", () => {
       "utf-8"
     );
 
-    expect(componentSource).toMatch(/FACE_MOTION_ALL_SOURCES/);
+    expect(componentSource).toMatch(/FACE_MOTION_RUNTIME_SOURCES/);
     expect(componentSource).toMatch(/new (?:window\.)?Image\(\)/);
     expect(componentSource).toMatch(/\.decode\(\)/);
     expect(componentSource).toMatch(/FACE_MOTION_CONFIG\.frameIntervalMs/);
