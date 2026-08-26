@@ -16,13 +16,21 @@ export class CheckpointConflictError extends Error {
 
 export interface GitHubAccountCheckpoint {
   latestEventId: string | null;
+  paused: boolean;
 }
+
+export const isGitHubAccountPaused = (
+  checkpoint: GitHubAccountCheckpoint | null
+) => checkpoint?.paused === true;
 
 export const readGitHubAccountCheckpoint = async (
   account: TrackedGitHubAccount
 ): Promise<GitHubAccountCheckpoint | null> => {
   const [checkpoint] = await getDatabase()
-    .select({ latestEventId: githubAccountCheckpoints.latestEventId })
+    .select({
+      latestEventId: githubAccountCheckpoints.latestEventId,
+      paused: githubAccountCheckpoints.paused,
+    })
     .from(githubAccountCheckpoints)
     .where(eq(githubAccountCheckpoints.account, account))
     .limit(1);
@@ -101,7 +109,8 @@ export const persistAccountSync = async (input: {
       .where(
         and(
           eq(githubAccountCheckpoints.account, input.account),
-          checkpointCondition
+          checkpointCondition,
+          eq(githubAccountCheckpoints.paused, input.expectedCheckpoint.paused)
         )
       )
       .returning({ account: githubAccountCheckpoints.account });

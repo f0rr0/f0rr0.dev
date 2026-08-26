@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   index,
   pgTable,
@@ -52,6 +53,7 @@ export const githubAccountCheckpoints = pgTable(
     })
       .defaultNow()
       .notNull(),
+    paused: boolean("paused").default(false).notNull(),
   },
   (table) => [
     check(
