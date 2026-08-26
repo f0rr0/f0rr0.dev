@@ -40,6 +40,10 @@ mise.local.lock
 # vercel
 .vercel
 
+# local generated output
+.eve/
+.output/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
@@ -117,3 +121,6 @@ next-env.d.ts
 .rulesync/rules/*.local.md
 rulesync.local.jsonc
 !.rulesync/.aiignore
+
+# Document the required variable names without committing values.
+!.env.example

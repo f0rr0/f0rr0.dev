@@ -1,0 +1,2 @@
+# Copy the complete local runtime configuration into Codex-managed worktrees.
+.env.local

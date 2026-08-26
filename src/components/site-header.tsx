@@ -7,13 +7,13 @@ import { resumeData } from "@/content/resume";
 import { SiteMobileMenu } from "./site-mobile-menu";
 
 interface SiteHeaderProps {
-  activeHref: "/blog" | "/resume";
+  activeHref?: "/blog" | "/resume";
   currentPath?: "/" | "/blog" | "/resume";
 }
 
 export function SiteHeader({
   activeHref,
-  currentPath = activeHref,
+  currentPath = activeHref ?? "/",
 }: Readonly<SiteHeaderProps>): React.ReactNode {
   return (
     <header className="bg-background font-ui text-foreground print:hidden">
@@ -24,7 +24,9 @@ export function SiteHeader({
         >
           <Link
             href="/"
+            prefetch={false}
             aria-label={`${resumeData.person.name} home`}
+            aria-current={currentPath === "/" ? "page" : undefined}
             className="group flex items-center gap-3"
           >
             <Image
@@ -62,6 +64,7 @@ export function SiteHeader({
                     ) : (
                       <Link
                         href={item.href}
+                        prefetch={false}
                         aria-current={isCurrent ? "page" : undefined}
                         className={className}
                       >

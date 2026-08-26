@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
     "/*": ["./next.config.ts"],
   },
   outputFileTracingIncludes: {
+    "/": ["./src/content/**/*"],
     "/blog/[slug]": ["./src/content/**/*"],
     "/blog/[slug]/markdown": ["./src/content/**/*"],
     "/blog/[slug]/opengraph-image": ["./src/content/**/*"],
