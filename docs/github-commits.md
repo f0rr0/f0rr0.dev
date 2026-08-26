@@ -31,14 +31,37 @@ There are only two tables:
 
 - `github_commits` contains repository identity, SHA, pusher, commit time,
   subject line, canonical URL, and persistence time.
-- `github_account_checkpoints` contains the newest assimilated event ID and
-  last successful poll time for each of the two accounts.
+- `github_account_checkpoints` contains the newest assimilated event ID, last
+  successful poll time, and pause state for each of the two accounts.
 
 For each account, the poller reads events newest-first until it reaches the
 saved event ID. It fetches commit metadata, then inserts the commits and advances
 the checkpoint in one transaction. A failed run leaves the checkpoint where it
 was; the next run repeats the same interval. Duplicate webhook deliveries,
 overlap between webhook and polling, and retried cron calls are harmless.
+
+### Pause or resume an account
+
+Set `paused` on the account's checkpoint row. A paused account makes no polling
+API requests, advances no checkpoint, and ignores incoming push webhooks:
+
+```sql
+update github_account_checkpoints
+set paused = true
+where account = 'yuppiestechdev';
+```
+
+Resume it with:
+
+```sql
+update github_account_checkpoints
+set paused = false
+where account = 'yuppiestechdev';
+```
+
+The checkpoint is deliberately preserved while paused. When the account is
+resumed, the next poll assimilates activity since that checkpoint, provided it
+is still inside GitHub's bounded Events API window.
 
 The first run assimilates the activity currently available from GitHub's Events
 API. There is no arbitrary 400-day scan. [GitHub exposes at most 300 events and

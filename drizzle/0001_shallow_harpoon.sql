@@ -1,0 +1,1 @@
+ALTER TABLE "github_account_checkpoints" ADD COLUMN "paused" boolean DEFAULT false NOT NULL;

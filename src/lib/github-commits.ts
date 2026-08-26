@@ -15,6 +15,7 @@ import type {
 } from "@/lib/github-commits-core";
 import {
   CheckpointConflictError,
+  isGitHubAccountPaused,
   persistAccountSync,
   persistGitHubCommits,
   readGitHubAccountCheckpoint,
@@ -38,6 +39,7 @@ export interface GitHubAccountSyncResult {
   checkpointChanged: boolean;
   commits: number;
   events: number;
+  paused: boolean;
 }
 
 export interface GitHubSyncResult {
@@ -45,6 +47,7 @@ export interface GitHubSyncResult {
   checkpoints: number;
   commits: number;
   events: number;
+  paused: number;
 }
 
 export class GitHubSyncConfigurationError extends Error {
@@ -298,20 +301,33 @@ const collectNewEvents = async (
 export const syncGitHubAccount = async (
   account: TrackedGitHubAccount
 ): Promise<GitHubAccountSyncResult> => {
-  const token = tokenFor(account);
-  await assertTokenIdentity(account, token);
+  let token: string | null = null;
 
   for (let attempt = 0; attempt < CHECKPOINT_ATTEMPTS; attempt += 1) {
     const checkpoint = await readGitHubAccountCheckpoint(account);
+    if (isGitHubAccountPaused(checkpoint)) {
+      return {
+        account,
+        checkpointChanged: false,
+        commits: 0,
+        events: 0,
+        paused: true,
+      };
+    }
+    if (token === null) {
+      token = tokenFor(account);
+      await assertTokenIdentity(account, token);
+    }
+    const activeToken = token;
     const collected = await collectNewEvents(
       account,
-      token,
+      activeToken,
       checkpoint?.latestEventId ?? null
     );
     const commits = (
       await fetchInBatches(
         collected.pushes,
-        async (push) => await collectPushCommits(push, token)
+        async (push) => await collectPushCommits(push, activeToken)
       )
     ).flat();
 
@@ -328,6 +344,7 @@ export const syncGitHubAccount = async (
           collected.latestEventId !== (checkpoint?.latestEventId ?? null),
         commits: persisted,
         events: collected.events,
+        paused: false,
       };
     } catch (error) {
       if (
@@ -357,10 +374,15 @@ export const syncGitHubAccounts = async (): Promise<GitHubSyncResult> => {
     checkpoints: results.filter((result) => result.checkpointChanged).length,
     commits: results.reduce((total, result) => total + result.commits, 0),
     events: results.reduce((total, result) => total + result.events, 0),
+    paused: results.filter((result) => result.paused).length,
   };
 };
 
 export const syncGitHubWebhookPush = async (push: GitHubPush) => {
+  const checkpoint = await readGitHubAccountCheckpoint(push.pushedBy);
+  if (isGitHubAccountPaused(checkpoint)) {
+    return 0;
+  }
   const needsGitHubRequest =
     push.size === null ||
     push.commits.length < push.size ||

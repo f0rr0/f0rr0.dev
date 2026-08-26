@@ -7,6 +7,7 @@ import {
   pushFromWebhook,
   repositoryFrom,
 } from "../src/lib/github-commits-core.ts";
+import { isGitHubAccountPaused } from "../src/lib/github-commits-store.ts";
 
 const sha = "a".repeat(40);
 const before = "b".repeat(40);
@@ -264,5 +265,17 @@ describe("token identity", () => {
       "yuppiestechdev"
     );
     expect(authenticatedGitHubAccountFrom({ login: "someone" })).toBeNull();
+  });
+});
+
+describe("account pause state", () => {
+  test("skips only checkpoints explicitly marked as paused", () => {
+    expect(
+      isGitHubAccountPaused({ latestEventId: "123456789", paused: true })
+    ).toBe(true);
+    expect(
+      isGitHubAccountPaused({ latestEventId: "123456789", paused: false })
+    ).toBe(false);
+    expect(isGitHubAccountPaused(null)).toBe(false);
   });
 });
