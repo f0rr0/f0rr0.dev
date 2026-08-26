@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { FaceMotionPortrait } from "@/components/face-motion-portrait";
 import { JsonLd } from "@/components/json-ld";
 import { SitePage } from "@/components/site-page";
 import { SiteShell } from "@/components/site-shell";
@@ -254,28 +255,31 @@ export function ResumePageContent({
       {includeProfileJsonLd ? <JsonLd data={profileJsonLd} /> : null}
       <SiteShell activeHref="/resume" currentPath={currentPath}>
         <SitePage title="Résumé" action={<ResumeDownloadButton />}>
-          <section>
-            <p className={resumeBodyText}>{summary}</p>
-            <p className={`mt-3 ${resumeBodyText}`}>
-              {formatResumeLocation(person)}
-            </p>
-            <div className="mt-4 flex flex-wrap gap-4 text-sm lg:text-base">
-              {links.map((link) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  className={accentText}
-                  target={link.href.startsWith("http") ? "_blank" : undefined}
-                  rel={
-                    link.href.startsWith("http")
-                      ? "noopener noreferrer"
-                      : undefined
-                  }
-                >
-                  {link.label}
-                </a>
-              ))}
+          <section className="grid items-start gap-8 print:block lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-10">
+            <div className="order-2 min-w-0 print:block lg:order-1 lg:pt-2">
+              <p className={resumeBodyText}>{summary}</p>
+              <p className={`mt-3 ${resumeBodyText}`}>
+                {formatResumeLocation(person)}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-4 text-sm lg:text-base">
+                {links.map((link) => (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    className={accentText}
+                    target={link.href.startsWith("http") ? "_blank" : undefined}
+                    rel={
+                      link.href.startsWith("http")
+                        ? "noopener noreferrer"
+                        : undefined
+                    }
+                  >
+                    {link.label}
+                  </a>
+                ))}
+              </div>
             </div>
+            <FaceMotionPortrait className="order-1 lg:order-2" eager />
           </section>
 
           <section className="mt-8">

@@ -6,6 +6,18 @@ const nextConfig: NextConfig = {
   experimental: {
     useTypeScriptCli: true,
   },
+  images: {
+    localPatterns: [
+      {
+        pathname: "/**",
+        search: "",
+      },
+      {
+        pathname: "/resume/face-motion/v12/**",
+        search: "?rev=20260813d",
+      },
+    ],
+  },
   outputFileTracingExcludes: {
     "/*": ["./next.config.ts"],
   },
@@ -20,6 +32,17 @@ const nextConfig: NextConfig = {
     "/rss.xml": ["./src/content/**/*"],
     "/sitemap.xml": ["./src/content/**/*"],
   },
+  headers: async () => [
+    {
+      headers: [
+        {
+          key: "Cache-Control",
+          value: "public, max-age=31536000, immutable",
+        },
+      ],
+      source: "/resume/face-motion/:asset*",
+    },
+  ],
   reactCompiler: true,
   rewrites: async () => [
     {
