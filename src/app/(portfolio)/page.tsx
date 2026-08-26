@@ -7,12 +7,9 @@ import { SiteShell } from "@/components/site-shell";
 import { featuredProjectNames, projectEditorial } from "@/content/home";
 import { getBlogPosts } from "@/lib/blog-utils";
 import { formatDate } from "@/lib/date";
+import { getRecentGitHubCommits } from "@/lib/github-commits-feed";
 import { getGitHubProfile } from "@/lib/github-profile";
 import { publicUrl, siteConfig } from "@/lib/site";
-import {
-  getPublishedTimelineEdition,
-  resolveTimelineEdition,
-} from "@/lib/timeline";
 
 const description =
   "Sid Jain is an applied AI engineer building useful, durable products and production systems. Explore his open-source work, GitHub activity, and writing.";
@@ -59,12 +56,11 @@ export const metadata: Metadata = {
 export const revalidate = 900;
 
 export default async function Home() {
-  const [github, posts, publishedTimeline] = await Promise.all([
+  const [github, posts, commits] = await Promise.all([
     getGitHubProfile(),
     getBlogPosts(),
-    getPublishedTimelineEdition(),
+    getRecentGitHubCommits(),
   ]);
-  const timelineEdition = resolveTimelineEdition(github, publishedTimeline);
   const projectByName = new Map(
     github.projects.map((project) => [project.name, project])
   );
@@ -120,7 +116,7 @@ export default async function Home() {
           </div>
         </section>
 
-        <GitHubTimeline activity={github.activity} edition={timelineEdition} />
+        <GitHubTimeline commits={commits} />
 
         <section
           aria-label="Selected work and recent writing"

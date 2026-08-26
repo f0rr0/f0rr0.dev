@@ -11,7 +11,7 @@ export const hasBearerSecret = (
   secret: string | undefined
 ) => {
   const normalizedSecret = secret?.trim();
-  if (normalizedSecret === undefined || normalizedSecret.length < 16) {
+  if (normalizedSecret === undefined || normalizedSecret.length < 32) {
     return false;
   }
 

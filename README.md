@@ -1,9 +1,7 @@
 # f0rr0.dev
 
-Sid Jain's portfolio, writing archive, and rolling work timeline. The site is a
-Next.js application designed for Vercel. Its timeline is assembled from GitHub
-activity by a deliberately narrow Eve agent and stored in Neon Postgres through
-Drizzle.
+Sid Jain's portfolio, writing archive, and GitHub commit timeline. The
+site is a Next.js application designed for Vercel.
 
 ## Local development
 
@@ -14,9 +12,9 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-The website works without secrets. In that mode it uses public GitHub data and a
-validated editorial fallback. See [the timeline guide](docs/timeline-agent.md)
-for the database, ingestion, agent, and deployment setup.
+The website works without secrets; the persisted commit feed stays empty until
+Postgres is configured. See [the commit sync guide](docs/github-commits.md) for
+database, Supabase Cron, account polling, and webhook setup.
 
 ## Validation
 
@@ -26,7 +24,6 @@ bun run lint
 bun run typecheck
 bun test
 bun run build
-bun run build:agent
 ```
 
 Database migrations are explicit and are never run during install or build:

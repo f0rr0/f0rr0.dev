@@ -29,8 +29,5 @@ jobs:
       - name: Test
         run: bun test
 
-      - name: Agent build
-        run: bun run build:agent
-
       - name: Production build
         run: bun run build

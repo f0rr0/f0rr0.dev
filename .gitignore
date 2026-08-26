@@ -40,7 +40,7 @@ mise.local.lock
 # vercel
 .vercel
 
-# eve local workflow state and build output
+# local generated output
 .eve/
 .output/
 

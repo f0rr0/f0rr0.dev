@@ -1,6 +1,5 @@
 import "./src/env";
 import createMDX from "@next/mdx";
-import { withEve } from "eve/next";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -77,4 +76,4 @@ const withMDX = createMDX({
   },
 });
 
-export default withEve(withMDX(nextConfig));
+export default withMDX(nextConfig);
