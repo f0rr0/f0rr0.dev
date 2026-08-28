@@ -194,6 +194,13 @@ clear its reconciliation schedule.
 The public feed hides an integration copy only when the database can point to a
 specific canonical activity and persist the reason plus evidence:
 
+- Amendments, rebases, force-push rewrites, and same-repository cherry-picks
+  that preserve the exact non-null GitHub author ID, authored timestamp, and
+  full commit message form one non-merge rewrite lineage. The latest committer
+  timestamp wins, followed by observation time and SHA as deterministic ties.
+  Fingerprints and parent SHAs may differ because rewriting is allowed to change
+  the patch and its base. Existing aliases are retargeted directly to the winner
+  so the public graph never contains an alias chain.
 - A GitHub-reported merge SHA is aliased to an existing source member only when
   that PR has complete membership. Parent count distinguishes regular merge
   commits from squash integration commits.
@@ -235,8 +242,9 @@ by the model.
 
 If the worker reaches its deadline before issuing the model request, it releases
 the claim back to `pending`; no attempt was consumed. Once the request starts,
-an API/transport error, empty response, or other processing error is terminal
-`failed`. A lost lease becomes `indeterminate` and is not automatically
+an API/transport error, empty response, output that lacks the requested
+`HEADLINE`/`SHORT` labels, or other processing error is terminal `failed`. A
+lost lease becomes `indeterminate` and is not automatically
 reclaimed, avoiding duplicate billing when the remote outcome is unknown.
 There are no automatic model retries. PR reconciliation, including title/body
 updates, does not create a new commit-summary revision.

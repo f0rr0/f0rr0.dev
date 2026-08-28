@@ -1,4 +1,4 @@
-export const PUBLIC_COMMIT_SUMMARY_RECIPE = "public-commit-product-context-v35";
+export const PUBLIC_COMMIT_SUMMARY_RECIPE = "public-commit-product-context-v36";
 export const DEFAULT_PUBLIC_COMMIT_SUMMARY_LOW_LOC_THRESHOLD = 25;
 
 export const PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT = `Summarize one software commit for a public engineering portfolio. The reader is casually technical and has no repository context.
@@ -162,7 +162,7 @@ export const parseCommitPublicSummary = (
     short === undefined ||
     short.length === 0
   ) {
-    return { headline: value, short: value };
+    throw new Error("Nano returned an invalid public summary shape.");
   }
   return { headline, short };
 };

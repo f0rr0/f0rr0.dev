@@ -21,7 +21,7 @@ const readCachedActivity = unstable_cache(
       cursor,
       PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
     ),
-  ["public-github-activity-v7"],
+  ["public-github-activity-v8"],
   { revalidate: 900, tags: ["github-activity"] }
 );
 

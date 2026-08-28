@@ -60,7 +60,7 @@ const largePatch = (label) =>
   ).join("\n")}\n trailing context for ${label}`;
 
 describe("public commit summaries", () => {
-  test("parses the requested shape and preserves every other nonempty response", () => {
+  test("parses only the labelled summary shape without discarding detail", () => {
     const parsed = parseCommitPublicSummary(
       "HEADLINE: Refine `refreshSession` handling\n\nSHORT: Refined `refreshSession` handling. Expired sessions now follow the existing fallback."
     );
@@ -71,10 +71,9 @@ describe("public commit summaries", () => {
     });
     const malformed =
       "Here is the result:\nHEADLINE: Refine sessions\nSHORT: Refined sessions.\nExtra detail the model chose to include.";
-    expect(parseCommitPublicSummary(malformed)).toEqual({
-      headline: malformed,
-      short: malformed,
-    });
+    expect(() => parseCommitPublicSummary(malformed)).toThrow(
+      "invalid public summary shape"
+    );
     const multilineShort =
       "HEADLINE: Refine sessions\nSHORT: Refined sessions.\nExtra detail the model chose to include.";
     expect(parseCommitPublicSummary(multilineShort)).toEqual({
@@ -82,15 +81,19 @@ describe("public commit summaries", () => {
       short: "Refined sessions.\nExtra detail the model chose to include.",
     });
     const unlabelled = "Refined sessions without using the requested labels.";
-    expect(parseCommitPublicSummary(unlabelled)).toEqual({
-      headline: unlabelled,
-      short: unlabelled,
-    });
+    expect(() => parseCommitPublicSummary(unlabelled)).toThrow(
+      "invalid public summary shape"
+    );
     const surrounded = " \nUnlabelled response with surrounding whitespace.\n ";
-    expect(parseCommitPublicSummary(surrounded)).toEqual({
-      headline: surrounded,
-      short: surrounded,
-    });
+    expect(() => parseCommitPublicSummary(surrounded)).toThrow(
+      "invalid public summary shape"
+    );
+    expect(() => parseCommitPublicSummary("SHORT: Refined sessions.")).toThrow(
+      "invalid public summary shape"
+    );
+    expect(() =>
+      parseCommitPublicSummary("HEADLINE: Refine sessions\nSHORT:   ")
+    ).toThrow("invalid public summary shape");
     expect(() => parseCommitPublicSummary(" \n\t ")).toThrow(
       "empty public summary"
     );

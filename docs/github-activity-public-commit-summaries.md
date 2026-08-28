@@ -137,20 +137,20 @@ OpenAI's [conversation compaction](https://developers.openai.com/api/docs/guides
 which manages multi-turn state rather than a single commit diff.
 
 There is no content disclosure validator, privacy-term filter, word-count
-rejection, response-length rejection, shape rejection, or display truncation.
-Any response containing at least one non-whitespace character succeeds. When
-both labels are recognizable, their values are stored separately. Otherwise,
-the complete response is preserved as both variants, so unexpected formatting
-does not discard model output. Every displayed stored variant is shown in full.
-The deterministic final pass only adds missing Markdown
+rejection, response-length rejection, or display truncation. The response must
+contain non-empty `HEADLINE` and `SHORT` labels in the requested order; malformed
+protocol text fails instead of being copied into both public fields. Once parsed,
+both values—including a multiline `SHORT`—are stored and displayed in full. The
+deterministic final pass only adds missing Markdown
 backticks to unmistakable code references and capitalizes the first headline
 character; it does not remove text.
 
-Only a source-fetch failure, model request or transport failure, or empty Nano
-response fails processing. Such a failure is terminal for explicit operational
-inspection and omitted from the public feed. The call is not retried inside or
-after the request. Repository descriptions and other display facts are persisted
-as repository snapshots; raw per-file and patch evidence is not.
+A source-fetch failure, model request or transport failure, empty Nano response,
+or malformed labelled output fails processing. Such a failure is terminal for
+explicit operational inspection and omitted from the public feed. The call is
+not retried inside or after the request. Repository descriptions and other
+display facts are persisted as repository snapshots; raw per-file and patch
+evidence is not.
 
 The displayed additions and deletions are GitHub's commit-wide `stats` values.
 The headline threshold and language weights use GitHub's per-file additions and
