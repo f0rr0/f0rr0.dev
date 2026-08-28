@@ -1571,10 +1571,13 @@ const publishCompletedSummaryForCommit = async (
   if (ready !== undefined) {
     await transaction
       .update(githubPublicActivities)
-      .set({
-        publishedAt: sql`coalesce(${githubPublicActivities.publishedAt}, ${now})`,
-      })
-      .where(eq(githubPublicActivities.publicId, ready.publicId));
+      .set({ publishedAt: now })
+      .where(
+        and(
+          eq(githubPublicActivities.publicId, ready.publicId),
+          isNull(githubPublicActivities.publishedAt)
+        )
+      );
   }
 };
 
@@ -1596,6 +1599,14 @@ const markGitHubCommitCanonicalized = async (
   await publishCompletedSummaryForCommit(transaction, repositoryId, sha, now);
 };
 
+const comparableCommitHeadline = (message: string | null) => {
+  const headline = message?.split("\n", 1)[0]?.trim();
+  if (headline === undefined || headline.length === 0) {
+    return null;
+  }
+  return headline.replace(/\s+\(#[1-9]\d*\)$/u, "");
+};
+
 export const canonicalizeGitHubCommitActivity = async (
   repositoryId: string,
   sha: string,
@@ -1605,7 +1616,10 @@ export const canonicalizeGitHubCommitActivity = async (
   await getDatabase().transaction(async (transaction) => {
     const [candidate] = await transaction
       .select({
+        authoredAt: githubCommits.authoredAt,
+        authorUserId: githubCommits.authorUserId,
         changeFingerprint: githubCommits.changeFingerprint,
+        committerAt: githubCommits.committerAt,
         fingerprintComplete: githubCommits.fingerprintComplete,
         firstObservedAt: githubCommits.firstObservedAt,
         fullMessage: githubCommits.fullMessage,
@@ -1700,7 +1714,13 @@ export const canonicalizeGitHubCommitActivity = async (
     }
     const copies = await transaction
       .select({
+        authoredAt: githubCommits.authoredAt,
+        authorUserId: githubCommits.authorUserId,
+        canonicalPublicId: githubPublicActivities.canonicalPublicId,
+        committerAt: githubCommits.committerAt,
         firstObservedAt: githubCommits.firstObservedAt,
+        fullMessage: githubCommits.fullMessage,
+        parentShas: githubCommits.parentShas,
         publicId: githubPublicActivities.publicId,
         sha: githubCommits.sha,
       })
@@ -1715,8 +1735,10 @@ export const canonicalizeGitHubCommitActivity = async (
           eq(githubCommits.changeFingerprint, candidate.changeFingerprint),
           eq(githubCommits.fingerprintComplete, true),
           eq(githubCommits.enrichmentState, "complete"),
-          isNull(githubPublicActivities.canonicalPublicId),
-          isNull(githubPublicActivities.hiddenAt)
+          or(
+            isNull(githubPublicActivities.hiddenAt),
+            isNotNull(githubPublicActivities.canonicalPublicId)
+          )
         )
       )
       .orderBy(asc(githubCommits.firstObservedAt), asc(githubCommits.sha));
@@ -1732,13 +1754,45 @@ export const canonicalizeGitHubCommitActivity = async (
       if (copy.sha === sha) {
         continue;
       }
+      const canonicalPublicId = copy.canonicalPublicId ?? copy.publicId;
+      if (canonicalPublicId === candidate.publicId) {
+        continue;
+      }
       const explicitCherryPick = copy.sha === cherryPickSource;
+      const directMergeParent =
+        (candidate.parentShas?.length ?? 0) > 1 &&
+        candidate.parentShas?.includes(copy.sha) === true;
+      const sameAuthorSingleParent =
+        candidate.parentShas?.length === 1 &&
+        copy.parentShas?.length === 1 &&
+        candidate.authorUserId !== null &&
+        candidate.authorUserId === copy.authorUserId;
+      const sameAuthoredCommit =
+        sameAuthorSingleParent &&
+        candidate.authoredAt !== null &&
+        copy.authoredAt !== null &&
+        candidate.authoredAt.getTime() === copy.authoredAt.getTime() &&
+        candidate.fullMessage !== null &&
+        candidate.fullMessage === copy.fullMessage;
+      const candidateHeadline = comparableCommitHeadline(candidate.fullMessage);
+      const copyHeadline = comparableCommitHeadline(copy.fullMessage);
+      const sameHeadlineCommit =
+        sameAuthorSingleParent &&
+        candidateHeadline !== null &&
+        candidateHeadline === copyHeadline;
+      const candidateOrder =
+        candidate.committerAt?.getTime() ?? candidate.firstObservedAt.getTime();
+      const copyOrder =
+        copy.committerAt?.getTime() ?? copy.firstObservedAt.getTime();
       if (
         !explicitCherryPick &&
-        (copy.firstObservedAt > candidate.firstObservedAt ||
-          (copy.firstObservedAt.getTime() ===
-            candidate.firstObservedAt.getTime() &&
-            copy.sha > sha))
+        !directMergeParent &&
+        (copyOrder > candidateOrder ||
+          (copyOrder === candidateOrder &&
+            (copy.firstObservedAt > candidate.firstObservedAt ||
+              (copy.firstObservedAt.getTime() ===
+                candidate.firstObservedAt.getTime() &&
+                copy.sha > sha))))
       ) {
         continue;
       }
@@ -1758,20 +1812,40 @@ export const canonicalizeGitHubCommitActivity = async (
           );
         }
       )?.[0];
-      if (!explicitCherryPick && sharedPullRequest === undefined) {
+      if (
+        !explicitCherryPick &&
+        !directMergeParent &&
+        !sameAuthoredCommit &&
+        !sameHeadlineCommit &&
+        sharedPullRequest === undefined
+      ) {
         continue;
       }
-      const reason = explicitCherryPick
-        ? "cherry_pick"
-        : "pr_history_exact_copy";
+      const reason = directMergeParent
+        ? "direct_parent_merge"
+        : explicitCherryPick
+          ? "cherry_pick"
+          : sameAuthoredCommit
+            ? "same_authored_exact_copy"
+            : sameHeadlineCommit
+              ? "same_author_headline_exact_copy"
+              : "pr_history_exact_copy";
       const aliased = await setCanonicalAlias(
         transaction,
         candidate.publicId,
-        copy.publicId,
+        canonicalPublicId,
         reason,
         {
           fingerprint: candidate.changeFingerprint,
           fingerprintComplete: true,
+          authoredAt: sameAuthoredCommit
+            ? candidate.authoredAt?.toISOString()
+            : null,
+          directMergeParent,
+          headline:
+            !sameAuthoredCommit && sameHeadlineCommit
+              ? candidateHeadline
+              : null,
           pullRequestNodeId: sharedPullRequest ?? null,
           sourceSha: copy.sha,
         },
@@ -2105,10 +2179,13 @@ export const completeGitHubSummaryAttempt = async (
     ) {
       await transaction
         .update(githubPublicActivities)
-        .set({
-          publishedAt: sql`coalesce(${githubPublicActivities.publishedAt}, ${now})`,
-        })
-        .where(eq(githubPublicActivities.publicId, attempt.activityPublicId));
+        .set({ publishedAt: now })
+        .where(
+          and(
+            eq(githubPublicActivities.publicId, attempt.activityPublicId),
+            isNull(githubPublicActivities.publishedAt)
+          )
+        );
     }
     return true;
   });

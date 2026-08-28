@@ -75,6 +75,46 @@ const pullRequest = {
   updated_at: "2026-08-26T12:02:00Z",
   user: { id: 456, login: "f0rr0" },
 };
+const sparsePullRequest = {
+  base: {
+    ref: "main",
+    repo: {
+      id: 123,
+      name: "private-repo",
+      url: "https://api.github.com/repos/another-org/private-repo",
+    },
+    sha: before,
+  },
+  head: {
+    ref: "durable-intake",
+    repo: {
+      id: 123,
+      name: "private-repo",
+      url: "https://api.github.com/repos/another-org/private-repo",
+    },
+    sha,
+  },
+  id: 987,
+  number: 42,
+  url: "https://api.github.com/repos/another-org/private-repo/pulls/42",
+};
+const sparsePullRequestEventFrom = (pullRequestValue, overrides = {}) =>
+  githubEventFrom(
+    {
+      actor: { login: "f0rr0" },
+      created_at: "2026-08-26T12:03:00Z",
+      id: "123456798",
+      payload: {
+        action: "merged",
+        number: 42,
+        pull_request: pullRequestValue,
+        ...overrides,
+      },
+      repo: { id: 123, name: "another-org/private-repo" },
+      type: "PullRequestEvent",
+    },
+    "f0rr0"
+  );
 const issue = {
   created_at: "2026-08-26T10:00:00Z",
   html_url: "https://github.com/another-org/private-repo/issues/91",
@@ -665,6 +705,71 @@ describe("pull request observation normalization", () => {
     });
   });
 
+  test("checkpoints the sparse PullRequestEvent shape returned by the user Events API", () => {
+    expect(
+      githubEventFrom(
+        {
+          actor: { login: "f0rr0" },
+          created_at: "2026-08-26T12:03:00Z",
+          id: "123456797",
+          payload: {
+            action: "merged",
+            number: 42,
+            pull_request: sparsePullRequest,
+          },
+          repo: { id: 123, name: "another-org/private-repo" },
+          type: "PullRequestEvent",
+        },
+        "f0rr0"
+      )
+    ).toEqual({
+      id: "123456797",
+      issue: null,
+      occurredAt: "2026-08-26T12:03:00.000Z",
+      pullRequest: null,
+      pullRequestSignal: {
+        action: "merged",
+        number: 42,
+        repositoryId: "123",
+      },
+      push: null,
+    });
+  });
+
+  test("rejects malformed events that resemble sparse pull request signals", () => {
+    expect(
+      sparsePullRequestEventFrom({ ...sparsePullRequest, number: 41 })
+    ).toBeNull();
+    expect(
+      sparsePullRequestEventFrom({
+        ...sparsePullRequest,
+        url: "https://example.com/repos/another-org/private-repo/pulls/42",
+      })
+    ).toBeNull();
+    expect(
+      sparsePullRequestEventFrom({
+        ...sparsePullRequest,
+        base: {
+          ...sparsePullRequest.base,
+          repo: { ...sparsePullRequest.base.repo, id: 999 },
+        },
+      })
+    ).toBeNull();
+    expect(
+      sparsePullRequestEventFrom({ ...sparsePullRequest, head: null })
+    ).toBeNull();
+    expect(
+      sparsePullRequestEventFrom(sparsePullRequest, { action: "not valid" })
+    ).toBeNull();
+    expect(
+      sparsePullRequestEventFrom({
+        ...sparsePullRequest,
+        updated_at: "not-a-date",
+        user: null,
+      })
+    ).toBeNull();
+  });
+
   test("retains foreign authors but rejects malformed provider timestamps", () => {
     const normalizedRepository = repositoryFrom(repository);
     expect(normalizedRepository).not.toBeNull();
@@ -785,6 +890,34 @@ describe("account pause state", () => {
 });
 
 describe("bounded event collection", () => {
+  test("collects a real sparse pull request event without poisoning its page", async () => {
+    globalThis.fetch = async () =>
+      Response.json([
+        {
+          actor: { login: "f0rr0" },
+          created_at: "2026-08-26T12:03:00Z",
+          id: "13",
+          payload: {
+            action: "merged",
+            number: 42,
+            pull_request: sparsePullRequest,
+          },
+          repo: { id: 123, name: "another-org/private-repo" },
+          type: "PullRequestEvent",
+        },
+        accountEvent("12"),
+      ]);
+
+    const collected = await collectGitHubEvents("f0rr0", "token", "12");
+    expect(collected.latestEventId).toBe("13");
+    expect(collected.events).toHaveLength(1);
+    expect(collected.events[0]?.pullRequestSignal).toEqual({
+      action: "merged",
+      number: 42,
+      repositoryId: "123",
+    });
+  });
+
   test("stops at the saved checkpoint without replaying it", async () => {
     globalThis.fetch = async () =>
       Response.json([

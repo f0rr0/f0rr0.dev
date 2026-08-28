@@ -17,6 +17,7 @@ import type {
   GitHubEvent,
   GitHubIssue,
   GitHubPullRequest,
+  GitHubPullRequestEventSignal,
   GitHubPush,
   GitHubRepository,
   GitHubRepositoryFacts,
@@ -530,6 +531,61 @@ const upsertPullRequest = async (
   return true;
 };
 
+const TERMINAL_PULL_REQUEST_EVENT_ACTIONS = new Set(["closed", "merged"]);
+
+const signalKnownPullRequestReconciliation = async (
+  transaction: DatabaseTransaction,
+  account: TrackedGitHubAccount,
+  signal: GitHubPullRequestEventSignal,
+  occurredAt: Date,
+  observedAt: Date
+) => {
+  const [known] = await transaction
+    .select({
+      nodeId: githubPullRequests.nodeId,
+      providerUpdatedAt: githubPullRequests.providerUpdatedAt,
+      state: githubPullRequests.state,
+    })
+    .from(githubPullRequests)
+    .where(
+      and(
+        eq(githubPullRequests.account, account),
+        eq(githubPullRequests.repositoryId, signal.repositoryId),
+        eq(githubPullRequests.number, signal.number)
+      )
+    )
+    .for("update");
+  if (known === undefined) {
+    return false;
+  }
+  if (occurredAt < known.providerUpdatedAt) {
+    return false;
+  }
+
+  const promoteToProvisionalClosed =
+    TERMINAL_PULL_REQUEST_EVENT_ACTIONS.has(signal.action) &&
+    known.state === "open";
+  await transaction
+    .update(githubPullRequests)
+    .set({
+      nextReconcileAt: observedAt,
+      ...(promoteToProvisionalClosed
+        ? {
+            closedAt: occurredAt,
+            state: "closed" as const,
+            terminalAt: occurredAt,
+          }
+        : {}),
+    })
+    .where(
+      and(
+        eq(githubPullRequests.account, account),
+        eq(githubPullRequests.nodeId, known.nodeId)
+      )
+    );
+  return true;
+};
+
 const lockWebhookAccount = async (
   transaction: DatabaseTransaction,
   account: TrackedGitHubAccount
@@ -845,7 +901,12 @@ export const persistAccountIntake = async (input: {
           const [knownPullRequest] = await transaction
             .select({ account: githubPullRequests.account })
             .from(githubPullRequests)
-            .where(eq(githubPullRequests.nodeId, event.pullRequest.nodeId))
+            .where(
+              and(
+                eq(githubPullRequests.account, input.account),
+                eq(githubPullRequests.nodeId, event.pullRequest.nodeId)
+              )
+            )
             .limit(1);
           pullRequestAccount = trackedGitHubAccountFrom(
             knownPullRequest?.account
@@ -862,6 +923,18 @@ export const persistAccountIntake = async (input: {
         ) {
           result.pullRequests += 1;
         }
+      }
+      if (
+        event.pullRequestSignal !== undefined &&
+        (await signalKnownPullRequestReconciliation(
+          transaction,
+          input.account,
+          event.pullRequestSignal,
+          new Date(event.occurredAt),
+          now
+        ))
+      ) {
+        result.pullRequests += 1;
       }
     }
 
