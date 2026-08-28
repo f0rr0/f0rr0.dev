@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import { githubCommits } from "@/db/schema";
@@ -50,6 +50,14 @@ export interface GitHubActivityCounters {
   deletions: number;
   languages: readonly PublicCommitLanguage[];
   substantiveLoc: number;
+}
+
+export interface GitHubActivitySummaryUpdate {
+  summaryHeadline: string;
+  summaryInputHash: string;
+  summaryModel: string;
+  summaryRecipe: string;
+  summaryShort: string;
 }
 
 const commitIdentity = (commit: { repositoryId: string; sha: string }) =>
@@ -178,6 +186,64 @@ export const readCompletedGitHubActivityCommits = async (): Promise<
     author: row.author as TrackedGitHubAccount,
     committedAt: row.committedAt.toISOString(),
   }));
+};
+
+export const readGitHubActivityCommitsWithStaleSummary = async (
+  currentRecipe: string
+): Promise<readonly ClaimedGitHubActivityCommit[]> => {
+  if (currentRecipe.trim().length === 0) {
+    throw new Error("The current GitHub activity summary recipe is empty.");
+  }
+  const rows = await getDatabase()
+    .select({
+      author: githubCommits.author,
+      committedAt: githubCommits.committedAt,
+      message: githubCommits.message,
+      repository: githubCommits.repository,
+      repositoryId: githubCommits.repositoryId,
+      sha: githubCommits.sha,
+    })
+    .from(githubCommits)
+    .where(
+      and(
+        isNotNull(githubCommits.summaryHeadline),
+        isNotNull(githubCommits.summaryShort),
+        or(
+          isNull(githubCommits.summaryRecipe),
+          ne(githubCommits.summaryRecipe, currentRecipe)
+        )
+      )
+    )
+    .orderBy(desc(githubCommits.committedAt), desc(githubCommits.sha));
+  return rows.map((row) => ({
+    ...row,
+    author: row.author as TrackedGitHubAccount,
+    committedAt: row.committedAt.toISOString(),
+  }));
+};
+
+export const updateGitHubActivitySummary = async (
+  commit: ClaimedGitHubActivityCommit,
+  summary: GitHubActivitySummaryUpdate
+) => {
+  const [updated] = await getDatabase()
+    .update(githubCommits)
+    .set({
+      ...summary,
+      summaryAttemptedAt: new Date(),
+      summaryError: null,
+    })
+    .where(
+      and(
+        commitIdentity(commit),
+        isNotNull(githubCommits.summaryHeadline),
+        isNotNull(githubCommits.summaryShort)
+      )
+    )
+    .returning({ repositoryId: githubCommits.repositoryId });
+  if (updated === undefined) {
+    throw new Error("The completed GitHub activity summary changed.");
+  }
 };
 
 export const updateGitHubActivityCounters = async (

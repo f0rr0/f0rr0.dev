@@ -9,6 +9,7 @@ import {
   buildCommitPublicSummaryModelInput,
   DEFAULT_PUBLIC_COMMIT_SUMMARY_LOW_LOC_THRESHOLD,
   deriveCommitLanguages,
+  formatPublicCommitSummaryMarkdown,
   parseCommitPublicSummary,
   PUBLIC_COMMIT_SUMMARY_MAX_OUTPUT_TOKENS,
   PUBLIC_COMMIT_SUMMARY_RECIPE,
@@ -37,6 +38,12 @@ const SAMPLE_CASES = [
   { caseId: "email-font-alignment", shaPrefix: "ed7ad9cf" },
   { caseId: "sealed-concurrency-contract", shaPrefix: "e634abdd" },
   { caseId: "wasix-streaming-tools", shaPrefix: "57e3c0ae" },
+  { caseId: "facet-count-alignment", shaPrefix: "ab985292" },
+  { caseId: "apt-provisioning-retries", shaPrefix: "144a4cad" },
+  { caseId: "outreach-review-target", shaPrefix: "2b72714d" },
+  { caseId: "truthful-worker-terminal-state", shaPrefix: "b0788260" },
+  { caseId: "prospect-row-reordering", shaPrefix: "e98276ac" },
+  { caseId: "mobile-guard-false-positive", shaPrefix: "b40e5f9b" },
 ] as const;
 
 interface CommitRow {
@@ -349,7 +356,10 @@ const main = async () => {
     try {
       const completion = await callNano(source.modelInput);
       try {
-        const summaries = parseCommitPublicSummary(completion.text);
+        const summaries = formatPublicCommitSummaryMarkdown(
+          parseCommitPublicSummary(completion.text),
+          source.commit
+        );
         const ownerLogin = source.row.repository.split("/")[0] ?? null;
         const isTrackedOwner = trackedGitHubAccountFrom(ownerLogin) !== null;
         cases.push({

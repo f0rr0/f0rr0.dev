@@ -23,14 +23,14 @@ plain-text values in one response:
 
 - `HEADLINE`: a three- to nine-word, action-led technical headline containing
   only the main outcome, with no preamble or trailing period.
-- `SHORT`: for substantive commits, a compact two- or three-sentence paragraph,
-  usually 45–80 words, with supported implementation detail and any substantive
-  secondary change. Tiny commits remain shorter rather than receiving filler.
+- `SHORT`: a compact one- or two-sentence explanation, usually 20–45 words,
+  leading with what became possible, what failure was removed, or what became
+  observable. It includes at most one essential technical detail.
 
-Both values contain inline Markdown. Code-shaped references such as symbols,
-commands, methods, configuration keys, and code literals use backticks; bold is
-available sparingly for scanability. The output contains no headings, lists,
-blockquotes, or links.
+Both values contain inline Markdown. The prompt requires code-shaped references
+to use backticks, and a deterministic final pass formats unmistakable
+identifiers, HTTP methods, flags, package names, calls, and common commands that
+Nano misses. The output contains no headings, lists, blockquotes, or links.
 
 Both variants describe the same central change. The page selects between them
 procedurally; a model does not decide presentation length. The initial low-churn
@@ -70,6 +70,11 @@ these counts partial. Patch text is used only as Nano evidence.
 Both Nano outputs are persisted in `summary_headline` and `summary_short` along
 with their exact model snapshot, prompt recipe, and input hash. The page chooses
 between the two stored values without another model call.
+
+When a prompt recipe changes, `bun run github:refresh-summaries` makes one new
+Nano attempt for each stale completed row. Successful outputs replace only the
+stored summary fields; a failed one-shot attempt leaves the last valid summary
+in place and is never retried automatically.
 
 ## Timeline presentation
 
