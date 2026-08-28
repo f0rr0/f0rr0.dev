@@ -103,131 +103,189 @@
     scroll-margin-top: 2rem;
   }
 
-  .sacred-timeline {
-    --timeline-axis: 0.5rem;
-    position: relative;
-  }
-
-  .sacred-timeline::before {
-    position: absolute;
-    top: 0.5rem;
-    bottom: 0.5rem;
-    left: var(--timeline-axis);
-    width: 1px;
-    background: color-mix(in oklab, var(--primary) 58%, var(--border));
-    content: "";
-  }
-
-  .sacred-timeline-item {
-    --entry-space: 3rem;
-    --node-size: 0.625rem;
-    position: relative;
+  .github-activity-days {
     display: grid;
-    grid-template-columns: 1rem minmax(0, 1fr);
-    column-gap: 1rem;
+    gap: clamp(2.75rem, 6vw, 4.5rem);
+    margin-top: clamp(2.25rem, 5vw, 3.5rem);
   }
 
-  .sacred-timeline-date {
-    grid-column: 2;
+  .github-activity-day {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 28rem;
+  }
+
+  .github-activity-day-heading {
+    display: grid;
+    grid-template-columns: auto minmax(2rem, 1fr);
+    align-items: center;
+    gap: 1rem;
     color: var(--muted-foreground);
     font-family: var(--font-site-mono);
     font-size: 0.6875rem;
-    letter-spacing: 0.08em;
+    font-weight: 500;
+    letter-spacing: 0.11em;
     line-height: 1.5;
     text-transform: uppercase;
   }
 
-  .sacred-timeline-node {
-    position: relative;
-    z-index: 1;
-    grid-row: 1 / span 2;
-    grid-column: 1;
-    justify-self: center;
-    width: var(--node-size);
-    height: var(--node-size);
-    margin-top: 0.2rem;
-    border: 2px solid var(--background);
-    border-radius: 999px;
-    background: var(--primary);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 76%, var(--border));
-    transition:
-      background-color 180ms ease,
-      box-shadow 180ms ease,
-      transform 180ms ease;
-  }
-
-  .sacred-timeline-node::after {
-    position: absolute;
-    top: calc(50% - 0.5px);
-    left: 100%;
-    width: 1.25rem;
+  .github-activity-day-heading > span {
     height: 1px;
-    background: color-mix(in oklab, var(--primary) 38%, var(--border));
-    content: "";
+    background: color-mix(in oklab, var(--border) 86%, transparent);
   }
 
-  .sacred-timeline-item:hover .sacred-timeline-node,
-  .sacred-timeline-item:focus-within .sacred-timeline-node {
-    background: var(--brand-hover);
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 14%, transparent);
-    transform: scale(1.08);
-  }
-
-  .sacred-timeline-content {
-    grid-column: 2;
-    padding: 0.35rem 0 var(--entry-space);
-  }
-
-  .sacred-timeline-item:last-child .sacred-timeline-content {
-    padding-bottom: 0;
-  }
-
-  .sacred-timeline-title {
+  .github-activity-list {
     margin-top: 0.5rem;
+  }
+
+  .github-activity-entry {
+    border-bottom: 1px solid var(--border);
+    padding-block: 1.5rem;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 11rem;
+  }
+
+  .github-activity-entry-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .github-activity-repository {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.625rem;
+  }
+
+  .github-activity-avatar,
+  .github-activity-avatar-fallback {
+    width: 1.75rem;
+    height: 1.75rem;
+    flex: none;
+    border: 1px solid color-mix(in oklab, var(--border) 82%, transparent);
+    border-radius: 0.45rem;
+    background: var(--muted);
+  }
+
+  .github-activity-avatar-fallback {
+    display: grid;
+    place-items: center;
+    color: var(--muted-foreground);
+  }
+
+  .github-activity-repository-label,
+  .github-activity-repository-link {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.3rem;
+    overflow: hidden;
+    color: var(--muted-foreground);
+    font-family: var(--font-site-mono);
+    font-size: 0.75rem;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .github-activity-repository-link {
+    transition: color 160ms ease;
+  }
+
+  .github-activity-repository-link:hover {
+    color: var(--brand-hover);
+  }
+
+  .github-activity-time {
+    flex: none;
+    color: var(--muted-foreground);
+    font-family: var(--font-site-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.03em;
+  }
+
+  .github-activity-headline,
+  .github-activity-summary {
+    max-width: 50rem;
+    margin-top: 1rem;
     color: var(--foreground);
+  }
+
+  .github-activity-headline {
     font-family: var(--font-site-heading);
-    font-size: 1.45rem;
+    font-size: clamp(1.2rem, 3vw, 1.45rem);
     font-weight: 700;
     letter-spacing: -0.02em;
-    line-height: 1.18;
+    line-height: 1.25;
   }
 
-  @media (min-width: 40rem) {
-    .sacred-timeline {
-      --timeline-axis: 7.6875rem;
-    }
+  .github-activity-summary {
+    font-size: 0.975rem;
+    line-height: 1.75;
+  }
 
-    .sacred-timeline::before {
-      left: var(--timeline-axis);
-    }
+  .github-activity-headline code,
+  .github-activity-summary code {
+    border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
+    border-radius: 0.3rem;
+    background: color-mix(in oklab, var(--muted) 62%, transparent);
+    padding: 0.05em 0.25em;
+    font-family: var(--font-site-mono);
+    font-size: 0.86em;
+    font-weight: 500;
+  }
 
-    .sacred-timeline-item {
-      grid-template-columns: 6.25rem 1.375rem minmax(0, 1fr);
-      column-gap: 0.75rem;
-    }
+  .github-activity-facts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.7rem 1rem;
+    margin-top: 1rem;
+    color: var(--muted-foreground);
+    font-family: var(--font-site-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.02em;
+  }
 
-    .sacred-timeline-date {
-      grid-row: 1;
-      grid-column: 1;
-      padding-top: 0.05rem;
-      text-align: right;
-    }
+  .github-activity-loc,
+  .github-activity-languages,
+  .github-activity-languages > li {
+    display: inline-flex;
+    align-items: center;
+  }
 
-    .sacred-timeline-node {
-      grid-row: 1;
-      grid-column: 2;
-      justify-self: center;
-    }
+  .github-activity-loc {
+    gap: 0.45rem;
+  }
 
-    .sacred-timeline-content {
-      grid-row: 1;
-      grid-column: 3;
-      padding: 0 0 var(--entry-space) 0.75rem;
-    }
+  .github-activity-additions {
+    color: light-dark(oklch(0.48 0.12 155), oklch(0.75 0.13 155));
+  }
+
+  .github-activity-deletions {
+    color: light-dark(oklch(0.52 0.16 25), oklch(0.76 0.13 25));
+  }
+
+  .github-activity-languages {
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .github-activity-languages > li {
+    gap: 0.3rem;
+  }
+
+  .github-activity-languages img {
+    opacity: 0.82;
+  }
+
+  :is(.dark *) .github-activity-languages img {
+    filter: invert(1);
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .sacred-timeline-node,
+    .github-activity-repository-link,
     .group\/link svg {
       transition: none;
     }

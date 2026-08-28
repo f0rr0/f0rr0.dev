@@ -18,7 +18,7 @@ const repository = {
 };
 
 const apiCommit = {
-  author: { login: "somebody-else" },
+  author: { login: "yuppiestechdev" },
   commit: {
     author: { date: "2026-08-26T12:00:00Z" },
     message: "feat: persist one commit\n\nLonger body",
@@ -39,13 +39,13 @@ describe("GitHub commit normalization", () => {
     });
   });
 
-  test("stores a commit based on who pushed it, not who authored it", () => {
+  test("admits a commit based on its GitHub author", () => {
     const normalizedRepository = repositoryFrom(repository);
     expect(normalizedRepository).not.toBeNull();
-    expect(commitFromGitHub(apiCommit, normalizedRepository, "f0rr0")).toEqual({
+    expect(commitFromGitHub(apiCommit, normalizedRepository)).toEqual({
+      author: "yuppiestechdev",
       committedAt: "2026-08-26T12:00:00.000Z",
       message: "feat: persist one commit",
-      pushedBy: "f0rr0",
       repository: "another-org/private-repo",
       repositoryId: "123",
       sha,
@@ -53,16 +53,39 @@ describe("GitHub commit normalization", () => {
     });
   });
 
-  test("rejects malformed commit data and forged URLs", () => {
+  test("excludes commits with null or foreign GitHub authors", () => {
     const normalizedRepository = repositoryFrom(repository);
     expect(normalizedRepository).not.toBeNull();
     expect(
+      commitFromGitHub({ ...apiCommit, author: null }, normalizedRepository)
+    ).toBeNull();
+    expect(
       commitFromGitHub(
-        { ...apiCommit, html_url: "https://example.com/commit/a" },
-        normalizedRepository,
-        "f0rr0"
+        { ...apiCommit, author: { login: "somebody-else" } },
+        normalizedRepository
       )
     ).toBeNull();
+  });
+
+  test("rejects malformed commit data and forged URLs", () => {
+    const normalizedRepository = repositoryFrom(repository);
+    expect(normalizedRepository).not.toBeNull();
+    expect(() =>
+      commitFromGitHub(
+        { ...apiCommit, html_url: "https://example.com/commit/a" },
+        normalizedRepository
+      )
+    ).toThrow("invalid commit response");
+    expect(() =>
+      commitFromGitHub(
+        {
+          ...apiCommit,
+          author: { login: "somebody-else" },
+          html_url: "https://example.com/commit/a",
+        },
+        normalizedRepository
+      )
+    ).toThrow("invalid commit response");
   });
 });
 
@@ -167,7 +190,7 @@ describe("authenticated user events", () => {
 });
 
 describe("push webhook routing", () => {
-  test("accepts any branch when a tracked account performed the push", () => {
+  test("uses the push actor only to discover commit references", () => {
     expect(
       pushFromWebhook({
         after: sha,
@@ -188,15 +211,7 @@ describe("push webhook routing", () => {
       before,
       commits: [
         {
-          commit: {
-            committedAt: "2026-08-26T12:00:00.000Z",
-            message: "fix: private dependency",
-            pushedBy: "yuppiestechdev",
-            repository: "another-org/private-repo",
-            repositoryId: "123",
-            sha,
-            url: `https://github.com/another-org/private-repo/commit/${sha}`,
-          },
+          commit: null,
           sha,
         },
       ],

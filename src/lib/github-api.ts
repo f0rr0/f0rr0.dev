@@ -5,6 +5,16 @@ const GITHUB_API_VERSION = "2026-03-10";
 const REQUEST_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 15_000;
 
+export class GitHubResponseError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`GitHub returned HTTP ${status}.`);
+    this.name = "GitHubResponseError";
+    this.status = status;
+  }
+}
+
 const readDefaultGitHubToken = () => {
   const token =
     process.env.GITHUB_TOKEN?.trim() ?? process.env.GITHUB_F0RR0_TOKEN?.trim();
@@ -48,10 +58,10 @@ export const fetchGitHub = async (
       return response;
     }
     if (response.status < 500 && response.status !== 429) {
-      throw new Error(`GitHub returned HTTP ${response.status}.`);
+      throw new GitHubResponseError(response.status);
     }
     if (attempt === REQUEST_ATTEMPTS - 1) {
-      throw new Error(`GitHub returned HTTP ${response.status}.`);
+      throw new GitHubResponseError(response.status);
     }
     await delay(250 * 2 ** attempt);
   }

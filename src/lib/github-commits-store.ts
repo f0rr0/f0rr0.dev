@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import { githubAccountCheckpoints, githubCommits } from "@/db/schema";
@@ -43,25 +43,72 @@ const insertCommits = async (
   >[0],
   commits: readonly GitHubCommit[]
 ) => {
-  if (commits.length === 0) {
+  const uniqueCommits = new Map<string, GitHubCommit>();
+  for (const commit of commits) {
+    const key = `${commit.repositoryId}:${commit.sha}`;
+    const existing = uniqueCommits.get(key);
+    if (existing !== undefined && existing.author !== commit.author) {
+      throw new Error("A GitHub commit has conflicting author provenance.");
+    }
+    uniqueCommits.set(key, commit);
+  }
+  const values = [...uniqueCommits.values()];
+  if (values.length === 0) {
     return 0;
   }
 
   const persisted = await transaction
     .insert(githubCommits)
     .values(
-      commits.map((commit) => ({
+      values.map((commit) => ({
+        author: commit.author,
         committedAt: new Date(commit.committedAt),
         message: commit.message,
-        pushedBy: commit.pushedBy,
         repository: commit.repository,
         repositoryId: commit.repositoryId,
         sha: commit.sha,
-        url: commit.url,
       }))
     )
-    .onConflictDoNothing()
-    .returning({ sha: githubCommits.sha });
+    .onConflictDoNothing({
+      target: [githubCommits.repositoryId, githubCommits.sha],
+    })
+    .returning({
+      repositoryId: githubCommits.repositoryId,
+      sha: githubCommits.sha,
+    });
+
+  const inserted = new Set(
+    persisted.map(({ repositoryId, sha }) => `${repositoryId}:${sha}`)
+  );
+  const conflicts = values.filter(
+    (commit) => !inserted.has(`${commit.repositoryId}:${commit.sha}`)
+  );
+  if (conflicts.length > 0) {
+    const existingRows = await transaction
+      .select({
+        author: githubCommits.author,
+        repositoryId: githubCommits.repositoryId,
+        sha: githubCommits.sha,
+      })
+      .from(githubCommits)
+      .where(
+        inArray(
+          githubCommits.sha,
+          conflicts.map(({ sha }) => sha)
+        )
+      );
+    const existingAuthors = new Map(
+      existingRows.map((row) => [`${row.repositoryId}:${row.sha}`, row.author])
+    );
+    for (const commit of conflicts) {
+      if (
+        existingAuthors.get(`${commit.repositoryId}:${commit.sha}`) !==
+        commit.author
+      ) {
+        throw new Error("A GitHub commit has conflicting author provenance.");
+      }
+    }
+  }
   return persisted.length;
 };
 
@@ -78,14 +125,12 @@ export const persistAccountSync = async (input: {
 }) =>
   await getDatabase().transaction(async (transaction) => {
     const persisted = await insertCommits(transaction, input.commits);
-    const now = new Date();
 
     if (input.expectedCheckpoint === null) {
       const inserted = await transaction
         .insert(githubAccountCheckpoints)
         .values({
           account: input.account,
-          lastPolledAt: now,
           latestEventId: input.latestEventId,
         })
         .onConflictDoNothing()
@@ -105,7 +150,7 @@ export const persistAccountSync = async (input: {
           );
     const updated = await transaction
       .update(githubAccountCheckpoints)
-      .set({ lastPolledAt: now, latestEventId: input.latestEventId })
+      .set({ latestEventId: input.latestEventId })
       .where(
         and(
           eq(githubAccountCheckpoints.account, input.account),
@@ -120,25 +165,3 @@ export const persistAccountSync = async (input: {
 
     return persisted;
   });
-
-export const readRecentGitHubCommits = async (limit = 24) => {
-  const rows = await getDatabase()
-    .select({
-      committedAt: githubCommits.committedAt,
-      message: githubCommits.message,
-      pushedBy: githubCommits.pushedBy,
-      repository: githubCommits.repository,
-      repositoryId: githubCommits.repositoryId,
-      sha: githubCommits.sha,
-      url: githubCommits.url,
-    })
-    .from(githubCommits)
-    .orderBy(desc(githubCommits.committedAt), desc(githubCommits.sha))
-    .limit(limit);
-
-  return rows.map((row) => ({
-    ...row,
-    committedAt: row.committedAt.toISOString(),
-    pushedBy: row.pushedBy as TrackedGitHubAccount,
-  }));
-};

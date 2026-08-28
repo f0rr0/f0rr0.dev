@@ -7,7 +7,7 @@ import { SiteShell } from "@/components/site-shell";
 import { featuredProjectNames, projectEditorial } from "@/content/home";
 import { getBlogPosts } from "@/lib/blog-utils";
 import { formatDate } from "@/lib/date";
-import { getRecentGitHubCommits } from "@/lib/github-commits-feed";
+import { getInitialGitHubActivity } from "@/lib/github-activity-feed";
 import { getGitHubProfile } from "@/lib/github-profile";
 import { publicUrl, siteConfig } from "@/lib/site";
 
@@ -56,10 +56,10 @@ export const metadata: Metadata = {
 export const revalidate = 900;
 
 export default async function Home() {
-  const [github, posts, commits] = await Promise.all([
+  const [github, posts, activity] = await Promise.all([
     getGitHubProfile(),
     getBlogPosts(),
-    getRecentGitHubCommits(),
+    getInitialGitHubActivity(),
   ]);
   const projectByName = new Map(
     github.projects.map((project) => [project.name, project])
@@ -116,7 +116,7 @@ export default async function Home() {
           </div>
         </section>
 
-        <GitHubTimeline commits={commits} />
+        <GitHubTimeline initialPage={activity} />
 
         <section
           aria-label="Selected work and recent writing"

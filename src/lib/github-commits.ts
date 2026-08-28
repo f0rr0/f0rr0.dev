@@ -99,7 +99,6 @@ const assertTokenIdentity = async (
 const fetchCommit = async (
   repository: GitHubRepository,
   sha: string,
-  pushedBy: TrackedGitHubAccount,
   token: string
 ) => {
   const { payload } = await fetchJson(
@@ -108,11 +107,7 @@ const fetchCommit = async (
     ),
     token
   );
-  const commit = commitFromGitHub(payload, repository, pushedBy);
-  if (commit === null) {
-    throw new TypeError("GitHub returned an invalid commit response.");
-  }
-  return commit;
+  return commitFromGitHub(payload, repository);
 };
 
 const fetchInBatches = async <Input, Output>(
@@ -194,9 +189,9 @@ const commitsFromApiValues = (values: readonly unknown[], push: GitHubPush) => {
   const commits: GitHubCommit[] = [];
   const seen = new Set<string>();
   for (const value of values) {
-    const commit = commitFromGitHub(value, push.repository, push.pushedBy);
+    const commit = commitFromGitHub(value, push.repository);
     if (commit === null) {
-      throw new TypeError("GitHub returned an invalid commit in a push.");
+      continue;
     }
     if (!seen.has(commit.sha)) {
       commits.push(commit);
@@ -216,11 +211,10 @@ const collectPushCommits = async (push: GitHubPush, token: string) => {
       push.before === ZERO_SHA
         ? await fetchNewBranchCommits(push, token)
         : await fetchComparison(push, token);
-    const commits = commitsFromApiValues(values, push);
-    if (push.size !== null && commits.length < push.size) {
+    if (push.size !== null && values.length < push.size) {
       throw new Error("GitHub did not return every commit in the push.");
     }
-    return commits;
+    return commitsFromApiValues(values, push);
   }
 
   const embedded: GitHubCommit[] = [];
@@ -234,10 +228,12 @@ const collectPushCommits = async (push: GitHubPush, token: string) => {
   }
   const fetched = await fetchInBatches(
     missing,
-    async ({ sha }) =>
-      await fetchCommit(push.repository, sha, push.pushedBy, token)
+    async ({ sha }) => await fetchCommit(push.repository, sha, token)
   );
-  return [...embedded, ...fetched];
+  return [
+    ...embedded,
+    ...fetched.filter((commit): commit is GitHubCommit => commit !== null),
+  ];
 };
 
 const collectNewEvents = async (
