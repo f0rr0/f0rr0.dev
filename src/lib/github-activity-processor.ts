@@ -381,17 +381,28 @@ const commitEvidenceFrom = (
       "GitHub returned an invalid commit date."
     );
   }
-  const parents = Array.isArray(root.parents)
-    ? root.parents.map((parent) => {
-        if (!isObject(parent)) {
-          throw new ActivityProcessingError(
-            "source_invalid",
-            "GitHub returned an invalid commit parent."
-          );
-        }
-        return requiredString(parent.sha, "parent SHA").toLowerCase();
-      })
-    : [];
+  if (!Array.isArray(root.parents)) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "GitHub returned incomplete commit ancestry."
+    );
+  }
+  const parents = root.parents.map((parent) => {
+    if (!isObject(parent)) {
+      throw new ActivityProcessingError(
+        "source_invalid",
+        "GitHub returned an invalid commit parent."
+      );
+    }
+    const parentSha = commitShaFrom(parent.sha);
+    if (parentSha === null) {
+      throw new ActivityProcessingError(
+        "source_invalid",
+        "GitHub returned an invalid commit parent SHA."
+      );
+    }
+    return parentSha;
+  });
   const additions = requiredInteger(root.stats.additions, "commit additions");
   const deletions = requiredInteger(root.stats.deletions, "commit deletions");
   const total = requiredInteger(root.stats.total, "commit changed lines");

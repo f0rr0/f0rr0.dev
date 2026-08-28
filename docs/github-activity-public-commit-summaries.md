@@ -10,11 +10,11 @@ the unit sent to Nano or the identity of the stored source activity.
 ## Per-commit processing
 
 ```text
-verified tracked-author commit
+verified tracked-author non-merge commit
   -> fetch the repository and commit evidence exposed by the GitHub path
   -> read commit-wide and per-file additions/deletions from GitHub
   -> derive languages and substantive churn from the per-file counters
-  -> discover GitHub PR membership and suppress only proven integration copies
+  -> discover GitHub PR membership and suppress exact-evidence integration copies
   -> one gpt-5-nano call producing both public summary lengths
   -> persist one revision-scoped attempt, both summaries, recipe/model/input
      hash, languages, and churn
@@ -175,9 +175,10 @@ published after the first page. Pagination never splits one day across pages.
 
 Canonical commits with the same primary GitHub PR and UTC day render as one PR
 slice containing their individual headlines/disclosures. A PR spanning several
-days produces one slice per day. The PR merge is a separate milestone. Daily
+days produces one slice per day. Stored multi-parent merge commits are omitted
+from both Nano and the timeline. The PR merge is a separate milestone. Daily
 totals include repositories, additions, deletions, merged PRs, and opened
-issues; proven aliases do not add duplicate churn.
+issues; proven aliases and omitted merge commits do not add duplicate churn.
 
 Language logos use version-pinned Simple Icons SVGs from the npm distribution.
 Repository owner avatars and durable repository/PR display facts come from the

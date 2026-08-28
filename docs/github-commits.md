@@ -53,9 +53,14 @@ The intake boundary is intentionally cheap:
 - A push observation records its source, account, repository, ref, before/after
   SHAs, expected commit count, and any SHA list GitHub supplied. The worker can
   later expand a truncated push with authenticated GitHub APIs.
-- The Events poll persists all newly seen push observations, PR snapshots, and
-  tracked-author issue-opened milestones, then advances that account's event
-  checkpoint in the same transaction.
+- The Events poll persists all newly seen push observations, complete PR
+  snapshots when GitHub supplies them, and tracked-author issue-opened
+  milestones, then advances that account's event checkpoint in the same
+  transaction. GitHub currently returns a sparse PR shape from this feed. A
+  strictly validated sparse event can schedule reconciliation only for an
+  already-known PR belonging to the polled account; it cannot create a PR or
+  cross account boundaries. Stale event timestamps cannot overwrite or
+  reschedule newer provider state.
 - Checkpoint updates use compare-and-swap. A concurrent winner causes the
   loser to reread and retry instead of overwriting newer progress.
 
@@ -107,8 +112,16 @@ order:
 3. Ask GitHub which PRs are associated with each newly enriched commit and
    persist those PR snapshots. Reconcile known PRs that are due.
 4. Canonicalize only copies supported by complete, deterministic evidence.
-5. Create and claim one summary attempt for each still-canonical commit, make
-   one Nano call, and publish the activity only after it succeeds.
+5. Create and claim one summary attempt for each still-canonical, non-merge
+   commit, make one Nano call, and publish the activity only after it succeeds.
+
+A commit with more than one parent is a regular merge commit. It remains fully
+stored for intake, ancestry, and alias evidence, but it is excluded from summary
+creation, summary claims, the public activity projection, pagination days, and
+daily LOC/repository totals. A merged pull request remains visible as its
+separate PR milestone. This intentionally omits even a merge commit with unique
+conflict-resolution changes: the public surface describes authored work and PR
+outcomes, not integration mechanics.
 
 An issue opened by a tracked account needs no enrichment or model call. Intake
 persists its stable node/repository IDs, original title/link snapshots, creation
@@ -184,26 +197,41 @@ specific canonical activity and persist the reason plus evidence:
 - A GitHub-reported merge SHA is aliased to an existing source member only when
   that PR has complete membership. Parent count distinguishes regular merge
   commits from squash integration commits.
+- A multi-parent commit with a complete exact fingerprint is aliased when the
+  matching commit SHA is literally one of its parents. If that parent is
+  already an alias, the new copy resolves to the same canonical activity.
 - A rebase/force-push copy is aliased only when both commits have complete,
   identical changed-line fingerprints and belong to distinct complete versions
   of the same PR.
 - A cherry-pick is aliased only with the explicit `cherry picked from commit`
   trailer and the same complete fingerprint.
+- The provider can omit PR association for squash/rebase flows, especially on
+  non-default target branches. Two single-parent commits can therefore be
+  aliased without PR membership only when they have the same repository,
+  complete exact fingerprint, non-null GitHub author ID, and normalized first
+  message line. Normalization removes only GitHub's terminal ` (#123)` suffix;
+  the earlier committer timestamp wins, with observation time and SHA used only
+  as deterministic ties.
 
 The fingerprint hashes stable hunk bodies—including unchanged context—and
 file-change metadata. It excludes commit identity and numeric hunk coordinates.
 A missing patch, counter mismatch, binary/provider omission, or GitHub file cap
-makes the fingerprint incomplete, so it cannot prove an alias. There is no
-global same-diff deduplication and no title-, time-, filename-, or
-similarity-based guess. Unproven commits remain visible.
+makes the fingerprint incomplete, so it cannot prove an alias. Exact counters,
+filenames, a headline, or timing by themselves never hide a commit. The
+same-author/headline fallback is admitted only after complete byte-identical
+patch evidence and single-parent shape. Unproven commits remain visible. The
+known ambiguity is an intentional revert-and-reapply of the same exact patch
+with the same headline by the same author; for this achievement timeline it is
+deliberately collapsed, and the stored alias evidence keeps the decision
+auditable and reversible.
 
 ## One-shot Nano summaries
 
-Every canonical commit gets one revision-scoped summary-attempt row and, when
-claimed, one `gpt-5-nano-2025-08-07` request with `maxRetries: 0` and
+Every canonical non-merge commit gets one revision-scoped summary-attempt row
+and, when claimed, one `gpt-5-nano-2025-08-07` request with `maxRetries: 0` and
 `store: false`. The request produces both the compact headline and expandable
-short summary. Languages and line counts are procedural and are not inferred by
-the model.
+short summary. Languages and line counts are procedural and are not inferred
+by the model.
 
 If the worker reaches its deadline before issuing the model request, it releases
 the claim back to `pending`; no attempt was consumed. Once the request starts,
@@ -221,8 +249,9 @@ for the prompt, compaction, and output contract.
 ## Public timeline
 
 The homepage reads a server-side projection of published, non-aliased
-activities. The initial render is a React Server Component; only the pagination
-control is a client component. Subsequent pages use
+activities, excluding stored multi-parent merge commits. The initial render is
+a React Server Component; only the pagination control is a client component.
+Subsequent pages use
 `GET /api/github/activity?cursor=...`.
 
 Pagination is by complete UTC day, not by item. A page contains five days by
