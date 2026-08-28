@@ -73,6 +73,7 @@ to stage and package the new tools artifacts.
 ## Usage observation
 
 The first four commits used 419, 521, 2,620, and 4,253 input tokens. The
-12,828-total-line commit used 177,766 input tokens because the experiment sent
-its complete available diff. This exceptional case dominates cost and is the
-main input-compaction question to evaluate before production rollout.
+12,828-total-line commit used 177,766 input tokens and remains below the current
+240,000-token full-evidence boundary. Larger inputs now use the deterministic
+diff compactor documented in `github-activity-public-commit-summaries.md`; no
+additional model call is introduced.

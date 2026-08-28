@@ -150,20 +150,62 @@ function ActivityEntry({ item }: Readonly<{ item: PublicGitHubActivityItem }>) {
         <div className="github-activity-facts">
           <span
             className="github-activity-loc"
-            title="Lines added and deleted according to GitHub"
+            title={
+              item.providerFileCapReached
+                ? "Total lines added and deleted according to GitHub. Per-language line counts cover only the file details GitHub returned and may be incomplete."
+                : "Lines added and deleted according to GitHub"
+            }
           >
-            <span className="github-activity-additions">+{item.additions}</span>
-            <span className="github-activity-deletions">−{item.deletions}</span>
+            <span aria-hidden="true" className="github-activity-additions">
+              +{item.additions}
+            </span>
+            <span aria-hidden="true" className="github-activity-deletions">
+              −{item.deletions}
+            </span>
+            <span className="sr-only">
+              {item.additions} lines added and {item.deletions} lines deleted
+              according to GitHub.
+              {item.providerFileCapReached
+                ? " Per-language line counts cover only the file details GitHub returned and may be incomplete."
+                : null}
+            </span>
           </span>
-          <span>
-            {item.changedFiles} {item.changedFiles === 1 ? "file" : "files"}
+          <span
+            title={
+              item.providerFileCapReached
+                ? "At least 3,000 changed files; GitHub capped the returned file details"
+                : undefined
+            }
+          >
+            {item.providerFileCapReached ? (
+              <>
+                <span aria-hidden="true">{item.changedFiles}+ files</span>
+                <span className="sr-only">
+                  {item.changedFiles} or more changed files; GitHub caps
+                  returned file details at 3,000 files
+                </span>
+              </>
+            ) : (
+              `${item.changedFiles} ${item.changedFiles === 1 ? "file" : "files"}`
+            )}
           </span>
           {visibleLanguages.length === 0 ? null : (
-            <ul aria-label="Languages" className="github-activity-languages">
+            <ul
+              aria-label={
+                item.providerFileCapReached
+                  ? "Languages found in the first 3,000 files returned by GitHub; the full commit may include more"
+                  : "Languages"
+              }
+              className="github-activity-languages"
+            >
               {visibleLanguages.map((language) => (
                 <li
                   key={language.id}
-                  title={`${language.changedLines} changed lines`}
+                  title={
+                    item.providerFileCapReached
+                      ? `${language.changedLines} changed lines in the returned file details; incomplete because GitHub capped them at 3,000 files`
+                      : `${language.changedLines} changed lines`
+                  }
                 >
                   {language.iconUrl === null ? (
                     <Code2 aria-hidden="true" className="size-3.5" />

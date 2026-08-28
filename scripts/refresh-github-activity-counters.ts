@@ -22,6 +22,7 @@ try {
         changedFiles: source.commit.files.length,
         deletions: source.commit.stats.deletions,
         languages: deriveCommitLanguages(source.commit.files),
+        providerFileCapReached: source.commit.providerFileCapReached,
         substantiveLoc: substantiveCommitLoc(source.commit.files),
       });
       completed += 1;

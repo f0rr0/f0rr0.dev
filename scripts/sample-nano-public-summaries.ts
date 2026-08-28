@@ -7,7 +7,6 @@ import { closeDatabase, getDatabase } from "../src/db/client";
 import { githubCommits } from "../src/db/schema";
 import { fetchGitHubActivityCommitSource } from "../src/lib/github-activity-processor";
 import {
-  buildCommitPublicSummaryModelInput,
   DEFAULT_PUBLIC_COMMIT_SUMMARY_LOW_LOC_THRESHOLD,
   deriveCommitLanguages,
   formatPublicCommitSummaryMarkdown,
@@ -19,6 +18,11 @@ import {
   substantiveCommitLoc,
 } from "../src/lib/github-activity-public-summary";
 import type { PublicCommitFileEvidence } from "../src/lib/github-activity-public-summary";
+import {
+  buildCommitPublicSummaryModelInput,
+  countCommitPublicSummaryRequestTokens,
+  PUBLIC_COMMIT_SUMMARY_MAX_REQUEST_INPUT_TOKENS,
+} from "../src/lib/github-activity-public-summary-input";
 import type { ClaimedGitHubActivityCommit } from "../src/lib/github-activity-store";
 import { trackedGitHubAccountFrom } from "../src/lib/github-commits-core";
 
@@ -163,7 +167,7 @@ const main = async () => {
       displayMode: publicCommitSummaryDisplayMode(commit.files),
       languages: deriveCommitLanguages(commit.files),
       loc: locFrom(commit.files),
-      modelInput: buildCommitPublicSummaryModelInput(commit, {
+      modelInput: await buildCommitPublicSummaryModelInput(commit, {
         avatarUrl: repository.avatarUrl,
         description: repository.description,
         directlyOwned: trackedGitHubAccountFrom(repository.ownerLogin) !== null,
@@ -190,6 +194,12 @@ const main = async () => {
       committedAt: source.commit.committedAt,
       deterministicLanguages: source.languages,
       inputCharacters: source.modelInput.length,
+      inputCompacted: source.modelInput.includes(
+        "LARGE COMMIT COMPACTION MANIFEST"
+      ),
+      inputTokens: await countCommitPublicSummaryRequestTokens(
+        source.modelInput
+      ),
       loc: source.loc,
       repository: source.repository,
       sha: source.commit.sha,
@@ -246,6 +256,7 @@ const main = async () => {
       {
         configuration: {
           lowLocThreshold: DEFAULT_PUBLIC_COMMIT_SUMMARY_LOW_LOC_THRESHOLD,
+          maxRequestInputTokens: PUBLIC_COMMIT_SUMMARY_MAX_REQUEST_INPUT_TOKENS,
           maxRetries: 0,
           model: NANO_MODEL,
           modelAttemptsPerCommit: 1,

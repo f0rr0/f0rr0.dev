@@ -30,6 +30,9 @@ export const githubCommits = pgTable(
     deletions: integer("deletions"),
     languages: jsonb("languages").$type<readonly PublicCommitLanguage[]>(),
     message: text("message").notNull(),
+    providerFileCapReached: boolean("provider_file_cap_reached")
+      .default(false)
+      .notNull(),
     repository: varchar("repository", { length: 200 }).notNull(),
     repositoryId: varchar("repository_id", { length: 32 }).notNull(),
     repositoryOwnerAvatarUrl: text("repository_owner_avatar_url"),

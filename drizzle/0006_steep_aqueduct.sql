@@ -1,0 +1,1 @@
+ALTER TABLE "github_commits" ADD COLUMN "provider_file_cap_reached" boolean DEFAULT false NOT NULL;

@@ -13,6 +13,7 @@ export interface PublicGitHubActivityItem {
   deletions: number;
   id: string;
   languages: readonly PublicGitHubActivityLanguage[];
+  providerFileCapReached: boolean;
   repositoryLabel: string | null;
   summary: string;
   summaryKind: "headline" | "short";

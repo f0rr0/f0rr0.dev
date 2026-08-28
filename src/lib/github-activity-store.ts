@@ -31,6 +31,7 @@ export interface CompletedGitHubActivity {
   changedFiles: number;
   deletions: number;
   languages: readonly PublicCommitLanguage[];
+  providerFileCapReached: boolean;
   repository: string;
   repositoryOwnerAvatarUrl: string | null;
   repositoryOwnerLogin: string;
@@ -49,6 +50,7 @@ export interface GitHubActivityCounters {
   changedFiles: number;
   deletions: number;
   languages: readonly PublicCommitLanguage[];
+  providerFileCapReached: boolean;
   substantiveLoc: number;
 }
 
@@ -124,6 +126,7 @@ export const completeGitHubActivity = async (
       changedFiles: activity.changedFiles,
       deletions: activity.deletions,
       languages: activity.languages,
+      providerFileCapReached: activity.providerFileCapReached,
       repository: activity.repository,
       repositoryOwnerAvatarUrl: activity.repositoryOwnerAvatarUrl,
       repositoryOwnerLogin: activity.repositoryOwnerLogin,
@@ -315,6 +318,7 @@ export const readPublicGitHubActivityPage = async (
       committedAt: githubCommits.committedAt,
       deletions: githubCommits.deletions,
       languages: githubCommits.languages,
+      providerFileCapReached: githubCommits.providerFileCapReached,
       repository: githubCommits.repository,
       repositoryOwnerAvatarUrl: githubCommits.repositoryOwnerAvatarUrl,
       repositoryOwnerLogin: githubCommits.repositoryOwnerLogin,
@@ -368,6 +372,7 @@ export const readPublicGitHubActivityPage = async (
       sha: row.sha,
     });
     const summaryKind =
+      !row.providerFileCapReached &&
       row.substantiveLoc <= DEFAULT_PUBLIC_COMMIT_SUMMARY_LOW_LOC_THRESHOLD
         ? "headline"
         : "short";
@@ -382,6 +387,7 @@ export const readPublicGitHubActivityPage = async (
         ...language,
         iconUrl: publicLanguageIconUrl(language.id),
       })),
+      providerFileCapReached: row.providerFileCapReached,
       repositoryLabel: repository.repositoryLabel,
       summary:
         summaryKind === "headline" ? row.summaryHeadline : row.summaryShort,
