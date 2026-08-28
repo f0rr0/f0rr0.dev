@@ -16,7 +16,7 @@ const EMPTY_PAGE: PublicGitHubActivityPage = {
 
 const readCachedInitialActivity = unstable_cache(
   async () => await readPublicGitHubActivityPage(null),
-  ["public-github-activity-v2"],
+  ["public-github-activity-v3"],
   { revalidate: 900, tags: ["github-activity"] }
 );
 

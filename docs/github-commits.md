@@ -285,7 +285,8 @@ Repository presentation is deliberately separate from stored source data:
 The client never receives repository IDs, SHAs, full repository names, author
 handles, raw commit messages, file paths, or patches. Each UTC date is rendered
 as a section. Commits with at most 25 substantive GitHub-reported changed lines
-use the stored headline; larger commits use the stored detailed summary.
+show only the stored headline; larger or provider-capped commits also show the
+stored detailed summary.
 
 ## Deliberate limits
 

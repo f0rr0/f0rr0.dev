@@ -382,6 +382,7 @@ export const readPublicGitHubActivityPage = async (
       changedFiles: row.changedFiles,
       committedAt: row.committedAt.toISOString(),
       deletions: row.deletions,
+      headline: row.summaryHeadline,
       id: row.activityPublicId,
       languages: (row.languages ?? []).map((language) => ({
         ...language,

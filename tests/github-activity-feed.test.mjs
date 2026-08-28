@@ -39,6 +39,7 @@ describe("public GitHub activity projection", () => {
               changedFiles: 3000,
               committedAt: "2026-08-28T08:30:00.000Z",
               deletions: 2,
+              headline: "Improve the large change",
               id: "provider-capped-commit",
               languages: [
                 {
@@ -61,6 +62,11 @@ describe("public GitHub activity projection", () => {
     );
 
     expect(html).toContain("3000+ files");
+    expect(html).toContain("Improve the large change");
+    expect(html).toContain("Improves a large change.");
+    expect(html.indexOf("Improve the large change")).toBeLessThan(
+      html.indexOf("Improves a large change.")
+    );
     expect(html).toContain(
       "3000 or more changed files; GitHub caps returned file details at 3,000 files"
     );
