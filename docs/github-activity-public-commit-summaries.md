@@ -14,7 +14,7 @@ verified tracked-author commit
   -> fetch the repository and commit evidence exposed by the GitHub path
   -> read commit-wide and per-file additions/deletions from GitHub
   -> derive languages and substantive churn from the per-file counters
-  -> discover GitHub PR membership and suppress only proven integration copies
+  -> discover GitHub PR membership and suppress exact-evidence integration copies
   -> one gpt-5-nano call producing both public summary lengths
   -> persist one revision-scoped attempt, both summaries, recipe/model/input
      hash, languages, and churn

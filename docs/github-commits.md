@@ -53,9 +53,14 @@ The intake boundary is intentionally cheap:
 - A push observation records its source, account, repository, ref, before/after
   SHAs, expected commit count, and any SHA list GitHub supplied. The worker can
   later expand a truncated push with authenticated GitHub APIs.
-- The Events poll persists all newly seen push observations, PR snapshots, and
-  tracked-author issue-opened milestones, then advances that account's event
-  checkpoint in the same transaction.
+- The Events poll persists all newly seen push observations, complete PR
+  snapshots when GitHub supplies them, and tracked-author issue-opened
+  milestones, then advances that account's event checkpoint in the same
+  transaction. GitHub currently returns a sparse PR shape from this feed. A
+  strictly validated sparse event can schedule reconciliation only for an
+  already-known PR belonging to the polled account; it cannot create a PR or
+  cross account boundaries. Stale event timestamps cannot overwrite or
+  reschedule newer provider state.
 - Checkpoint updates use compare-and-swap. A concurrent winner causes the
   loser to reread and retry instead of overwriting newer progress.
 
@@ -184,18 +189,33 @@ specific canonical activity and persist the reason plus evidence:
 - A GitHub-reported merge SHA is aliased to an existing source member only when
   that PR has complete membership. Parent count distinguishes regular merge
   commits from squash integration commits.
+- A multi-parent commit with a complete exact fingerprint is aliased when the
+  matching commit SHA is literally one of its parents. If that parent is
+  already an alias, the new copy resolves to the same canonical activity.
 - A rebase/force-push copy is aliased only when both commits have complete,
   identical changed-line fingerprints and belong to distinct complete versions
   of the same PR.
 - A cherry-pick is aliased only with the explicit `cherry picked from commit`
   trailer and the same complete fingerprint.
+- The provider can omit PR association for squash/rebase flows, especially on
+  non-default target branches. Two single-parent commits can therefore be
+  aliased without PR membership only when they have the same repository,
+  complete exact fingerprint, non-null GitHub author ID, and normalized first
+  message line. Normalization removes only GitHub's terminal ` (#123)` suffix;
+  the earlier committer timestamp wins, with observation time and SHA used only
+  as deterministic ties.
 
 The fingerprint hashes stable hunk bodies—including unchanged context—and
 file-change metadata. It excludes commit identity and numeric hunk coordinates.
 A missing patch, counter mismatch, binary/provider omission, or GitHub file cap
-makes the fingerprint incomplete, so it cannot prove an alias. There is no
-global same-diff deduplication and no title-, time-, filename-, or
-similarity-based guess. Unproven commits remain visible.
+makes the fingerprint incomplete, so it cannot prove an alias. Exact counters,
+filenames, a headline, or timing by themselves never hide a commit. The
+same-author/headline fallback is admitted only after complete byte-identical
+patch evidence and single-parent shape. Unproven commits remain visible. The
+known ambiguity is an intentional revert-and-reapply of the same exact patch
+with the same headline by the same author; for this achievement timeline it is
+deliberately collapsed, and the stored alias evidence keeps the decision
+auditable and reversible.
 
 ## One-shot Nano summaries
 
