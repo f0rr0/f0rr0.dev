@@ -20,17 +20,16 @@ export const githubCommits = pgTable(
   "github_commits",
   {
     activityPublicId: uuid("activity_public_id"),
+    additions: integer("additions"),
     author: varchar("author_login", { length: 39 }).notNull(),
     changedFiles: integer("changed_files"),
     committedAt: timestamp("committed_at", {
       mode: "date",
       withTimezone: true,
     }).notNull(),
+    deletions: integer("deletions"),
     languages: jsonb("languages").$type<readonly PublicCommitLanguage[]>(),
     message: text("message").notNull(),
-    patchAdditions: integer("patch_additions"),
-    patchDeletions: integer("patch_deletions"),
-    patchesComplete: boolean("patches_complete"),
     repository: varchar("repository", { length: 200 }).notNull(),
     repositoryId: varchar("repository_id", { length: 32 }).notNull(),
     repositoryOwnerAvatarUrl: text("repository_owner_avatar_url"),
@@ -71,7 +70,7 @@ export const githubCommits = pgTable(
     ),
     check(
       "github_commits_nonnegative_activity_counts",
-      sql`(${table.changedFiles} IS NULL OR ${table.changedFiles} >= 0) AND (${table.patchAdditions} IS NULL OR ${table.patchAdditions} >= 0) AND (${table.patchDeletions} IS NULL OR ${table.patchDeletions} >= 0) AND (${table.substantiveLoc} IS NULL OR ${table.substantiveLoc} >= 0)`
+      sql`(${table.changedFiles} IS NULL OR ${table.changedFiles} >= 0) AND (${table.additions} IS NULL OR ${table.additions} >= 0) AND (${table.deletions} IS NULL OR ${table.deletions} >= 0) AND (${table.substantiveLoc} IS NULL OR ${table.substantiveLoc} >= 0)`
     ),
     check(
       "github_commits_owner_type",

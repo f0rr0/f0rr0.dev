@@ -1,0 +1,314 @@
+{
+  "id": "1b566a46-0a5e-4b9e-a80e-a8ca63c95344",
+  "prevId": "cfacc574-8776-4c14-8ccd-4894cb59e37d",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.github_account_checkpoints": {
+      "name": "github_account_checkpoints",
+      "schema": "",
+      "columns": {
+        "account": {
+          "name": "account",
+          "type": "varchar(39)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "latest_event_id": {
+          "name": "latest_event_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paused": {
+          "name": "paused",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "github_account_checkpoints_tracked_account": {
+          "name": "github_account_checkpoints_tracked_account",
+          "value": "\"github_account_checkpoints\".\"account\" IN ('f0rr0', 'yuppiestechdev')"
+        },
+        "github_account_checkpoints_event_id_shape": {
+          "name": "github_account_checkpoints_event_id_shape",
+          "value": "\"github_account_checkpoints\".\"latest_event_id\" IS NULL OR \"github_account_checkpoints\".\"latest_event_id\" ~ '^[0-9]{1,64}$'"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.github_commits": {
+      "name": "github_commits",
+      "schema": "",
+      "columns": {
+        "activity_public_id": {
+          "name": "activity_public_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "additions": {
+          "name": "additions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author_login": {
+          "name": "author_login",
+          "type": "varchar(39)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "changed_files": {
+          "name": "changed_files",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "committed_at": {
+          "name": "committed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deletions": {
+          "name": "deletions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "languages": {
+          "name": "languages",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "repository": {
+          "name": "repository",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "repository_id": {
+          "name": "repository_id",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "repository_owner_avatar_url": {
+          "name": "repository_owner_avatar_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "repository_owner_login": {
+          "name": "repository_owner_login",
+          "type": "varchar(39)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "repository_owner_type": {
+          "name": "repository_owner_type",
+          "type": "varchar(12)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "repository_private": {
+          "name": "repository_private",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sha": {
+          "name": "sha",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "substantive_loc": {
+          "name": "substantive_loc",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary_attempted_at": {
+          "name": "summary_attempted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary_error": {
+          "name": "summary_error",
+          "type": "varchar(80)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary_headline": {
+          "name": "summary_headline",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary_input_hash": {
+          "name": "summary_input_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary_model": {
+          "name": "summary_model",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary_recipe": {
+          "name": "summary_recipe",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary_short": {
+          "name": "summary_short",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "github_commits_activity_public_id_unique": {
+          "name": "github_commits_activity_public_id_unique",
+          "columns": [
+            {
+              "expression": "activity_public_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "github_commits_activity_cursor_idx": {
+          "name": "github_commits_activity_cursor_idx",
+          "columns": [
+            {
+              "expression": "committed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "activity_public_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "github_commits_committed_at_idx": {
+          "name": "github_commits_committed_at_idx",
+          "columns": [
+            {
+              "expression": "committed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "github_commits_summary_pending_idx": {
+          "name": "github_commits_summary_pending_idx",
+          "columns": [
+            {
+              "expression": "summary_attempted_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "committed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "github_commits_repository_id_sha_pk": {
+          "name": "github_commits_repository_id_sha_pk",
+          "columns": ["repository_id", "sha"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "github_commits_sha_shape": {
+          "name": "github_commits_sha_shape",
+          "value": "\"github_commits\".\"sha\" ~ '^[a-f0-9]{40}$'"
+        },
+        "github_commits_tracked_author": {
+          "name": "github_commits_tracked_author",
+          "value": "\"github_commits\".\"author_login\" IN ('f0rr0', 'yuppiestechdev')"
+        },
+        "github_commits_nonnegative_activity_counts": {
+          "name": "github_commits_nonnegative_activity_counts",
+          "value": "(\"github_commits\".\"changed_files\" IS NULL OR \"github_commits\".\"changed_files\" >= 0) AND (\"github_commits\".\"additions\" IS NULL OR \"github_commits\".\"additions\" >= 0) AND (\"github_commits\".\"deletions\" IS NULL OR \"github_commits\".\"deletions\" >= 0) AND (\"github_commits\".\"substantive_loc\" IS NULL OR \"github_commits\".\"substantive_loc\" >= 0)"
+        },
+        "github_commits_owner_type": {
+          "name": "github_commits_owner_type",
+          "value": "\"github_commits\".\"repository_owner_type\" IS NULL OR \"github_commits\".\"repository_owner_type\" IN ('Organization', 'User')"
+        },
+        "github_commits_summary_hash_shape": {
+          "name": "github_commits_summary_hash_shape",
+          "value": "\"github_commits\".\"summary_input_hash\" IS NULL OR \"github_commits\".\"summary_input_hash\" ~ '^[a-f0-9]{64}$'"
+        },
+        "github_commits_summary_pair": {
+          "name": "github_commits_summary_pair",
+          "value": "(\"github_commits\".\"summary_headline\" IS NULL) = (\"github_commits\".\"summary_short\" IS NULL)"
+        }
+      },
+      "isRLSEnabled": true
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

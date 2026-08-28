@@ -3,8 +3,6 @@ import { describe, expect, test } from "bun:test";
 import {
   buildCommitPublicSummaryModelInput,
   deriveCommitLanguages,
-  patchCommitLoc,
-  patchFileLoc,
   parseCommitPublicSummary,
   PUBLIC_COMMIT_SUMMARY_HEADLINE_MAX_WORDS,
   PUBLIC_COMMIT_SUMMARY_MAX_INPUT_CHARACTERS,
@@ -27,13 +25,18 @@ const file = (filename, additions, deletions, patch = "+change") => ({
 const commit = (
   files,
   message = "fix(auth): refresh sessions\n\nHandle expiry."
-) => ({
-  committedAt: "2026-08-27T00:00:00.000Z",
-  files,
-  message,
-  parents: ["parent"],
-  sha: "sha",
-});
+) => {
+  const additions = files.reduce((total, item) => total + item.additions, 0);
+  const deletions = files.reduce((total, item) => total + item.deletions, 0);
+  return {
+    committedAt: "2026-08-27T00:00:00.000Z",
+    files,
+    message,
+    parents: ["parent"],
+    sha: "sha",
+    stats: { additions, deletions, total: additions + deletions },
+  };
+};
 
 describe("public commit summaries", () => {
   test("parses the two labelled values with an optional blank separator", () => {
@@ -103,13 +106,13 @@ describe("public commit summaries", () => {
     expect(input).toContain("module-00.ts");
   });
 
-  test("derives languages and substantive LOC from patch lines", () => {
+  test("derives languages and substantive LOC from GitHub file counters", () => {
     const files = [
-      file("src/index.ts", 900, 900, "+one\n+two\n-old"),
-      file("src/view.tsx", 900, 900, "+one"),
-      file("worker.py", 900, 900, "+one\n-old"),
-      file("dist/bundle.js", 1, 0, "+generated"),
-      file("pnpm-lock.yaml", 1, 0, "+lock"),
+      file("src/index.ts", 2, 1, "+patch text need not match counters"),
+      file("src/view.tsx", 1, 0, null),
+      file("worker.py", 1, 1, null),
+      file("dist/bundle.js", 500, 500, "+generated"),
+      file("pnpm-lock.yaml", 500, 500, "+lock"),
       file("public/hero.png", 300, 0, null),
     ];
     expect(substantiveCommitLoc(files)).toBe(6);
@@ -119,42 +122,10 @@ describe("public commit summaries", () => {
     ]);
   });
 
-  test("counts additions and deletions from unified patches without headers", () => {
-    expect(
-      patchFileLoc(
-        "--- a/src/index.ts\n+++ b/src/index.ts\n@@ -1 +1,2 @@\n-old\n+new\n+extra\n context"
-      )
-    ).toEqual({ additions: 2, deletions: 1, total: 3 });
-    expect(
-      patchFileLoc("@@ -1 +1 @@\n--- old divider\n+++ new divider")
-    ).toEqual({ additions: 1, deletions: 1, total: 2 });
-    expect(
-      patchCommitLoc([
-        file("src/index.ts", 99, 99, "+one\n-two"),
-        file("src/missing.ts", 5, 5, null),
-        file("public/logo.png", 1, 1, null),
-      ])
-    ).toEqual({ additions: 1, complete: false, deletions: 1, total: 2 });
-  });
-
   test("selects headline through 25 substantive lines and short above it", () => {
     const summaries = { headline: "Improve sessions", short: "One. More." };
-    const small = [
-      file(
-        "src/index.ts",
-        900,
-        900,
-        Array.from({ length: 25 }, () => "+x").join("\n")
-      ),
-    ];
-    const large = [
-      file(
-        "src/index.ts",
-        1,
-        0,
-        Array.from({ length: 26 }, () => "+x").join("\n")
-      ),
-    ];
+    const small = [file("src/index.ts", 20, 5, null)];
+    const large = [file("src/index.ts", 26, 0, "+one visible line")];
     expect(publicCommitSummaryDisplayMode(small)).toBe("headline");
     expect(publicCommitSummaryDisplayMode(large)).toBe("short");
     expect(selectPublicCommitSummary(summaries, small)).toBe(

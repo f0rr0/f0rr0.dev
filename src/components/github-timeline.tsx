@@ -85,9 +85,6 @@ function ActivityEntry({ item }: Readonly<{ item: PublicGitHubActivityItem }>) {
   const visibleLanguages = item.languages.slice(0, 6);
   const hiddenLanguageCount = item.languages.length - visibleLanguages.length;
   const repositoryLabel = item.repositoryLabel ?? "Private contribution";
-  const locTitle = item.locComplete
-    ? "Lines counted directly from the GitHub patch"
-    : "Lines visible in the available GitHub patch; some file patches were unavailable";
 
   return (
     <li className="github-activity-entry">
@@ -151,10 +148,12 @@ function ActivityEntry({ item }: Readonly<{ item: PublicGitHubActivityItem }>) {
         )}
 
         <div className="github-activity-facts">
-          <span className="github-activity-loc" title={locTitle}>
+          <span
+            className="github-activity-loc"
+            title="Lines added and deleted according to GitHub"
+          >
             <span className="github-activity-additions">+{item.additions}</span>
             <span className="github-activity-deletions">−{item.deletions}</span>
-            {item.locComplete ? null : <span>partial</span>}
           </span>
           <span>
             {item.changedFiles} {item.changedFiles === 1 ? "file" : "files"}

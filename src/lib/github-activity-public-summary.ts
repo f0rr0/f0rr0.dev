@@ -31,8 +31,6 @@ const lockfilePattern =
   /(?:^|\/)(?:bun\.lockb?|cargo\.lock|composer\.lock|gemfile\.lock|go\.sum|package-lock\.json|pipfile\.lock|pnpm-lock\.ya?ml|poetry\.lock|uv\.lock|yarn\.lock)$/iu;
 const binaryAssetPattern =
   /\.(?:7z|avif|bmp|eot|gif|gz|ico|jpe?g|mov|mp3|mp4|ogg|otf|pdf|png|tar|tiff?|ttf|wav|webm|webp|woff2?|zip)$/iu;
-const unifiedHeaderPattern =
-  /^(?:--- (?:a\/|\/dev\/null)|\+\+\+ (?:b\/|\/dev\/null))/u;
 
 const languageByExtension: Readonly<
   Record<string, { id: string; label: string }>
@@ -111,6 +109,7 @@ export interface PublicCommitEvidence {
   message: string;
   parents: readonly string[];
   sha: string;
+  stats: PublicCommitStats;
 }
 
 export interface PublicCommitLanguage {
@@ -119,9 +118,8 @@ export interface PublicCommitLanguage {
   label: string;
 }
 
-export interface PublicCommitPatchLoc {
+export interface PublicCommitStats {
   additions: number;
-  complete: boolean;
   deletions: number;
   total: number;
 }
@@ -285,24 +283,6 @@ export const parseCommitPublicSummary = (
   return { headline, short };
 };
 
-export const patchFileLoc = (patch: string | null) => {
-  let additions = 0;
-  let deletions = 0;
-  if (patch !== null) {
-    for (const line of patch.split("\n")) {
-      if (unifiedHeaderPattern.test(line)) {
-        continue;
-      }
-      if (line.startsWith("+")) {
-        additions += 1;
-      } else if (line.startsWith("-")) {
-        deletions += 1;
-      }
-    }
-  }
-  return { additions, deletions, total: additions + deletions };
-};
-
 export const deriveCommitLanguages = (
   files: readonly PublicCommitFileEvidence[]
 ): readonly PublicCommitLanguage[] => {
@@ -317,7 +297,7 @@ export const deriveCommitLanguages = (
     if (language === undefined) {
       continue;
     }
-    const changedLines = patchFileLoc(file.patch).total;
+    const changedLines = file.additions + file.deletions;
     if (changedLines === 0) {
       continue;
     }
@@ -340,32 +320,10 @@ export const substantiveCommitLoc = (
   let total = 0;
   for (const file of files) {
     if (isSubstantiveFile(file)) {
-      total += patchFileLoc(file.patch).total;
+      total += file.additions + file.deletions;
     }
   }
   return total;
-};
-
-export const patchCommitLoc = (
-  files: readonly PublicCommitFileEvidence[]
-): PublicCommitPatchLoc => {
-  let additions = 0;
-  let deletions = 0;
-  let complete = true;
-  for (const file of files) {
-    const fileLoc = patchFileLoc(file.patch);
-    additions += fileLoc.additions;
-    deletions += fileLoc.deletions;
-    if (file.patch === null && !binaryAssetPattern.test(file.filename)) {
-      complete = false;
-    }
-  }
-  return {
-    additions,
-    complete,
-    deletions,
-    total: additions + deletions,
-  };
 };
 
 const checkedThreshold = (threshold: number) => {

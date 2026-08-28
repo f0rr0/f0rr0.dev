@@ -27,11 +27,10 @@ export interface ClaimedGitHubActivityCommit {
 
 export interface CompletedGitHubActivity {
   activityPublicId: string;
+  additions: number;
   changedFiles: number;
+  deletions: number;
   languages: readonly PublicCommitLanguage[];
-  patchAdditions: number;
-  patchDeletions: number;
-  patchesComplete: boolean;
   repository: string;
   repositoryOwnerAvatarUrl: string | null;
   repositoryOwnerLogin: string;
@@ -43,6 +42,14 @@ export interface CompletedGitHubActivity {
   summaryModel: string;
   summaryRecipe: string;
   summaryShort: string;
+}
+
+export interface GitHubActivityCounters {
+  additions: number;
+  changedFiles: number;
+  deletions: number;
+  languages: readonly PublicCommitLanguage[];
+  substantiveLoc: number;
 }
 
 const commitIdentity = (commit: { repositoryId: string; sha: string }) =>
@@ -105,11 +112,10 @@ export const completeGitHubActivity = async (
     .update(githubCommits)
     .set({
       activityPublicId: activity.activityPublicId,
+      additions: activity.additions,
       changedFiles: activity.changedFiles,
+      deletions: activity.deletions,
       languages: activity.languages,
-      patchAdditions: activity.patchAdditions,
-      patchDeletions: activity.patchDeletions,
-      patchesComplete: activity.patchesComplete,
       repository: activity.repository,
       repositoryOwnerAvatarUrl: activity.repositoryOwnerAvatarUrl,
       repositoryOwnerLogin: activity.repositoryOwnerLogin,
@@ -150,6 +156,48 @@ export const failGitHubActivity = async (
         isNull(githubCommits.summaryHeadline)
       )
     );
+};
+
+export const readCompletedGitHubActivityCommits = async (): Promise<
+  readonly ClaimedGitHubActivityCommit[]
+> => {
+  const rows = await getDatabase()
+    .select({
+      author: githubCommits.author,
+      committedAt: githubCommits.committedAt,
+      message: githubCommits.message,
+      repository: githubCommits.repository,
+      repositoryId: githubCommits.repositoryId,
+      sha: githubCommits.sha,
+    })
+    .from(githubCommits)
+    .where(isNotNull(githubCommits.summaryHeadline))
+    .orderBy(desc(githubCommits.committedAt), desc(githubCommits.sha));
+  return rows.map((row) => ({
+    ...row,
+    author: row.author as TrackedGitHubAccount,
+    committedAt: row.committedAt.toISOString(),
+  }));
+};
+
+export const updateGitHubActivityCounters = async (
+  commit: ClaimedGitHubActivityCommit,
+  counters: GitHubActivityCounters
+) => {
+  const [updated] = await getDatabase()
+    .update(githubCommits)
+    .set(counters)
+    .where(
+      and(
+        commitIdentity(commit),
+        isNotNull(githubCommits.summaryHeadline),
+        isNotNull(githubCommits.summaryShort)
+      )
+    )
+    .returning({ repositoryId: githubCommits.repositoryId });
+  if (updated === undefined) {
+    throw new Error("The completed GitHub activity commit changed.");
+  }
 };
 
 const safeAvatarUrl = (value: string | null) => {
@@ -196,12 +244,11 @@ export const readPublicGitHubActivityPage = async (
   const rows = await getDatabase()
     .select({
       activityPublicId: githubCommits.activityPublicId,
+      additions: githubCommits.additions,
       changedFiles: githubCommits.changedFiles,
       committedAt: githubCommits.committedAt,
+      deletions: githubCommits.deletions,
       languages: githubCommits.languages,
-      patchAdditions: githubCommits.patchAdditions,
-      patchDeletions: githubCommits.patchDeletions,
-      patchesComplete: githubCommits.patchesComplete,
       repository: githubCommits.repository,
       repositoryOwnerAvatarUrl: githubCommits.repositoryOwnerAvatarUrl,
       repositoryOwnerLogin: githubCommits.repositoryOwnerLogin,
@@ -219,9 +266,8 @@ export const readPublicGitHubActivityPage = async (
         isNotNull(githubCommits.summaryShort),
         isNotNull(githubCommits.repositoryOwnerLogin),
         isNotNull(githubCommits.repositoryPrivate),
-        isNotNull(githubCommits.patchAdditions),
-        isNotNull(githubCommits.patchDeletions),
-        isNotNull(githubCommits.patchesComplete),
+        isNotNull(githubCommits.additions),
+        isNotNull(githubCommits.deletions),
         isNotNull(githubCommits.changedFiles),
         isNotNull(githubCommits.substantiveLoc),
         cursorCondition
@@ -238,10 +284,9 @@ export const readPublicGitHubActivityPage = async (
   const items = pageRows.map((row) => {
     if (
       row.activityPublicId === null ||
+      row.additions === null ||
       row.changedFiles === null ||
-      row.patchAdditions === null ||
-      row.patchDeletions === null ||
-      row.patchesComplete === null ||
+      row.deletions === null ||
       row.repositoryOwnerLogin === null ||
       row.repositoryPrivate === null ||
       row.substantiveLoc === null ||
@@ -261,17 +306,16 @@ export const readPublicGitHubActivityPage = async (
         ? "headline"
         : "short";
     return {
-      additions: row.patchAdditions,
+      additions: row.additions,
       avatarUrl: safeAvatarUrl(row.repositoryOwnerAvatarUrl),
       changedFiles: row.changedFiles,
       committedAt: row.committedAt.toISOString(),
-      deletions: row.patchDeletions,
+      deletions: row.deletions,
       id: row.activityPublicId,
       languages: (row.languages ?? []).map((language) => ({
         ...language,
         iconUrl: publicLanguageIconUrl(language.id),
       })),
-      locComplete: row.patchesComplete,
       repositoryLabel: repository.repositoryLabel,
       summary:
         summaryKind === "headline" ? row.summaryHeadline : row.summaryShort,

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { githubCommits } from "../src/db/schema.ts";
 import {
   decodeGitHubActivityCursor,
   encodeGitHubActivityCursor,
@@ -10,6 +11,11 @@ import {
 } from "../src/lib/github-activity-display.ts";
 
 describe("public GitHub activity projection", () => {
+  test("persists both Nano summary variants", () => {
+    expect(githubCommits.summaryHeadline.name).toBe("summary_headline");
+    expect(githubCommits.summaryShort.name).toBe("summary_short");
+  });
+
   test("round trips an opaque cursor without repository identity", () => {
     const cursor = {
       committedAt: "2026-08-28T08:30:00.000Z",

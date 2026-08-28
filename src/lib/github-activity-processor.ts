@@ -7,7 +7,6 @@ import {
   buildCommitPublicSummaryModelInput,
   deriveCommitLanguages,
   parseCommitPublicSummary,
-  patchCommitLoc,
   PUBLIC_COMMIT_SUMMARY_MAX_OUTPUT_TOKENS,
   PUBLIC_COMMIT_SUMMARY_RECIPE,
   PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT,
@@ -51,7 +50,7 @@ interface RepositoryEvidence {
   private: boolean;
 }
 
-interface CommitSource {
+export interface GitHubActivityCommitSource {
   commit: PublicCommitEvidence;
   repository: RepositoryEvidence;
 }
@@ -200,7 +199,8 @@ const commitEvidenceFrom = (
   if (
     !isObject(root.commit) ||
     !isObject(root.commit.author) ||
-    !isObject(root.author)
+    !isObject(root.author) ||
+    !isObject(root.stats)
   ) {
     throw new ActivityProcessingError(
       "source_invalid",
@@ -235,19 +235,29 @@ const commitEvidenceFrom = (
         return requiredString(parent.sha, "parent SHA").toLowerCase();
       })
     : [];
+  const additions = requiredInteger(root.stats.additions, "commit additions");
+  const deletions = requiredInteger(root.stats.deletions, "commit deletions");
+  const total = requiredInteger(root.stats.total, "commit changed lines");
+  if (total !== additions + deletions) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "GitHub returned inconsistent commit statistics."
+    );
+  }
   return {
     committedAt: committedAt.toISOString(),
     files,
     message: requiredString(root.commit.message, "commit message"),
     parents,
     sha,
+    stats: { additions, deletions, total },
   };
 };
 
 const fetchCommitSourceWithToken = async (
   row: ClaimedGitHubActivityCommit,
   token: string
-): Promise<CommitSource> => {
+): Promise<GitHubActivityCommitSource> => {
   const repositoryPayload = await fetchJson(
     repositoryApiPath(row.repository),
     token
@@ -305,7 +315,9 @@ const fetchCommitSourceWithToken = async (
   };
 };
 
-const fetchCommitSource = async (row: ClaimedGitHubActivityCommit) => {
+export const fetchGitHubActivityCommitSource = async (
+  row: ClaimedGitHubActivityCommit
+) => {
   const tokens = tokenCandidatesFor(row.author);
   if (tokens.length === 0) {
     throw new ActivityProcessingError(
@@ -368,7 +380,7 @@ const modelFailureCode = (error: unknown) => {
 
 const processClaimedCommit = async (row: ClaimedGitHubActivityCommit) => {
   try {
-    const source = await fetchCommitSource(row);
+    const source = await fetchGitHubActivityCommitSource(row);
     let generated: Awaited<ReturnType<typeof generateCommitSummary>>;
     try {
       generated = await generateCommitSummary(source.commit);
@@ -405,14 +417,12 @@ const processClaimedCommit = async (row: ClaimedGitHubActivityCommit) => {
         validationErrors.join(" ")
       );
     }
-    const loc = patchCommitLoc(source.commit.files);
     await completeGitHubActivity(row, {
       activityPublicId: randomUUID(),
+      additions: source.commit.stats.additions,
       changedFiles: source.commit.files.length,
+      deletions: source.commit.stats.deletions,
       languages: deriveCommitLanguages(source.commit.files),
-      patchAdditions: loc.additions,
-      patchDeletions: loc.deletions,
-      patchesComplete: loc.complete,
       repository: source.repository.fullName,
       repositoryOwnerAvatarUrl: source.repository.avatarUrl,
       repositoryOwnerLogin: source.repository.ownerLogin,

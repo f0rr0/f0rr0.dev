@@ -13,7 +13,6 @@ export interface PublicGitHubActivityItem {
   deletions: number;
   id: string;
   languages: readonly PublicGitHubActivityLanguage[];
-  locComplete: boolean;
   repositoryLabel: string | null;
   summary: string;
   summaryKind: "headline" | "short";
