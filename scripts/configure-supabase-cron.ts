@@ -2,9 +2,12 @@ import postgres from "postgres";
 
 const JOB_NAME = "github-sync-every-three-hours";
 const JOB_SCHEDULE = "7 */3 * * *";
+const WORKER_JOB_NAME = "github-activity-worker-every-five-minutes";
+const WORKER_JOB_SCHEDULE = "*/5 * * * *";
 const SECRET_DESCRIPTION = "Vercel GitHub sync cron configuration";
 const SECRET_NAME = "github_sync_bearer_secret";
 const URL_NAME = "github_sync_url";
+const WORKER_URL_NAME = "github_worker_url";
 
 const requiredEnvironmentValue = (name: string) => {
   const value = process.env[name]?.trim();
@@ -29,6 +32,7 @@ if (siteUrl.protocol !== "https:") {
   throw new Error("SITE_URL must use HTTPS so Supabase can reach Vercel.");
 }
 const syncUrl = new URL("/api/cron/github-sync", siteUrl).toString();
+const workerUrl = new URL("/api/cron/github-worker", siteUrl).toString();
 
 const sql = postgres(databaseUrl, {
   connect_timeout: 10,
@@ -74,12 +78,13 @@ try {
   await sql`create extension if not exists supabase_vault with schema vault`;
 
   await upsertVaultSecret({ name: URL_NAME, value: syncUrl });
+  await upsertVaultSecret({ name: WORKER_URL_NAME, value: workerUrl });
   await upsertVaultSecret({ name: SECRET_NAME, value: cronSecret });
 
   await sql`
     select cron.unschedule(jobid)
     from cron.job
-    where jobname = ${JOB_NAME}
+    where jobname in (${JOB_NAME}, ${WORKER_JOB_NAME})
   `;
 
   const command = `
@@ -108,9 +113,35 @@ try {
       ${command}
     ) as "jobId"
   `;
+  const workerCommand = `
+    select net.http_post(
+      url := (
+        select decrypted_secret
+        from vault.decrypted_secrets
+        where name = '${WORKER_URL_NAME}'
+      ),
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || (
+          select decrypted_secret
+          from vault.decrypted_secrets
+          where name = '${SECRET_NAME}'
+        )
+      ),
+      body := jsonb_build_object('source', 'supabase-cron'),
+      timeout_milliseconds := 120000
+    ) as request_id
+  `;
+  const [workerJob] = await sql<{ jobId: number }[]>`
+    select cron.schedule(
+      ${WORKER_JOB_NAME},
+      ${WORKER_JOB_SCHEDULE},
+      ${workerCommand}
+    ) as "jobId"
+  `;
 
   process.stdout.write(
-    `Configured Supabase cron job ${String(job?.jobId)} for ${syncUrl}.\n`
+    `Configured Supabase cron jobs ${String(job?.jobId)} and ${String(workerJob?.jobId)} for GitHub intake and processing.\n`
   );
 } catch (error) {
   const message = error instanceof Error ? error.message : "Unknown error";

@@ -1,6 +1,6 @@
 import { revalidateTag } from "next/cache";
 
-import { syncGitHubAccounts } from "@/lib/github-commits";
+import { runGitHubActivityWorker } from "@/lib/github-activity-worker";
 import { reportOperationalError } from "@/lib/operational-error";
 import { hasBearerSecret } from "@/lib/request-auth";
 
@@ -19,16 +19,17 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await syncGitHubAccounts();
-    if (result.issues > 0) {
+    const activity = await runGitHubActivityWorker();
+    if (
+      activity.summaries.completed > 0 ||
+      activity.pullRequests.completed > 0 ||
+      activity.aliases > 0
+    ) {
       revalidateTag("github-activity", "max");
     }
-    return Response.json(
-      { ok: result.failedAccounts.length === 0, ...result },
-      { status: result.failedAccounts.length === 0 ? 200 : 207 }
-    );
+    return Response.json({ activity, ok: true });
   } catch (error) {
-    const errorName = reportOperationalError("github_sync", error);
+    const errorName = reportOperationalError("github_worker", error);
     return Response.json(
       {
         error: errorName,

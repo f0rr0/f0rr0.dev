@@ -1,5 +1,6 @@
 import { decodeGitHubActivityCursor } from "@/lib/github-activity-cursor";
 import { getGitHubActivityPage } from "@/lib/github-activity-feed";
+import { reportOperationalError } from "@/lib/operational-error";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,11 +20,10 @@ export async function GET(request: Request) {
   try {
     const page = await getGitHubActivityPage(cursor);
     return Response.json(page, {
-      headers: {
-        "Cache-Control": "public, s-maxage=300, stale-while-revalidate=900",
-      },
+      headers: { "Cache-Control": "private, no-store" },
     });
-  } catch {
+  } catch (error) {
+    reportOperationalError("github_activity_page", error);
     return Response.json({ ok: false }, { status: 503 });
   }
 }

@@ -2,22 +2,17 @@ import { DatabaseConfigurationError, isDatabaseConfigured } from "@/db/client";
 import { fetchGitHub, githubApiUrl, nextGitHubPage } from "@/lib/github-api";
 import {
   authenticatedGitHubAccountFrom,
-  commitFromGitHub,
   githubEventFrom,
   TRACKED_GITHUB_ACCOUNTS,
 } from "@/lib/github-commits-core";
 import type {
-  GitHubCommit,
-  GitHubPush,
-  GitHubPushCommit,
-  GitHubRepository,
+  GitHubEvent,
   TrackedGitHubAccount,
 } from "@/lib/github-commits-core";
 import {
   CheckpointConflictError,
   isGitHubAccountPaused,
-  persistAccountSync,
-  persistGitHubCommits,
+  persistAccountIntake,
   readGitHubAccountCheckpoint,
 } from "@/lib/github-commits-store";
 
@@ -26,28 +21,35 @@ const ACCOUNT_TOKEN_VARIABLES = {
   yuppiestechdev: "GITHUB_YUPPIESTECHDEV_TOKEN",
 } as const satisfies Record<TrackedGitHubAccount, string>;
 const CHECKPOINT_ATTEMPTS = 3;
-const COMMIT_FETCH_CONCURRENCY = 8;
 const EVENT_PAGES = 3;
 const GITHUB_PAGE_SIZE = 100;
-const MAX_COMMIT_PAGES = 30;
-const ZERO_SHA = "0".repeat(40);
-
-type JsonObject = Record<string, unknown>;
 
 export interface GitHubAccountSyncResult {
   account: TrackedGitHubAccount;
   checkpointChanged: boolean;
-  commits: number;
   events: number;
+  gapRecorded: boolean;
+  issues: number;
+  knownCommits: number;
   paused: boolean;
+  pullRequests: number;
+  pushes: number;
 }
 
 export interface GitHubSyncResult {
   accounts: number;
   checkpoints: number;
-  commits: number;
   events: number;
+  failedAccounts: readonly {
+    account: TrackedGitHubAccount;
+    error: string;
+  }[];
+  gaps: number;
+  issues: number;
+  knownCommits: number;
   paused: number;
+  pullRequests: number;
+  pushes: number;
 }
 
 export class GitHubSyncConfigurationError extends Error {
@@ -57,9 +59,6 @@ export class GitHubSyncConfigurationError extends Error {
   }
 }
 
-const isObject = (value: unknown): value is JsonObject =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const tokenFor = (account: TrackedGitHubAccount) => {
   const variable = ACCOUNT_TOKEN_VARIABLES[account];
   const token = process.env[variable]?.trim();
@@ -67,16 +66,6 @@ const tokenFor = (account: TrackedGitHubAccount) => {
     throw new GitHubSyncConfigurationError(variable);
   }
   return token;
-};
-
-const repositoryPath = (repository: GitHubRepository, suffix: string) => {
-  const [owner, name, ...rest] = repository.fullName.split("/");
-  if (owner === undefined || name === undefined || rest.length > 0) {
-    throw new Error("Invalid GitHub repository name.");
-  }
-  return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
-    name
-  )}/${suffix}`;
 };
 
 const fetchJson = async (url: URL, token: string) => {
@@ -96,151 +85,20 @@ const assertTokenIdentity = async (
   }
 };
 
-const fetchCommit = async (
-  repository: GitHubRepository,
-  sha: string,
-  token: string
-) => {
-  const { payload } = await fetchJson(
-    githubApiUrl(
-      repositoryPath(repository, `commits/${encodeURIComponent(sha)}`)
-    ),
-    token
-  );
-  return commitFromGitHub(payload, repository);
-};
+interface CollectedGitHubEvents {
+  events: readonly GitHubEvent[];
+  gap: {
+    expectedEventId: string;
+    oldestAvailableEventId: string;
+  } | null;
+  latestEventId: string | null;
+}
 
-const fetchInBatches = async <Input, Output>(
-  values: readonly Input[],
-  transform: (value: Input) => Promise<Output>
-) => {
-  const output: Output[] = [];
-  for (
-    let offset = 0;
-    offset < values.length;
-    offset += COMMIT_FETCH_CONCURRENCY
-  ) {
-    output.push(
-      ...(await Promise.all(
-        values.slice(offset, offset + COMMIT_FETCH_CONCURRENCY).map(transform)
-      ))
-    );
-  }
-  return output;
-};
-
-const fetchComparison = async (push: GitHubPush, token: string) => {
-  let url: URL | null = githubApiUrl(
-    repositoryPath(
-      push.repository,
-      `compare/${encodeURIComponent(push.before)}...${encodeURIComponent(
-        push.head
-      )}`
-    )
-  );
-  url.searchParams.set("per_page", String(GITHUB_PAGE_SIZE));
-
-  const commits: unknown[] = [];
-  for (let page = 0; url !== null && page < MAX_COMMIT_PAGES; page += 1) {
-    const { payload, response } = await fetchJson(url, token);
-    if (!isObject(payload) || !Array.isArray(payload.commits)) {
-      throw new TypeError("GitHub returned an invalid comparison response.");
-    }
-    commits.push(...payload.commits);
-    url = nextGitHubPage(response);
-  }
-  if (url !== null) {
-    throw new Error("GitHub comparison exceeded the pagination safety limit.");
-  }
-  return commits;
-};
-
-const fetchNewBranchCommits = async (push: GitHubPush, token: string) => {
-  const commits: unknown[] = [];
-  let url: URL | null = githubApiUrl(
-    repositoryPath(push.repository, "commits")
-  );
-  url.searchParams.set("per_page", String(GITHUB_PAGE_SIZE));
-  url.searchParams.set("sha", push.head);
-
-  for (
-    let page = 0;
-    url !== null &&
-    page < MAX_COMMIT_PAGES &&
-    (push.size === null || commits.length < push.size);
-    page += 1
-  ) {
-    const { payload, response } = await fetchJson(url, token);
-    if (!Array.isArray(payload)) {
-      throw new TypeError("GitHub returned an invalid commit-list response.");
-    }
-    commits.push(...payload);
-    url = nextGitHubPage(response);
-  }
-  if (url !== null && (push.size === null || commits.length < push.size)) {
-    throw new Error(
-      "GitHub commit history exceeded the pagination safety limit."
-    );
-  }
-  return push.size === null ? commits : commits.slice(0, push.size);
-};
-
-const commitsFromApiValues = (values: readonly unknown[], push: GitHubPush) => {
-  const commits: GitHubCommit[] = [];
-  const seen = new Set<string>();
-  for (const value of values) {
-    const commit = commitFromGitHub(value, push.repository);
-    if (commit === null) {
-      continue;
-    }
-    if (!seen.has(commit.sha)) {
-      commits.push(commit);
-      seen.add(commit.sha);
-    }
-  }
-  return commits;
-};
-
-const collectPushCommits = async (push: GitHubPush, token: string) => {
-  if (push.size === 0) {
-    return [];
-  }
-
-  if (push.size === null || push.commits.length < push.size) {
-    const values =
-      push.before === ZERO_SHA
-        ? await fetchNewBranchCommits(push, token)
-        : await fetchComparison(push, token);
-    if (push.size !== null && values.length < push.size) {
-      throw new Error("GitHub did not return every commit in the push.");
-    }
-    return commitsFromApiValues(values, push);
-  }
-
-  const embedded: GitHubCommit[] = [];
-  const missing: GitHubPushCommit[] = [];
-  for (const reference of push.commits) {
-    if (reference.commit === null) {
-      missing.push(reference);
-    } else {
-      embedded.push(reference.commit);
-    }
-  }
-  const fetched = await fetchInBatches(
-    missing,
-    async ({ sha }) => await fetchCommit(push.repository, sha, token)
-  );
-  return [
-    ...embedded,
-    ...fetched.filter((commit): commit is GitHubCommit => commit !== null),
-  ];
-};
-
-const collectNewEvents = async (
+export const collectGitHubEvents = async (
   account: TrackedGitHubAccount,
   token: string,
   checkpoint: string | null
-) => {
+): Promise<CollectedGitHubEvents> => {
   let url: URL | null = githubApiUrl(
     `/users/${encodeURIComponent(account)}/events`
   );
@@ -248,8 +106,8 @@ const collectNewEvents = async (
 
   let checkpointFound = checkpoint === null;
   let latestEventId: string | null = null;
-  let events = 0;
-  const pushes: GitHubPush[] = [];
+  let oldestAvailableEventId: string | null = null;
+  const events: GitHubEvent[] = [];
 
   for (let page = 0; url !== null && page < EVENT_PAGES; page += 1) {
     const { payload, response } = await fetchJson(url, token);
@@ -263,14 +121,12 @@ const collectNewEvents = async (
         throw new TypeError("GitHub returned an invalid account event.");
       }
       latestEventId ??= event.id;
+      oldestAvailableEventId = event.id;
       if (event.id === checkpoint) {
         checkpointFound = true;
         break;
       }
-      events += 1;
-      if (event.push !== null) {
-        pushes.push(event.push);
-      }
+      events.push(event);
     }
 
     if (checkpointFound && checkpoint !== null) {
@@ -279,18 +135,20 @@ const collectNewEvents = async (
     url = nextGitHubPage(response);
   }
 
-  if (checkpoint !== null && latestEventId !== null && !checkpointFound) {
-    const error = new Error(
-      `The saved GitHub event for ${account} is no longer present in the event feed.`
-    );
-    error.name = "GitHubEventGapError";
-    throw error;
-  }
-
+  const gap =
+    checkpoint !== null &&
+    latestEventId !== null &&
+    oldestAvailableEventId !== null &&
+    !checkpointFound
+      ? {
+          expectedEventId: checkpoint,
+          oldestAvailableEventId,
+        }
+      : null;
   return {
     events,
+    gap,
     latestEventId: latestEventId ?? checkpoint,
-    pushes,
   };
 };
 
@@ -305,42 +163,44 @@ export const syncGitHubAccount = async (
       return {
         account,
         checkpointChanged: false,
-        commits: 0,
         events: 0,
+        gapRecorded: false,
+        issues: 0,
+        knownCommits: 0,
         paused: true,
+        pullRequests: 0,
+        pushes: 0,
       };
     }
     if (token === null) {
       token = tokenFor(account);
       await assertTokenIdentity(account, token);
     }
-    const activeToken = token;
-    const collected = await collectNewEvents(
+    const collected = await collectGitHubEvents(
       account,
-      activeToken,
+      token,
       checkpoint?.latestEventId ?? null
     );
-    const commits = (
-      await fetchInBatches(
-        collected.pushes,
-        async (push) => await collectPushCommits(push, activeToken)
-      )
-    ).flat();
 
     try {
-      const persisted = await persistAccountSync({
+      const persisted = await persistAccountIntake({
         account,
-        commits,
+        events: collected.events,
         expectedCheckpoint: checkpoint,
+        gap: collected.gap,
         latestEventId: collected.latestEventId,
       });
       return {
         account,
         checkpointChanged:
           collected.latestEventId !== (checkpoint?.latestEventId ?? null),
-        commits: persisted,
-        events: collected.events,
+        events: collected.events.length,
+        gapRecorded: collected.gap !== null,
+        issues: persisted.issues,
+        knownCommits: persisted.knownCommits,
         paused: false,
+        pullRequests: persisted.pullRequests,
+        pushes: persisted.pushes,
       };
     } catch (error) {
       if (
@@ -360,31 +220,46 @@ export const syncGitHubAccounts = async (): Promise<GitHubSyncResult> => {
     throw new DatabaseConfigurationError();
   }
 
-  const results: GitHubAccountSyncResult[] = [];
-  for (const account of TRACKED_GITHUB_ACCOUNTS) {
-    results.push(await syncGitHubAccount(account));
-  }
+  const settled = await Promise.allSettled(
+    TRACKED_GITHUB_ACCOUNTS.map(async (account) => ({
+      account,
+      result: await syncGitHubAccount(account),
+    }))
+  );
+  const results = settled.flatMap((outcome) =>
+    outcome.status === "fulfilled" ? [outcome.value.result] : []
+  );
+  const failedAccounts = settled.flatMap((outcome, index) => {
+    if (outcome.status === "fulfilled") {
+      return [];
+    }
+    return [
+      {
+        account: TRACKED_GITHUB_ACCOUNTS[index],
+        error:
+          outcome.reason instanceof Error
+            ? outcome.reason.name.slice(0, 80)
+            : "UnknownError",
+      },
+    ];
+  });
 
   return {
     accounts: results.length,
     checkpoints: results.filter((result) => result.checkpointChanged).length,
-    commits: results.reduce((total, result) => total + result.commits, 0),
     events: results.reduce((total, result) => total + result.events, 0),
+    failedAccounts,
+    gaps: results.filter((result) => result.gapRecorded).length,
+    issues: results.reduce((total, result) => total + result.issues, 0),
+    knownCommits: results.reduce(
+      (total, result) => total + result.knownCommits,
+      0
+    ),
     paused: results.filter((result) => result.paused).length,
+    pullRequests: results.reduce(
+      (total, result) => total + result.pullRequests,
+      0
+    ),
+    pushes: results.reduce((total, result) => total + result.pushes, 0),
   };
-};
-
-export const syncGitHubWebhookPush = async (push: GitHubPush) => {
-  const checkpoint = await readGitHubAccountCheckpoint(push.pushedBy);
-  if (isGitHubAccountPaused(checkpoint)) {
-    return 0;
-  }
-  const needsGitHubRequest =
-    push.size === null ||
-    push.commits.length < push.size ||
-    push.commits.some((commit) => commit.commit === null);
-  const commits = needsGitHubRequest
-    ? await collectPushCommits(push, tokenFor(push.pushedBy))
-    : push.commits.flatMap(({ commit }) => (commit === null ? [] : [commit]));
-  return await persistGitHubCommits(commits);
 };

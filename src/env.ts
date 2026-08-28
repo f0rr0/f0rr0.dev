@@ -15,6 +15,10 @@ export const env = createEnv({
     DATABASE_URL_UNPOOLED: z.url().optional(),
     GH_TOKEN: z.string().min(1).optional(),
     GITHUB_F0RR0_TOKEN: z.string().min(1).optional(),
+    GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS: z
+      .string()
+      .regex(/^(?:[1-9]\d*|infinity)$/i)
+      .optional(),
     GITHUB_TOKEN: z.string().min(1).optional(),
     GITHUB_WEBHOOK_SECRET: z.string().min(32).optional(),
     GITHUB_YUPPIESTECHDEV_TOKEN: z.string().min(1).optional(),
