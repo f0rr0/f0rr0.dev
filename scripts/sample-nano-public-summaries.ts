@@ -6,6 +6,7 @@ import { generateText } from "ai";
 import { closeDatabase, getDatabase } from "../src/db/client";
 import { githubCommits } from "../src/db/schema";
 import { fetchGitHubActivityCommitSource } from "../src/lib/github-activity-processor";
+import type { GitHubActivityCommitReference } from "../src/lib/github-activity-processor";
 import {
   DEFAULT_PUBLIC_COMMIT_SUMMARY_LOW_LOC_THRESHOLD,
   deriveCommitLanguages,
@@ -23,7 +24,6 @@ import {
   countCommitPublicSummaryRequestTokens,
   PUBLIC_COMMIT_SUMMARY_MAX_REQUEST_INPUT_TOKENS,
 } from "../src/lib/github-activity-public-summary-input";
-import type { ClaimedGitHubActivityCommit } from "../src/lib/github-activity-store";
 import { trackedGitHubAccountFrom } from "../src/lib/github-commits-core";
 
 const NANO_MODEL = "gpt-5-nano-2025-08-07";
@@ -96,7 +96,7 @@ const selectedRows = async () => {
         ...row,
         author,
         committedAt: row.committedAt.toISOString(),
-      } satisfies ClaimedGitHubActivityCommit,
+      } satisfies GitHubActivityCommitReference,
     };
   });
 };

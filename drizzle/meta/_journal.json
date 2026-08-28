@@ -50,6 +50,13 @@
       "when": 1787934897652,
       "tag": "0006_steep_aqueduct",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787949510936,
+      "tag": "0007_rare_toad_men",
+      "breakpoints": true
     }
   ]
 }

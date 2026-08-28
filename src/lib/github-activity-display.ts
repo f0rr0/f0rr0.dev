@@ -47,15 +47,42 @@ export interface RepositoryDisplayInput {
   sha: string;
 }
 
-export const publicRepositoryDisplay = (input: RepositoryDisplayInput) => {
+const repositoryLabel = (input: {
+  ownerLogin: string;
+  private: boolean;
+  repository: string;
+}) => {
   const directlyOwned = trackedGitHubAccountFrom(input.ownerLogin) !== null;
   const canName = !input.private || directlyOwned;
-  return {
-    repositoryLabel: canName
-      ? (input.repository.split("/").at(-1) ?? input.repository)
-      : null,
-    url: input.private
-      ? null
-      : `https://github.com/${input.repository}/commit/${input.sha}`,
-  };
+  return canName
+    ? (input.repository.split("/").at(-1) ?? input.repository)
+    : null;
 };
+
+const safeGitHubUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "github.com"
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+export const publicRepositoryDisplay = (input: RepositoryDisplayInput) => ({
+  repositoryLabel: repositoryLabel(input),
+  url: input.private
+    ? null
+    : `https://github.com/${input.repository}/commit/${input.sha}`,
+});
+
+export const publicRepositoryEntityDisplay = (input: {
+  ownerLogin: string;
+  private: boolean;
+  repository: string;
+  url: string;
+}) => ({
+  repositoryLabel: repositoryLabel(input),
+  url: input.private ? null : safeGitHubUrl(input.url),
+});

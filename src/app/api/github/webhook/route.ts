@@ -3,15 +3,33 @@ import { createHmac } from "node:crypto";
 import { revalidateTag } from "next/cache";
 
 import { isDatabaseConfigured } from "@/db/client";
-import { processPendingGitHubActivity } from "@/lib/github-activity-processor";
-import { syncGitHubWebhookPush } from "@/lib/github-commits";
-import { pushFromWebhook } from "@/lib/github-commits-core";
+import {
+  githubDeliveryIdFrom,
+  issueActionFromWebhook,
+  issueFromWebhook,
+  pullRequestObservationFromWebhook,
+  pushFromWebhook,
+} from "@/lib/github-commits-core";
+import {
+  persistIgnoredGitHubWebhookDelivery,
+  persistGitHubWebhookIssue,
+  persistGitHubWebhookPullRequest,
+  persistGitHubWebhookPush,
+} from "@/lib/github-commits-store";
+import { reportOperationalError } from "@/lib/operational-error";
 import { constantTimeEqual } from "@/lib/request-auth";
 
-const MAXIMUM_PAYLOAD_BYTES = 2_000_000;
+const MAXIMUM_PAYLOAD_BYTES = 4_500_000;
+const GITHUB_EVENT_NAME = /^[a-z][a-z0-9_]{0,39}$/;
+const SUPPORTED_GITHUB_EVENTS = new Set(["issues", "pull_request", "push"]);
+
+type SupportedGitHubEvent = "issues" | "pull_request" | "push";
+
+const supportedGitHubEventFrom = (event: string): SupportedGitHubEvent | null =>
+  SUPPORTED_GITHUB_EVENTS.has(event) ? (event as SupportedGitHubEvent) : null;
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 30;
 export const runtime = "nodejs";
 
 const validSignature = (
@@ -26,6 +44,62 @@ const validSignature = (
     .update(body, "utf-8")
     .digest("hex")}`;
   return constantTimeEqual(signature.toLowerCase(), expected);
+};
+
+const acceptedResponse = (input: {
+  duplicate: boolean;
+  ignored?: boolean;
+  issues: number;
+  paused: boolean;
+  pullRequests: number;
+  pushes: number;
+}) =>
+  Response.json(
+    {
+      accepted: !input.paused && input.ignored !== true,
+      duplicate: input.duplicate,
+      ignored: input.ignored ?? false,
+      issues: input.issues,
+      ok: true,
+      paused: input.paused,
+      pullRequests: input.pullRequests,
+      pushes: input.pushes,
+    },
+    { status: 202 }
+  );
+
+const persistSupportedWebhook = async (
+  deliveryId: string,
+  eventType: SupportedGitHubEvent,
+  payload: unknown
+) => {
+  if (eventType === "push") {
+    const push = pushFromWebhook(payload);
+    if (push !== null) {
+      return await persistGitHubWebhookPush(deliveryId, push);
+    }
+  } else if (eventType === "pull_request") {
+    const observation = pullRequestObservationFromWebhook(payload);
+    if (observation !== null) {
+      return await persistGitHubWebhookPullRequest(
+        deliveryId,
+        observation.account,
+        observation.pullRequest
+      );
+    }
+  } else {
+    const issue = issueFromWebhook(payload);
+    if (issue !== null) {
+      return await persistGitHubWebhookIssue(deliveryId, issue);
+    }
+  }
+  return await persistIgnoredGitHubWebhookDelivery({
+    account: null,
+    action: eventType === "issues" ? issueActionFromWebhook(payload) : null,
+    deliveryId,
+    event: eventType,
+    repositoryId: null,
+  });
 };
 
 export async function POST(request: Request) {
@@ -59,44 +133,66 @@ export async function POST(request: Request) {
   ) {
     return Response.json({ ok: false }, { status: 401 });
   }
-  if (request.headers.get("x-github-event") !== "push") {
-    return Response.json({ ignored: true, ok: true }, { status: 202 });
+
+  const deliveryId = githubDeliveryIdFrom(
+    request.headers.get("x-github-delivery")
+  );
+  if (deliveryId === null) {
+    return Response.json({ ok: false }, { status: 400 });
+  }
+  const eventName = request.headers.get("x-github-event")?.trim().toLowerCase();
+  if (eventName === undefined || !GITHUB_EVENT_NAME.test(eventName)) {
+    return Response.json({ ok: false }, { status: 400 });
+  }
+  const eventType = supportedGitHubEventFrom(eventName);
+  if (eventType === null) {
+    try {
+      return acceptedResponse(
+        await persistIgnoredGitHubWebhookDelivery({
+          account: null,
+          action: null,
+          deliveryId,
+          event: eventName,
+          repositoryId: null,
+        })
+      );
+    } catch (error) {
+      reportOperationalError("github_webhook_unsupported", error);
+      return Response.json({ ok: false }, { status: 503 });
+    }
   }
 
   let payload: unknown;
   try {
     payload = JSON.parse(body) as unknown;
   } catch {
+    try {
+      await persistIgnoredGitHubWebhookDelivery({
+        account: null,
+        action: null,
+        deliveryId,
+        event: eventType,
+        repositoryId: null,
+      });
+    } catch (error) {
+      reportOperationalError("github_webhook_invalid_delivery", error);
+      return Response.json({ ok: false }, { status: 503 });
+    }
     return Response.json({ ok: false }, { status: 400 });
   }
 
-  const push = pushFromWebhook(payload);
-  if (push === null) {
-    return Response.json({ ignored: true, ok: true }, { status: 202 });
-  }
-
   try {
-    const commits = await syncGitHubWebhookPush(push);
-    let activity:
-      | Awaited<ReturnType<typeof processPendingGitHubActivity>>
-      | { unavailable: true };
-    try {
-      activity = await processPendingGitHubActivity();
-      if (activity.completed > 0) {
-        revalidateTag("github-activity", "max");
-      }
-    } catch {
-      activity = { unavailable: true };
+    const result = await persistSupportedWebhook(
+      deliveryId,
+      eventType,
+      payload
+    );
+    if (result.issues > 0) {
+      revalidateTag("github-activity", "max");
     }
-    return Response.json({
-      activity,
-      commits,
-      ok: true,
-      repository: push.repository.fullName,
-    });
-  } catch {
-    // A non-2xx response keeps the GitHub delivery retryable. Duplicate commit
-    // inserts are harmless because repository ID and SHA form the primary key.
+    return acceptedResponse(result);
+  } catch (error) {
+    reportOperationalError("github_webhook_intake", error);
     return Response.json({ ok: false }, { status: 503 });
   }
 }

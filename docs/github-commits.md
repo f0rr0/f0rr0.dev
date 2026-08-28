@@ -1,66 +1,77 @@
-# GitHub commit ingestion
+# GitHub activity ingestion
 
-The site uses pushes by `f0rr0` or `yuppiestechdev` to discover candidate
-commits, including pushes to repositories owned by other users or organizations
-and repositories that are private. It persists a commit only when GitHub's REST
-response links its top-level `author.login` to one of those accounts. GitHub
-remains the source of truth: the database stores a small commit index, not
-patches, trees, blobs, push observations, or webhook payloads.
+The site records commits authored by `f0rr0` or `yuppiestechdev` when either
+account pushes them. A repository can be public or private and can belong to
+either account or to somebody else. GitHub remains the source of truth for
+repository contents: the database keeps durable identities, observations,
+deterministic facts, pull-request structure, and generated summaries, but not
+patch bodies, tree/blob contents, or webhook payloads.
 
 ## Architecture
 
 ```text
-GitHub App push webhook ──> Vercel /api/github/webhook ──> Supabase Postgres
-                                      │
-                                      └─> GitHub patch ─> one Nano call
+GitHub push / pull_request / issues webhooks
+  -> Vercel /api/github/webhook
+  -> verify + durably record delivery/observation/snapshot
+  -> 202 (no GitHub or OpenAI work in the request)
 
-Supabase Cron (3 hours) ──> Vercel /api/cron/github-sync
-                         ──> GitHub authenticated user events
-                         ──> Supabase Postgres
-                         ──> pending commit processing
+Supabase Cron every 3 hours
+  -> Vercel /api/cron/github-sync
+  -> authenticated GitHub user Events feeds
+  -> transactionally persist observations + checkpoint
+
+Supabase Cron every 5 minutes
+  -> Vercel /api/cron/github-worker
+  -> expand observations, enrich commits, discover/reconcile PRs,
+     canonicalize proven copies, summarize, and publish
+
+Next.js server render / GET /api/github/activity
+  -> snapshot-stable pages of complete UTC days
 ```
 
 The webhook is the low-latency path for repositories where the GitHub App is
-installed. The poller is the coverage path for pushes made from either account
-in any repository that account can access. Both paths write through the same
-idempotent primary key, `(repository_id, sha)`.
+installed. Authenticated Events polling is the coverage path for pushes made by
+either account in any repository visible to that account. The two intake paths
+converge on the same durable observation and source-identity tables. Leases and
+unique constraints make overlapping webhook, polling, and worker invocations
+safe.
 
-The public GitHub Events API is not used. Each account token calls
-`/users/{account}/events` as that same account, which is what allows GitHub to
-include its private events. The poller verifies `/user` before reading events so
-a token mix-up cannot silently downgrade the feed to public activity.
+The poller verifies each token with `/user` before requesting
+`/users/{account}/events`; a token mix-up cannot silently turn private activity
+into a public-only feed. Only pushes performed by the tracked account are
+observed, and a candidate commit is retained only after GitHub identifies its
+top-level commit author as one of the tracked accounts.
 
-## State
+## Durable intake and checkpoints
 
-There are only two tables:
+The intake boundary is intentionally cheap:
 
-- `github_commits` starts with repository ID/full name, SHA, verified tracked
-  author, commit time, and commit subject. Processing adds repository
-  visibility/owner display facts, GitHub-reported line counts and languages, two
-  public summaries, and the model/recipe/input hash needed to audit them. It
-  never stores patches, trees, blobs, or webhook payloads.
-- `github_account_checkpoints` contains only the account, newest assimilated
-  event ID, and pause state.
+- A webhook delivery receipt is keyed by GitHub's delivery UUID. Supported
+  `push`, `pull_request`, and opened `issues` deliveries record only normalized
+  metadata and the corresponding observation/snapshot. Unsupported deliveries
+  are recorded as ignored. The raw JSON body is never stored.
+- A push observation records its source, account, repository, ref, before/after
+  SHAs, expected commit count, and any SHA list GitHub supplied. The worker can
+  later expand a truncated push with authenticated GitHub APIs.
+- The Events poll persists all newly seen push observations, PR snapshots, and
+  tracked-author issue-opened milestones, then advances that account's event
+  checkpoint in the same transaction.
+- Checkpoint updates use compare-and-swap. A concurrent winner causes the
+  loser to reread and retry instead of overwriting newer progress.
 
-For each account, the poller reads events newest-first until it reaches the
-saved event ID. It fetches commit metadata, then inserts the commits and advances
-the checkpoint in one transaction. A failed run leaves the checkpoint where it
-was; the next run repeats the same interval. Duplicate webhook deliveries,
-overlap between webhook and polling, and retried cron calls are harmless.
+The poller reads newest-first until the saved event ID, with at most three
+100-event pages. GitHub's Events feed is bounded, so a checkpoint can eventually
+fall out of the available window. In that case the run persists every still
+available observation, advances to the newest event, and records the expected
+and oldest available event IDs as a durable `detected` gap. It does not loop
+forever on an unrecoverable checkpoint.
 
-After ingestion commits successfully, the same invocation claims up to eight
-newest unprocessed rows. Each row re-fetches its current repository and commit
-evidence, derives facts from GitHub's counters, and makes exactly one summary
-call. Claiming is conditional, so webhook and cron invocations cannot process
-the same row concurrently. A source-fetch failure, model request or transport
-failure, or empty model response is terminal and omitted from the public feed;
-there is no automatic model retry or duplicate billing loop. Nano response
-content, length, and label shape are not failure reasons.
+There is no arbitrary 400-day scan. A first run assimilates only the activity
+currently exposed by GitHub; historical backfill is a separate operation.
 
 ### Pause or resume an account
 
-Set `paused` on the account's checkpoint row. A paused account makes no polling
-API requests, advances no checkpoint, and ignores incoming push webhooks:
+The pause flag is stored on the account checkpoint:
 
 ```sql
 update github_account_checkpoints
@@ -68,7 +79,9 @@ set paused = true
 where account = 'yuppiestechdev';
 ```
 
-Resume it with:
+A paused account makes no Events requests, rejects new work from supported
+webhooks after recording the delivery receipt, and is excluded from worker
+claims. Its checkpoint and existing durable state are preserved. Resume with:
 
 ```sql
 update github_account_checkpoints
@@ -76,151 +89,203 @@ set paused = false
 where account = 'yuppiestechdev';
 ```
 
-The checkpoint is deliberately preserved while paused. When the account is
-resumed, the next poll assimilates activity since that checkpoint, provided it
-is still inside GitHub's bounded Events API window.
+The next poll resumes from the preserved checkpoint if it is still in GitHub's
+bounded Events window; otherwise it records a gap as described above.
 
-The first run assimilates the activity currently available from GitHub's Events
-API. There is no arbitrary 400-day scan. [GitHub exposes at most 300 events and
-only events from the last 30 days](https://docs.github.com/en/rest/activity/events);
-the poller requests the three available 100-event pages. If an established
-checkpoint disappears from that bounded feed, the run fails instead of silently
-skipping the gap. To accept the currently available feed as a new baseline,
-delete only that account's checkpoint and run the poller again:
+## Worker pipeline
 
-```sql
-delete from github_account_checkpoints where account = 'f0rr0';
+The five-minute worker is bounded and restart-safe. It runs these stages in
+order:
+
+1. Claim push observations and expand their complete pushed SHA set using the
+   compare endpoint (or branch commits for a newly created branch). Persist the
+   source membership, then create candidate rows only for tracked authors.
+2. Claim candidate commits and fetch repository plus paginated commit evidence.
+   Verify repository ID, SHA, and tracked author again; persist commit metadata,
+   GitHub aggregate counters, file-derived languages, repository facts, and a
+   deterministic change fingerprint.
+3. Ask GitHub which PRs are associated with each newly enriched commit and
+   persist those PR snapshots. Reconcile known PRs that are due.
+4. Canonicalize only copies supported by complete, deterministic evidence.
+5. Create and claim one summary attempt for each still-canonical commit, make
+   one Nano call, and publish the activity only after it succeeds.
+
+An issue opened by a tracked account needs no enrichment or model call. Intake
+persists its stable node/repository IDs, original title/link snapshots, creation
+time, and a published issue milestone transactionally. Both `IssuesEvent` and
+an `issues` webhook converge on those same unique identities.
+
+Observation and commit fetches use retryable database states and honor GitHub
+rate-limit timing; permanent source failures become `unavailable`. Work is
+owned through conditional leases, so a timed-out Vercel invocation can be
+continued safely by a later worker. The worker stops starting expensive work
+before its internal deadline.
+
+Commit storage is sufficient to audit and re-fetch the source under the normal
+assumption that repository access and history remain available. It includes
+repository ID, SHA, tree SHA, parent SHAs, full commit message, author and
+committer identities/times, GitHub counters, languages, repository display
+facts, and the fingerprint result. Patch text and per-file evidence exist only
+in memory for deterministic derivation and the Nano request.
+
+## Pull requests and deterministic grouping
+
+PR membership comes from GitHub, not from an LLM. For each enriched commit the
+worker first uses GitHub's associated-PR endpoint. Each PR is stored by stable
+node ID with a current mutable snapshot and immutable head-SHA versions. The
+commit list is fetched for a new head SHA; REST is used first and GraphQL
+pagination covers PRs beyond the REST commit-list cap. An incomplete membership
+is never accepted as complete evidence. Association is not filtered by PR
+author, so a foreign-authored PR can still organize a tracked commit. Only a
+tracked-authored merged PR becomes the separate public merge milestone.
+
+When a commit appears in more than one current complete PR membership, the
+earliest-created PR (then stable node ID) is its deterministic primary PR. The
+timeline groups same-day primary members under that PR title. This is a display
+projection: every canonical source commit remains an independently stored
+activity, and a PR that spans days appears as one slice in each relevant day.
+Commits without a proven PR association remain standalone.
+
+### Reconciliation policy
+
+An eligible open PR receives a full snapshot refresh every three hours. That
+refresh updates title, body, draft/state, base/head, merge fields, counts, and
+provider timestamps. Its commit membership is fetched again only when the head
+SHA changes or the current head's prior membership is incomplete. A base-only,
+title, or body edit does not fetch membership again and does not make another
+Nano call.
+
+Each worker run claims at most 25 due PRs per tracked account. The age window is
+configured with:
+
+```dotenv
+GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS=30
 ```
 
-## Supabase database
+The default is `30`. Set a positive integer for another number of days, or the
+literal `infinity` for no age cutoff. Eligibility is calculated from PR
+`created_at` at query time, not permanently written into a stopped state.
+Increasing the value or switching to `infinity` therefore makes older open PRs
+eligible again. The cap applies only to scheduled reconciliation; a webhook or
+an associated-PR observation can still update an older PR opportunistically.
 
-Create a free Supabase project and copy both connection strings from the
-project's **Connect** panel:
+The age cutoff applies to ongoing open-PR reconciliation. A known merged or
+closed PR still gets its terminal refresh. After that successful final refresh,
+`next_reconcile_at` is cleared and it leaves the queue permanently. Temporary
+failures defer the same terminal refresh rather than silently dropping it.
+GitHub `404`, `410`, or `422` responses mark the PR permanently unavailable and
+clear its reconciliation schedule.
 
-- `DATABASE_URL`: Shared Pooler, transaction mode, port `6543`. Vercel uses this
-  for short-lived runtime connections.
-- `DATABASE_URL_UNPOOLED`: direct connection, port `5432`. Drizzle migrations
-  and the Cron configuration script use this when available.
+### Proven-copy canonicalization
 
-Apply the schema explicitly:
+The public feed hides an integration copy only when the database can point to a
+specific canonical activity and persist the reason plus evidence:
+
+- A GitHub-reported merge SHA is aliased to an existing source member only when
+  that PR has complete membership. Parent count distinguishes regular merge
+  commits from squash integration commits.
+- A rebase/force-push copy is aliased only when both commits have complete,
+  identical changed-line fingerprints and belong to distinct complete versions
+  of the same PR.
+- A cherry-pick is aliased only with the explicit `cherry picked from commit`
+  trailer and the same complete fingerprint.
+
+The fingerprint hashes stable hunk bodies—including unchanged context—and
+file-change metadata. It excludes commit identity and numeric hunk coordinates.
+A missing patch, counter mismatch, binary/provider omission, or GitHub file cap
+makes the fingerprint incomplete, so it cannot prove an alias. There is no
+global same-diff deduplication and no title-, time-, filename-, or
+similarity-based guess. Unproven commits remain visible.
+
+## One-shot Nano summaries
+
+Every canonical commit gets one revision-scoped summary-attempt row and, when
+claimed, one `gpt-5-nano-2025-08-07` request with `maxRetries: 0` and
+`store: false`. The request produces both the compact headline and expandable
+short summary. Languages and line counts are procedural and are not inferred by
+the model.
+
+If the worker reaches its deadline before issuing the model request, it releases
+the claim back to `pending`; no attempt was consumed. Once the request starts,
+an API/transport error, empty response, or other processing error is terminal
+`failed`. A lost lease becomes `indeterminate` and is not automatically
+reclaimed, avoiding duplicate billing when the remote outcome is unknown.
+There are no automatic model retries. PR reconciliation, including title/body
+updates, does not create a new commit-summary revision.
+
+Ordinary commits send the full fetched evidence. Oversized evidence goes
+through deterministic procedural compaction before the same single call. See
+[`github-activity-public-commit-summaries.md`](./github-activity-public-commit-summaries.md)
+for the prompt, compaction, and output contract.
+
+## Public timeline
+
+The homepage reads a server-side projection of published, non-aliased
+activities. The initial render is a React Server Component; only the pagination
+control is a client component. Subsequent pages use
+`GET /api/github/activity?cursor=...`.
+
+Pagination is by complete UTC day, not by item. A page contains five days by
+default (the server accepts at most 14). Its opaque, versioned cursor contains a
+`beforeDay` boundary and the original `snapshotAt`, so loading older days cannot
+mix in activities published after the first page. A safety limit fails the read
+instead of returning a partial day.
+
+Each day shows totals for repositories, GitHub-reported additions/deletions,
+PRs merged, and issues opened. Commit items always show the headline, counters,
+file-derived language icons, and file count. Higher-substantive-LOC or
+provider-capped commits can expand to the full short summary. PR commits are
+shown under deterministic per-day PR slices, while a merge is a separate
+milestone with its GitHub link when the repository is public. Repository and
+owner display facts are served from persisted snapshots; the page does not
+refetch GitHub.
+
+## Database and environment
+
+Use the Supabase transaction pooler at runtime and the direct connection for
+migrations and cron setup:
+
+```dotenv
+DATABASE_URL=postgresql://...:6543/postgres
+DATABASE_URL_UNPOOLED=postgresql://...:5432/postgres
+GITHUB_F0RR0_TOKEN=github_pat_...
+GITHUB_YUPPIESTECHDEV_TOKEN=github_pat_...
+GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS=30
+GITHUB_WEBHOOK_SECRET=<at-least-32-random-characters>
+CRON_SECRET=<at-least-32-random-characters>
+OPENAI_API_KEY=...
+SITE_URL=https://f0rr0.dev
+```
+
+`GITHUB_TOKEN` remains optional. Source fetches try the owning account token,
+the other tracked account token, and then the optional default token so a PR or
+repository readable by either identity can still be processed. All tokens stay
+server-side.
+
+Apply migrations explicitly; deployment does not run them:
 
 ```sh
 bun run db:migrate
 ```
 
-After migrating existing activity from patch-derived counts to GitHub's native
-counters, refresh only the stored deterministic facts—without making Nano
-calls—with:
-
-```sh
-bun run github:refresh-counters
-```
-
-The migration clears the old patch-derived values first. If GitHub can no longer
-serve an existing commit, that item stays out of the public feed instead of
-presenting the old values as GitHub counters.
-
-After changing the public-summary prompt, refresh stale completed summaries
-with one Nano attempt per commit and no retry:
-
-```sh
-bun run github:refresh-summaries
-```
-
-A successful candidate replaces the two persisted summary variants and their
-recipe/model/input hash. A failed candidate leaves the previous valid pair
-untouched.
-
-The pipeline starts with repository and commit evidence returned by the
-authenticated GitHub fetch path. That includes repository identity, ownership,
-visibility, description, homepage, topics, and avatar URL; the complete commit
-message and metadata; every returned file's metadata; and every patch string
-GitHub provides. The complete request is measured with Nano's model-specific
-tokenizer and keeps all evidence unabridged through 240,000 input tokens. If the
-UTF-8 upper bound has not already proved the request fits, a 4 MB input safety
-bound or 64 KB unbroken serialized-line bound routes pathological patch,
-message, description, or path text to compaction before exact full-input
-tokenization; large multiline diffs can still remain whole when they fit.
-
-Above that boundary, one deterministic local pass keeps the repository and
-commit metadata plus a complete compact file ledger, deduplicates identical
-patches, and bounds semantic parsing by patch bytes and total lines. A patch
-outside those memory bounds becomes an explicitly labeled deterministic
-head/tail excerpt with exact omission counters. Parsed patches first replace
-only unchanged context with skip markers. If every changed line still does not
-fit, byte-bounded atomic edit samples keep both sides of replacements together.
-Module/file breadth and a generic token-weighted 6:2:1 allocation cover product,
-test/doc, and generated evidence; samples render in source order with explicit
-gaps. Sample costs are estimated individually, then the final request is
-token-counted exactly and trimmed structurally before the single Nano call. The
-normal compaction manifest separates upstream-missing, counter-mismatched,
-locally raw-compacted, and budget-omitted evidence. An extreme metadata-only
-fallback may omit those detailed distinctions when its minimal aggregate
-manifest is all that fits. There is no LLM pre-summary, second call, retry,
-repository-specific mapping, whitelist, or persisted patch/compaction state.
-
-Every nonempty Nano response is accepted and persisted. The expected
-`HEADLINE` and `SHORT` labels are parsed when present; an unexpectedly shaped
-response is instead preserved in full as both display variants. The selected
-stored variant is displayed without content- or length-based rejection or
-truncation. Only an empty response or a request/source failure fails the
-one-shot attempt, and it is never retried automatically.
-
-This migration intentionally removes the earlier experimental timeline tables
-and any intermediate commit/checkpoint tables. Their data can be rebuilt from
-GitHub. The two replacement tables have row-level security enabled with no
-browser-facing policies; Vercel accesses them through the server-only Postgres
-connection. Migrations are never run during install or deployment.
-
-## Vercel environment
-
-Configure these production environment variables:
-
-```dotenv
-DATABASE_URL=postgresql://...:6543/postgres
-GITHUB_F0RR0_TOKEN=github_pat_...
-GITHUB_YUPPIESTECHDEV_TOKEN=github_pat_...
-CRON_SECRET=<at-least-32-random-characters>
-GITHUB_WEBHOOK_SECRET=<at-least-32-random-characters>
-```
-
-`GITHUB_TOKEN` remains optional and is used only for the public repository list
-shown elsewhere on the portfolio.
-
-Each account-specific token must authenticate as the account named in the
-variable, be able to read that user's Events feed, and have read access to
-repository contents wherever private commits should be resolved. Keep the
-tokens server-side.
-
 ## Supabase Cron
 
-After the production Vercel deployment exists, set these variables locally in
-addition to the database variables:
-
-```dotenv
-SITE_URL=https://f0rr0.dev
-CRON_SECRET=<the-same-value-configured-on-vercel>
-```
-
-Then run:
+After the production Vercel routes and environment exist, run:
 
 ```sh
 bun run supabase:cron
 ```
 
-The script enables `pg_cron`, `pg_net`, and Vault, stores the endpoint and
-bearer secret encrypted in Vault, and creates this UTC schedule:
+The script enables `pg_cron`, `pg_net`, and Vault, upserts the encrypted route
+URLs and bearer secret, replaces jobs with the same names, and installs:
 
 ```cron
-7 */3 * * *
+7 */3 * * *   # authenticated Events intake
+*/5 * * * *   # bounded activity worker
 ```
 
-The job sends an authenticated `POST` request to
-`/api/cron/github-sync`. It replaces an existing job with the same name, so the
-setup command is safe to rerun after rotating the secret or changing the site
-URL. No Vercel Cron configuration is used.
-
-Inspect scheduler and HTTP delivery status in Supabase with:
+No Vercel Cron configuration is required. Inspect scheduling and HTTP delivery
+from Supabase with:
 
 ```sql
 select * from cron.job_run_details order by start_time desc limit 20;
@@ -229,77 +294,75 @@ select * from net._http_response order by created desc limit 20;
 
 ## GitHub App webhook
 
-Configure the GitHub App's push webhook with:
+Configure the GitHub App webhook with:
 
 - URL: `https://f0rr0.dev/api/github/webhook`
-- Content type: `application/json`
-- Secret: the value of `GITHUB_WEBHOOK_SECRET`
-- Event: `push`
+- content type: `application/json`
+- secret: `GITHUB_WEBHOOK_SECRET`
+- subscribed events: `push`, `pull_request`, and `issues`
 
-The route rejects an invalid signature before parsing the payload. It accepts
-pushes to any branch in any public or private repository when the webhook
-identifies `f0rr0` or `yuppiestechdev` as the push actor. Webhook commit details
-are never trusted for authorship: every SHA is resolved through the authenticated
-REST commit endpoint, and foreign or unlinked authors are discarded before the
-database transaction. Malformed or incomplete responses fail the delivery so
-GitHub can retry it.
+The route enforces a 4.5 MB body limit, verifies the HMAC before JSON parsing,
+requires a valid GitHub delivery UUID, deduplicates the receipt transactionally,
+and returns `202` after durable intake. It deliberately does not fetch commits,
+call OpenAI, or build the public timeline inline.
 
-## Manual verification
+## Manual verification and rollout
 
-Trigger the polling route without waiting for Cron:
+The rollout order is schema, Vercel environment, Supabase jobs, GitHub App
+subscriptions, then end-to-end observation. Nothing in this document implies
+that a particular environment has already been migrated or deployed.
+
+Run the normal synchronization locally:
+
+```sh
+bun run github:sync
+```
+
+Or invoke each deployed route with the same bearer secret used by Supabase:
 
 ```sh
 curl --fail-with-body \
   --request POST \
   --header "Authorization: Bearer $CRON_SECRET" \
   https://f0rr0.dev/api/cron/github-sync
+
+curl --fail-with-body \
+  --request POST \
+  --header "Authorization: Bearer $CRON_SECRET" \
+  https://f0rr0.dev/api/cron/github-worker
 ```
 
-Or run the same synchronization directly against the configured database:
+Verify, in order:
 
-```sh
-bun run github:sync
-```
-
-The route returns aggregate account, event, commit, checkpoint, and activity
-processing counts. It does not return tokens, repository contents, patches, or
-raw private events.
-
-## Public timeline
-
-The homepage reads only completed activity through a dedicated scrubbed
-projection. Results use keyset pagination ordered by commit time and a random
-public UUID; the opaque cursor contains no repository ID or commit SHA. The
-first page is cached for 15 minutes and subsequent pages are read from
-`GET /api/github/activity?cursor=...`.
-
-Repository presentation is deliberately separate from stored source data:
-
-- Public repository: show the owner avatar, repository basename, and commit
-  link, regardless of owner.
-- Private repository directly under `f0rr0` or `yuppiestechdev`: show the
-  account avatar and repository basename, without a link.
-- Private repository under any other user or organization: show the owner
-  avatar and `Private contribution`; omit the repository name and link.
-
-The client never receives repository IDs, SHAs, full repository names, author
-handles, raw commit messages, file paths, or patches. Each UTC date is rendered
-as a section. Commits with at most 25 substantive GitHub-reported changed lines
-show only the stored headline; larger or provider-capped commits also show the
-stored detailed summary.
+1. A webhook returns `202` and creates one delivery receipt plus one normalized
+   observation/snapshot; replaying the delivery UUID is a no-op. An opened issue
+   authored by a tracked account also creates one immediately published issue
+   milestone.
+2. An Events run advances the checkpoint only in the transaction that persisted
+   its observations; concurrent runs converge through compare-and-swap.
+3. Worker passes move observations and commits through their states, populate
+   PR versions/memberships, and create exactly one summary attempt.
+4. Terminal PRs have `next_reconcile_at = null`; eligible open PRs have a future
+   due time; old open PR behavior follows the configured query-time cap.
+5. The public page contains complete UTC days, no proven integration-copy
+   duplicates, stable older-page cursors, and correct daily totals.
 
 ## Deliberate limits
 
-- GitHub says the Events API is not real-time and can be delayed. Webhooks are
-  the immediate path where the App is installed; polling assimilates an event
-  after GitHub exposes it.
-- The Events API exposes a bounded recent window. Polling every three hours
-  keeps the checkpoint well inside that window during normal operation.
-- The Supabase free plan has no automatic backups. The index can be rebuilt
-  from GitHub under the project's normal repository-access assumptions.
-- Private repository names and commit subjects stay server-side so GitHub can
-  be queried again. The public read model applies the repository visibility and
-  ownership policy above before serialization.
-- Push actor, committer, Git names/emails, refs, before/after SHAs, delivery
-  metadata, canonical URLs, patches, trees, blobs, file lists, and raw payloads
-  are not persisted by live ingestion.
+- GitHub Events are delayed and expose a bounded window. Webhooks improve
+  latency but only where the App is installed; a recorded checkpoint gap still
+  requires explicit operational review if missing history matters.
+- The system covers commits pushed by a tracked account and authored by a
+  tracked account. It deliberately does not discover a tracked author's commit
+  when somebody else pushes it and no tracked-account observation includes it.
+- PR association and copy suppression favor false negatives: incomplete or
+  ambiguous evidence leaves a commit standalone and visible.
+- A finite reconciliation age intentionally stops checking old open PRs. If a
+  third-party PR merges after that cutoff and no relevant webhook/Event reaches
+  us, its terminal state is not discovered unless the cap is widened (or set to
+  `infinity`).
+- Repository deletion, inaccessible history, and force-pushed-away objects can
+  make later enrichment unavailable. Raw patches are intentionally not retained.
+- Supabase free-tier backup and retention characteristics are external to this
+  application; source facts are re-fetchable only while GitHub access/history
+  remains available.

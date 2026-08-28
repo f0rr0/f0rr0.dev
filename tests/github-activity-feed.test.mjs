@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { GitHubTimeline } from "../src/components/github-timeline.tsx";
-import { githubCommits } from "../src/db/schema.ts";
+import { githubCommits, githubSummaryAttempts } from "../src/db/schema.ts";
 import {
   decodeGitHubActivityCursor,
   encodeGitHubActivityCursor,
@@ -16,8 +16,8 @@ import {
 
 describe("public GitHub activity projection", () => {
   test("persists both Nano summary variants", () => {
-    expect(githubCommits.summaryHeadline.name).toBe("summary_headline");
-    expect(githubCommits.summaryShort.name).toBe("summary_short");
+    expect(githubSummaryAttempts.summaryHeadline.name).toBe("summary_headline");
+    expect(githubSummaryAttempts.summaryShort.name).toBe("summary_short");
   });
 
   test("persists whether GitHub capped the returned file evidence", () => {
@@ -32,43 +32,63 @@ describe("public GitHub activity projection", () => {
     const html = renderToStaticMarkup(
       createElement(GitHubTimeline, {
         initialPage: {
-          items: [
+          days: [
             {
-              additions: 1,
-              avatarUrl: null,
-              changedFiles: 3000,
-              committedAt: "2026-08-28T08:30:00.000Z",
-              deletions: 2,
-              headline: "Improve the large change",
-              id: "provider-capped-commit",
-              languages: [
+              day: "2026-08-28",
+              items: [
                 {
-                  changedLines: 3,
-                  iconUrl: null,
-                  id: "typescript",
-                  label: "TypeScript",
+                  commit: {
+                    additions: 1,
+                    changedFiles: 3000,
+                    committedAt: "2026-08-28T08:30:00.000Z",
+                    deletions: 2,
+                    headline: "Improve the large change",
+                    id: "provider-capped-commit",
+                    languages: [
+                      {
+                        changedLines: 3,
+                        iconUrl: null,
+                        id: "typescript",
+                        label: "TypeScript",
+                      },
+                    ],
+                    providerFileCapReached: true,
+                    summary: "Improves a large change.",
+                  },
+                  id: "provider-capped-activity",
+                  kind: "commit",
+                  occurredAt: "2026-08-28T08:30:00.000Z",
+                  repository: {
+                    avatarUrl: null,
+                    label: null,
+                    url: null,
+                  },
                 },
               ],
-              providerFileCapReached: true,
-              repositoryLabel: null,
-              summary: "Improves a large change.",
-              summaryKind: "short",
-              url: null,
+              totals: {
+                additions: 1,
+                deletions: 2,
+                issuesOpened: 0,
+                pullRequestsMerged: 0,
+                repositories: 1,
+              },
             },
           ],
           nextCursor: null,
+          snapshotAt: "2026-08-28T09:00:00.000Z",
         },
       })
     );
 
-    expect(html).toContain("3000+ files");
+    expect(html).toContain("3,000+ files");
     expect(html).toContain("Improve the large change");
     expect(html).toContain("Improves a large change.");
     expect(html.indexOf("Improve the large change")).toBeLessThan(
       html.indexOf("Improves a large change.")
     );
+    expect(html).toContain("<details");
     expect(html).toContain(
-      "3000 or more changed files; GitHub caps returned file details at 3,000 files"
+      "3,000 or more changed files; GitHub caps returned file details at 3,000 files"
     );
     expect(html).toContain(
       'aria-label="Languages found in the first 3,000 files returned by GitHub; the full commit may include more"'
@@ -77,16 +97,90 @@ describe("public GitHub activity projection", () => {
 
   test("round trips an opaque cursor without repository identity", () => {
     const cursor = {
-      committedAt: "2026-08-28T08:30:00.000Z",
-      publicId: "018f4f3c-8c35-7b11-8d4e-fbc7feab35e3",
+      beforeDay: "2026-08-28",
+      snapshotAt: "2026-08-28T08:30:00.000Z",
+      version: 1,
     };
-    const encoded = encodeGitHubActivityCursor(cursor);
+    const secret = "a-test-cursor-secret-with-at-least-32-characters";
+    const encoded = encodeGitHubActivityCursor(cursor, secret);
     expect(encoded).not.toContain("repository");
-    expect(decodeGitHubActivityCursor(encoded)).toEqual(cursor);
-    expect(decodeGitHubActivityCursor(null)).toBeNull();
-    expect(() => decodeGitHubActivityCursor("not-a-cursor")).toThrow(
+    expect(decodeGitHubActivityCursor(encoded, secret)).toEqual(cursor);
+    expect(decodeGitHubActivityCursor(null, secret)).toBeNull();
+    expect(() => decodeGitHubActivityCursor("not-a-cursor", secret)).toThrow(
       "cursor is invalid"
     );
+    expect(() =>
+      decodeGitHubActivityCursor(
+        `${encoded.slice(0, -1)}${encoded.endsWith("a") ? "b" : "a"}`,
+        secret
+      )
+    ).toThrow("cursor is invalid");
+  });
+
+  test("renders complete day totals and PR/issue milestones without zero counts", () => {
+    const html = renderToStaticMarkup(
+      createElement(GitHubTimeline, {
+        initialPage: {
+          days: [
+            {
+              day: "2026-08-28",
+              items: [
+                {
+                  commits: [
+                    {
+                      additions: 12,
+                      changedFiles: 2,
+                      committedAt: "2026-08-28T08:00:00.000Z",
+                      deletions: 3,
+                      headline: "Add the daily projection",
+                      id: "commit-public-id",
+                      languages: [],
+                      providerFileCapReached: false,
+                      summary: "Builds complete UTC-day activity pages.",
+                    },
+                  ],
+                  id: "pr-slice-public-id",
+                  kind: "pull-request-commits",
+                  occurredAt: "2026-08-28T08:00:00.000Z",
+                  repository: {
+                    avatarUrl: null,
+                    label: "portfolio",
+                    url: "https://github.com/f0rr0/portfolio/pull/12",
+                  },
+                  title: "Build daily GitHub activity",
+                },
+                {
+                  id: "pr-merged-public-id",
+                  kind: "pull-request-merged",
+                  occurredAt: "2026-08-28T09:00:00.000Z",
+                  repository: {
+                    avatarUrl: null,
+                    label: "portfolio",
+                    url: "https://github.com/f0rr0/portfolio/pull/12",
+                  },
+                  title: "Build daily GitHub activity",
+                },
+              ],
+              totals: {
+                additions: 12,
+                deletions: 3,
+                issuesOpened: 0,
+                pullRequestsMerged: 1,
+                repositories: 1,
+              },
+            },
+          ],
+          nextCursor: null,
+          snapshotAt: "2026-08-28T10:00:00.000Z",
+        },
+      })
+    );
+
+    expect(html).toContain("Pull request work");
+    expect(html).toContain("Pull request merged");
+    expect(html).toContain("1 pull request merged");
+    expect(html).not.toContain("issues opened");
+    expect(html).toContain('aria-label="Summary for 2026-08-28"');
   });
 
   test("shows all public repositories and only directly owned private names", () => {

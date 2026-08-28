@@ -1,15 +1,12 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import { openai } from "@ai-sdk/openai";
 import { APICallError, generateText } from "ai";
 
 import {
-  deriveCommitLanguages,
   formatPublicCommitSummaryMarkdown,
   parseCommitPublicSummary,
-  PUBLIC_COMMIT_SUMMARY_RECIPE,
   PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT,
-  substantiveCommitLoc,
 } from "@/lib/github-activity-public-summary";
 import type {
   PublicCommitEvidence,
@@ -17,27 +14,32 @@ import type {
 } from "@/lib/github-activity-public-summary";
 import { buildCommitPublicSummaryModelInput } from "@/lib/github-activity-public-summary-input";
 import {
-  claimPendingGitHubActivity,
-  completeGitHubActivity,
-  failGitHubActivity,
-} from "@/lib/github-activity-store";
-import type { ClaimedGitHubActivityCommit } from "@/lib/github-activity-store";
-import {
   fetchGitHub,
   GitHubResponseError,
   githubApiUrl,
+  nextGitHubPage,
 } from "@/lib/github-api";
 import {
+  commitShaFrom,
+  pullRequestFromGitHub,
   repositoryFrom,
   trackedGitHubAccountFrom,
 } from "@/lib/github-commits-core";
-import type { TrackedGitHubAccount } from "@/lib/github-commits-core";
+import type {
+  GitHubCommit,
+  GitHubPullRequest,
+  GitHubRepository,
+  TrackedGitHubAccount,
+} from "@/lib/github-commits-core";
 
 export const GITHUB_ACTIVITY_SUMMARY_MODEL = "gpt-5-nano-2025-08-07";
-export const DEFAULT_GITHUB_ACTIVITY_PROCESSING_BATCH_SIZE = 8;
-const GITHUB_ACTIVITY_PROCESSING_CONCURRENCY = 2;
 const GITHUB_FILE_PAGE_SIZE = 100;
 const MAXIMUM_GITHUB_FILE_PAGES = 30;
+const MAXIMUM_GITHUB_PULL_REQUEST_PAGES = 10;
+const MAXIMUM_GITHUB_PULL_REQUEST_COMMIT_PAGES = 3;
+const MAXIMUM_GITHUB_PULL_REQUEST_GRAPHQL_PAGES = 30;
+const MAXIMUM_GITHUB_PUSH_PAGES = 30;
+const ZERO_SHA = "0".repeat(40);
 
 type JsonObject = Record<string, unknown>;
 
@@ -53,11 +55,59 @@ export interface GitHubActivityRepositoryEvidence {
 }
 
 export interface GitHubActivityCommitSource {
-  commit: PublicCommitEvidence;
+  authorUserId: string;
+  authoredAt: string;
+  commit: PublicCommitEvidence & { treeSha: string };
+  committerAt: string;
+  committerUserId: string | null;
   repository: GitHubActivityRepositoryEvidence;
 }
 
-class ActivityProcessingError extends Error {
+export interface GitHubActivityCommitReference {
+  author: TrackedGitHubAccount;
+  committedAt: string;
+  message: string;
+  repository: string;
+  repositoryId: string;
+  sha: string;
+}
+
+export interface GitHubActivityPushObservationReference {
+  account: TrackedGitHubAccount;
+  afterSha: string;
+  beforeSha: string;
+  expectedCommitCount: number | null;
+  knownShas: readonly string[];
+  observedAt: Date;
+  refName: string;
+  repository: string;
+  repositoryId: string;
+}
+
+export interface GitHubActivityPushObservationSource {
+  commitShas: readonly string[];
+  commits: readonly GitHubCommit[];
+}
+
+export interface GitHubActivityPullRequestReference {
+  account: TrackedGitHubAccount;
+  number: number;
+  repository: string;
+  repositoryId: string;
+}
+
+export interface GitHubActivityPullRequestSource {
+  commitShas: readonly string[];
+  membershipComplete: boolean;
+  pullRequest: GitHubPullRequest;
+}
+
+export interface GitHubActivityPullRequestSnapshot {
+  expectedCommitCount: number;
+  pullRequest: GitHubPullRequest;
+}
+
+export class ActivityProcessingError extends Error {
   readonly code: string;
 
   constructor(code: string, message: string) {
@@ -80,6 +130,16 @@ const requiredString = (value: unknown, label: string) => {
   return value;
 };
 
+const requiredText = (value: unknown, label: string) => {
+  if (typeof value !== "string") {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      `GitHub returned an invalid ${label}.`
+    );
+  }
+  return value;
+};
+
 const requiredInteger = (value: unknown, label: string) => {
   if (!Number.isSafeInteger(value) || Number(value) < 0) {
     throw new ActivityProcessingError(
@@ -89,6 +149,22 @@ const requiredInteger = (value: unknown, label: string) => {
   }
   return Number(value);
 };
+
+const requiredProviderId = (value: unknown, label: string) => {
+  if (
+    (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) &&
+    (typeof value !== "string" || !/^[1-9]\d{0,31}$/.test(value))
+  ) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      `GitHub returned an invalid ${label}.`
+    );
+  }
+  return String(value);
+};
+
+const optionalProviderId = (value: unknown, label: string) =>
+  value === null ? null : requiredProviderId(value, label);
 
 const optionalString = (value: unknown) =>
   typeof value === "string" && value.length > 0 ? value : null;
@@ -111,6 +187,23 @@ const repositoryApiPath = (repository: string, suffix = "") => {
   return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}${suffix}`;
 };
 
+const repositoryReferenceFrom = (row: {
+  repository: string;
+  repositoryId: string;
+}): GitHubRepository => {
+  const repository = repositoryFrom({
+    full_name: row.repository,
+    id: row.repositoryId,
+  });
+  if (repository === null) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "The stored GitHub repository reference is invalid."
+    );
+  }
+  return repository;
+};
+
 const tokenCandidatesFor = (account: TrackedGitHubAccount) => {
   const accountToken =
     account === "f0rr0"
@@ -130,9 +223,47 @@ const tokenCandidatesFor = (account: TrackedGitHubAccount) => {
   ];
 };
 
+const withGitHubTokenCandidate = async <Value>(
+  account: TrackedGitHubAccount,
+  fetcher: (token: string) => Promise<Value>
+) => {
+  const tokens = tokenCandidatesFor(account);
+  if (tokens.length === 0) {
+    throw new ActivityProcessingError(
+      "source_auth_missing",
+      `No GitHub token is configured for ${account}.`
+    );
+  }
+  let lastError: unknown;
+  for (const token of tokens) {
+    try {
+      return await fetcher(token);
+    } catch (error) {
+      lastError = error;
+      if (
+        !(error instanceof GitHubResponseError) ||
+        ![401, 403, 404].includes(error.status)
+      ) {
+        throw error;
+      }
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new ActivityProcessingError(
+        "source_unavailable",
+        "No configured GitHub token can read the GitHub source."
+      );
+};
+
 const fetchJson = async (path: string, token: string) => {
   const response = await fetchGitHub(githubApiUrl(path), { token });
   return (await response.json()) as unknown;
+};
+
+const fetchJsonWithResponse = async (url: URL, token: string) => {
+  const response = await fetchGitHub(url, { token });
+  return { payload: (await response.json()) as unknown, response };
 };
 
 const safeAvatarUrl = (value: unknown) => {
@@ -212,11 +343,13 @@ const commitEvidenceFrom = (
   root: JsonObject,
   files: readonly PublicCommitFileEvidence[],
   providerFileCapReached: boolean,
-  expected: ClaimedGitHubActivityCommit
-): PublicCommitEvidence => {
+  expected: GitHubActivityCommitReference
+): PublicCommitEvidence & { treeSha: string } => {
   if (
     !isObject(root.commit) ||
     !isObject(root.commit.author) ||
+    !isObject(root.commit.committer) ||
+    !isObject(root.commit.tree) ||
     !isObject(root.author) ||
     !isObject(root.stats)
   ) {
@@ -233,10 +366,16 @@ const commitEvidenceFrom = (
       "The live GitHub commit no longer matches stored provenance."
     );
   }
-  const committedAt = new Date(
-    requiredString(root.commit.author.date, "commit date")
+  const authoredAt = new Date(
+    requiredString(root.commit.author.date, "commit author date")
   );
-  if (Number.isNaN(committedAt.getTime())) {
+  const committerAt = new Date(
+    requiredString(root.commit.committer.date, "commit committer date")
+  );
+  if (
+    Number.isNaN(authoredAt.getTime()) ||
+    Number.isNaN(committerAt.getTime())
+  ) {
     throw new ActivityProcessingError(
       "source_invalid",
       "GitHub returned an invalid commit date."
@@ -262,19 +401,27 @@ const commitEvidenceFrom = (
       "GitHub returned inconsistent commit statistics."
     );
   }
+  const treeSha = requiredString(root.commit.tree.sha, "commit tree SHA");
+  if (!/^[a-f0-9]{40}$/.test(treeSha)) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "GitHub returned an invalid commit tree SHA."
+    );
+  }
   return {
-    committedAt: committedAt.toISOString(),
+    committedAt: authoredAt.toISOString(),
     files,
-    message: requiredString(root.commit.message, "commit message"),
+    message: requiredText(root.commit.message, "commit message"),
     parents,
     providerFileCapReached,
     sha,
     stats: { additions, deletions, total },
+    treeSha,
   };
 };
 
 const fetchCommitSourceWithToken = async (
-  row: ClaimedGitHubActivityCommit,
+  row: GitHubActivityCommitReference,
   token: string
 ): Promise<GitHubActivityCommitSource> => {
   const repositoryPayload = await fetchJson(
@@ -320,21 +467,403 @@ const fetchCommitSourceWithToken = async (
       "GitHub returned no commit evidence."
     );
   }
-  return {
-    commit: commitEvidenceFrom(
-      root,
-      [...files.values()].toSorted((left, right) =>
-        compareCodeUnitStrings(left.filename, right.filename)
-      ),
-      providerFileCapReached,
-      row
+  const commit = commitEvidenceFrom(
+    root,
+    [...files.values()].toSorted((left, right) =>
+      compareCodeUnitStrings(left.filename, right.filename)
     ),
+    providerFileCapReached,
+    row
+  );
+  if (
+    !isObject(root.author) ||
+    !isObject(root.commit) ||
+    !isObject(root.commit.committer) ||
+    (root.committer !== null && !isObject(root.committer))
+  ) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "GitHub returned incomplete commit identity evidence."
+    );
+  }
+  return {
+    authorUserId: requiredProviderId(root.author.id, "commit author ID"),
+    authoredAt: commit.committedAt,
+    commit,
+    committerAt: new Date(
+      requiredString(root.commit.committer.date, "commit committer date")
+    ).toISOString(),
+    committerUserId:
+      root.committer === null
+        ? null
+        : optionalProviderId(root.committer.id, "commit committer ID"),
     repository,
   };
 };
 
 export const fetchGitHubActivityCommitSource = async (
-  row: ClaimedGitHubActivityCommit
+  row: GitHubActivityCommitReference
+) =>
+  await withGitHubTokenCandidate(
+    row.author,
+    async (token) => await fetchCommitSourceWithToken(row, token)
+  );
+
+const compareCommitValuesWithToken = async (
+  row: GitHubActivityPushObservationReference,
+  token: string
+) => {
+  const repository = repositoryReferenceFrom(row);
+  const values: unknown[] = [];
+  let url: URL | null = githubApiUrl(
+    repositoryApiPath(
+      repository.fullName,
+      `/compare/${encodeURIComponent(row.beforeSha)}...${encodeURIComponent(
+        row.afterSha
+      )}`
+    )
+  );
+  url.searchParams.set("per_page", "100");
+
+  for (
+    let page = 0;
+    url !== null && page < MAXIMUM_GITHUB_PUSH_PAGES;
+    page += 1
+  ) {
+    const result = await fetchJsonWithResponse(url, token);
+    const pageValues = isObject(result.payload) ? result.payload.commits : null;
+    if (!Array.isArray(pageValues)) {
+      throw new ActivityProcessingError(
+        "source_invalid",
+        "GitHub returned invalid push commit evidence."
+      );
+    }
+    values.push(...pageValues);
+    url = nextGitHubPage(result.response);
+    if (
+      row.expectedCommitCount !== null &&
+      values.length > row.expectedCommitCount
+    ) {
+      throw new ActivityProcessingError(
+        "source_incomplete",
+        "GitHub returned more commits than the durable push observation recorded."
+      );
+    }
+  }
+
+  if (
+    url !== null ||
+    (row.expectedCommitCount !== null &&
+      values.length !== row.expectedCommitCount)
+  ) {
+    throw new ActivityProcessingError(
+      "source_incomplete",
+      "GitHub did not return the complete pushed commit set."
+    );
+  }
+  return values;
+};
+
+// GitHub cannot compare the all-zero SHA used for a new branch. GraphQL's
+// cursor lets us request exactly the observed number of commits without
+// truncating an arbitrary REST history page.
+// oxlint-disable-next-line complexity -- Every GraphQL history invariant fails closed.
+const newBranchCommitValuesWithToken = async (
+  row: GitHubActivityPushObservationReference,
+  token: string
+) => {
+  const { expectedCommitCount } = row;
+  if (
+    expectedCommitCount === null ||
+    expectedCommitCount < 1 ||
+    expectedCommitCount > MAXIMUM_GITHUB_PUSH_PAGES * 100
+  ) {
+    throw new ActivityProcessingError(
+      "source_incomplete",
+      "A new-branch push has no safely bounded commit range."
+    );
+  }
+  const [owner, name] = row.repository.split("/");
+  if (owner === undefined || name === undefined) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "The stored GitHub repository reference is invalid."
+    );
+  }
+  const query = `query NewBranchCommits($owner: String!, $name: String!, $oid: GitObjectID!, $pageSize: Int!, $cursor: String) {
+    repository(owner: $owner, name: $name) {
+      object(oid: $oid) {
+        ... on Commit {
+          history(first: $pageSize, after: $cursor) {
+            nodes {
+              oid
+              message
+              authoredDate
+              url
+              author { user { login } }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      }
+    }
+  }`;
+  const values: unknown[] = [];
+  let cursor: string | null = null;
+  while (values.length < expectedCommitCount) {
+    const pageSize = Math.min(100, expectedCommitCount - values.length);
+    const response = await fetchGitHub(githubApiUrl("/graphql"), {
+      body: JSON.stringify({
+        query,
+        variables: {
+          cursor,
+          name,
+          oid: row.afterSha,
+          owner,
+          pageSize,
+        },
+      }),
+      method: "POST",
+      token,
+    });
+    const payload = (await response.json()) as unknown;
+    const repository =
+      isObject(payload) && isObject(payload.data)
+        ? payload.data.repository
+        : null;
+    const object = isObject(repository) ? repository.object : null;
+    const history = isObject(object) ? object.history : null;
+    if (
+      !isObject(history) ||
+      !Array.isArray(history.nodes) ||
+      history.nodes.length !== pageSize ||
+      !isObject(history.pageInfo) ||
+      typeof history.pageInfo.hasNextPage !== "boolean"
+    ) {
+      throw new ActivityProcessingError(
+        "source_incomplete",
+        "GitHub returned incomplete new-branch history."
+      );
+    }
+    for (const node of history.nodes) {
+      if (!isObject(node)) {
+        throw new ActivityProcessingError(
+          "source_incomplete",
+          "GitHub returned an ambiguous new-branch commit."
+        );
+      }
+      const user = isObject(node.author) ? node.author.user : null;
+      values.push({
+        author: isObject(user) ? { login: user.login } : null,
+        commit: {
+          author: { date: node.authoredDate },
+          message: node.message,
+        },
+        html_url: node.url,
+        sha: node.oid,
+      });
+    }
+    if (values.length < expectedCommitCount) {
+      const nextCursor = history.pageInfo.endCursor;
+      if (
+        !history.pageInfo.hasNextPage ||
+        typeof nextCursor !== "string" ||
+        nextCursor.length === 0
+      ) {
+        throw new ActivityProcessingError(
+          "source_incomplete",
+          "GitHub ended new-branch history before the observed commit count."
+        );
+      }
+      cursor = nextCursor;
+    }
+  }
+  return values.toReversed();
+};
+
+const pushCommitValuesWithToken = async (
+  row: GitHubActivityPushObservationReference,
+  token: string
+) =>
+  row.beforeSha === ZERO_SHA
+    ? await newBranchCommitValuesWithToken(row, token)
+    : await compareCommitValuesWithToken(row, token);
+
+export const validateGitHubPushObservationCommitShas = (
+  row: GitHubActivityPushObservationReference,
+  commitShas: readonly string[]
+) => {
+  if (
+    commitShas.length === 0 ||
+    (row.expectedCommitCount !== null &&
+      commitShas.length !== row.expectedCommitCount) ||
+    commitShas.at(-1) !== row.afterSha ||
+    new Set(commitShas).size !== commitShas.length ||
+    commitShas.some((sha) => commitShaFrom(sha) === null)
+  ) {
+    throw new ActivityProcessingError(
+      "source_incomplete",
+      "GitHub returned an ambiguous pushed commit sequence."
+    );
+  }
+  let searchFrom = 0;
+  for (const knownSha of row.knownShas) {
+    const index = commitShas.indexOf(knownSha, searchFrom);
+    if (index === -1) {
+      throw new ActivityProcessingError(
+        "source_incomplete",
+        "GitHub push expansion contradicted durable commit evidence."
+      );
+    }
+    searchFrom = index + 1;
+  }
+};
+
+const trackedCommitFromPushValue = (
+  value: unknown,
+  sha: string,
+  repository: GitHubRepository,
+  observedAt: Date
+): GitHubCommit | null => {
+  if (!isObject(value)) {
+    return null;
+  }
+  const author = isObject(value.author)
+    ? trackedGitHubAccountFrom(value.author.login)
+    : null;
+  if (author === null) {
+    return null;
+  }
+  const rawCommit = isObject(value.commit) ? value.commit : null;
+  const rawDate = isObject(rawCommit?.author)
+    ? rawCommit.author.date
+    : isObject(rawCommit?.committer)
+      ? rawCommit.committer.date
+      : null;
+  const providerDate =
+    typeof rawDate === "string" ? new Date(rawDate) : new Date(Number.NaN);
+  const committedAt = Number.isNaN(providerDate.getTime())
+    ? observedAt
+    : providerDate;
+  const message =
+    typeof rawCommit?.message === "string"
+      ? (rawCommit.message.split(/\r?\n/, 1)[0] ?? "")
+          .replaceAll(/\s+/g, " ")
+          .trim()
+          .slice(0, 240)
+      : "";
+  return {
+    author,
+    committedAt: committedAt.toISOString(),
+    message,
+    repository: repository.fullName,
+    repositoryId: repository.id,
+    sha,
+    url: `https://github.com/${repository.fullName}/commit/${sha}`,
+  };
+};
+
+const pushObservationSourceWithToken = async (
+  row: GitHubActivityPushObservationReference,
+  token: string
+): Promise<GitHubActivityPushObservationSource> => {
+  const repository = repositoryReferenceFrom(row);
+  const values = await pushCommitValuesWithToken(row, token);
+  const commitShas: string[] = [];
+  const commits: GitHubCommit[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const sha = isObject(value) ? commitShaFrom(value.sha) : null;
+    if (sha === null) {
+      throw new ActivityProcessingError(
+        "source_invalid",
+        "GitHub returned an invalid pushed commit."
+      );
+    }
+    if (seen.has(sha)) {
+      continue;
+    }
+    seen.add(sha);
+    commitShas.push(sha);
+    const commit = trackedCommitFromPushValue(
+      value,
+      sha,
+      repository,
+      row.observedAt
+    );
+    if (commit !== null) {
+      commits.push(commit);
+    }
+  }
+  validateGitHubPushObservationCommitShas(row, commitShas);
+  return { commitShas, commits };
+};
+
+export const fetchGitHubPushObservationSource = async (
+  row: GitHubActivityPushObservationReference
+) =>
+  await withGitHubTokenCandidate(
+    row.account,
+    async (token) => await pushObservationSourceWithToken(row, token)
+  );
+
+const fetchAssociatedPullRequestsWithToken = async (
+  row: GitHubActivityCommitReference,
+  token: string
+) => {
+  const repository = repositoryReferenceFrom(row);
+  let url: URL | null = githubApiUrl(
+    repositoryApiPath(
+      repository.fullName,
+      `/commits/${encodeURIComponent(row.sha)}/pulls`
+    )
+  );
+  url.searchParams.set("per_page", "100");
+  const pullRequests = new Map<string, GitHubPullRequest>();
+
+  for (
+    let page = 0;
+    url !== null && page < MAXIMUM_GITHUB_PULL_REQUEST_PAGES;
+    page += 1
+  ) {
+    const result = await fetchJsonWithResponse(url, token);
+    if (!Array.isArray(result.payload)) {
+      throw new ActivityProcessingError(
+        "source_invalid",
+        "GitHub returned invalid associated pull requests."
+      );
+    }
+    for (const value of result.payload) {
+      const baseRepository =
+        isObject(value) && isObject(value.base)
+          ? repositoryFrom(value.base.repo)
+          : null;
+      const pullRequest =
+        baseRepository === null
+          ? null
+          : pullRequestFromGitHub(value, baseRepository);
+      if (pullRequest !== null) {
+        pullRequests.set(pullRequest.nodeId, pullRequest);
+      }
+    }
+    url = nextGitHubPage(result.response);
+  }
+  if (url !== null) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "GitHub associated pull requests exceeded the pagination limit."
+    );
+  }
+  return [...pullRequests.values()].toSorted((left, right) => {
+    if (left.createdAt !== right.createdAt) {
+      return left.createdAt < right.createdAt ? -1 : 1;
+    }
+    return left.number - right.number;
+  });
+};
+
+export const fetchGitHubAssociatedPullRequests = async (
+  row: GitHubActivityCommitReference
 ) => {
   const tokens = tokenCandidatesFor(row.author);
   if (tokens.length === 0) {
@@ -343,26 +872,247 @@ export const fetchGitHubActivityCommitSource = async (
       `No GitHub token is configured for ${row.author}.`
     );
   }
+  const pullRequests = new Map<string, GitHubPullRequest>();
+  let successfulTokens = 0;
   let lastError: unknown;
   for (const token of tokens) {
     try {
-      return await fetchCommitSourceWithToken(row, token);
+      const visible = await fetchAssociatedPullRequestsWithToken(row, token);
+      successfulTokens += 1;
+      for (const pullRequest of visible) {
+        pullRequests.set(pullRequest.nodeId, pullRequest);
+      }
     } catch (error) {
       lastError = error;
-      if (
-        !(error instanceof GitHubResponseError) ||
-        ![401, 403, 404].includes(error.status)
-      ) {
+      const hiddenFromToken =
+        error instanceof GitHubResponseError &&
+        [401, 403, 404].includes(error.status) &&
+        !error.retryable;
+      if (!hiddenFromToken) {
         throw error;
       }
     }
   }
-  throw lastError instanceof Error
-    ? lastError
-    : new ActivityProcessingError(
-        "source_unavailable",
-        "No configured GitHub token can read the commit."
+  if (successfulTokens === 0) {
+    throw lastError instanceof Error
+      ? lastError
+      : new ActivityProcessingError(
+          "source_unavailable",
+          "No configured GitHub token can inspect associated pull requests."
+        );
+  }
+  return [...pullRequests.values()].toSorted((left, right) => {
+    if (left.createdAt !== right.createdAt) {
+      return left.createdAt < right.createdAt ? -1 : 1;
+    }
+    return left.number - right.number;
+  });
+};
+
+const fetchPullRequestSnapshotWithToken = async (
+  row: GitHubActivityPullRequestReference,
+  token: string
+): Promise<GitHubActivityPullRequestSnapshot> => {
+  const repository = repositoryReferenceFrom(row);
+  const pullRequestPath = repositoryApiPath(
+    repository.fullName,
+    `/pulls/${String(row.number)}`
+  );
+  const root = await fetchJson(pullRequestPath, token);
+  const pullRequest = pullRequestFromGitHub(root, repository, "reconciled");
+  if (pullRequest === null) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "GitHub returned an invalid pull request snapshot."
+    );
+  }
+  if (!isObject(root)) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "GitHub returned an invalid pull request snapshot."
+    );
+  }
+  const expectedCommitCount = requiredInteger(
+    root.commits,
+    "pull request commit count"
+  );
+  return { expectedCommitCount, pullRequest };
+};
+
+// oxlint-disable-next-line complexity -- Every GraphQL pagination invariant is validated fail-closed.
+const pullRequestCommitShasFromGraphQl = async (
+  row: GitHubActivityPullRequestReference,
+  expectedCommitCount: number,
+  token: string
+) => {
+  const [owner, name] = row.repository.split("/");
+  if (owner === undefined || name === undefined) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "The stored GitHub repository reference is invalid."
+    );
+  }
+  const query = `query PullRequestCommits($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        commits(first: 100, after: $cursor) {
+          totalCount
+          nodes { commit { oid } }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    }
+  }`;
+  const commitShas: string[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  let hasNextPage = true;
+  for (
+    let page = 0;
+    hasNextPage && page < MAXIMUM_GITHUB_PULL_REQUEST_GRAPHQL_PAGES;
+    page += 1
+  ) {
+    const response = await fetchGitHub(githubApiUrl("/graphql"), {
+      body: JSON.stringify({
+        query,
+        variables: { cursor, name, number: row.number, owner },
+      }),
+      method: "POST",
+      token,
+    });
+    const payload = (await response.json()) as unknown;
+    const repository =
+      isObject(payload) && isObject(payload.data)
+        ? payload.data.repository
+        : null;
+    const pullRequest = isObject(repository) ? repository.pullRequest : null;
+    const connection = isObject(pullRequest) ? pullRequest.commits : null;
+    if (
+      !isObject(connection) ||
+      !Array.isArray(connection.nodes) ||
+      !isObject(connection.pageInfo) ||
+      requiredInteger(connection.totalCount, "pull request commit count") !==
+        expectedCommitCount ||
+      typeof connection.pageInfo.hasNextPage !== "boolean"
+    ) {
+      throw new ActivityProcessingError(
+        "source_invalid",
+        "GitHub returned invalid GraphQL pull request membership."
       );
+    }
+    for (const node of connection.nodes) {
+      const sha =
+        isObject(node) && isObject(node.commit)
+          ? commitShaFrom(node.commit.oid)
+          : null;
+      if (sha === null) {
+        throw new ActivityProcessingError(
+          "source_invalid",
+          "GitHub returned an invalid pull request commit."
+        );
+      }
+      if (!seen.has(sha)) {
+        seen.add(sha);
+        commitShas.push(sha);
+      }
+    }
+    ({ hasNextPage } = connection.pageInfo);
+    const nextCursor = connection.pageInfo.endCursor;
+    if (
+      hasNextPage &&
+      (typeof nextCursor !== "string" || nextCursor.length === 0)
+    ) {
+      throw new ActivityProcessingError(
+        "source_invalid",
+        "GitHub returned an invalid pull request membership cursor."
+      );
+    }
+    cursor = typeof nextCursor === "string" ? nextCursor : null;
+  }
+  return {
+    commitShas,
+    membershipComplete:
+      !hasNextPage && commitShas.length === expectedCommitCount,
+  };
+};
+
+const fetchPullRequestMembershipWithToken = async (
+  row: GitHubActivityPullRequestReference,
+  expectedCommitCount: number,
+  token: string
+) => {
+  const repository = repositoryReferenceFrom(row);
+  const pullRequestPath = repositoryApiPath(
+    repository.fullName,
+    `/pulls/${String(row.number)}`
+  );
+  let url: URL | null = githubApiUrl(`${pullRequestPath}/commits`);
+  url.searchParams.set("per_page", "100");
+  const commitShas: string[] = [];
+  const seen = new Set<string>();
+
+  for (
+    let page = 0;
+    url !== null && page < MAXIMUM_GITHUB_PULL_REQUEST_COMMIT_PAGES;
+    page += 1
+  ) {
+    const result = await fetchJsonWithResponse(url, token);
+    if (!Array.isArray(result.payload)) {
+      throw new ActivityProcessingError(
+        "source_invalid",
+        "GitHub returned invalid pull request commits."
+      );
+    }
+    for (const value of result.payload) {
+      const sha = isObject(value) ? commitShaFrom(value.sha) : null;
+      if (sha === null) {
+        throw new ActivityProcessingError(
+          "source_invalid",
+          "GitHub returned an invalid pull request commit."
+        );
+      }
+      if (!seen.has(sha)) {
+        seen.add(sha);
+        commitShas.push(sha);
+      }
+    }
+    url = nextGitHubPage(result.response);
+  }
+
+  const membershipComplete =
+    url === null && commitShas.length === expectedCommitCount;
+  return membershipComplete
+    ? { commitShas, membershipComplete }
+    : await pullRequestCommitShasFromGraphQl(row, expectedCommitCount, token);
+};
+
+export const fetchGitHubPullRequestSnapshot = async (
+  row: GitHubActivityPullRequestReference
+) =>
+  await withGitHubTokenCandidate(
+    row.account,
+    async (token) => await fetchPullRequestSnapshotWithToken(row, token)
+  );
+
+export const fetchGitHubPullRequestMembership = async (
+  row: GitHubActivityPullRequestReference,
+  expectedCommitCount: number
+) =>
+  await withGitHubTokenCandidate(
+    row.account,
+    async (token) =>
+      await fetchPullRequestMembershipWithToken(row, expectedCommitCount, token)
+  );
+
+export const fetchGitHubPullRequestSource = async (
+  row: GitHubActivityPullRequestReference
+) => {
+  const snapshot = await fetchGitHubPullRequestSnapshot(row);
+  const membership = await fetchGitHubPullRequestMembership(
+    row,
+    snapshot.expectedCommitCount
+  );
+  return { ...membership, pullRequest: snapshot.pullRequest };
 };
 
 const directlyOwnedRepository = (source: GitHubActivityCommitSource) =>
@@ -433,75 +1183,4 @@ export const generateValidatedGitHubActivitySummary = async (
     );
   }
   return { inputHash: generated.inputHash, summary };
-};
-
-const processClaimedCommit = async (row: ClaimedGitHubActivityCommit) => {
-  try {
-    const source = await fetchGitHubActivityCommitSource(row);
-    const generated = await generateValidatedGitHubActivitySummary(source);
-    await completeGitHubActivity(row, {
-      activityPublicId: randomUUID(),
-      additions: source.commit.stats.additions,
-      changedFiles: source.commit.files.length,
-      deletions: source.commit.stats.deletions,
-      languages: deriveCommitLanguages(source.commit.files),
-      providerFileCapReached: source.commit.providerFileCapReached,
-      repository: source.repository.fullName,
-      repositoryOwnerAvatarUrl: source.repository.avatarUrl,
-      repositoryOwnerLogin: source.repository.ownerLogin,
-      repositoryOwnerType: source.repository.ownerType,
-      repositoryPrivate: source.repository.private,
-      substantiveLoc: substantiveCommitLoc(source.commit.files),
-      summaryHeadline: generated.summary.headline,
-      summaryInputHash: generated.inputHash,
-      summaryModel: GITHUB_ACTIVITY_SUMMARY_MODEL,
-      summaryRecipe: PUBLIC_COMMIT_SUMMARY_RECIPE,
-      summaryShort: generated.summary.short,
-    });
-    return true;
-  } catch (error) {
-    const code =
-      error instanceof ActivityProcessingError
-        ? error.code
-        : error instanceof GitHubResponseError
-          ? `github_${error.status}`
-          : "processing_failed";
-    await failGitHubActivity(row, code);
-    return false;
-  }
-};
-
-export interface GitHubActivityProcessingResult {
-  claimed: number;
-  completed: number;
-  failed: number;
-}
-
-export const processPendingGitHubActivity = async (
-  limit = DEFAULT_GITHUB_ACTIVITY_PROCESSING_BATCH_SIZE
-): Promise<GitHubActivityProcessingResult> => {
-  if ((process.env.OPENAI_API_KEY?.trim().length ?? 0) === 0) {
-    throw new Error("OPENAI_API_KEY is not configured.");
-  }
-  const claimed = await claimPendingGitHubActivity(limit);
-  const results: boolean[] = [];
-  for (
-    let offset = 0;
-    offset < claimed.length;
-    offset += GITHUB_ACTIVITY_PROCESSING_CONCURRENCY
-  ) {
-    results.push(
-      ...(await Promise.all(
-        claimed
-          .slice(offset, offset + GITHUB_ACTIVITY_PROCESSING_CONCURRENCY)
-          .map(processClaimedCommit)
-      ))
-    );
-  }
-  const completed = results.filter(Boolean).length;
-  return {
-    claimed: claimed.length,
-    completed,
-    failed: claimed.length - completed,
-  };
 };

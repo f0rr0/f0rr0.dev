@@ -1,10 +1,10 @@
 import { closeDatabase } from "../src/db/client";
-import { processPendingGitHubActivity } from "../src/lib/github-activity-processor";
+import { runGitHubActivityWorker } from "../src/lib/github-activity-worker";
 import { syncGitHubAccounts } from "../src/lib/github-commits";
 
 try {
   const sync = await syncGitHubAccounts();
-  const activity = await processPendingGitHubActivity();
+  const activity = await runGitHubActivityWorker();
   process.stdout.write(`${JSON.stringify({ activity, sync })}\n`);
 } catch (error) {
   const message = error instanceof Error ? error.message : "Unknown error";

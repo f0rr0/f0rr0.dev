@@ -2,9 +2,10 @@
 
 ## Decision
 
-Publish activity per commit. Do not group commits into inferred work items and
-do not run a grouping model. GitHub ingestion, tracked-author verification, and
-the assimilated-event checkpoints remain unchanged.
+Generate and persist public prose per canonical commit. Organize commits under
+pull requests only when GitHub supplies deterministic membership; do not infer
+work-item groups with an LLM. PR grouping changes the timeline projection, not
+the unit sent to Nano or the identity of the stored source activity.
 
 ## Per-commit processing
 
@@ -13,8 +14,10 @@ verified tracked-author commit
   -> fetch the repository and commit evidence exposed by the GitHub path
   -> read commit-wide and per-file additions/deletions from GitHub
   -> derive languages and substantive churn from the per-file counters
+  -> discover GitHub PR membership and suppress only proven integration copies
   -> one gpt-5-nano call producing both public summary lengths
-  -> persist both Nano summaries, recipe/model/input hash, languages, and churn
+  -> persist one revision-scoped attempt, both summaries, recipe/model/input
+     hash, languages, and churn
   -> always show the headline; add short for higher-churn commits
 ```
 
@@ -146,8 +149,8 @@ character; it does not remove text.
 Only a source-fetch failure, model request or transport failure, or empty Nano
 response fails processing. Such a failure is terminal for explicit operational
 inspection and omitted from the public feed. The call is not retried inside or
-after the request. Repository descriptions are not persisted because they can
-be fetched again from GitHub.
+after the request. Repository descriptions and other display facts are persisted
+as repository snapshots; raw per-file and patch evidence is not.
 
 The displayed additions and deletions are GitHub's commit-wide `stats` values.
 The headline threshold and language weights use GitHub's per-file additions and
@@ -155,31 +158,37 @@ deletions so generated output, lockfiles, vendored files, and binary assets can
 still be excluded procedurally. Missing or truncated patch text does not make
 these counts partial. Patch text is used only as Nano evidence.
 
-Both Nano outputs are persisted in `summary_headline` and `summary_short` along
-with their exact model snapshot, prompt recipe, and input hash. The page always
-uses the headline and conditionally adds the short value without another model
-call.
-
-When a prompt recipe changes, `bun run github:refresh-summaries` makes one new
-Nano attempt for each stale completed row. Successful outputs replace only the
-stored summary fields; a failed one-shot attempt leaves the last valid summary
-in place and is never retried automatically.
+Both Nano outputs are persisted on the activity's revision-scoped summary
+attempt, along with the exact model snapshot, prompt recipe, and input hash. The
+page always uses the headline and conditionally adds the short value without
+another model call. A failed attempt is terminal; an expired in-flight lease is
+`indeterminate`, because its remote outcome may be unknown. Neither state is
+automatically retried. PR title/body reconciliation does not create a new
+summary revision.
 
 ## Timeline presentation
 
-Completed rows appear in UTC date sections with an 18-item keyset-paginated
-first page. The page uses a random public UUID as its tie-breaker and exposes no
-source identifier in the cursor. Loading another page merges commits back into
-an existing day when a page boundary falls within that day.
+Completed rows appear in pages of complete UTC days: five days by default, with
+a server maximum of 14. The opaque cursor carries the prior page's UTC-day
+boundary and original snapshot timestamp, so an older page cannot include work
+published after the first page. Pagination never splits one day across pages.
+
+Canonical commits with the same primary GitHub PR and UTC day render as one PR
+slice containing their individual headlines/disclosures. A PR spanning several
+days produces one slice per day. The PR merge is a separate milestone. Daily
+totals include repositories, additions, deletions, merged PRs, and opened
+issues; proven aliases do not add duplicate churn.
 
 Language logos use version-pinned Simple Icons SVGs from the npm distribution.
-Repository owner avatars come from GitHub. Public repositories keep their
-basename and commit link; directly owned private repositories keep only the
-basename; private third-party repositories expose neither.
+Repository owner avatars and durable repository/PR display facts come from the
+stored GitHub snapshots, so rendering does not make GitHub API calls.
 
 ## Removed complexity
 
-There is no PR/non-PR grouping distinction, candidate retrieval, work-item
-membership decision, provisional regrouping, grouping digest, grouping eval, or
-group-level analysis pass. PR metadata may still be displayed when available,
-but it does not change summary membership.
+There is no semantic grouping prompt, candidate-window retrieval, provisional
+work-item bucket, grouping digest, grouping eval, or group-level analysis pass.
+GitHub's PR association and complete PR commit list are the only grouping
+authority. Commits without that evidence stay standalone. Rebase, force-push,
+merge, squash, and cherry-pick copies are hidden only under the exact-evidence
+rules documented in [`github-commits.md`](./github-commits.md); ambiguous or
+incomplete cases remain visible.
