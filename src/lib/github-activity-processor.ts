@@ -8,10 +8,8 @@ import {
   deriveCommitLanguages,
   formatPublicCommitSummaryMarkdown,
   parseCommitPublicSummary,
-  PUBLIC_COMMIT_SUMMARY_MAX_OUTPUT_TOKENS,
   PUBLIC_COMMIT_SUMMARY_RECIPE,
   PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT,
-  publicCommitSummaryValidationErrors,
   substantiveCommitLoc,
 } from "@/lib/github-activity-public-summary";
 import type {
@@ -45,10 +43,13 @@ type JsonObject = Record<string, unknown>;
 
 export interface GitHubActivityRepositoryEvidence {
   avatarUrl: string | null;
+  description: string | null;
   fullName: string;
+  homepageUrl: string | null;
   ownerLogin: string;
   ownerType: "Organization" | "User";
   private: boolean;
+  topics: readonly string[];
 }
 
 export interface GitHubActivityCommitSource {
@@ -168,10 +169,18 @@ const repositoryEvidenceFrom = (
   }
   return {
     avatarUrl: safeAvatarUrl(value.owner.avatar_url),
+    description: optionalString(value.description),
     fullName: repository.fullName,
+    homepageUrl: optionalString(value.homepage),
     ownerLogin,
     ownerType,
     private: value.private,
+    topics: Array.isArray(value.topics)
+      ? value.topics.filter(
+          (topic): topic is string =>
+            typeof topic === "string" && topic.length > 0
+        )
+      : [],
   };
 };
 
@@ -348,15 +357,27 @@ export const fetchGitHubActivityCommitSource = async (
       );
 };
 
-const generateCommitSummary = async (commit: PublicCommitEvidence) => {
-  const modelInput = buildCommitPublicSummaryModelInput(commit);
+const directlyOwnedRepository = (source: GitHubActivityCommitSource) =>
+  trackedGitHubAccountFrom(source.repository.ownerLogin) !== null;
+
+const generateCommitSummary = async (source: GitHubActivityCommitSource) => {
+  const modelInput = buildCommitPublicSummaryModelInput(source.commit, {
+    avatarUrl: source.repository.avatarUrl,
+    description: source.repository.description,
+    directlyOwned: directlyOwnedRepository(source),
+    fullName: source.repository.fullName,
+    homepageUrl: source.repository.homepageUrl,
+    ownerLogin: source.repository.ownerLogin,
+    ownerType: source.repository.ownerType,
+    private: source.repository.private,
+    topics: source.repository.topics,
+  });
   const inputHash = createHash("sha256")
     .update(PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT)
     .update("\n")
     .update(modelInput)
     .digest("hex");
   const result = await generateText({
-    maxOutputTokens: PUBLIC_COMMIT_SUMMARY_MAX_OUTPUT_TOKENS,
     maxRetries: 0,
     model: openai(GITHUB_ACTIVITY_SUMMARY_MODEL),
     prompt: modelInput,
@@ -384,7 +405,7 @@ export const generateValidatedGitHubActivitySummary = async (
 ) => {
   let generated: Awaited<ReturnType<typeof generateCommitSummary>>;
   try {
-    generated = await generateCommitSummary(source.commit);
+    generated = await generateCommitSummary(source);
   } catch (error) {
     throw new ActivityProcessingError(
       modelFailureCode(error),
@@ -401,24 +422,6 @@ export const generateValidatedGitHubActivitySummary = async (
     throw new ActivityProcessingError(
       "output_invalid",
       error instanceof Error ? error.message : "The model output was invalid."
-    );
-  }
-  const directlyOwned =
-    trackedGitHubAccountFrom(source.repository.ownerLogin) !== null;
-  const validationErrors = publicCommitSummaryValidationErrors(
-    summary,
-    source.commit,
-    source.repository.private && !directlyOwned
-      ? {
-          organizationLogin: source.repository.ownerLogin,
-          privateRepositoryFullName: source.repository.fullName,
-        }
-      : {}
-  );
-  if (validationErrors.length > 0) {
-    throw new ActivityProcessingError(
-      "output_disclosure",
-      validationErrors.join(" ")
     );
   }
   return { inputHash: generated.inputHash, summary };

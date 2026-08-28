@@ -50,10 +50,12 @@ overlap between webhook and polling, and retried cron calls are harmless.
 
 After ingestion commits successfully, the same invocation claims up to eight
 newest unprocessed rows. Each row re-fetches its current repository and commit
-evidence, derives facts from GitHub's counters, and makes exactly one summary call.
-Claiming is conditional, so webhook and cron invocations cannot process the same
-row concurrently. A failed attempt is terminal and omitted from the public feed;
-there is no automatic model retry or duplicate billing loop.
+evidence, derives facts from GitHub's counters, and makes exactly one summary
+call. Claiming is conditional, so webhook and cron invocations cannot process
+the same row concurrently. A source-fetch failure, model request or transport
+failure, or empty model response is terminal and omitted from the public feed;
+there is no automatic model retry or duplicate billing loop. Nano response
+content, length, and label shape are not failure reasons.
 
 ### Pause or resume an account
 
@@ -128,6 +130,23 @@ bun run github:refresh-summaries
 A successful candidate replaces the two persisted summary variants and their
 recipe/model/input hash. A failed candidate leaves the previous valid pair
 untouched.
+
+The Nano call sees all repository and commit evidence returned and parsed by the
+authenticated GitHub fetch path. That includes repository identity, ownership,
+visibility, description, homepage, topics, and avatar URL; the complete commit
+message and metadata; every returned file's metadata; and every patch string
+GitHub provides. The application passes that evidence without local clipping,
+body cleaning, excerpt selection, or an input character budget. Its prompt is
+generic and has no repository-specific mappings, heuristics, whitelists, or
+allowlists. A complete file index precedes every full diff; generated and
+supporting evidence is ordered before production evidence without dropping it.
+
+Every nonempty Nano response is accepted and persisted. The expected
+`HEADLINE` and `SHORT` labels are parsed when present; an unexpectedly shaped
+response is instead preserved in full as both display variants. The selected
+stored variant is displayed without content- or length-based rejection or
+truncation. Only an empty response or a request/source failure fails the
+one-shot attempt, and it is never retried automatically.
 
 This migration intentionally removes the earlier experimental timeline tables
 and any intermediate commit/checkpoint tables. Their data can be rebuilt from

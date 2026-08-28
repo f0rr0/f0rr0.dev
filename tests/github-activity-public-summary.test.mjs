@@ -5,11 +5,8 @@ import {
   deriveCommitLanguages,
   formatPublicCommitSummaryMarkdown,
   parseCommitPublicSummary,
-  PUBLIC_COMMIT_SUMMARY_HEADLINE_MAX_WORDS,
-  PUBLIC_COMMIT_SUMMARY_MAX_INPUT_CHARACTERS,
   PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT,
   publicCommitSummaryDisplayMode,
-  publicCommitSummaryValidationErrors,
   selectPublicCommitSummary,
   substantiveCommitLoc,
 } from "../src/lib/github-activity-public-summary.ts";
@@ -22,6 +19,18 @@ const file = (filename, additions, deletions, patch = "+change") => ({
   previousFilename: null,
   status: "modified",
 });
+
+const repositoryContext = {
+  avatarUrl: "https://avatars.githubusercontent.com/u/123?v=4",
+  description: "A session service for the example product.",
+  directlyOwned: false,
+  fullName: "example-org/example-product",
+  homepageUrl: "https://example.com/product",
+  ownerLogin: "example-org",
+  ownerType: "Organization",
+  private: true,
+  topics: ["sessions", "web"],
+};
 
 const commit = (
   files,
@@ -40,7 +49,7 @@ const commit = (
 };
 
 describe("public commit summaries", () => {
-  test("parses the two labelled values with an optional blank separator", () => {
+  test("parses the requested shape and preserves every other nonempty response", () => {
     const parsed = parseCommitPublicSummary(
       "HEADLINE: Refine `refreshSession` handling\n\nSHORT: Refined `refreshSession` handling. Expired sessions now follow the existing fallback."
     );
@@ -49,28 +58,35 @@ describe("public commit summaries", () => {
       short:
         "Refined `refreshSession` handling. Expired sessions now follow the existing fallback.",
     });
-    expect(
-      parseCommitPublicSummary(
-        "HEADLINE: Refine `refreshSession` SHORT: Added coverage for `refreshSession`."
-      )
-    ).toEqual({
-      headline: "Refine `refreshSession`",
-      short: "Added coverage for `refreshSession`.",
+    const malformed =
+      "Here is the result:\nHEADLINE: Refine sessions\nSHORT: Refined sessions.\nExtra detail the model chose to include.";
+    expect(parseCommitPublicSummary(malformed)).toEqual({
+      headline: malformed,
+      short: malformed,
     });
-    expect(() =>
-      parseCommitPublicSummary(
-        "HEADLINE: Refine sessions\nExtra line.\nSHORT: Refined sessions."
-      )
-    ).toThrow("exactly one HEADLINE and one SHORT");
-    expect(() =>
-      parseCommitPublicSummary(
-        "HEADLINE: Refine sessions\nSHORT: Refined sessions.\nHEADLINE: Improve fallback\nSHORT: Improved fallback."
-      )
-    ).toThrow("exactly one HEADLINE and one SHORT");
+    const multilineShort =
+      "HEADLINE: Refine sessions\nSHORT: Refined sessions.\nExtra detail the model chose to include.";
+    expect(parseCommitPublicSummary(multilineShort)).toEqual({
+      headline: "Refine sessions",
+      short: "Refined sessions.\nExtra detail the model chose to include.",
+    });
+    const unlabelled = "Refined sessions without using the requested labels.";
+    expect(parseCommitPublicSummary(unlabelled)).toEqual({
+      headline: unlabelled,
+      short: unlabelled,
+    });
+    const surrounded = " \nUnlabelled response with surrounding whitespace.\n ";
+    expect(parseCommitPublicSummary(surrounded)).toEqual({
+      headline: surrounded,
+      short: surrounded,
+    });
+    expect(() => parseCommitPublicSummary(" \n\t ")).toThrow(
+      "empty public summary"
+    );
     expect(PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT).toContain("inline Markdown");
     expect(PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT).toContain("backticks");
     expect(PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT).toContain(
-      "three to nine words"
+      "compact action headline"
     );
   });
 
@@ -80,48 +96,98 @@ describe("public commit summaries", () => {
         {
           headline: "record GET metadata with requestUrl for clarity",
           short:
-            "Uses OutreachReviewTarget, atomic_fence_total, --dry-run, apt-get, refreshSession(), @scope/tool, and domain-traffic-surge while preserving `alreadyFormatted`, GitHub, and false positives.",
+            "Uses OutreachReviewTarget, atomic_fence_total, --dry-run, apt-get, refreshSession(), @scope/tool, domain-traffic-surge, and setup-native-build-tools.sh while preserving `alreadyFormatted`, GitHub, and false positives.",
         },
-        commit([file("templates/domain-traffic-surge.tsx", 1, 0)])
+        commit([
+          file("templates/domain-traffic-surge.tsx", 1, 0),
+          file("scripts/setup-native-build-tools.sh", 1, 0),
+        ])
       )
     ).toEqual({
-      headline: "Record `GET` metadata with `requestUrl`",
+      headline: "Record `GET` metadata with `requestUrl` for clarity",
       short:
-        "Uses `OutreachReviewTarget`, `atomic_fence_total`, `--dry-run`, `apt-get`, `refreshSession()`, `@scope/tool`, and `domain-traffic-surge` while preserving `alreadyFormatted`, GitHub, and false positives.",
+        "Uses `OutreachReviewTarget`, `atomic_fence_total`, `--dry-run`, `apt-get`, `refreshSession()`, `@scope/tool`, `domain-traffic-surge`, and `setup-native-build-tools.sh` while preserving `alreadyFormatted`, GitHub, and false positives.",
     });
   });
 
-  test("builds the canonical full-diff input without repository identity", () => {
+  test("never rejects summary text when optional path formatting is too large", () => {
+    const summary = {
+      headline: "keep every returned word",
+      short: "Keep every returned word even when formatting cannot run.",
+    };
+    const files = Array.from({ length: 3000 }, (_, index) =>
+      file(
+        `src/${index}-${"very-long-hyphenated-path-term-".repeat(8)}.ts`,
+        1,
+        0
+      )
+    );
+    const formatted = formatPublicCommitSummaryMarkdown(summary, commit(files));
+    expect(formatted.headline).toContain("every returned word");
+    expect(formatted.short).toBe(summary.short);
+  });
+
+  test("builds the canonical full-diff input with complete repository context", () => {
     const input = buildCommitPublicSummaryModelInput(
       commit([
         file("src/session.ts", 2, 1, "+refreshSession();"),
         file("tests/session.test.ts", 3, 0, "+expect(refresh).toWork();"),
-      ])
+      ]),
+      repositoryContext
     );
+    expect(input).toContain(
+      '"avatarUrl": "https://avatars.githubusercontent.com/u/123?v=4"'
+    );
+    expect(input).toContain('"fullName": "example-org/example-product"');
+    expect(input).toContain('"ownerLogin": "example-org"');
+    expect(input).toContain('"private": true');
+    expect(input).toContain('"directlyOwned": false');
+    expect(input).toContain(
+      '"description": "A session service for the example product."'
+    );
+    expect(input).toContain('"homepageUrl": "https://example.com/product"');
+    expect(input).toContain('"topics": [');
+    expect(input).toContain('"sessions"');
+    expect(input).toContain('"web"');
     expect(input).toContain("fix(auth): refresh sessions");
     expect(input).toContain("src/session.ts");
     expect(input).toContain("+refreshSession();");
     expect(input).toContain("tests/session.test.ts");
   });
 
-  test("bounds exceptional commits while preserving broad evidence", () => {
-    const files = Array.from({ length: 80 }, (_, index) =>
+  test("does not clip long repository, message, filename, or patch evidence", () => {
+    const descriptionTail = "DESCRIPTION_TAIL";
+    const messageTail = "MESSAGE_TAIL";
+    const firstPatchTail = "FIRST_PATCH_TAIL";
+    const lastPatchTail = "LAST_PATCH_TAIL";
+    const context = {
+      ...repositoryContext,
+      description: `${"repository context ".repeat(200)}${descriptionTail}`,
+    };
+    const files = [
       file(
-        `src/module-${index.toString().padStart(2, "0")}.ts`,
+        `src/${"deep-directory/".repeat(100)}first-module.ts`,
         3000,
         3000,
-        `${`+const value${index} = true;\n`.repeat(6000)}-oldValue`
-      )
-    );
+        `${"+const first = true;\n".repeat(10_000)}${firstPatchTail}`
+      ),
+      file(
+        "src/last-module.ts",
+        3000,
+        3000,
+        `${"-const last = false;\n".repeat(10_000)}${lastPatchTail}`
+      ),
+    ];
     const input = buildCommitPublicSummaryModelInput(
-      commit(files, "Refactor the subsystem")
+      commit(files, `${"Detailed intent. ".repeat(500)}${messageTail}`),
+      context
     );
-    expect(input.length).toBeLessThanOrEqual(
-      PUBLIC_COMMIT_SUMMARY_MAX_INPUT_CHARACTERS
-    );
-    expect(input).toContain("CHANGED FILE INVENTORY (bounded)");
-    expect(input).toContain("REPRESENTATIVE SUBSTANTIVE PATCH EVIDENCE");
-    expect(input).toContain("module-00.ts");
+    expect(input).toContain(descriptionTail);
+    expect(input).toContain(messageTail);
+    expect(input).toContain(firstPatchTail);
+    expect(input).toContain(lastPatchTail);
+    expect(input).toContain("deep-directory/".repeat(100));
+    expect(input).not.toContain("excerpt truncated");
   });
 
   test("derives languages and substantive LOC from GitHub file counters", () => {
@@ -151,69 +217,5 @@ describe("public commit summaries", () => {
     );
     expect(selectPublicCommitSummary(summaries, large)).toBe("One. More.");
     expect(publicCommitSummaryDisplayMode(large, 30)).toBe("headline");
-  });
-
-  test("blocks concrete private disclosures but permits technical names", () => {
-    const source = commit(
-      [file("src/private/session.ts", 3, 2)],
-      "fix: refresh sessions for OPS-431"
-    );
-    expect(
-      publicCommitSummaryValidationErrors(
-        {
-          headline:
-            "Updated src/private/session.ts for AcmeProject under OPS-431.",
-          short:
-            "Used https://staging.example.internal with token=secret-value.",
-        },
-        source,
-        {
-          customerTerms: ["AcmeProject"],
-          privateUrlHosts: ["example.internal"],
-        }
-      )
-    ).toEqual([
-      "The public summary contains a private identity or customer name.",
-      "The public summary contains an internal file path.",
-      "The public summary contains a secret.",
-      "The public summary contains a private URL.",
-      "The public summary contains an internal issue identifier.",
-    ]);
-    expect(
-      publicCommitSummaryValidationErrors(
-        {
-          headline: "Add session refresh through the Supabase API",
-          short:
-            "Added session refresh through the Supabase API. Vitest now covers expired sessions.",
-        },
-        source
-      )
-    ).toEqual([]);
-    expect(
-      publicCommitSummaryValidationErrors(
-        {
-          headline: "Align Namefi typography",
-          short: "Standardize service typography without changing content.",
-        },
-        source,
-        { privateRepositoryFullName: "secret-org/namefi-service" }
-      )
-    ).toContain(
-      "The public summary contains a private identity or customer name."
-    );
-  });
-
-  test("flags a headline that exceeds its compact word budget", () => {
-    const source = commit([file("src/index.ts", 3, 2)]);
-    const tooLong = Array.from(
-      { length: PUBLIC_COMMIT_SUMMARY_HEADLINE_MAX_WORDS + 1 },
-      () => "word"
-    ).join(" ");
-    expect(
-      publicCommitSummaryValidationErrors(
-        { headline: tooLong, short: "A supported short summary." },
-        source
-      )
-    ).toContain("The headline exceeds 9 words.");
   });
 });
