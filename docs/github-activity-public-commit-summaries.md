@@ -10,7 +10,7 @@ the assimilated-event checkpoints remain unchanged.
 
 ```text
 verified tracked-author commit
-  -> fetch title, cleaned body, changed filenames/statuses, and available diffs
+  -> fetch the repository and commit evidence exposed by the GitHub path
   -> read commit-wide and per-file additions/deletions from GitHub
   -> derive languages and substantive churn from the per-file counters
   -> one gpt-5-nano call producing both public summary lengths
@@ -18,19 +18,17 @@ verified tracked-author commit
   -> show the headline for low-churn commits; otherwise show short
 ```
 
-The model runs once per commit with no retry and `store: false`. It returns two
-plain-text values in one response:
+The model runs once per commit with no retry and `store: false`. The generic
+prompt asks for two plain-text values in one response:
 
-- `HEADLINE`: a three- to nine-word, action-led technical headline containing
-  only the main outcome, with no preamble or trailing period.
-- `SHORT`: a compact one- or two-sentence explanation, usually 20–45 words,
-  leading with what became possible, what failure was removed, or what became
-  observable. It includes at most one essential technical detail.
+- `HEADLINE`: a compact, action-led headline containing the main outcome and
+  enough natural project context to stand alone.
+- `SHORT`: a concise explanation that states the same product result first and
+  adds only useful context or technical detail.
 
-Both values contain inline Markdown. The prompt requires code-shaped references
-to use backticks, and a deterministic final pass formats unmistakable
-identifiers, HTTP methods, flags, package names, calls, and common commands that
-Nano misses. The output contains no headings, lists, blockquotes, or links.
+Nano is asked to use inline Markdown backticks for exact code terms and no other
+Markdown. A deterministic final pass formats unmistakable identifiers, HTTP
+methods, flags, package names, calls, and common commands that Nano misses.
 
 Both variants describe the same central change. The page selects between them
 procedurally; a model does not decide presentation length. The initial low-churn
@@ -42,24 +40,40 @@ Languages are derived exclusively from changed filename extensions, ordered by
 substantive changed lines, and stored separately from model prose. The model is
 not asked to infer languages.
 
-## Public-output boundary
+## Model context and output
 
-The input excludes repository and organization identity but includes the commit
-title, cleaned body, changed paths/statuses, and all patch text GitHub makes
-available. The public result may name supported engineering concepts and
-well-known tools or frameworks. It must not expose repository or organization
-names, exact paths, secrets, private URLs, customer data, or internal issue IDs.
+Nano receives all repository and commit evidence that the authenticated GitHub
+fetch path returns and parses. Repository evidence includes its owner, full
+name, visibility, ownership relationship, description, homepage, topics, and
+avatar URL. Commit evidence includes the complete commit message, time, SHA,
+parents, aggregate statistics, every returned file's metadata, and every patch
+string GitHub returns. A missing GitHub patch is represented as unavailable.
 
-Normal commits include every available patch. Exceptionally large commits use a
-deterministic 180,000-character input budget containing a broad file inventory
-and excerpts from the largest substantive files. This keeps the single call
-inside the model context while explicitly telling it not to claim complete
-coverage.
+This evidence is serialized without a local character budget, commit-message
+cleaning, body truncation, path clipping, patch excerpts, or representative-file
+selection. A complete file index precedes the full diffs. Generated and
+supporting evidence appears before production evidence so a large generated
+artifact cannot bury the delivered behavior; ordering never removes evidence.
+GitHub can still omit patch text in its own response; the application does not
+manufacture evidence in that case. The prompt is generic and infers a natural
+product, project, or feature surface from the supplied evidence. There are no
+repository-specific mappings, heuristics, whitelists, or allowlists.
 
-An invalid, empty, or failed one-shot result is marked as a terminal failed
-attempt for explicit operational inspection and omitted from the public feed.
-It is not retried inside or after the request. Raw patches are not persisted
-because the source can be fetched again from GitHub.
+There is no content disclosure validator, privacy-term filter, word-count
+rejection, response-length rejection, shape rejection, or display truncation.
+Any response containing at least one non-whitespace character succeeds. When
+both labels are recognizable, their values are stored separately. Otherwise,
+the complete response is preserved as both variants, so unexpected formatting
+does not discard model output. Whichever stored variant the page selects is
+shown in full. The deterministic final pass only adds missing Markdown
+backticks to unmistakable code references and capitalizes the first headline
+character; it does not remove text.
+
+Only a source-fetch failure, model request or transport failure, or empty Nano
+response fails processing. Such a failure is terminal for explicit operational
+inspection and omitted from the public feed. The call is not retried inside or
+after the request. Raw patches and repository descriptions are not persisted
+because they can be fetched again from GitHub.
 
 The displayed additions and deletions are GitHub's commit-wide `stats` values.
 The headline threshold and language weights use GitHub's per-file additions and

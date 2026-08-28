@@ -210,6 +210,8 @@
     max-width: 50rem;
     margin-top: 1rem;
     color: var(--foreground);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
   }
 
   .github-activity-headline {
