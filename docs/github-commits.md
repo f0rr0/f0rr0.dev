@@ -36,7 +36,7 @@ There are only two tables:
 
 - `github_commits` starts with repository ID/full name, SHA, verified tracked
   author, commit time, and commit subject. Processing adds repository
-  visibility/owner display facts, patch-derived line counts and languages, two
+  visibility/owner display facts, GitHub-reported line counts and languages, two
   public summaries, and the model/recipe/input hash needed to audit them. It
   never stores patches, trees, blobs, or webhook payloads.
 - `github_account_checkpoints` contains only the account, newest assimilated
@@ -50,7 +50,7 @@ overlap between webhook and polling, and retried cron calls are harmless.
 
 After ingestion commits successfully, the same invocation claims up to eight
 newest unprocessed rows. Each row re-fetches its current repository and commit
-evidence, derives facts from the patch, and makes exactly one summary call.
+evidence, derives facts from GitHub's counters, and makes exactly one summary call.
 Claiming is conditional, so webhook and cron invocations cannot process the same
 row concurrently. A failed attempt is terminal and omitted from the public feed;
 there is no automatic model retry or duplicate billing loop.
@@ -105,6 +105,18 @@ Apply the schema explicitly:
 ```sh
 bun run db:migrate
 ```
+
+After migrating existing activity from patch-derived counts to GitHub's native
+counters, refresh only the stored deterministic facts—without making Nano
+calls—with:
+
+```sh
+bun run github:refresh-counters
+```
+
+The migration clears the old patch-derived values first. If GitHub can no longer
+serve an existing commit, that item stays out of the public feed instead of
+presenting the old values as GitHub counters.
 
 This migration intentionally removes the earlier experimental timeline tables
 and any intermediate commit/checkpoint tables. Their data can be rebuilt from
@@ -224,8 +236,8 @@ Repository presentation is deliberately separate from stored source data:
 
 The client never receives repository IDs, SHAs, full repository names, author
 handles, raw commit messages, file paths, or patches. Each UTC date is rendered
-as a section. Commits with at most 25 substantive patch lines use the headline;
-larger commits use the detailed summary.
+as a section. Commits with at most 25 substantive GitHub-reported changed lines
+use the stored headline; larger commits use the stored detailed summary.
 
 ## Deliberate limits
 

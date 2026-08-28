@@ -171,7 +171,8 @@ const fetchCommitWithToken = async (
     root === null ||
     !isObject(root.commit) ||
     !isObject(root.author) ||
-    !isObject(root.commit.author)
+    !isObject(root.commit.author) ||
+    !isObject(root.stats)
   ) {
     throw new Error("GitHub returned incomplete commit evidence.");
   }
@@ -181,6 +182,12 @@ const fetchCommitWithToken = async (
     throw new Error("The live commit no longer matches its stored provenance.");
   }
   const committedAt = requiredString(root.commit.author.date, "commit date");
+  const additions = requiredInteger(root.stats.additions, "commit additions");
+  const deletions = requiredInteger(root.stats.deletions, "commit deletions");
+  const total = requiredInteger(root.stats.total, "commit changed lines");
+  if (total !== additions + deletions) {
+    throw new Error("GitHub returned inconsistent commit statistics.");
+  }
   const parents = Array.isArray(root.parents)
     ? root.parents.map((parent) => {
         if (!isObject(parent)) {
@@ -197,6 +204,7 @@ const fetchCommitWithToken = async (
     message: requiredString(root.commit.message, "commit message"),
     parents,
     sha,
+    stats: { additions, deletions, total },
   };
 };
 

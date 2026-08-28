@@ -11,10 +11,10 @@ the assimilated-event checkpoints remain unchanged.
 ```text
 verified tracked-author commit
   -> fetch title, cleaned body, changed filenames/statuses, and available diffs
-  -> count additions/deletions directly from available unified patches
-  -> derive languages and substantive churn in application code
+  -> read commit-wide and per-file additions/deletions from GitHub
+  -> derive languages and substantive churn from the per-file counters
   -> one gpt-5-nano call producing both public summary lengths
-  -> persist the summaries, recipe/model/input hash, languages, and churn
+  -> persist both Nano summaries, recipe/model/input hash, languages, and churn
   -> show the headline for low-churn commits; otherwise show short
 ```
 
@@ -61,10 +61,15 @@ attempt for explicit operational inspection and omitted from the public feed.
 It is not retried inside or after the request. Raw patches are not persisted
 because the source can be fetched again from GitHub.
 
-Patch additions and deletions are parsed from actual `+` and `-` lines while
-excluding unified-diff file headers. GitHub's aggregate counters are not used.
-When GitHub omits a non-binary patch, the visible count is stored and displayed
-as partial rather than replaced with an unrelated aggregate.
+The displayed additions and deletions are GitHub's commit-wide `stats` values.
+The headline threshold and language weights use GitHub's per-file additions and
+deletions so generated output, lockfiles, vendored files, and binary assets can
+still be excluded procedurally. Missing or truncated patch text does not make
+these counts partial. Patch text is used only as Nano evidence.
+
+Both Nano outputs are persisted in `summary_headline` and `summary_short` along
+with their exact model snapshot, prompt recipe, and input hash. The page chooses
+between the two stored values without another model call.
 
 ## Timeline presentation
 
