@@ -6,6 +6,20 @@ const nextConfig: NextConfig = {
   experimental: {
     useTypeScriptCli: true,
   },
+  images: {
+    remotePatterns: [
+      {
+        hostname: "avatars.githubusercontent.com",
+        pathname: "/**",
+        protocol: "https",
+      },
+      {
+        hostname: "cdn.jsdelivr.net",
+        pathname: "/**",
+        protocol: "https",
+      },
+    ],
+  },
   outputFileTracingExcludes: {
     "/*": ["./next.config.ts"],
   },

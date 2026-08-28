@@ -18,9 +18,9 @@ export interface GitHubRepository {
 }
 
 export interface GitHubCommit {
+  author: TrackedGitHubAccount;
   committedAt: string;
   message: string;
-  pushedBy: TrackedGitHubAccount;
   repository: string;
   repositoryId: string;
   sha: string;
@@ -116,11 +116,10 @@ const expectedCommitUrl = (repository: GitHubRepository, sha: string) =>
 
 export const commitFromGitHub = (
   value: unknown,
-  repository: GitHubRepository,
-  pushedBy: TrackedGitHubAccount
+  repository: GitHubRepository
 ): GitHubCommit | null => {
   if (!isObject(value) || !isObject(value.commit)) {
-    return null;
+    throw new TypeError("GitHub returned an invalid commit response.");
   }
 
   const sha = commitShaFrom(value.sha);
@@ -135,58 +134,34 @@ export const commitFromGitHub = (
         : undefined)
   );
   if (sha === null || message === null || committedAt === null) {
-    return null;
+    throw new TypeError("GitHub returned an invalid commit response.");
   }
 
   const url = expectedCommitUrl(repository, sha);
   if (value.html_url !== url) {
+    throw new TypeError("GitHub returned an invalid commit response.");
+  }
+
+  if (value.author === null) {
+    return null;
+  }
+  if (!isObject(value.author) || typeof value.author.login !== "string") {
+    throw new TypeError("GitHub returned an invalid commit response.");
+  }
+  const authoredBy = trackedGitHubAccountFrom(value.author.login);
+  if (authoredBy === null) {
     return null;
   }
 
   return {
+    author: authoredBy,
     committedAt,
     message,
-    pushedBy,
     repository: repository.fullName,
     repositoryId: repository.id,
     sha,
     url,
   };
-};
-
-const commitFromWebhook = (
-  value: unknown,
-  repository: GitHubRepository,
-  pushedBy: TrackedGitHubAccount
-): GitHubPushCommit | null => {
-  if (!isObject(value)) {
-    return null;
-  }
-
-  const sha = commitShaFrom(value.id ?? value.sha);
-  if (sha === null) {
-    return null;
-  }
-
-  const message =
-    typeof value.message === "string"
-      ? normalizedText(value.message.split(/\r?\n/, 1)[0], 240)
-      : null;
-  const committedAt = normalizedDate(value.timestamp);
-  const commit =
-    message === null || committedAt === null
-      ? null
-      : {
-          committedAt,
-          message,
-          pushedBy,
-          repository: repository.fullName,
-          repositoryId: repository.id,
-          sha,
-          url: expectedCommitUrl(repository, sha),
-        };
-
-  return { commit, sha };
 };
 
 const commitReferenceFrom = (value: unknown): GitHubPushCommit | null => {
@@ -287,9 +262,7 @@ export const pushFromWebhook = (value: unknown): GitHubPush | null => {
   }
 
   const rawCommits = Array.isArray(value.commits) ? value.commits : [];
-  const commits = uniqueCommitReferences(rawCommits, (commit) =>
-    commitFromWebhook(commit, repository, pushedBy)
-  );
+  const commits = uniqueCommitReferences(rawCommits, commitReferenceFrom);
   const explicitSize = nonNegativeInteger(value.size);
   const size =
     explicitSize ??

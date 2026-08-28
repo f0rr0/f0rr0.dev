@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { revalidateTag } from "next/cache";
 
 import { isDatabaseConfigured } from "@/db/client";
+import { processPendingGitHubActivity } from "@/lib/github-activity-processor";
 import { syncGitHubWebhookPush } from "@/lib/github-commits";
 import { pushFromWebhook } from "@/lib/github-commits-core";
 import { constantTimeEqual } from "@/lib/request-auth";
@@ -76,10 +77,19 @@ export async function POST(request: Request) {
 
   try {
     const commits = await syncGitHubWebhookPush(push);
-    if (commits > 0) {
-      revalidateTag("github-commits", "max");
+    let activity:
+      | Awaited<ReturnType<typeof processPendingGitHubActivity>>
+      | { unavailable: true };
+    try {
+      activity = await processPendingGitHubActivity();
+      if (activity.completed > 0) {
+        revalidateTag("github-activity", "max");
+      }
+    } catch {
+      activity = { unavailable: true };
     }
     return Response.json({
+      activity,
       commits,
       ok: true,
       repository: push.repository.fullName,

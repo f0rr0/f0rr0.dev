@@ -1,5 +1,6 @@
 import { revalidateTag } from "next/cache";
 
+import { processPendingGitHubActivity } from "@/lib/github-activity-processor";
 import { syncGitHubAccounts } from "@/lib/github-commits";
 import { hasBearerSecret } from "@/lib/request-auth";
 
@@ -19,10 +20,18 @@ export async function POST(request: Request) {
 
   try {
     const result = await syncGitHubAccounts();
-    if (result.commits > 0) {
-      revalidateTag("github-commits", "max");
+    let activity:
+      | Awaited<ReturnType<typeof processPendingGitHubActivity>>
+      | { unavailable: true };
+    try {
+      activity = await processPendingGitHubActivity();
+      if (activity.completed > 0) {
+        revalidateTag("github-activity", "max");
+      }
+    } catch {
+      activity = { unavailable: true };
     }
-    return Response.json({ ok: true, ...result });
+    return Response.json({ activity, ok: true, ...result });
   } catch (error) {
     return Response.json(
       {

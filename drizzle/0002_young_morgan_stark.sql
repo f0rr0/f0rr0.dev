@@ -1,0 +1,2 @@
+ALTER TABLE "github_commits" ADD COLUMN "author_login" varchar(39);--> statement-breakpoint
+ALTER TABLE "github_commits" ADD CONSTRAINT "github_commits_tracked_author" CHECK ("github_commits"."author_login" IS NULL OR "github_commits"."author_login" IN ('f0rr0', 'yuppiestechdev'));

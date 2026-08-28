@@ -1,21 +1,227 @@
-import { ArrowUpRight, GitCommitHorizontal } from "lucide-react";
+"use client";
 
-import type { GitHubCommit } from "@/lib/github-commits-core";
-import { siteConfig } from "@/lib/site";
+import { ArrowUpRight, Code2, GitBranch, LockKeyhole } from "lucide-react";
+import Image from "next/image";
+import { Fragment, useState, useTransition } from "react";
 
-const dateFormatter = new Intl.DateTimeFormat(siteConfig.language, {
+import type {
+  PublicGitHubActivityItem,
+  PublicGitHubActivityPage,
+} from "@/lib/github-activity-types";
+
+const dayFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
-  month: "short",
+  month: "long",
   timeZone: "UTC",
+  weekday: "long",
   year: "numeric",
 });
 
-const repositoryLabel = (repository: string) =>
-  repository.split("/").at(-1) ?? repository;
+const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "UTC",
+  timeZoneName: "short",
+});
+
+const inlineMarkdownPattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*)/gu;
+
+function InlineSummary({ children }: Readonly<{ children: string }>) {
+  return children.split(inlineMarkdownPattern).map((part, index) => {
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return <code key={`${index}:${part}`}>{part.slice(1, -1)}</code>;
+    }
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={`${index}:${part}`}>{part.slice(2, -2)}</strong>;
+    }
+    return <Fragment key={`${index}:${part}`}>{part}</Fragment>;
+  });
+}
+
+interface ActivityDay {
+  date: Date;
+  id: string;
+  items: PublicGitHubActivityItem[];
+}
+
+const groupActivityByDay = (
+  items: readonly PublicGitHubActivityItem[]
+): readonly ActivityDay[] => {
+  const groups = new Map<string, ActivityDay>();
+  for (const item of items) {
+    const id = item.committedAt.slice(0, 10);
+    const existing = groups.get(id);
+    if (existing === undefined) {
+      groups.set(id, {
+        date: new Date(`${id}T00:00:00.000Z`),
+        id,
+        items: [item],
+      });
+    } else {
+      existing.items.push(item);
+    }
+  }
+  return [...groups.values()];
+};
+
+const mergeActivity = (
+  current: readonly PublicGitHubActivityItem[],
+  incoming: readonly PublicGitHubActivityItem[]
+) => {
+  const ids = new Set(current.map((item) => item.id));
+  return [
+    ...current,
+    ...incoming.filter((item) => {
+      if (ids.has(item.id)) {
+        return false;
+      }
+      ids.add(item.id);
+      return true;
+    }),
+  ];
+};
+
+function ActivityEntry({ item }: Readonly<{ item: PublicGitHubActivityItem }>) {
+  const visibleLanguages = item.languages.slice(0, 6);
+  const hiddenLanguageCount = item.languages.length - visibleLanguages.length;
+  const repositoryLabel = item.repositoryLabel ?? "Private contribution";
+  const locTitle = item.locComplete
+    ? "Lines counted directly from the GitHub patch"
+    : "Lines visible in the available GitHub patch; some file patches were unavailable";
+
+  return (
+    <li className="github-activity-entry">
+      <article>
+        <div className="github-activity-entry-header">
+          <div className="github-activity-repository">
+            {item.avatarUrl === null ? (
+              <span
+                aria-hidden="true"
+                className="github-activity-avatar-fallback"
+              >
+                <GitBranch className="size-3.5" />
+              </span>
+            ) : (
+              <Image
+                alt=""
+                className="github-activity-avatar"
+                height={28}
+                sizes="28px"
+                src={item.avatarUrl}
+                unoptimized
+                width={28}
+              />
+            )}
+            {item.url === null ? (
+              <span className="github-activity-repository-label">
+                {item.repositoryLabel === null ? (
+                  <LockKeyhole aria-hidden="true" className="size-3" />
+                ) : null}
+                {repositoryLabel}
+              </span>
+            ) : (
+              <a
+                className="group/link github-activity-repository-link"
+                href={item.url}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                {repositoryLabel}
+                <ArrowUpRight
+                  aria-hidden="true"
+                  className="size-3 transition-transform group-hover/link:-translate-y-0.5 group-hover/link:translate-x-0.5"
+                />
+                <span className="sr-only"> (opens commit in a new tab)</span>
+              </a>
+            )}
+          </div>
+          <time className="github-activity-time" dateTime={item.committedAt}>
+            {timeFormatter.format(new Date(item.committedAt))}
+          </time>
+        </div>
+
+        {item.summaryKind === "headline" ? (
+          <h4 className="github-activity-headline">
+            <InlineSummary>{item.summary}</InlineSummary>
+          </h4>
+        ) : (
+          <p className="github-activity-summary">
+            <InlineSummary>{item.summary}</InlineSummary>
+          </p>
+        )}
+
+        <div className="github-activity-facts">
+          <span className="github-activity-loc" title={locTitle}>
+            <span className="github-activity-additions">+{item.additions}</span>
+            <span className="github-activity-deletions">−{item.deletions}</span>
+            {item.locComplete ? null : <span>partial</span>}
+          </span>
+          <span>
+            {item.changedFiles} {item.changedFiles === 1 ? "file" : "files"}
+          </span>
+          {visibleLanguages.length === 0 ? null : (
+            <ul aria-label="Languages" className="github-activity-languages">
+              {visibleLanguages.map((language) => (
+                <li
+                  key={language.id}
+                  title={`${language.changedLines} changed lines`}
+                >
+                  {language.iconUrl === null ? (
+                    <Code2 aria-hidden="true" className="size-3.5" />
+                  ) : (
+                    <Image
+                      alt=""
+                      height={14}
+                      sizes="14px"
+                      src={language.iconUrl}
+                      unoptimized
+                      width={14}
+                    />
+                  )}
+                  <span>{language.label}</span>
+                </li>
+              ))}
+              {hiddenLanguageCount > 0 ? <li>+{hiddenLanguageCount}</li> : null}
+            </ul>
+          )}
+        </div>
+      </article>
+    </li>
+  );
+}
 
 export function GitHubTimeline({
-  commits,
-}: Readonly<{ commits: readonly GitHubCommit[] }>) {
+  initialPage,
+}: Readonly<{ initialPage: PublicGitHubActivityPage }>) {
+  const [items, setItems] = useState(initialPage.items);
+  const [nextCursor, setNextCursor] = useState(initialPage.nextCursor);
+  const [error, setError] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const days = groupActivityByDay(items);
+
+  const loadMore = () => {
+    if (nextCursor === null || isPending) {
+      return;
+    }
+    const cursor = nextCursor;
+    setError(false);
+    startTransition(async () => {
+      try {
+        const response = await fetch(
+          `/api/github/activity?cursor=${encodeURIComponent(cursor)}`
+        );
+        if (!response.ok) {
+          throw new Error("The activity page could not be loaded.");
+        }
+        const page = (await response.json()) as PublicGitHubActivityPage;
+        setItems((current) => mergeActivity(current, page.items));
+        setNextCursor(page.nextCursor);
+      } catch {
+        setError(true);
+      }
+    });
+  };
+
   return (
     <section
       aria-labelledby="timeline-title"
@@ -30,55 +236,58 @@ export function GitHubTimeline({
           className="mt-2 font-serif text-3xl font-bold tracking-tight text-foreground sm:text-4xl"
           id="timeline-title"
         >
-          Recent commits
+          Work, as it happens
         </h2>
         <p className="mt-3 text-base leading-relaxed text-muted-foreground sm:text-lg">
-          Commits pushed from my GitHub accounts, persisted as they land.
+          A patch-level record of what I’m building, fixing, and refining.
         </p>
       </div>
 
-      {commits.length === 0 ? (
+      {days.length === 0 ? (
         <p className="mt-8 border-y border-border py-5 text-sm leading-relaxed text-muted-foreground">
-          The commit feed has not been populated yet. Projects and writing
-          remain available below.
+          The activity feed is being prepared. Projects and writing remain
+          available below.
         </p>
       ) : (
-        <ol className="sacred-timeline mt-10 sm:mt-12">
-          {commits.map((commit) => (
-            <li
-              className="sacred-timeline-item group"
-              key={`${commit.repositoryId}:${commit.sha}`}
+        <div className="github-activity-days">
+          {days.map((day) => (
+            <section
+              aria-labelledby={`activity-day-${day.id}`}
+              className="github-activity-day"
+              key={day.id}
             >
-              <time
-                className="sacred-timeline-date"
-                dateTime={commit.committedAt}
-              >
-                {dateFormatter.format(new Date(commit.committedAt))}
-              </time>
-              <span aria-hidden="true" className="sacred-timeline-node" />
-              <article className="sacred-timeline-content">
-                <p className="flex items-center gap-1.5 font-mono text-[0.6875rem] uppercase tracking-[0.12em] text-primary">
-                  <GitCommitHorizontal aria-hidden="true" className="h-3 w-3" />
-                  {repositoryLabel(commit.repository)}
-                </p>
-                <h3 className="sacred-timeline-title">{commit.message}</h3>
-                <a
-                  className="group/link mt-3 inline-flex items-center gap-1 rounded-sm font-ui text-sm font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-brand-hover hover:decoration-brand-hover focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
-                  href={commit.url}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  View commit
-                  <span className="sr-only"> (opens in a new tab)</span>
-                  <ArrowUpRight
-                    aria-hidden="true"
-                    className="h-3.5 w-3.5 transition-transform duration-200 group-hover/link:-translate-y-0.5 group-hover/link:translate-x-0.5"
-                  />
-                </a>
-              </article>
-            </li>
+              <h3 className="github-activity-day-heading">
+                <time dateTime={day.id} id={`activity-day-${day.id}`}>
+                  {dayFormatter.format(day.date)}
+                </time>
+                <span aria-hidden="true" />
+              </h3>
+              <ol className="github-activity-list">
+                {day.items.map((item) => (
+                  <ActivityEntry item={item} key={item.id} />
+                ))}
+              </ol>
+            </section>
           ))}
-        </ol>
+        </div>
+      )}
+
+      {nextCursor === null ? null : (
+        <div className="mt-10 flex flex-col items-start gap-3">
+          <button
+            className="site-action-link"
+            disabled={isPending}
+            onClick={loadMore}
+            type="button"
+          >
+            {isPending ? "Loading earlier work…" : "Load earlier work"}
+          </button>
+          {error ? (
+            <p className="text-sm text-destructive" role="alert">
+              Earlier activity could not be loaded. Please try again.
+            </p>
+          ) : null}
+        </div>
       )}
     </section>
   );

@@ -19,6 +19,7 @@ export const env = createEnv({
     GITHUB_WEBHOOK_SECRET: z.string().min(32).optional(),
     GITHUB_YUPPIESTECHDEV_TOKEN: z.string().min(1).optional(),
     NODE_ENV: z.enum(["development", "production", "test"]).optional(),
+    OPENAI_API_KEY: z.string().min(1).optional(),
     PORT: z.string().min(1).optional(),
     SITE_URL: z.string().min(1).optional(),
     VERCEL_ENV: z.enum(["development", "preview", "production"]).optional(),

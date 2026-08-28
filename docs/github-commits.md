@@ -1,18 +1,23 @@
 # GitHub commit ingestion
 
-The site records commits pushed by either `f0rr0` or `yuppiestechdev`, including
-pushes to repositories owned by other users or organizations and repositories
-that are private. GitHub remains the source of truth: the database stores a
-small commit index, not patches, trees, blobs, or webhook payloads.
+The site uses pushes by `f0rr0` or `yuppiestechdev` to discover candidate
+commits, including pushes to repositories owned by other users or organizations
+and repositories that are private. It persists a commit only when GitHub's REST
+response links its top-level `author.login` to one of those accounts. GitHub
+remains the source of truth: the database stores a small commit index, not
+patches, trees, blobs, push observations, or webhook payloads.
 
 ## Architecture
 
 ```text
 GitHub App push webhook ──> Vercel /api/github/webhook ──> Supabase Postgres
+                                      │
+                                      └─> GitHub patch ─> one Nano call
 
 Supabase Cron (3 hours) ──> Vercel /api/cron/github-sync
                          ──> GitHub authenticated user events
                          ──> Supabase Postgres
+                         ──> pending commit processing
 ```
 
 The webhook is the low-latency path for repositories where the GitHub App is
@@ -29,16 +34,26 @@ a token mix-up cannot silently downgrade the feed to public activity.
 
 There are only two tables:
 
-- `github_commits` contains repository identity, SHA, pusher, commit time,
-  subject line, canonical URL, and persistence time.
-- `github_account_checkpoints` contains the newest assimilated event ID, last
-  successful poll time, and pause state for each of the two accounts.
+- `github_commits` starts with repository ID/full name, SHA, verified tracked
+  author, commit time, and commit subject. Processing adds repository
+  visibility/owner display facts, patch-derived line counts and languages, two
+  public summaries, and the model/recipe/input hash needed to audit them. It
+  never stores patches, trees, blobs, or webhook payloads.
+- `github_account_checkpoints` contains only the account, newest assimilated
+  event ID, and pause state.
 
 For each account, the poller reads events newest-first until it reaches the
 saved event ID. It fetches commit metadata, then inserts the commits and advances
 the checkpoint in one transaction. A failed run leaves the checkpoint where it
 was; the next run repeats the same interval. Duplicate webhook deliveries,
 overlap between webhook and polling, and retried cron calls are harmless.
+
+After ingestion commits successfully, the same invocation claims up to eight
+newest unprocessed rows. Each row re-fetches its current repository and commit
+evidence, derives facts from the patch, and makes exactly one summary call.
+Claiming is conditional, so webhook and cron invocations cannot process the same
+row concurrently. A failed attempt is terminal and omitted from the public feed;
+there is no automatic model retry or duplicate billing loop.
 
 ### Pause or resume an account
 
@@ -152,9 +167,6 @@ select * from cron.job_run_details order by start_time desc limit 20;
 select * from net._http_response order by created desc limit 20;
 ```
 
-The application also updates `github_account_checkpoints.last_polled_at` after
-every successful account poll, including polls that find no new activity.
-
 ## GitHub App webhook
 
 Configure the GitHub App's push webhook with:
@@ -165,10 +177,12 @@ Configure the GitHub App's push webhook with:
 - Event: `push`
 
 The route rejects an invalid signature before parsing the payload. It accepts
-pushes to any branch in any public or private repository, but persists
-them only when the webhook identifies `f0rr0` or `yuppiestechdev` as the pusher.
-It commits to Postgres before returning success so GitHub can retry a failed
-delivery.
+pushes to any branch in any public or private repository when the webhook
+identifies `f0rr0` or `yuppiestechdev` as the push actor. Webhook commit details
+are never trusted for authorship: every SHA is resolved through the authenticated
+REST commit endpoint, and foreign or unlinked authors are discarded before the
+database transaction. Malformed or incomplete responses fail the delivery so
+GitHub can retry it.
 
 ## Manual verification
 
@@ -187,8 +201,31 @@ Or run the same synchronization directly against the configured database:
 bun run github:sync
 ```
 
-The route returns aggregate account, event, commit, and checkpoint counts. It
-does not return tokens, repository contents, patches, or raw private events.
+The route returns aggregate account, event, commit, checkpoint, and activity
+processing counts. It does not return tokens, repository contents, patches, or
+raw private events.
+
+## Public timeline
+
+The homepage reads only completed activity through a dedicated scrubbed
+projection. Results use keyset pagination ordered by commit time and a random
+public UUID; the opaque cursor contains no repository ID or commit SHA. The
+first page is cached for 15 minutes and subsequent pages are read from
+`GET /api/github/activity?cursor=...`.
+
+Repository presentation is deliberately separate from stored source data:
+
+- Public repository: show the owner avatar, repository basename, and commit
+  link, regardless of owner.
+- Private repository directly under `f0rr0` or `yuppiestechdev`: show the
+  account avatar and repository basename, without a link.
+- Private repository under any other user or organization: show the owner
+  avatar and `Private contribution`; omit the repository name and link.
+
+The client never receives repository IDs, SHAs, full repository names, author
+handles, raw commit messages, file paths, or patches. Each UTC date is rendered
+as a section. Commits with at most 25 substantive patch lines use the headline;
+larger commits use the detailed summary.
 
 ## Deliberate limits
 
@@ -199,5 +236,9 @@ does not return tokens, repository contents, patches, or raw private events.
   keeps the checkpoint well inside that window during normal operation.
 - The Supabase free plan has no automatic backups. The index can be rebuilt
   from GitHub under the project's normal repository-access assumptions.
-- Private repository names and commit subjects are stored and may appear in the
-  site's commit feed. There is intentionally no privacy-redaction layer.
+- Private repository names and commit subjects stay server-side so GitHub can
+  be queried again. The public read model applies the repository visibility and
+  ownership policy above before serialization.
+- Push actor, committer, Git names/emails, refs, before/after SHAs, delivery
+  metadata, canonical URLs, patches, trees, blobs, file lists, and raw payloads
+  are not persisted by live ingestion.
