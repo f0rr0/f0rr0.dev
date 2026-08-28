@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildCommitPublicSummaryModelInput,
   deriveCommitLanguages,
+  formatPublicCommitSummaryMarkdown,
   parseCommitPublicSummary,
   PUBLIC_COMMIT_SUMMARY_HEADLINE_MAX_WORDS,
   PUBLIC_COMMIT_SUMMARY_MAX_INPUT_CHARACTERS,
@@ -71,6 +72,23 @@ describe("public commit summaries", () => {
     expect(PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT).toContain(
       "three to nine words"
     );
+  });
+
+  test("consistently formats unmistakable code references", () => {
+    expect(
+      formatPublicCommitSummaryMarkdown(
+        {
+          headline: "record GET metadata with requestUrl for clarity",
+          short:
+            "Uses OutreachReviewTarget, atomic_fence_total, --dry-run, apt-get, refreshSession(), @scope/tool, and domain-traffic-surge while preserving `alreadyFormatted`, GitHub, and false positives.",
+        },
+        commit([file("templates/domain-traffic-surge.tsx", 1, 0)])
+      )
+    ).toEqual({
+      headline: "Record `GET` metadata with `requestUrl`",
+      short:
+        "Uses `OutreachReviewTarget`, `atomic_fence_total`, `--dry-run`, `apt-get`, `refreshSession()`, `@scope/tool`, and `domain-traffic-surge` while preserving `alreadyFormatted`, GitHub, and false positives.",
+    });
   });
 
   test("builds the canonical full-diff input without repository identity", () => {
@@ -171,6 +189,18 @@ describe("public commit summaries", () => {
         source
       )
     ).toEqual([]);
+    expect(
+      publicCommitSummaryValidationErrors(
+        {
+          headline: "Align Namefi typography",
+          short: "Standardize service typography without changing content.",
+        },
+        source,
+        { privateRepositoryFullName: "secret-org/namefi-service" }
+      )
+    ).toContain(
+      "The public summary contains a private identity or customer name."
+    );
   });
 
   test("flags a headline that exceeds its compact word budget", () => {

@@ -6,6 +6,7 @@ import { APICallError, generateText } from "ai";
 import {
   buildCommitPublicSummaryModelInput,
   deriveCommitLanguages,
+  formatPublicCommitSummaryMarkdown,
   parseCommitPublicSummary,
   PUBLIC_COMMIT_SUMMARY_MAX_OUTPUT_TOKENS,
   PUBLIC_COMMIT_SUMMARY_RECIPE,
@@ -42,7 +43,7 @@ const MAXIMUM_GITHUB_FILE_PAGES = 30;
 
 type JsonObject = Record<string, unknown>;
 
-interface RepositoryEvidence {
+export interface GitHubActivityRepositoryEvidence {
   avatarUrl: string | null;
   fullName: string;
   ownerLogin: string;
@@ -52,7 +53,7 @@ interface RepositoryEvidence {
 
 export interface GitHubActivityCommitSource {
   commit: PublicCommitEvidence;
-  repository: RepositoryEvidence;
+  repository: GitHubActivityRepositoryEvidence;
 }
 
 class ActivityProcessingError extends Error {
@@ -144,7 +145,7 @@ const safeAvatarUrl = (value: unknown) => {
 const repositoryEvidenceFrom = (
   value: unknown,
   expectedRepositoryId: string
-): RepositoryEvidence => {
+): GitHubActivityRepositoryEvidence => {
   if (!isObject(value) || !isObject(value.owner)) {
     throw new ActivityProcessingError(
       "source_invalid",
@@ -378,45 +379,55 @@ const modelFailureCode = (error: unknown) => {
   return "model_failed";
 };
 
+export const generateValidatedGitHubActivitySummary = async (
+  source: GitHubActivityCommitSource
+) => {
+  let generated: Awaited<ReturnType<typeof generateCommitSummary>>;
+  try {
+    generated = await generateCommitSummary(source.commit);
+  } catch (error) {
+    throw new ActivityProcessingError(
+      modelFailureCode(error),
+      error instanceof Error ? error.message : "The model request failed."
+    );
+  }
+  let summary;
+  try {
+    summary = formatPublicCommitSummaryMarkdown(
+      parseCommitPublicSummary(generated.text),
+      source.commit
+    );
+  } catch (error) {
+    throw new ActivityProcessingError(
+      "output_invalid",
+      error instanceof Error ? error.message : "The model output was invalid."
+    );
+  }
+  const directlyOwned =
+    trackedGitHubAccountFrom(source.repository.ownerLogin) !== null;
+  const validationErrors = publicCommitSummaryValidationErrors(
+    summary,
+    source.commit,
+    source.repository.private && !directlyOwned
+      ? {
+          organizationLogin: source.repository.ownerLogin,
+          privateRepositoryFullName: source.repository.fullName,
+        }
+      : {}
+  );
+  if (validationErrors.length > 0) {
+    throw new ActivityProcessingError(
+      "output_disclosure",
+      validationErrors.join(" ")
+    );
+  }
+  return { inputHash: generated.inputHash, summary };
+};
+
 const processClaimedCommit = async (row: ClaimedGitHubActivityCommit) => {
   try {
     const source = await fetchGitHubActivityCommitSource(row);
-    let generated: Awaited<ReturnType<typeof generateCommitSummary>>;
-    try {
-      generated = await generateCommitSummary(source.commit);
-    } catch (error) {
-      throw new ActivityProcessingError(
-        modelFailureCode(error),
-        error instanceof Error ? error.message : "The model request failed."
-      );
-    }
-    let summary;
-    try {
-      summary = parseCommitPublicSummary(generated.text);
-    } catch (error) {
-      throw new ActivityProcessingError(
-        "output_invalid",
-        error instanceof Error ? error.message : "The model output was invalid."
-      );
-    }
-    const directlyOwned =
-      trackedGitHubAccountFrom(source.repository.ownerLogin) !== null;
-    const validationErrors = publicCommitSummaryValidationErrors(
-      summary,
-      source.commit,
-      source.repository.private && !directlyOwned
-        ? {
-            organizationLogin: source.repository.ownerLogin,
-            privateRepositoryFullName: source.repository.fullName,
-          }
-        : {}
-    );
-    if (validationErrors.length > 0) {
-      throw new ActivityProcessingError(
-        "output_disclosure",
-        validationErrors.join(" ")
-      );
-    }
+    const generated = await generateValidatedGitHubActivitySummary(source);
     await completeGitHubActivity(row, {
       activityPublicId: randomUUID(),
       additions: source.commit.stats.additions,
@@ -429,11 +440,11 @@ const processClaimedCommit = async (row: ClaimedGitHubActivityCommit) => {
       repositoryOwnerType: source.repository.ownerType,
       repositoryPrivate: source.repository.private,
       substantiveLoc: substantiveCommitLoc(source.commit.files),
-      summaryHeadline: summary.headline,
+      summaryHeadline: generated.summary.headline,
       summaryInputHash: generated.inputHash,
       summaryModel: GITHUB_ACTIVITY_SUMMARY_MODEL,
       summaryRecipe: PUBLIC_COMMIT_SUMMARY_RECIPE,
-      summaryShort: summary.short,
+      summaryShort: generated.summary.short,
     });
     return true;
   } catch (error) {

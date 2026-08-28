@@ -118,6 +118,17 @@ The migration clears the old patch-derived values first. If GitHub can no longer
 serve an existing commit, that item stays out of the public feed instead of
 presenting the old values as GitHub counters.
 
+After changing the public-summary prompt, refresh stale completed summaries
+with one Nano attempt per commit and no retry:
+
+```sh
+bun run github:refresh-summaries
+```
+
+A successful candidate replaces the two persisted summary variants and their
+recipe/model/input hash. A failed candidate leaves the previous valid pair
+untouched.
+
 This migration intentionally removes the earlier experimental timeline tables
 and any intermediate commit/checkpoint tables. Their data can be rebuilt from
 GitHub. The two replacement tables have row-level security enabled with no
