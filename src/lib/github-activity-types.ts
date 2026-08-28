@@ -11,6 +11,7 @@ export interface PublicGitHubActivityItem {
   changedFiles: number;
   committedAt: string;
   deletions: number;
+  headline: string;
   id: string;
   languages: readonly PublicGitHubActivityLanguage[];
   providerFileCapReached: boolean;

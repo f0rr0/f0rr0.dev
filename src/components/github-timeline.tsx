@@ -137,15 +137,14 @@ function ActivityEntry({ item }: Readonly<{ item: PublicGitHubActivityItem }>) {
           </time>
         </div>
 
-        {item.summaryKind === "headline" ? (
-          <h4 className="github-activity-headline">
-            <InlineSummary>{item.summary}</InlineSummary>
-          </h4>
-        ) : (
+        <h4 className="github-activity-headline">
+          <InlineSummary>{item.headline}</InlineSummary>
+        </h4>
+        {item.summaryKind === "short" ? (
           <p className="github-activity-summary">
             <InlineSummary>{item.summary}</InlineSummary>
           </p>
-        )}
+        ) : null}
 
         <div className="github-activity-facts">
           <span

@@ -15,7 +15,7 @@ verified tracked-author commit
   -> derive languages and substantive churn from the per-file counters
   -> one gpt-5-nano call producing both public summary lengths
   -> persist both Nano summaries, recipe/model/input hash, languages, and churn
-  -> show the headline for low-churn commits; otherwise show short
+  -> always show the headline; add short for higher-churn commits
 ```
 
 The model runs once per commit with no retry and `store: false`. The generic
@@ -30,11 +30,12 @@ Nano is asked to use inline Markdown backticks for exact code terms and no other
 Markdown. A deterministic final pass formats unmistakable identifiers, HTTP
 methods, flags, package names, calls, and common commands that Nano misses.
 
-Both variants describe the same central change. The page selects between them
-procedurally; a model does not decide presentation length. The initial low-churn
-boundary is 25 substantive additions plus deletions and remains an evaluated,
-configurable product threshold. Generated output, lockfiles, vendored files,
-and binary assets do not inflate that decision.
+Both variants describe the same central change. Every timeline item shows its
+headline. The page also shows the short explanation above the procedural churn
+threshold; a model does not decide presentation length. The initial boundary is
+25 substantive additions plus deletions and remains an evaluated, configurable
+product threshold. Generated output, lockfiles, vendored files, and binary
+assets do not inflate that decision.
 
 Languages are derived exclusively from changed filename extensions, ordered by
 substantive changed lines, and stored separately from model prose. The model is
@@ -137,8 +138,8 @@ rejection, response-length rejection, shape rejection, or display truncation.
 Any response containing at least one non-whitespace character succeeds. When
 both labels are recognizable, their values are stored separately. Otherwise,
 the complete response is preserved as both variants, so unexpected formatting
-does not discard model output. Whichever stored variant the page selects is
-shown in full. The deterministic final pass only adds missing Markdown
+does not discard model output. Every displayed stored variant is shown in full.
+The deterministic final pass only adds missing Markdown
 backticks to unmistakable code references and capitalizes the first headline
 character; it does not remove text.
 
@@ -155,8 +156,9 @@ still be excluded procedurally. Missing or truncated patch text does not make
 these counts partial. Patch text is used only as Nano evidence.
 
 Both Nano outputs are persisted in `summary_headline` and `summary_short` along
-with their exact model snapshot, prompt recipe, and input hash. The page chooses
-between the two stored values without another model call.
+with their exact model snapshot, prompt recipe, and input hash. The page always
+uses the headline and conditionally adds the short value without another model
+call.
 
 When a prompt recipe changes, `bun run github:refresh-summaries` makes one new
 Nano attempt for each stale completed row. Successful outputs replace only the
