@@ -1,4 +1,4 @@
-export const PUBLIC_COMMIT_SUMMARY_RECIPE = "public-commit-product-context-v34";
+export const PUBLIC_COMMIT_SUMMARY_RECIPE = "public-commit-product-context-v35";
 export const DEFAULT_PUBLIC_COMMIT_SUMMARY_LOW_LOC_THRESHOLD = 25;
 
 export const PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT = `Summarize one software commit for a public engineering portfolio. The reader is casually technical and has no repository context.
@@ -93,6 +93,7 @@ export interface PublicCommitEvidence {
   files: readonly PublicCommitFileEvidence[];
   message: string;
   parents: readonly string[];
+  providerFileCapReached: boolean;
   sha: string;
   stats: PublicCommitStats;
 }
@@ -129,55 +130,17 @@ const isSubstantiveFile = (file: PublicCommitFileEvidence) =>
 const extensionFrom = (filename: string) =>
   /\.([A-Za-z0-9]+)$/u.exec(filename)?.[1]?.toLowerCase() ?? null;
 
-const publicCommitFileMetadata = (file: PublicCommitFileEvidence) =>
-  JSON.stringify(
-    {
-      additions: file.additions,
-      deletions: file.deletions,
-      filename: file.filename,
-      previousFilename: file.previousFilename,
-      status: file.status,
-    },
-    null,
-    2
-  );
+export type PublicCommitEvidenceClass = "low-signal" | "product" | "supporting";
 
-const publicCommitEvidencePriority = (file: PublicCommitFileEvidence) => {
+export const publicCommitEvidenceClass = (
+  file: PublicCommitFileEvidence
+): PublicCommitEvidenceClass => {
   if (!isSubstantiveFile(file)) {
-    return 0;
+    return "low-signal";
   }
-  return supportingEvidencePattern.test(file.filename) ? 1 : 2;
-};
-
-export const buildCommitPublicSummaryModelInput = (
-  commit: PublicCommitEvidence,
-  repository: PublicCommitSummaryRepositoryContext
-) => {
-  const sortedFiles = commit.files.toSorted((left, right) =>
-    left.filename.localeCompare(right.filename)
-  );
-  const evidenceOrder = sortedFiles.toSorted(
-    (left, right) =>
-      publicCommitEvidencePriority(left) - publicCommitEvidencePriority(right)
-  );
-  const repositoryEvidence = JSON.stringify(repository, null, 2);
-  const commitEvidence = JSON.stringify(
-    {
-      committedAt: commit.committedAt,
-      message: commit.message,
-      parents: commit.parents,
-      sha: commit.sha,
-      stats: commit.stats,
-    },
-    null,
-    2
-  );
-  const fileIndex = sortedFiles.map(publicCommitFileMetadata);
-  const changes = evidenceOrder.map((file) => {
-    const metadata = publicCommitFileMetadata(file);
-    return `FILE\n${metadata}\nPATCH\n${file.patch ?? "[patch unavailable from GitHub]"}`;
-  });
-  return `REPOSITORY EVIDENCE\n${repositoryEvidence}\n\nCOMMIT EVIDENCE\n${commitEvidence}\n\nCOMPLETE CHANGED FILE INDEX\n${fileIndex.join("\n\n")}\n\nCOMPLETE CHANGED FILES AND DIFFS\n${changes.join("\n\n")}\n\nEND OF EVIDENCE\nBefore answering, silently complete: “A person using this product can now …” Use that answer as the result when the evidence supports one. Otherwise describe the furthest downstream developer or operational result. Prefer visible behavior over its backing implementation; when visible options narrow feed, search, or listing results, call them filters.`;
+  return supportingEvidencePattern.test(file.filename)
+    ? "supporting"
+    : "product";
 };
 
 export const parseCommitPublicSummary = (

@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+import { GitHubTimeline } from "../src/components/github-timeline.tsx";
 import { githubCommits } from "../src/db/schema.ts";
 import {
   decodeGitHubActivityCursor,
@@ -14,6 +18,55 @@ describe("public GitHub activity projection", () => {
   test("persists both Nano summary variants", () => {
     expect(githubCommits.summaryHeadline.name).toBe("summary_headline");
     expect(githubCommits.summaryShort.name).toBe("summary_short");
+  });
+
+  test("persists whether GitHub capped the returned file evidence", () => {
+    expect(githubCommits.providerFileCapReached.name).toBe(
+      "provider_file_cap_reached"
+    );
+    expect(githubCommits.providerFileCapReached.notNull).toBe(true);
+    expect(githubCommits.providerFileCapReached.hasDefault).toBe(true);
+  });
+
+  test("renders provider-capped evidence as a lower bound", () => {
+    const html = renderToStaticMarkup(
+      createElement(GitHubTimeline, {
+        initialPage: {
+          items: [
+            {
+              additions: 1,
+              avatarUrl: null,
+              changedFiles: 3000,
+              committedAt: "2026-08-28T08:30:00.000Z",
+              deletions: 2,
+              id: "provider-capped-commit",
+              languages: [
+                {
+                  changedLines: 3,
+                  iconUrl: null,
+                  id: "typescript",
+                  label: "TypeScript",
+                },
+              ],
+              providerFileCapReached: true,
+              repositoryLabel: null,
+              summary: "Improves a large change.",
+              summaryKind: "short",
+              url: null,
+            },
+          ],
+          nextCursor: null,
+        },
+      })
+    );
+
+    expect(html).toContain("3000+ files");
+    expect(html).toContain(
+      "3000 or more changed files; GitHub caps returned file details at 3,000 files"
+    );
+    expect(html).toContain(
+      'aria-label="Languages found in the first 3,000 files returned by GitHub; the full commit may include more"'
+    );
   });
 
   test("round trips an opaque cursor without repository identity", () => {

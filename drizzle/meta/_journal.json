@@ -43,6 +43,13 @@
       "when": 1787921146709,
       "tag": "0005_glamorous_karnak",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787934897652,
+      "tag": "0006_steep_aqueduct",
+      "breakpoints": true
     }
   ]
 }

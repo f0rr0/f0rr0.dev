@@ -131,15 +131,33 @@ A successful candidate replaces the two persisted summary variants and their
 recipe/model/input hash. A failed candidate leaves the previous valid pair
 untouched.
 
-The Nano call sees all repository and commit evidence returned and parsed by the
+The pipeline starts with repository and commit evidence returned by the
 authenticated GitHub fetch path. That includes repository identity, ownership,
 visibility, description, homepage, topics, and avatar URL; the complete commit
 message and metadata; every returned file's metadata; and every patch string
-GitHub provides. The application passes that evidence without local clipping,
-body cleaning, excerpt selection, or an input character budget. Its prompt is
-generic and has no repository-specific mappings, heuristics, whitelists, or
-allowlists. A complete file index precedes every full diff; generated and
-supporting evidence is ordered before production evidence without dropping it.
+GitHub provides. The complete request is measured with Nano's model-specific
+tokenizer and keeps all evidence unabridged through 240,000 input tokens. If the
+UTF-8 upper bound has not already proved the request fits, a 4 MB input safety
+bound or 64 KB unbroken serialized-line bound routes pathological patch,
+message, description, or path text to compaction before exact full-input
+tokenization; large multiline diffs can still remain whole when they fit.
+
+Above that boundary, one deterministic local pass keeps the repository and
+commit metadata plus a complete compact file ledger, deduplicates identical
+patches, and bounds semantic parsing by patch bytes and total lines. A patch
+outside those memory bounds becomes an explicitly labeled deterministic
+head/tail excerpt with exact omission counters. Parsed patches first replace
+only unchanged context with skip markers. If every changed line still does not
+fit, byte-bounded atomic edit samples keep both sides of replacements together.
+Module/file breadth and a generic token-weighted 6:2:1 allocation cover product,
+test/doc, and generated evidence; samples render in source order with explicit
+gaps. Sample costs are estimated individually, then the final request is
+token-counted exactly and trimmed structurally before the single Nano call. The
+normal compaction manifest separates upstream-missing, counter-mismatched,
+locally raw-compacted, and budget-omitted evidence. An extreme metadata-only
+fallback may omit those detailed distinctions when its minimal aggregate
+manifest is all that fits. There is no LLM pre-summary, second call, retry,
+repository-specific mapping, whitelist, or persisted patch/compaction state.
 
 Every nonempty Nano response is accepted and persisted. The expected
 `HEADLINE` and `SHORT` labels are parsed when present; an unexpectedly shaped

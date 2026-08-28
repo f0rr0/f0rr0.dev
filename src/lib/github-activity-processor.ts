@@ -4,7 +4,6 @@ import { openai } from "@ai-sdk/openai";
 import { APICallError, generateText } from "ai";
 
 import {
-  buildCommitPublicSummaryModelInput,
   deriveCommitLanguages,
   formatPublicCommitSummaryMarkdown,
   parseCommitPublicSummary,
@@ -16,6 +15,7 @@ import type {
   PublicCommitEvidence,
   PublicCommitFileEvidence,
 } from "@/lib/github-activity-public-summary";
+import { buildCommitPublicSummaryModelInput } from "@/lib/github-activity-public-summary-input";
 import {
   claimPendingGitHubActivity,
   completeGitHubActivity,
@@ -92,6 +92,13 @@ const requiredInteger = (value: unknown, label: string) => {
 
 const optionalString = (value: unknown) =>
   typeof value === "string" && value.length > 0 ? value : null;
+
+const compareCodeUnitStrings = (left: string, right: string) => {
+  if (left === right) {
+    return 0;
+  }
+  return left < right ? -1 : 1;
+};
 
 const repositoryApiPath = (repository: string, suffix = "") => {
   const [owner, name, ...rest] = repository.split("/");
@@ -204,6 +211,7 @@ const fileEvidenceFrom = (value: unknown): PublicCommitFileEvidence => {
 const commitEvidenceFrom = (
   root: JsonObject,
   files: readonly PublicCommitFileEvidence[],
+  providerFileCapReached: boolean,
   expected: ClaimedGitHubActivityCommit
 ): PublicCommitEvidence => {
   if (
@@ -259,6 +267,7 @@ const commitEvidenceFrom = (
     files,
     message: requiredString(root.commit.message, "commit message"),
     parents,
+    providerFileCapReached,
     sha,
     stats: { additions, deletions, total },
   };
@@ -278,6 +287,7 @@ const fetchCommitSourceWithToken = async (
   );
   const files = new Map<string, PublicCommitFileEvidence>();
   let root: JsonObject | null = null;
+  let providerFileCapReached = false;
   for (let page = 1; page <= MAXIMUM_GITHUB_FILE_PAGES; page += 1) {
     const value = await fetchJson(
       repositoryApiPath(
@@ -301,10 +311,7 @@ const fetchCommitSourceWithToken = async (
       break;
     }
     if (page === MAXIMUM_GITHUB_FILE_PAGES) {
-      throw new ActivityProcessingError(
-        "source_too_large",
-        "The commit exceeded GitHub's file pagination budget."
-      );
+      providerFileCapReached = true;
     }
   }
   if (root === null) {
@@ -317,8 +324,9 @@ const fetchCommitSourceWithToken = async (
     commit: commitEvidenceFrom(
       root,
       [...files.values()].toSorted((left, right) =>
-        left.filename.localeCompare(right.filename)
+        compareCodeUnitStrings(left.filename, right.filename)
       ),
+      providerFileCapReached,
       row
     ),
     repository,
@@ -361,7 +369,7 @@ const directlyOwnedRepository = (source: GitHubActivityCommitSource) =>
   trackedGitHubAccountFrom(source.repository.ownerLogin) !== null;
 
 const generateCommitSummary = async (source: GitHubActivityCommitSource) => {
-  const modelInput = buildCommitPublicSummaryModelInput(source.commit, {
+  const modelInput = await buildCommitPublicSummaryModelInput(source.commit, {
     avatarUrl: source.repository.avatarUrl,
     description: source.repository.description,
     directlyOwned: directlyOwnedRepository(source),
@@ -437,6 +445,7 @@ const processClaimedCommit = async (row: ClaimedGitHubActivityCommit) => {
       changedFiles: source.commit.files.length,
       deletions: source.commit.stats.deletions,
       languages: deriveCommitLanguages(source.commit.files),
+      providerFileCapReached: source.commit.providerFileCapReached,
       repository: source.repository.fullName,
       repositoryOwnerAvatarUrl: source.repository.avatarUrl,
       repositoryOwnerLogin: source.repository.ownerLogin,
