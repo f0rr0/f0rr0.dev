@@ -1613,6 +1613,187 @@ const comparableCommitHeadline = (message: string | null) => {
   return headline.replace(/\s+\(#[1-9]\d*\)$/u, "");
 };
 
+interface AuthoredRewriteCandidate {
+  authoredAt: Date | null;
+  authorUserId: string | null;
+  committedAt: Date;
+  committerAt: Date | null;
+  firstObservedAt: Date;
+  fullMessage: string | null;
+  parentShas: readonly string[] | null;
+  publicId: string;
+  sha: string;
+}
+
+const authoredRewriteOrder = (commit: AuthoredRewriteCandidate) =>
+  (commit.committerAt ?? commit.committedAt).getTime();
+
+const compareAuthoredRewriteCandidates = (
+  left: AuthoredRewriteCandidate,
+  right: AuthoredRewriteCandidate
+) => {
+  const byCommitter = authoredRewriteOrder(left) - authoredRewriteOrder(right);
+  if (byCommitter !== 0) {
+    return byCommitter;
+  }
+  const byObservation =
+    left.firstObservedAt.getTime() - right.firstObservedAt.getTime();
+  if (byObservation !== 0) {
+    return byObservation;
+  }
+  if (left.sha === right.sha) {
+    return 0;
+  }
+  return left.sha < right.sha ? -1 : 1;
+};
+
+const canonicalizeAuthoredRewriteLineage = async (
+  transaction: DatabaseTransaction,
+  repositoryId: string,
+  candidate: AuthoredRewriteCandidate,
+  now: Date,
+  allowedMemberMergeSha: string | null = null
+) => {
+  if (
+    candidate.authorUserId === null ||
+    candidate.authoredAt === null ||
+    candidate.fullMessage === null ||
+    candidate.parentShas === null ||
+    candidate.parentShas.length > 1
+  ) {
+    return { aliases: 0, candidateAliased: false };
+  }
+  const lineage = await transaction
+    .select({
+      authoredAt: githubCommits.authoredAt,
+      authorUserId: githubCommits.authorUserId,
+      committedAt: githubCommits.committedAt,
+      committerAt: githubCommits.committerAt,
+      firstObservedAt: githubCommits.firstObservedAt,
+      fullMessage: githubCommits.fullMessage,
+      parentShas: githubCommits.parentShas,
+      publicId: githubPublicActivities.publicId,
+      sha: githubCommits.sha,
+    })
+    .from(githubCommits)
+    .innerJoin(githubPublicActivities, commitActivityIdentity)
+    .where(
+      and(
+        eq(githubCommits.repositoryId, repositoryId),
+        eq(githubCommits.authorUserId, candidate.authorUserId),
+        eq(githubCommits.authoredAt, candidate.authoredAt),
+        eq(githubCommits.fullMessage, candidate.fullMessage),
+        eq(githubCommits.enrichmentState, "complete"),
+        inArray(githubCommits.pullRequestDiscoveryState, [
+          "complete",
+          "unavailable",
+        ]),
+        isNonMergeCommit,
+        isNull(githubPublicActivities.canonicalPublicId),
+        isNull(githubPublicActivities.hiddenAt),
+        or(
+          allowedMemberMergeSha === null
+            ? undefined
+            : eq(githubCommits.sha, allowedMemberMergeSha),
+          sql<boolean>`NOT EXISTS (
+            SELECT 1
+            FROM ${githubPullRequests} AS rewrite_merge_pr
+            WHERE rewrite_merge_pr.repository_id = ${githubCommits.repositoryId}
+              AND rewrite_merge_pr.merge_sha = ${githubCommits.sha}
+              AND rewrite_merge_pr.state = 'merged'
+          )`
+        )
+      )
+    )
+    .orderBy(asc(githubCommits.sha))
+    .for("update");
+  if (lineage.length < 2) {
+    return { aliases: 0, candidateAliased: false };
+  }
+
+  const winner = lineage.toSorted(compareAuthoredRewriteCandidates).at(-1);
+  if (winner === undefined) {
+    throw new Error("The authored rewrite lineage has no canonical commit.");
+  }
+  const losers = lineage.filter(({ publicId }) => publicId !== winner.publicId);
+  const loserPublicIds = losers.map(({ publicId }) => publicId);
+
+  await transaction.execute(sql`
+    WITH RECURSIVE rewrite_alias_descendants AS (
+      SELECT alias_activity.public_id
+      FROM ${githubPublicActivities} AS alias_activity
+      WHERE alias_activity.canonical_public_id IN (
+        ${sql.join(
+          loserPublicIds.map((publicId) => sql`${publicId}`),
+          sql`, `
+        )}
+      )
+      UNION
+      SELECT child_activity.public_id
+      FROM ${githubPublicActivities} AS child_activity
+      INNER JOIN rewrite_alias_descendants AS parent_activity
+        ON child_activity.canonical_public_id = parent_activity.public_id
+    )
+    UPDATE ${githubPublicActivities} AS rewrite_alias
+    SET
+      alias_evidence = COALESCE(rewrite_alias.alias_evidence, '{}'::jsonb)
+        || jsonb_build_object(
+          'canonicalRetargetReason', 'same_authored_rewrite',
+          'canonicalRetargetedFrom', rewrite_alias.canonical_public_id
+        ),
+      canonical_public_id = ${winner.publicId}
+    WHERE rewrite_alias.public_id IN (
+      SELECT public_id FROM rewrite_alias_descendants
+    )
+      AND rewrite_alias.public_id <> ${winner.publicId}
+  `);
+
+  let aliases = 0;
+  for (const loser of losers) {
+    if (
+      await setCanonicalAlias(
+        transaction,
+        loser.publicId,
+        winner.publicId,
+        "same_authored_rewrite",
+        {
+          authoredAt: candidate.authoredAt.toISOString(),
+          authorUserId: candidate.authorUserId,
+          canonicalCommitterAt: (
+            winner.committerAt ?? winner.committedAt
+          ).toISOString(),
+          sourceSha: winner.sha,
+        },
+        now
+      )
+    ) {
+      aliases += 1;
+    }
+  }
+  await transaction
+    .update(githubCommits)
+    .set({ canonicalizedAt: now })
+    .where(
+      and(
+        eq(githubCommits.repositoryId, repositoryId),
+        inArray(
+          githubCommits.activityPublicId,
+          lineage.map(({ publicId }) => publicId)
+        )
+      )
+    );
+  await publishCompletedSummaryForCommit(
+    transaction,
+    repositoryId,
+    winner.sha,
+    now
+  );
+  return {
+    aliases,
+    candidateAliased: candidate.publicId !== winner.publicId,
+  };
+};
+
 export const canonicalizeGitHubCommitActivity = async (
   repositoryId: string,
   sha: string,
@@ -1620,11 +1801,15 @@ export const canonicalizeGitHubCommitActivity = async (
 ) =>
   // oxlint-disable-next-line complexity -- Evidence classes deliberately fail open independently.
   await getDatabase().transaction(async (transaction) => {
+    await transaction.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${repositoryId}, 0))`
+    );
     const [candidate] = await transaction
       .select({
         authoredAt: githubCommits.authoredAt,
         authorUserId: githubCommits.authorUserId,
         changeFingerprint: githubCommits.changeFingerprint,
+        committedAt: githubCommits.committedAt,
         committerAt: githubCommits.committerAt,
         fingerprintComplete: githubCommits.fingerprintComplete,
         firstObservedAt: githubCommits.firstObservedAt,
@@ -1649,7 +1834,7 @@ export const canonicalizeGitHubCommitActivity = async (
       )
       .for("update");
     if (candidate === undefined) {
-      return { aliased: false, publicId: null };
+      return { aliased: false, aliases: 0, publicId: null };
     }
 
     const mergePullRequests = await transaction
@@ -1673,13 +1858,27 @@ export const canonicalizeGitHubCommitActivity = async (
         sha
       );
       if (mergeEvidence.integrationIsMember) {
+        const rewrite = await canonicalizeAuthoredRewriteLineage(
+          transaction,
+          repositoryId,
+          { ...candidate, sha },
+          now,
+          sha
+        );
+        if (rewrite.aliases > 0) {
+          return {
+            aliased: rewrite.candidateAliased,
+            aliases: rewrite.aliases,
+            publicId: candidate.publicId,
+          };
+        }
         await markGitHubCommitCanonicalized(
           transaction,
           repositoryId,
           sha,
           now
         );
-        return { aliased: false, publicId: candidate.publicId };
+        return { aliased: false, aliases: 0, publicId: candidate.publicId };
       }
       if (mergeEvidence.source !== null) {
         const { source } = mergeEvidence;
@@ -1704,8 +1903,26 @@ export const canonicalizeGitHubCommitActivity = async (
           sha,
           now
         );
-        return { aliased, publicId: candidate.publicId };
+        return {
+          aliased,
+          aliases: aliased ? 1 : 0,
+          publicId: candidate.publicId,
+        };
       }
+    }
+
+    const rewrite = await canonicalizeAuthoredRewriteLineage(
+      transaction,
+      repositoryId,
+      { ...candidate, sha },
+      now
+    );
+    if (rewrite.aliases > 0) {
+      return {
+        aliased: rewrite.candidateAliased,
+        aliases: rewrite.aliases,
+        publicId: candidate.publicId,
+      };
     }
 
     if (
@@ -1713,7 +1930,7 @@ export const canonicalizeGitHubCommitActivity = async (
       candidate.changeFingerprint === null
     ) {
       await markGitHubCommitCanonicalized(transaction, repositoryId, sha, now);
-      return { aliased: false, publicId: candidate.publicId };
+      return { aliased: false, aliases: 0, publicId: candidate.publicId };
     }
     const copies = await transaction
       .select({
@@ -1870,10 +2087,14 @@ export const canonicalizeGitHubCommitActivity = async (
         now
       );
       await markGitHubCommitCanonicalized(transaction, repositoryId, sha, now);
-      return { aliased, publicId: candidate.publicId };
+      return {
+        aliased,
+        aliases: aliased ? 1 : 0,
+        publicId: candidate.publicId,
+      };
     }
     await markGitHubCommitCanonicalized(transaction, repositoryId, sha, now);
-    return { aliased: false, publicId: candidate.publicId };
+    return { aliased: false, aliases: 0, publicId: candidate.publicId };
   });
 
 export const canonicalizePendingGitHubActivities = async (
@@ -1908,9 +2129,7 @@ export const canonicalizePendingGitHubActivities = async (
       candidate.sha,
       now
     );
-    if (result.aliased) {
-      aliased += 1;
-    }
+    aliased += result.aliases;
   }
   return aliased;
 };
