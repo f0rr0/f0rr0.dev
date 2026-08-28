@@ -98,12 +98,19 @@ export interface GitHubPullRequestWebhookObservation {
   pullRequest: GitHubPullRequest;
 }
 
+export interface GitHubPullRequestEventSignal {
+  action: string;
+  number: number;
+  repositoryId: string;
+}
+
 export interface GitHubEvent {
   issue: GitHubIssue | null;
   occurredAt: string;
   id: string;
   push: GitHubPush | null;
   pullRequest: GitHubPullRequest | null;
+  pullRequestSignal?: GitHubPullRequestEventSignal;
 }
 
 const isObject = (value: unknown): value is JsonObject =>
@@ -725,6 +732,82 @@ const issueEventFrom = (
   };
 };
 
+const sparsePullRequestRepositoryFrom = (value: unknown) => {
+  if (!isObject(value)) {
+    return null;
+  }
+  const url = normalizedText(value.url, 2000);
+  if (url === null || !url.startsWith("https://api.github.com/repos/")) {
+    return null;
+  }
+  const fullName = url.slice("https://api.github.com/repos/".length);
+  const repository = repositoryFrom({ id: value.id, name: fullName });
+  const repositoryName = normalizedText(value.name, 100);
+  if (
+    repository === null ||
+    repositoryName === null ||
+    repositoryName !== repository.fullName.split("/")[1] ||
+    url !== `https://api.github.com/repos/${repository.fullName}`
+  ) {
+    return null;
+  }
+  return repository;
+};
+
+const sparsePullRequestBranchIsValid = (
+  value: unknown,
+  expectedRepository: GitHubRepository | null
+) => {
+  if (!isObject(value)) {
+    return false;
+  }
+  const repository =
+    value.repo === null ? null : sparsePullRequestRepositoryFrom(value.repo);
+  if (
+    normalizedText(value.ref, 300) === null ||
+    commitShaFrom(value.sha) === null ||
+    (value.repo !== null && repository === null)
+  ) {
+    return false;
+  }
+  return (
+    expectedRepository === null ||
+    (repository !== null && repository.id === expectedRepository.id)
+  );
+};
+
+const sparsePullRequestEventSignalFrom = (
+  payload: JsonObject,
+  repository: GitHubRepository
+): GitHubPullRequestEventSignal | null => {
+  if (!isObject(payload.pull_request)) {
+    return null;
+  }
+  const value = payload.pull_request;
+  const action = normalizedText(payload.action, 40)?.toLowerCase() ?? "";
+  const payloadNumber = positiveInteger(payload.number);
+  const number = positiveInteger(value.number);
+  const id = pullRequestIdFrom(value.id);
+  const expectedUrl =
+    number === null
+      ? null
+      : `https://api.github.com/repos/${repository.fullName}/pulls/${number}`;
+  if (
+    !PULL_REQUEST_ACTION.test(action) ||
+    payloadNumber === null ||
+    number === null ||
+    payloadNumber !== number ||
+    id === null ||
+    expectedUrl === null ||
+    value.url !== expectedUrl ||
+    !sparsePullRequestBranchIsValid(value.base, repository) ||
+    !sparsePullRequestBranchIsValid(value.head, null)
+  ) {
+    return null;
+  }
+  return { action, number, repositoryId: repository.id };
+};
+
 const pullRequestEventFrom = (
   value: JsonObject,
   id: string,
@@ -737,22 +820,41 @@ const pullRequestEventFrom = (
   if (repository === null) {
     return null;
   }
-  const pullRequest = pullRequestFromGitHub(
-    value.payload.pull_request,
-    repository,
-    value.payload.action
+  const rawPullRequest = value.payload.pull_request;
+  if (isObject(rawPullRequest) && "user" in rawPullRequest) {
+    const pullRequest = pullRequestFromGitHub(
+      rawPullRequest,
+      repository,
+      value.payload.action
+    );
+    if (pullRequest === null) {
+      return null;
+    }
+    return {
+      id,
+      issue: null,
+      occurredAt,
+      // Persistence admits a foreign-authored PR only when its stable node ID is
+      // already known through a tracked commit. Retaining it here lets a tracked
+      // maintainer's terminal event schedule the final reconciliation.
+      pullRequest,
+      push: null,
+    };
+  }
+
+  const pullRequestSignal = sparsePullRequestEventSignalFrom(
+    value.payload,
+    repository
   );
-  if (pullRequest === null) {
+  if (pullRequestSignal === null) {
     return null;
   }
   return {
     id,
     issue: null,
     occurredAt,
-    // Persistence admits a foreign-authored PR only when its stable node ID is
-    // already known through a tracked commit. Retaining it here lets a tracked
-    // maintainer's terminal event schedule the final reconciliation.
-    pullRequest,
+    pullRequest: null,
+    pullRequestSignal,
     push: null,
   };
 };
