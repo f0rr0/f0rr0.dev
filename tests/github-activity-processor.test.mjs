@@ -129,6 +129,67 @@ describe("GitHub activity commit acquisition", () => {
     expect(source.commit.files.at(-1)?.filename).toBe("é.ts");
   });
 
+  test("requires explicit valid ancestry while accepting a root commit", async () => {
+    const sha = "d".repeat(40);
+    const ancestryResponses = [undefined, [{ sha: "not-a-sha" }], []];
+    let commitReads = 0;
+    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    globalThis.fetch = async (input) => {
+      const url =
+        input instanceof Request ? new URL(input.url) : new URL(input);
+      if (url.pathname === "/repos/example-org/example-repo") {
+        return Response.json({
+          description: null,
+          full_name: "example-org/example-repo",
+          homepage: null,
+          id: 123,
+          owner: {
+            avatar_url: "https://avatars.githubusercontent.com/u/123?v=4",
+            id: 123,
+            login: "example-org",
+            type: "Organization",
+          },
+          private: false,
+          topics: [],
+          visibility: "public",
+        });
+      }
+      const parents = ancestryResponses[commitReads];
+      commitReads += 1;
+      return Response.json({
+        author: { id: 100, login: "f0rr0" },
+        commit: {
+          author: { date: "2026-08-28T12:00:00Z" },
+          committer: { date: "2026-08-28T12:01:00Z" },
+          message: "feat: preserve authoritative ancestry",
+          tree: { sha: "e".repeat(40) },
+        },
+        committer: { id: 200, login: "github" },
+        files: [],
+        ...(parents === undefined ? {} : { parents }),
+        sha,
+        stats: { additions: 0, deletions: 0, total: 0 },
+      });
+    };
+    const reference = {
+      author: "f0rr0",
+      committedAt: "2026-08-28T12:00:00.000Z",
+      message: "feat: preserve authoritative ancestry",
+      repository: "example-org/example-repo",
+      repositoryId: "123",
+      sha,
+    };
+
+    await expect(
+      fetchGitHubActivityCommitSource(reference)
+    ).rejects.toMatchObject({ code: "source_invalid" });
+    await expect(
+      fetchGitHubActivityCommitSource(reference)
+    ).rejects.toMatchObject({ code: "source_invalid" });
+    const root = await fetchGitHubActivityCommitSource(reference);
+    expect(root.commit.parents).toEqual([]);
+  });
+
   test("expands a push durably while retaining only tracked-authored commits", async () => {
     const beforeSha = "1".repeat(40);
     const trackedSha = "3".repeat(40);

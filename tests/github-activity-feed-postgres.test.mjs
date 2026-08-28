@@ -29,17 +29,23 @@ const activityIds = {
   canonical: "00000000-0000-4000-8000-000000000001",
   direct: "00000000-0000-4000-8000-000000000002",
   issue: "00000000-0000-4000-8000-000000000005",
+  mergeCommit: "00000000-0000-4000-8000-000000000018",
+  mergeOnlyDay: "00000000-0000-4000-8000-000000000019",
   mergedPullRequest: "00000000-0000-4000-8000-000000000004",
   previousDay: "00000000-0000-4000-8000-000000000006",
   postSnapshot: "00000000-0000-4000-8000-000000000007",
+  summaryEligible: "00000000-0000-4000-8000-000000000020",
 };
 
 const shas = {
   alias: "b".repeat(40),
   canonical: "a".repeat(40),
   direct: "c".repeat(40),
+  mergeCommit: "f".repeat(40),
+  mergeOnlyDay: `${"0".repeat(39)}1`,
   previousDay: "d".repeat(40),
   postSnapshot: "e".repeat(40),
+  summaryEligible: `${"0".repeat(39)}2`,
 };
 
 const versionIds = {
@@ -63,11 +69,14 @@ describe.skipIf(!dockerAvailable)(
     let admin;
     let canonicalizeGitHubCommitActivity;
     let claimDueGitHubPullRequests;
+    let claimGitHubSummaryAttempts;
     let closeDatabase;
     let completeGitHubPullRequestReconciliation;
     let completeGitHubSummaryAttempt;
     let containerId;
     let databaseUrl;
+    let ensureGitHubSummaryAttempt;
+    let ensureMissingGitHubSummaryAttempts;
     let originalCronSecret;
     let originalDatabaseUrl;
     let persistAccountIntake;
@@ -143,8 +152,11 @@ describe.skipIf(!dockerAvailable)(
       ({
         canonicalizeGitHubCommitActivity,
         claimDueGitHubPullRequests,
+        claimGitHubSummaryAttempts,
         completeGitHubPullRequestReconciliation,
         completeGitHubSummaryAttempt,
+        ensureGitHubSummaryAttempt,
+        ensureMissingGitHubSummaryAttempts,
       } = await import("../src/lib/github-activity-worker-store.ts"));
       ({ persistAccountIntake } =
         await import("../src/lib/github-commits-store.ts"));
@@ -221,7 +233,68 @@ describe.skipIf(!dockerAvailable)(
             '2026-08-27T08:00:00.000Z', '2026-08-27T08:00:00.000Z',
             1, 1, 'complete', '[]'::jsonb,
             'Previous day', 'f0rr0/source', '101', ${shas.previousDay}, 4
+          ),
+          (
+            ${activityIds.mergeCommit}, 100, 'f0rr0',
+            '2026-08-28T12:30:00.000Z', '2026-08-28T12:30:00.000Z',
+            10, 50, 'complete', '[]'::jsonb,
+            'Merge branch next into feature', 'f0rr0/source', '101',
+            ${shas.mergeCommit}, 150
+          ),
+          (
+            ${activityIds.mergeOnlyDay}, 200, 'f0rr0',
+            '2026-08-26T12:30:00.000Z', '2026-08-26T12:30:00.000Z',
+            20, 75, 'complete', '[]'::jsonb,
+            'Octopus merge on an otherwise empty day', 'f0rr0/source', '101',
+            ${shas.mergeOnlyDay}, 275
+          ),
+          (
+            ${activityIds.summaryEligible}, 1, 'f0rr0',
+            '2026-08-28T08:30:00.000Z', '2026-08-28T08:30:00.000Z',
+            1, 0, 'complete', '[]'::jsonb,
+            'Ordinary summary candidate', 'f0rr0/source', '101',
+            ${shas.summaryEligible}, 1
           )
+      `;
+
+        await transaction`
+        update github_commits
+        set parent_shas = ${JSON.stringify(["7".repeat(40)])}::jsonb,
+          canonicalized_at = '2026-08-28T12:45:00.000Z'
+        where activity_public_id in (
+          ${activityIds.canonical}, ${activityIds.direct}, ${activityIds.alias}
+        )
+      `;
+        await transaction`
+        update github_commits
+        set parent_shas = '[]'::jsonb,
+          canonicalized_at = '2026-08-28T12:45:00.000Z'
+        where activity_public_id = ${activityIds.previousDay}
+      `;
+        await transaction`
+        update github_commits
+        set parent_shas = ${JSON.stringify([
+          "1".repeat(40),
+          "2".repeat(40),
+        ])}::jsonb,
+          canonicalized_at = '2026-08-28T12:45:00.000Z'
+        where repository_id = '101' and sha = ${shas.mergeCommit}
+      `;
+        await transaction`
+        update github_commits
+        set parent_shas = ${JSON.stringify([
+          "3".repeat(40),
+          "4".repeat(40),
+          "5".repeat(40),
+        ])}::jsonb,
+          canonicalized_at = '2026-08-26T12:45:00.000Z'
+        where repository_id = '101' and sha = ${shas.mergeOnlyDay}
+      `;
+        await transaction`
+        update github_commits
+        set parent_shas = '[]'::jsonb,
+          canonicalized_at = '2026-08-28T08:45:00.000Z'
+        where repository_id = '101' and sha = ${shas.summaryEligible}
       `;
 
         await transaction`
@@ -316,6 +389,21 @@ describe.skipIf(!dockerAvailable)(
           (
             ${activityIds.previousDay}, 'commit', '2026-08-27T08:00:00.000Z',
             '2026-08-28T13:00:00.000Z', '101', 1, ${shas.previousDay}
+          ),
+          (
+            ${activityIds.mergeCommit}, 'commit',
+            '2026-08-28T12:30:00.000Z', '2026-08-28T13:00:00.000Z', '101', 1,
+            ${shas.mergeCommit}
+          ),
+          (
+            ${activityIds.mergeOnlyDay}, 'commit',
+            '2026-08-26T12:30:00.000Z', '2026-08-28T13:00:00.000Z', '101', 1,
+            ${shas.mergeOnlyDay}
+          ),
+          (
+            ${activityIds.summaryEligible}, 'commit',
+            '2026-08-28T08:30:00.000Z', null, '101', 1,
+            ${shas.summaryEligible}
           )
       `;
 
@@ -348,6 +436,10 @@ describe.skipIf(!dockerAvailable)(
           (
             ${activityIds.previousDay}, '2026-08-28T13:00:00.000Z', 1,
             'complete', 'Previous-day headline', 'Previous-day summary'
+          ),
+          (
+            ${activityIds.mergeOnlyDay}, '2026-08-28T13:00:00.000Z', 1,
+            'complete', 'Octopus merge headline', 'Octopus merge summary'
           )
       `;
       });
@@ -377,6 +469,128 @@ describe.skipIf(!dockerAvailable)(
         "pull-request-merged",
         "pull-request-commits",
       ]);
+      expect(
+        firstPage.days[0]?.items.some(
+          (item) => item.id === activityIds.mergeCommit
+        )
+      ).toBe(false);
+      expect(
+        await ensureGitHubSummaryAttempt(
+          activityIds.mergeCommit,
+          new Date("2026-08-28T13:30:00.000Z")
+        )
+      ).toBe(false);
+      expect(
+        await ensureGitHubSummaryAttempt(
+          activityIds.summaryEligible,
+          new Date("2026-08-28T13:30:30.000Z")
+        )
+      ).toBe(true);
+      expect(
+        await ensureMissingGitHubSummaryAttempts(
+          50,
+          new Date("2026-08-28T13:31:00.000Z")
+        )
+      ).toBe(0);
+      await admin`
+        insert into github_summary_attempts (
+          activity_public_id, revision, state
+        ) values (${activityIds.mergeCommit}, 1, 'pending')
+      `;
+      const summaryClaims = await claimGitHubSummaryAttempts(
+        8,
+        ["f0rr0", "yuppiestechdev"],
+        new Date("2026-08-28T13:32:00.000Z")
+      );
+      expect(
+        summaryClaims.map(({ activityPublicId }) => activityPublicId)
+      ).toEqual([activityIds.summaryEligible]);
+      const claimedSummaries = await admin`
+        select activity_public_id, state
+        from github_summary_attempts
+        where activity_public_id in (
+          ${activityIds.mergeCommit}, ${activityIds.summaryEligible}
+        )
+        order by activity_public_id
+      `;
+      expect(claimedSummaries).toEqual([
+        {
+          activity_public_id: activityIds.mergeCommit,
+          state: "pending",
+        },
+        {
+          activity_public_id: activityIds.summaryEligible,
+          state: "processing",
+        },
+      ]);
+      const mergeLeaseToken = "20000000-0000-4000-8000-000000000018";
+      await admin`
+        update github_public_activities
+        set published_at = null
+        where public_id = ${activityIds.mergeCommit}
+      `;
+      await admin`
+        update github_summary_attempts
+        set attempted_at = '2026-08-28T13:32:30.000Z',
+          lease_token = ${mergeLeaseToken},
+          lease_until = '2026-08-28T13:37:30.000Z', state = 'processing'
+        where activity_public_id = ${activityIds.mergeCommit} and revision = 1
+      `;
+      expect(
+        await completeGitHubSummaryAttempt(
+          {
+            activityPublicId: activityIds.mergeCommit,
+            author: "f0rr0",
+            committedAt: "2026-08-28T12:30:00.000Z",
+            leaseToken: mergeLeaseToken,
+            message: "Merge branch next into feature",
+            repository: "f0rr0/source",
+            repositoryId: "101",
+            revision: 1,
+            sha: shas.mergeCommit,
+          },
+          {
+            headline: "A stale merge summary",
+            inputHash: "b".repeat(64),
+            model: "test-model",
+            recipe: "test-recipe",
+            short: "This pre-existing in-flight result must not be published.",
+          },
+          new Date("2026-08-28T13:33:00.000Z")
+        )
+      ).toBe(true);
+      const [completedMerge] = await admin`
+        select github_public_activities.published_at,
+          github_summary_attempts.state
+        from github_public_activities
+        join github_summary_attempts
+          on github_summary_attempts.activity_public_id = github_public_activities.public_id
+        where github_public_activities.public_id = ${activityIds.mergeCommit}
+      `;
+      expect(completedMerge).toEqual({ published_at: null, state: "complete" });
+      await admin`
+        update github_commits
+        set canonicalized_at = null, pr_discovery_state = 'complete'
+        where repository_id = '101' and sha = ${shas.mergeCommit}
+      `;
+      expect(
+        await canonicalizeGitHubCommitActivity(
+          "101",
+          shas.mergeCommit,
+          new Date("2026-08-28T13:34:00.000Z")
+        )
+      ).toEqual({ aliased: false, publicId: activityIds.mergeCommit });
+      const [canonicalizedMerge] = await admin`
+        select github_commits.canonicalized_at,
+          github_public_activities.published_at
+        from github_commits
+        join github_public_activities
+          on github_public_activities.public_id = github_commits.activity_public_id
+        where github_commits.repository_id = '101'
+          and github_commits.sha = ${shas.mergeCommit}
+      `;
+      expect(canonicalizedMerge.canonicalized_at).not.toBeNull();
+      expect(canonicalizedMerge.published_at).toBeNull();
 
       const snapshot = new Date(firstPage.snapshotAt);
       const postSnapshotPublishedAt = new Date(snapshot.getTime() + 1000);
@@ -386,12 +600,13 @@ describe.skipIf(!dockerAvailable)(
         insert into github_commits (
           activity_public_id, additions, author_login, committed_at,
           committer_at, changed_files, deletions, enrichment_state, languages,
-          message, repository, repository_id, sha, substantive_loc
+          message, parent_shas, repository, repository_id, sha, substantive_loc
         ) values (
           ${activityIds.postSnapshot}, 99, 'f0rr0',
           '2026-08-26T08:00:00.000Z', '2026-08-26T08:00:00.000Z', 1, 99,
           'complete', '[]'::jsonb, 'Published after the snapshot',
-          'f0rr0/source', '101', ${shas.postSnapshot}, 198
+          ${JSON.stringify(["8".repeat(40)])}::jsonb, 'f0rr0/source', '101',
+          ${shas.postSnapshot}, 198
         )
       `;
         await transaction`
@@ -797,13 +1012,14 @@ describe.skipIf(!dockerAvailable)(
       await admin`
         insert into github_commits (
           activity_public_id, author_login, canonicalized_at, committed_at,
-          committer_at, enrichment_state, languages, message, repository,
-          repository_id, sha
+          committer_at, enrichment_state, languages, message, parent_shas,
+          repository, repository_id, sha
         ) values (
           ${summaryActivityId}, 'f0rr0', '2026-08-28T21:30:00.000Z',
           '2026-08-28T21:00:00.000Z', '2026-08-28T21:00:00.000Z',
-          'complete', '[]'::jsonb, 'Publish typed timestamp', 'f0rr0/source',
-          '101', ${summarySha}
+          'complete', '[]'::jsonb, 'Publish typed timestamp',
+          ${JSON.stringify(["9".repeat(40)])}::jsonb, 'f0rr0/source', '101',
+          ${summarySha}
         )
       `;
       await admin`
@@ -1142,6 +1358,46 @@ describe.skipIf(!dockerAvailable)(
           public_id: exactCopyIds.headlineCandidate,
         },
       ]);
+
+      await admin`
+        update github_public_activities
+        set alias_evidence = null, alias_reason = null,
+          canonical_public_id = null, hidden_at = null
+        where public_id = ${exactCopyIds.merge}
+      `;
+      await admin`
+        update github_public_activities
+        set alias_evidence = '{"preexistingInvalidTarget":true}'::jsonb,
+          alias_reason = 'same_authored_exact_copy',
+          canonical_public_id = ${exactCopyIds.merge},
+          hidden_at = '2026-08-28T16:03:00.000Z'
+        where public_id = ${exactCopyIds.controlSource}
+      `;
+      await admin`
+        update github_commits
+        set canonicalized_at = null, full_message = 'First intentional edit',
+          message = 'First intentional edit'
+        where activity_public_id = ${exactCopyIds.controlCandidate}
+      `;
+      expect(
+        await canonicalizeGitHubCommitActivity(
+          "303",
+          exactCopyShas.controlCandidate,
+          new Date("2026-08-28T16:04:00.000Z")
+        )
+      ).toEqual({
+        aliased: false,
+        publicId: exactCopyIds.controlCandidate,
+      });
+      const [candidateProtectedFromMergeAlias] = await admin`
+        select canonical_public_id, hidden_at
+        from github_public_activities
+        where public_id = ${exactCopyIds.controlCandidate}
+      `;
+      expect(candidateProtectedFromMergeAlias).toEqual({
+        canonical_public_id: null,
+        hidden_at: null,
+      });
     });
   }
 );

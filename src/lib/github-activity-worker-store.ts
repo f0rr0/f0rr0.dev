@@ -59,6 +59,16 @@ type DatabaseTransaction = Parameters<
 
 const DEFAULT_LEASE_MS = 5 * 60 * 1000;
 const DEFAULT_DEFER_MS = 15 * 60 * 1000;
+const isNonMergeCommit = sql<boolean>`
+  ${githubCommits.parentShas} IS NOT NULL
+  AND jsonb_array_length(${githubCommits.parentShas}) <= 1
+`;
+const commitActivityIdentity = and(
+  eq(githubPublicActivities.kind, "commit"),
+  eq(githubCommits.activityPublicId, githubPublicActivities.publicId),
+  eq(githubCommits.repositoryId, githubPublicActivities.repositoryId),
+  eq(githubCommits.sha, githubPublicActivities.sourceNodeId)
+);
 
 const commitIdentity = (commit: { repositoryId: string; sha: string }) =>
   and(
@@ -1435,10 +1445,7 @@ const canonicalSourceForPullRequest = async (
         eq(githubCommits.sha, githubPullRequestMemberships.commitSha)
       )
     )
-    .innerJoin(
-      githubPublicActivities,
-      eq(githubPublicActivities.publicId, githubCommits.activityPublicId)
-    )
+    .innerJoin(githubPublicActivities, commitActivityIdentity)
     .where(
       and(
         eq(githubPullRequestVersions.pullRequestNodeId, pullRequestNodeId),
@@ -1446,6 +1453,7 @@ const canonicalSourceForPullRequest = async (
         eq(githubPullRequestVersions.mergeSnapshot, true),
         eq(githubPullRequestVersions.membershipComplete, true),
         eq(githubCommits.enrichmentState, "complete"),
+        isNonMergeCommit,
         ne(githubCommits.sha, excludedSha),
         isNull(githubPublicActivities.canonicalPublicId),
         isNull(githubPublicActivities.hiddenAt)
@@ -1543,10 +1551,7 @@ const publishCompletedSummaryForCommit = async (
   const [ready] = await transaction
     .select({ publicId: githubPublicActivities.publicId })
     .from(githubCommits)
-    .innerJoin(
-      githubPublicActivities,
-      eq(githubPublicActivities.publicId, githubCommits.activityPublicId)
-    )
+    .innerJoin(githubPublicActivities, commitActivityIdentity)
     .innerJoin(
       githubSummaryAttempts,
       and(
@@ -1563,6 +1568,7 @@ const publishCompletedSummaryForCommit = async (
         eq(githubCommits.repositoryId, repositoryId),
         eq(githubCommits.sha, sha),
         isNotNull(githubCommits.canonicalizedAt),
+        isNonMergeCommit,
         isNull(githubPublicActivities.canonicalPublicId),
         isNull(githubPublicActivities.hiddenAt)
       )
@@ -1627,10 +1633,7 @@ export const canonicalizeGitHubCommitActivity = async (
         publicId: githubPublicActivities.publicId,
       })
       .from(githubCommits)
-      .innerJoin(
-        githubPublicActivities,
-        eq(githubPublicActivities.publicId, githubCommits.activityPublicId)
-      )
+      .innerJoin(githubPublicActivities, commitActivityIdentity)
       .where(
         and(
           eq(githubCommits.repositoryId, repositoryId),
@@ -1725,19 +1728,34 @@ export const canonicalizeGitHubCommitActivity = async (
         sha: githubCommits.sha,
       })
       .from(githubCommits)
-      .innerJoin(
-        githubPublicActivities,
-        eq(githubPublicActivities.publicId, githubCommits.activityPublicId)
-      )
+      .innerJoin(githubPublicActivities, commitActivityIdentity)
       .where(
         and(
           eq(githubCommits.repositoryId, repositoryId),
           eq(githubCommits.changeFingerprint, candidate.changeFingerprint),
           eq(githubCommits.fingerprintComplete, true),
           eq(githubCommits.enrichmentState, "complete"),
+          isNonMergeCommit,
           or(
             isNull(githubPublicActivities.hiddenAt),
             isNotNull(githubPublicActivities.canonicalPublicId)
+          ),
+          or(
+            isNull(githubPublicActivities.canonicalPublicId),
+            sql<boolean>`EXISTS (
+              SELECT 1
+              FROM ${githubPublicActivities} AS canonical_activity
+              INNER JOIN ${githubCommits} AS canonical_commit
+                ON canonical_commit.activity_public_id = canonical_activity.public_id
+                AND canonical_commit.repository_id = canonical_activity.repository_id
+                AND canonical_commit.sha = canonical_activity.source_node_id
+              WHERE canonical_activity.public_id = ${githubPublicActivities.canonicalPublicId}
+                AND canonical_activity.kind = 'commit'
+                AND canonical_activity.canonical_public_id IS NULL
+                AND canonical_activity.hidden_at IS NULL
+                AND canonical_commit.parent_shas IS NOT NULL
+                AND jsonb_array_length(canonical_commit.parent_shas) <= 1
+            )`
           )
         )
       )
@@ -1868,10 +1886,7 @@ export const canonicalizePendingGitHubActivities = async (
       sha: githubCommits.sha,
     })
     .from(githubCommits)
-    .innerJoin(
-      githubPublicActivities,
-      eq(githubPublicActivities.publicId, githubCommits.activityPublicId)
-    )
+    .innerJoin(githubPublicActivities, commitActivityIdentity)
     .where(
       and(
         eq(githubCommits.enrichmentState, "complete"),
@@ -1911,11 +1926,13 @@ export const ensureGitHubSummaryAttempt = async (
         revision: githubPublicActivities.revision,
       })
       .from(githubPublicActivities)
+      .innerJoin(githubCommits, commitActivityIdentity)
       .where(
         and(
           eq(githubPublicActivities.publicId, activityPublicId),
           isNull(githubPublicActivities.canonicalPublicId),
-          isNull(githubPublicActivities.hiddenAt)
+          isNull(githubPublicActivities.hiddenAt),
+          isNonMergeCommit
         )
       )
       .limit(1);
@@ -1947,13 +1964,7 @@ export const ensureMissingGitHubSummaryAttempts = async (
   const rows = await getDatabase()
     .select({ publicId: githubPublicActivities.publicId })
     .from(githubPublicActivities)
-    .innerJoin(
-      githubCommits,
-      and(
-        eq(githubCommits.repositoryId, githubPublicActivities.repositoryId),
-        eq(githubCommits.sha, githubPublicActivities.sourceNodeId)
-      )
-    )
+    .innerJoin(githubCommits, commitActivityIdentity)
     .leftJoin(
       githubSummaryAttempts,
       and(
@@ -1971,7 +1982,8 @@ export const ensureMissingGitHubSummaryAttempts = async (
         isNull(githubPublicActivities.hiddenAt),
         isNull(githubSummaryAttempts.activityPublicId),
         eq(githubCommits.enrichmentState, "complete"),
-        isNotNull(githubCommits.canonicalizedAt)
+        isNotNull(githubCommits.canonicalizedAt),
+        isNonMergeCommit
       )
     )
     .orderBy(asc(githubCommits.firstObservedAt), asc(githubCommits.sha))
@@ -2034,13 +2046,7 @@ export const claimGitHubSummaryAttempts = async (
           eq(githubPublicActivities.revision, githubSummaryAttempts.revision)
         )
       )
-      .innerJoin(
-        githubCommits,
-        and(
-          eq(githubCommits.repositoryId, githubPublicActivities.repositoryId),
-          eq(githubCommits.sha, githubPublicActivities.sourceNodeId)
-        )
-      )
+      .innerJoin(githubCommits, commitActivityIdentity)
       .where(
         and(
           eq(githubSummaryAttempts.state, "pending"),
@@ -2049,7 +2055,8 @@ export const claimGitHubSummaryAttempts = async (
           isNull(githubPublicActivities.hiddenAt),
           inArray(githubCommits.author, [...activeAccounts]),
           eq(githubCommits.enrichmentState, "complete"),
-          isNotNull(githubCommits.canonicalizedAt)
+          isNotNull(githubCommits.canonicalizedAt),
+          isNonMergeCommit
         )
       )
       .orderBy(
@@ -2127,17 +2134,13 @@ export const completeGitHubSummaryAttempt = async (
         revision: githubPublicActivities.revision,
       })
       .from(githubPublicActivities)
-      .innerJoin(
-        githubCommits,
-        and(
-          eq(githubCommits.repositoryId, githubPublicActivities.repositoryId),
-          eq(githubCommits.sha, githubPublicActivities.sourceNodeId)
-        )
-      )
+      .innerJoin(githubCommits, commitActivityIdentity)
       .where(
         and(
           eq(githubPublicActivities.publicId, attempt.activityPublicId),
-          eq(githubPublicActivities.revision, attempt.revision)
+          eq(githubPublicActivities.revision, attempt.revision),
+          eq(githubPublicActivities.kind, "commit"),
+          isNonMergeCommit
         )
       )
       .for("update");

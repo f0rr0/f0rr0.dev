@@ -112,8 +112,16 @@ order:
 3. Ask GitHub which PRs are associated with each newly enriched commit and
    persist those PR snapshots. Reconcile known PRs that are due.
 4. Canonicalize only copies supported by complete, deterministic evidence.
-5. Create and claim one summary attempt for each still-canonical commit, make
-   one Nano call, and publish the activity only after it succeeds.
+5. Create and claim one summary attempt for each still-canonical, non-merge
+   commit, make one Nano call, and publish the activity only after it succeeds.
+
+A commit with more than one parent is a regular merge commit. It remains fully
+stored for intake, ancestry, and alias evidence, but it is excluded from summary
+creation, summary claims, the public activity projection, pagination days, and
+daily LOC/repository totals. A merged pull request remains visible as its
+separate PR milestone. This intentionally omits even a merge commit with unique
+conflict-resolution changes: the public surface describes authored work and PR
+outcomes, not integration mechanics.
 
 An issue opened by a tracked account needs no enrichment or model call. Intake
 persists its stable node/repository IDs, original title/link snapshots, creation
@@ -219,11 +227,11 @@ auditable and reversible.
 
 ## One-shot Nano summaries
 
-Every canonical commit gets one revision-scoped summary-attempt row and, when
-claimed, one `gpt-5-nano-2025-08-07` request with `maxRetries: 0` and
+Every canonical non-merge commit gets one revision-scoped summary-attempt row
+and, when claimed, one `gpt-5-nano-2025-08-07` request with `maxRetries: 0` and
 `store: false`. The request produces both the compact headline and expandable
-short summary. Languages and line counts are procedural and are not inferred by
-the model.
+short summary. Languages and line counts are procedural and are not inferred
+by the model.
 
 If the worker reaches its deadline before issuing the model request, it releases
 the claim back to `pending`; no attempt was consumed. Once the request starts,
@@ -241,8 +249,9 @@ for the prompt, compaction, and output contract.
 ## Public timeline
 
 The homepage reads a server-side projection of published, non-aliased
-activities. The initial render is a React Server Component; only the pagination
-control is a client component. Subsequent pages use
+activities, excluding stored multi-parent merge commits. The initial render is
+a React Server Component; only the pagination control is a client component.
+Subsequent pages use
 `GET /api/github/activity?cursor=...`.
 
 Pagination is by complete UTC day, not by item. A page contains five days by

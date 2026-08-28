@@ -519,6 +519,10 @@ const readActivitySourceRows = async (
             and(
               eq(githubPublicActivities.kind, "commit"),
               eq(
+                githubPublicActivities.publicId,
+                githubCommits.activityPublicId
+              ),
+              eq(
                 githubPublicActivities.repositoryId,
                 githubCommits.repositoryId
               ),
@@ -595,6 +599,18 @@ export const readPublicGitHubActivityPage = async (
     lte(githubPublicActivities.publishedAt, snapshotDate),
     isNull(githubPublicActivities.hiddenAt),
     isNull(githubPublicActivities.canonicalPublicId),
+    sql<boolean>`(
+      ${githubPublicActivities.kind} <> 'commit'
+      OR EXISTS (
+        SELECT 1
+        FROM ${githubCommits}
+        WHERE ${githubCommits.activityPublicId} = ${githubPublicActivities.publicId}
+          AND ${githubCommits.repositoryId} = ${githubPublicActivities.repositoryId}
+          AND ${githubCommits.sha} = ${githubPublicActivities.sourceNodeId}
+          AND ${githubCommits.parentShas} IS NOT NULL
+          AND jsonb_array_length(${githubCommits.parentShas}) <= 1
+      )
+    )`,
     beforeDate === null
       ? undefined
       : lt(githubPublicActivities.occurredAt, beforeDate)
