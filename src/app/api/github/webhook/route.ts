@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { revalidateTag } from "next/cache";
 
 import { isDatabaseConfigured } from "@/db/client";
+import { env } from "@/env";
 import {
   githubDeliveryIdFrom,
   issueActionFromWebhook,
@@ -103,7 +104,7 @@ const persistSupportedWebhook = async (
 };
 
 export async function POST(request: Request) {
-  const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET?.trim();
+  const webhookSecret = env.GITHUB_WEBHOOK_SECRET?.trim();
   if (
     webhookSecret === undefined ||
     webhookSecret.length < 32 ||

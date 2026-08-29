@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { openai } from "@ai-sdk/openai";
 import { APICallError, generateText } from "ai";
 
+import { env } from "@/env";
 import {
   formatPublicCommitSummaryMarkdown,
   parseCommitPublicSummary,
@@ -208,15 +209,15 @@ const repositoryReferenceFrom = (row: {
 const tokenCandidatesFor = (account: TrackedGitHubAccount) => {
   const accountToken =
     account === "f0rr0"
-      ? process.env.GITHUB_F0RR0_TOKEN
-      : process.env.GITHUB_YUPPIESTECHDEV_TOKEN;
+      ? env.GITHUB_F0RR0_TOKEN
+      : env.GITHUB_YUPPIESTECHDEV_TOKEN;
   const otherToken =
     account === "f0rr0"
-      ? process.env.GITHUB_YUPPIESTECHDEV_TOKEN
-      : process.env.GITHUB_F0RR0_TOKEN;
+      ? env.GITHUB_YUPPIESTECHDEV_TOKEN
+      : env.GITHUB_F0RR0_TOKEN;
   return [
     ...new Set(
-      [accountToken, otherToken, process.env.GITHUB_TOKEN].flatMap((value) => {
+      [accountToken, otherToken, env.GITHUB_TOKEN].flatMap((value) => {
         const token = value?.trim();
         return token === undefined || token.length === 0 ? [] : [token];
       })

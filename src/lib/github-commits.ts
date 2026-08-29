@@ -1,4 +1,5 @@
 import { DatabaseConfigurationError, isDatabaseConfigured } from "@/db/client";
+import { env } from "@/env";
 import { fetchGitHub, githubApiUrl, nextGitHubPage } from "@/lib/github-api";
 import type { GitHubBackfillRequest } from "@/lib/github-backfill-core";
 import {
@@ -84,7 +85,7 @@ export class GitHubSyncConfigurationError extends Error {
 
 const tokenFor = (account: TrackedGitHubAccount) => {
   const variable = ACCOUNT_TOKEN_VARIABLES[account];
-  const token = process.env[variable]?.trim();
+  const token = env[variable]?.trim();
   if (token === undefined || token.length === 0) {
     throw new GitHubSyncConfigurationError(variable);
   }

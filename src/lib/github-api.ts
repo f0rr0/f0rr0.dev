@@ -1,5 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 
+import { env } from "@/env";
+
 const GITHUB_API_ORIGIN = "https://api.github.com";
 const GITHUB_API_VERSION = "2026-03-10";
 const REQUEST_ATTEMPTS = 3;
@@ -55,8 +57,7 @@ const isRateLimited = (response: Response) =>
       response.headers.get("x-ratelimit-remaining") === "0"));
 
 const readDefaultGitHubToken = () => {
-  const token =
-    process.env.GITHUB_TOKEN?.trim() ?? process.env.GITHUB_F0RR0_TOKEN?.trim();
+  const token = env.GITHUB_TOKEN?.trim() ?? env.GITHUB_F0RR0_TOKEN?.trim();
   return token === undefined || token.length === 0 ? null : token;
 };
 

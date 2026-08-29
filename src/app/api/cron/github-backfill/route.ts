@@ -1,3 +1,4 @@
+import { env } from "@/env";
 import { githubBackfillRequestFrom } from "@/lib/github-backfill-core";
 import { queueGitHubBackfill } from "@/lib/github-commits";
 import { reportOperationalError } from "@/lib/operational-error";
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
   if (
     !hasBearerSecret(
       request.headers.get("authorization"),
-      process.env.GITHUB_BACKFILL_SECRET
+      env.GITHUB_BACKFILL_SECRET
     )
   ) {
     return Response.json({ ok: false }, { status: 401 });

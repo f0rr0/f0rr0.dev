@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
+import { env } from "../src/env.ts";
 import {
   fetchGitHubActivityCommitSource,
   fetchGitHubAssociatedPullRequests,
@@ -8,9 +9,9 @@ import {
 } from "../src/lib/github-activity-processor.ts";
 
 const originalFetch = globalThis.fetch;
-const originalF0rr0Token = process.env.GITHUB_F0RR0_TOKEN;
-const originalYuppiesTechDevToken = process.env.GITHUB_YUPPIESTECHDEV_TOKEN;
-const originalDefaultToken = process.env.GITHUB_TOKEN;
+const originalF0rr0Token = env.GITHUB_F0RR0_TOKEN;
+const originalYuppiesTechDevToken = env.GITHUB_YUPPIESTECHDEV_TOKEN;
+const originalDefaultToken = env.GITHUB_TOKEN;
 
 const pushCommitValue = (sha, login, id) => ({
   author: { id, login },
@@ -24,16 +25,16 @@ const pushCommitValue = (sha, login, id) => ({
 
 const restoreEnvironmentValue = (name, value) => {
   if (value === undefined) {
-    Reflect.deleteProperty(process.env, name);
+    Reflect.deleteProperty(env, name);
   } else {
-    process.env[name] = value;
+    env[name] = value;
   }
 };
 
 beforeEach(() => {
-  delete process.env.GITHUB_F0RR0_TOKEN;
-  delete process.env.GITHUB_YUPPIESTECHDEV_TOKEN;
-  delete process.env.GITHUB_TOKEN;
+  delete env.GITHUB_F0RR0_TOKEN;
+  delete env.GITHUB_YUPPIESTECHDEV_TOKEN;
+  delete env.GITHUB_TOKEN;
 });
 
 afterEach(() => {
@@ -59,7 +60,7 @@ describe("GitHub activity commit acquisition", () => {
     filenames[2] = "A.ts";
     const requestedPages = [];
 
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async (input) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
@@ -133,7 +134,7 @@ describe("GitHub activity commit acquisition", () => {
     const sha = "d".repeat(40);
     const ancestryResponses = [undefined, [{ sha: "not-a-sha" }], []];
     let commitReads = 0;
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async (input) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
@@ -195,7 +196,7 @@ describe("GitHub activity commit acquisition", () => {
     const trackedSha = "3".repeat(40);
     const foreignSha = "4".repeat(40);
     const afterSha = foreignSha;
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async (input) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
@@ -232,7 +233,7 @@ describe("GitHub activity commit acquisition", () => {
     const firstSha = "2".repeat(40);
     const surplusSha = "3".repeat(40);
     const afterSha = "4".repeat(40);
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async () =>
       Response.json({
         ahead_by: 3,
@@ -262,7 +263,7 @@ describe("GitHub activity commit acquisition", () => {
     const beforeSha = "1".repeat(40);
     const firstSha = "2".repeat(40);
     const afterSha = "3".repeat(40);
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async () =>
       Response.json({
         ahead_by: 2,
@@ -291,7 +292,7 @@ describe("GitHub activity commit acquisition", () => {
     const beforeSha = "1".repeat(40);
     const foreignSha = "2".repeat(40);
     const afterSha = "3".repeat(40);
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async () =>
       Response.json({
         ahead_by: 2,
@@ -333,7 +334,7 @@ describe("GitHub activity commit acquisition", () => {
   test("rejects a tracked commit without a provider timestamp", async () => {
     const beforeSha = "1".repeat(40);
     const afterSha = "2".repeat(40);
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async () =>
       Response.json({
         ahead_by: 1,
@@ -364,7 +365,7 @@ describe("GitHub activity commit acquisition", () => {
   test("accepts a ref rewind with no newly reachable commits", async () => {
     const beforeSha = "1".repeat(40);
     const afterSha = "2".repeat(40);
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async () => Response.json({ ahead_by: 0, commits: [] });
 
     const source = await fetchGitHubPushObservationSource({
@@ -387,7 +388,7 @@ describe("GitHub activity commit acquisition", () => {
     const olderSha = "2".repeat(40);
     const afterSha = "3".repeat(40);
     const paths = [];
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async (input, init) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
@@ -449,7 +450,7 @@ describe("GitHub activity commit acquisition", () => {
   test("bounds a new branch by the observed count without slicing history", async () => {
     const olderSha = "1".repeat(40);
     const afterSha = "2".repeat(40);
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async (input, init) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
@@ -509,7 +510,7 @@ describe("GitHub activity commit acquisition", () => {
     const middleSha = "2".repeat(40);
     const afterSha = "3".repeat(40);
     const cursors = [];
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async (_input, init) => {
       const request = JSON.parse(init?.body);
       cursors.push(request.variables.cursor);
@@ -582,7 +583,7 @@ describe("GitHub activity commit acquisition", () => {
   test("backfills a closed date window without requiring the current ref head", async () => {
     const rangedSha = "4".repeat(40);
     const afterSha = "5".repeat(40);
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async (_input, init) => {
       const request = JSON.parse(init?.body);
       expect(request.variables.since).toBe("2026-07-01T00:00:00.000Z");
@@ -628,7 +629,7 @@ describe("GitHub activity commit acquisition", () => {
 
   test("accepts a ref whose reachable history predates the boundary", async () => {
     const afterSha = "4".repeat(40);
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async (_input, init) => {
       const request = JSON.parse(init?.body);
       expect(request.variables.since).toBe("2026-08-18T00:00:00.000Z");
@@ -723,7 +724,7 @@ describe("GitHub pull request acquisition", () => {
         sha: headSha,
       },
     };
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async (input) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
@@ -750,8 +751,8 @@ describe("GitHub pull request acquisition", () => {
 
   test("unions associated PR visibility across both tracked identities", async () => {
     const commitSha = "8".repeat(40);
-    process.env.GITHUB_F0RR0_TOKEN = "f0-token";
-    process.env.GITHUB_YUPPIESTECHDEV_TOKEN = "yuppies-token";
+    env.GITHUB_F0RR0_TOKEN = "f0-token";
+    env.GITHUB_YUPPIESTECHDEV_TOKEN = "yuppies-token";
     let calls = 0;
     globalThis.fetch = async () => {
       calls += 1;
@@ -775,7 +776,7 @@ describe("GitHub pull request acquisition", () => {
   test("discovers associated tracked pull requests and reconciles membership", async () => {
     const commitSha = "a".repeat(40);
     const requestedPaths = [];
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     globalThis.fetch = async (input) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
@@ -821,7 +822,7 @@ describe("GitHub pull request acquisition", () => {
   });
 
   test("falls back to GraphQL for pull requests beyond the REST cap", async () => {
-    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    env.GITHUB_F0RR0_TOKEN = "test-token";
     const graphQlCursors = [];
     globalThis.fetch = async (input, init) => {
       const url =

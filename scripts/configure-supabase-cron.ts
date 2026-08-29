@@ -1,7 +1,10 @@
 import postgres from "postgres";
 
+import { env } from "../src/env";
+
 const JOB_NAME = "github-sync-every-three-hours";
 const JOB_SCHEDULE = "7 */3 * * *";
+const CRON_HTTP_TIMEOUT_MS = 120_000;
 const WORKER_JOB_NAME = "github-activity-worker-every-five-minutes";
 const WORKER_JOB_SCHEDULE = "*/5 * * * *";
 const SECRET_DESCRIPTION = "Vercel GitHub sync cron configuration";
@@ -9,25 +12,28 @@ const SECRET_NAME = "github_sync_bearer_secret";
 const URL_NAME = "github_sync_url";
 const WORKER_URL_NAME = "github_worker_url";
 
-const requiredEnvironmentValue = (name: string) => {
-  const value = process.env[name]?.trim();
+const requiredEnvironmentValue = (
+  name: string,
+  configured: string | undefined
+) => {
+  const value = configured?.trim();
   if (value === undefined || value.length === 0) {
     throw new Error(`${name} is not configured.`);
   }
   return value;
 };
 
-const unpooledDatabaseUrl = process.env.DATABASE_URL_UNPOOLED?.trim();
+const unpooledDatabaseUrl = env.DATABASE_URL_UNPOOLED?.trim();
 const databaseUrl =
   unpooledDatabaseUrl === undefined || unpooledDatabaseUrl.length === 0
-    ? requiredEnvironmentValue("DATABASE_URL")
+    ? requiredEnvironmentValue("DATABASE_URL", env.DATABASE_URL)
     : unpooledDatabaseUrl;
-const cronSecret = requiredEnvironmentValue("CRON_SECRET");
+const cronSecret = requiredEnvironmentValue("CRON_SECRET", env.CRON_SECRET);
 if (cronSecret.length < 32) {
   throw new Error("CRON_SECRET must contain at least 32 characters.");
 }
 
-const siteUrl = new URL(requiredEnvironmentValue("SITE_URL"));
+const siteUrl = new URL(requiredEnvironmentValue("SITE_URL", env.SITE_URL));
 if (siteUrl.protocol !== "https:") {
   throw new Error("SITE_URL must use HTTPS so Supabase can reach Vercel.");
 }
@@ -103,7 +109,7 @@ try {
         )
       ),
       body := jsonb_build_object('source', 'supabase-cron'),
-      timeout_milliseconds := 120000
+      timeout_milliseconds := ${CRON_HTTP_TIMEOUT_MS}
     ) as request_id
   `;
   const [job] = await sql<{ jobId: number }[]>`
@@ -129,7 +135,7 @@ try {
         )
       ),
       body := jsonb_build_object('source', 'supabase-cron'),
-      timeout_milliseconds := 120000
+      timeout_milliseconds := ${CRON_HTTP_TIMEOUT_MS}
     ) as request_id
   `;
   const [workerJob] = await sql<{ jobId: number }[]>`

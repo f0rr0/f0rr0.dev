@@ -1,3 +1,4 @@
+import { env } from "@/env";
 import {
   ActivityProcessingError,
   fetchGitHubActivityCommitSource,
@@ -12,7 +13,7 @@ import { PUBLIC_COMMIT_SUMMARY_RECIPE } from "@/lib/github-activity-public-summa
 import {
   boundedWorkerLimit,
   exactGitHubDiffDigest,
-  githubPrReconciliationMaximumAgeDays,
+  GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS,
   workerDeadlineReached,
 } from "@/lib/github-activity-worker-core";
 import {
@@ -308,14 +309,13 @@ const processPullRequests = async (
   context: WorkerContext,
   result: StageResult
 ) => {
-  const maximumAgeDays = githubPrReconciliationMaximumAgeDays();
   for (const account of context.activeAccounts) {
     if (context.deadlineReached()) {
       break;
     }
     const duePullRequests = await claimDueGitHubPullRequests(
       account,
-      maximumAgeDays,
+      GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS,
       25
     );
     result.claimed += duePullRequests.length;
@@ -349,7 +349,7 @@ const processSummaries = async (
 ) => {
   if (
     context.deadlineReached() ||
-    (process.env.OPENAI_API_KEY?.trim().length ?? 0) === 0
+    (env.OPENAI_API_KEY?.trim().length ?? 0) === 0
   ) {
     return;
   }

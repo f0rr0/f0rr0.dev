@@ -1,5 +1,6 @@
 import { revalidateTag } from "next/cache";
 
+import { env } from "@/env";
 import { runGitHubActivityWorker } from "@/lib/github-activity-worker";
 import { workerBatchSizeFrom } from "@/lib/github-activity-worker-core";
 import { reportOperationalError } from "@/lib/operational-error";
@@ -12,8 +13,8 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   const authorization = request.headers.get("authorization");
   if (
-    !hasBearerSecret(authorization, process.env.CRON_SECRET) &&
-    !hasBearerSecret(authorization, process.env.GITHUB_BACKFILL_SECRET)
+    !hasBearerSecret(authorization, env.CRON_SECRET) &&
+    !hasBearerSecret(authorization, env.GITHUB_BACKFILL_SECRET)
   ) {
     return Response.json({ ok: false }, { status: 401 });
   }

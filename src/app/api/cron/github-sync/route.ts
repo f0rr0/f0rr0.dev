@@ -1,5 +1,6 @@
 import { revalidateTag } from "next/cache";
 
+import { env } from "@/env";
 import { syncGitHubAccounts } from "@/lib/github-commits";
 import { reportOperationalError } from "@/lib/operational-error";
 import { hasBearerSecret } from "@/lib/request-auth";
@@ -9,12 +10,7 @@ export const maxDuration = 300;
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  if (
-    !hasBearerSecret(
-      request.headers.get("authorization"),
-      process.env.CRON_SECRET
-    )
-  ) {
+  if (!hasBearerSecret(request.headers.get("authorization"), env.CRON_SECRET)) {
     return Response.json({ ok: false }, { status: 401 });
   }
 

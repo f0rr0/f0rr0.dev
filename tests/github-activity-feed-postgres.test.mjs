@@ -12,6 +12,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
+import { env } from "../src/env.ts";
+
 setDefaultTimeout(30_000);
 
 const dockerAvailable =
@@ -85,8 +87,8 @@ describe.skipIf(!dockerAvailable)(
     let readPublicGitHubActivityPage;
 
     beforeAll(async () => {
-      originalCronSecret = process.env.CRON_SECRET;
-      originalDatabaseUrl = process.env.DATABASE_URL;
+      originalCronSecret = env.CRON_SECRET;
+      originalDatabaseUrl = env.DATABASE_URL;
       const started = Bun.spawnSync([
         "docker",
         "run",
@@ -146,8 +148,8 @@ describe.skipIf(!dockerAvailable)(
       });
       await migrate(drizzle({ client: admin }), { migrationsFolder });
 
-      process.env.CRON_SECRET = "github-activity-cursor-test-secret";
-      process.env.DATABASE_URL = databaseUrl;
+      env.CRON_SECRET = "github-activity-cursor-test-secret";
+      env.DATABASE_URL = databaseUrl;
       ({ closeDatabase } = await import("../src/db/client.ts"));
       ({ readPublicGitHubActivityPage } =
         await import("../src/lib/github-activity-store.ts"));
@@ -171,14 +173,14 @@ describe.skipIf(!dockerAvailable)(
       await closeDatabase?.();
       await admin?.end({ timeout: 1 });
       if (originalDatabaseUrl === undefined) {
-        delete process.env.DATABASE_URL;
+        delete env.DATABASE_URL;
       } else {
-        process.env.DATABASE_URL = originalDatabaseUrl;
+        env.DATABASE_URL = originalDatabaseUrl;
       }
       if (originalCronSecret === undefined) {
-        delete process.env.CRON_SECRET;
+        delete env.CRON_SECRET;
       } else {
-        process.env.CRON_SECRET = originalCronSecret;
+        env.CRON_SECRET = originalCronSecret;
       }
       if (containerId !== undefined) {
         Bun.spawnSync(["docker", "stop", "--time", "1", containerId], {

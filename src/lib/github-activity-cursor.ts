@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { env } from "@/env";
+
 const CURSOR_MAX_LENGTH = 512;
 const CURSOR_VERSION = 1;
 const UTC_DAY = /^\d{4}-\d{2}-\d{2}$/u;
@@ -51,7 +53,7 @@ const signatureFor = (payload: string, secret: string) =>
 
 export const encodeGitHubActivityCursor = (
   cursor: GitHubActivityCursor,
-  secret = process.env.CRON_SECRET
+  secret = env.CRON_SECRET
 ) => {
   if (!validCursor(cursor)) {
     throw new TypeError("The GitHub activity cursor is invalid.");
@@ -64,7 +66,7 @@ export const encodeGitHubActivityCursor = (
 
 export const decodeGitHubActivityCursor = (
   value: string | null,
-  secret = process.env.CRON_SECRET
+  secret = env.CRON_SECRET
 ): GitHubActivityCursor | null => {
   if (value === null || value.length === 0) {
     return null;

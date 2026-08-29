@@ -1,10 +1,8 @@
-import { loadEnvConfig } from "@next/env";
 import { defineConfig } from "drizzle-kit";
 
-loadEnvConfig(process.cwd());
+import { env } from "./src/env";
 
-const databaseUrl =
-  process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL;
+const databaseUrl = env.DATABASE_URL_UNPOOLED ?? env.DATABASE_URL;
 
 export default defineConfig({
   ...(databaseUrl === undefined || databaseUrl.length === 0

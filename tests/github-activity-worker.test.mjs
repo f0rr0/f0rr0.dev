@@ -2,11 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import {
   boundedWorkerLimit,
+  DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE,
   exactGitHubDiffDigest,
   githubCommitActivityOccurredAt,
   githubPullRequestSnapshotDisposition,
   githubPrReconciliationCutoff,
-  githubPrReconciliationMaximumAgeDays,
+  GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS,
   githubSummaryCanPublish,
   GITHUB_EXACT_DIFF_DIGEST_RECIPE,
   nextGitHubPullRequestReconciliationAt,
@@ -131,7 +132,8 @@ describe("GitHub exact diff digest", () => {
 
 describe("GitHub activity worker bounds", () => {
   test("accepts only deliberately small batches", () => {
-    expect(boundedWorkerLimit()).toBe(2);
+    expect(DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE).toBe(4);
+    expect(boundedWorkerLimit()).toBe(4);
     expect(boundedWorkerLimit(8)).toBe(8);
     expect(() => boundedWorkerLimit(0)).toThrow("batch size");
     expect(() => boundedWorkerLimit(9)).toThrow("batch size");
@@ -161,21 +163,8 @@ describe("GitHub activity worker bounds", () => {
     ).toBe("2026-08-28T15:00:00.000Z");
   });
 
-  test("parses the bounded PR reconciliation horizon", () => {
-    expect(githubPrReconciliationMaximumAgeDays()).toBe(30);
-    expect(githubPrReconciliationMaximumAgeDays(" 45 ")).toBe(45);
-    expect(githubPrReconciliationMaximumAgeDays("infinity")).toBe(
-      Number.POSITIVE_INFINITY
-    );
-    expect(githubPrReconciliationMaximumAgeDays(" Infinity ")).toBe(
-      Number.POSITIVE_INFINITY
-    );
-    expect(() => githubPrReconciliationMaximumAgeDays("0")).toThrow(
-      "positive integer"
-    );
-    expect(() => githubPrReconciliationMaximumAgeDays("all")).toThrow(
-      "positive integer"
-    );
+  test("applies the bounded PR reconciliation horizon", () => {
+    expect(GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS).toBe(30);
     const now = new Date("2026-08-28T12:00:00.000Z");
     expect(githubPrReconciliationCutoff(30, now)?.toISOString()).toBe(
       "2026-07-29T12:00:00.000Z"
