@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { githubBackfillRequestFrom } from "../src/lib/github-backfill-core.ts";
+import {
+  githubBackfillRequestFrom,
+  githubBackfillRequestSeriesFrom,
+  splitGitHubBackfillRequest,
+} from "../src/lib/github-backfill-core.ts";
 
 const now = new Date("2026-08-29T15:00:00.000Z");
 
@@ -46,6 +50,49 @@ describe("GitHub history backfill requests", () => {
         now
       )
     ).toMatchObject({ accounts: ["f0rr0"], repositoryId: null });
+  });
+
+  test("splits an arbitrary inclusive range into bounded requests", () => {
+    const requests = githubBackfillRequestSeriesFrom(
+      {
+        account: "f0rr0",
+        endDate: "2025-01-01",
+        repositoryId: "",
+        startDate: "2024-01-01",
+      },
+      now
+    );
+
+    expect(
+      requests?.map(({ endDate, startDate }) => ({ endDate, startDate }))
+    ).toEqual([
+      { endDate: "2024-12-31", startDate: "2024-01-01" },
+      { endDate: "2025-01-01", startDate: "2025-01-01" },
+    ]);
+  });
+
+  test("bisects a bounded request without gaps or overlap", () => {
+    const request = githubBackfillRequestFrom(
+      {
+        account: "f0rr0",
+        endDate: "2026-08-04",
+        repositoryId: "123456789",
+        startDate: "2026-08-01",
+      },
+      now
+    );
+
+    expect(request).not.toBeNull();
+    expect(
+      request === null
+        ? null
+        : splitGitHubBackfillRequest(request)?.map(
+            ({ endDate, startDate }) => ({ endDate, startDate })
+          )
+    ).toEqual([
+      { endDate: "2026-08-02", startDate: "2026-08-01" },
+      { endDate: "2026-08-04", startDate: "2026-08-03" },
+    ]);
   });
 
   test("rejects malformed, future, reversed, and oversized ranges", () => {
