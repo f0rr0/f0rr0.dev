@@ -55,6 +55,8 @@ describe("GitHub activity persistence schema", () => {
 
   test("records checkpoint gaps and idempotent push discovery before hydration", () => {
     expect(githubAccountCheckpoints.gapState.default).toBe("clear");
+    expect(githubAccountCheckpoints.refBackfillSinceAt.hasDefault).toBe(true);
+    expect(githubAccountCheckpoints.refBackfillSinceAt.notNull).toBe(true);
     expect(getTableName(githubRepositories)).toBe("github_repositories");
     expect(getTableName(githubPushObservations)).toBe(
       "github_push_observations"

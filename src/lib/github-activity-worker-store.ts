@@ -17,6 +17,7 @@ import {
 
 import { getDatabase } from "@/db/client";
 import {
+  githubAccountCheckpoints,
   githubCommits,
   githubPublicActivities,
   githubPullRequestMemberships,
@@ -89,6 +90,7 @@ export interface ClaimedGitHubPushObservation {
   afterSha: string;
   beforeSha: string;
   expectedCommitCount: number | null;
+  historySinceAt: Date;
   id: string;
   knownShas: readonly string[];
   leaseToken: string;
@@ -160,6 +162,7 @@ export const claimGitHubPushObservations = async (
         afterSha: githubPushObservations.afterSha,
         beforeSha: githubPushObservations.beforeSha,
         expectedCommitCount: githubPushObservations.expectedCommitCount,
+        historySinceAt: githubAccountCheckpoints.refBackfillSinceAt,
         id: githubPushObservations.id,
         observedAt: githubPushObservations.observedAt,
         refName: githubPushObservations.refName,
@@ -168,6 +171,10 @@ export const claimGitHubPushObservations = async (
         state: githubPushObservations.state,
       })
       .from(githubPushObservations)
+      .innerJoin(
+        githubAccountCheckpoints,
+        eq(githubAccountCheckpoints.account, githubPushObservations.account)
+      )
       .where(
         and(
           inArray(githubPushObservations.account, [...activeAccounts]),

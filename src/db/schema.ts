@@ -199,6 +199,12 @@ export const githubAccountCheckpoints = pgTable(
     gapState: varchar("gap_state", { length: 12 }).default("clear").notNull(),
     latestEventId: varchar("latest_event_id", { length: 64 }),
     paused: boolean("paused").default(false).notNull(),
+    refBackfillSinceAt: timestamp("ref_backfill_since_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [
     check(

@@ -77,10 +77,12 @@ available observation, advances to the newest event, and records the expected
 and oldest available event IDs as a durable `detected` gap. It does not loop
 forever on an unrecoverable checkpoint.
 
-There is no time-window backfill. A first ref sweep walks the complete commit
-history currently reachable from accessible branch and tag tips. Later sweeps
-expand only ref movements. Commits remain keyed by repository ID and SHA after
-a branch is deleted or force-pushed.
+The first ref sweep has a fixed lower bound: the earliest commit already in the
+durable timeline when this policy is installed. This fills gaps in the existing
+timeline without importing a repository's entire history. New accounts start at
+the time their checkpoint is created. Later sweeps expand only ref movements.
+Commits remain keyed by repository ID and SHA after a branch is deleted or
+force-pushed.
 
 A ref created and deleted (or force-pushed away) between observations is not
 recoverable unless an Event, webhook, PR, or another surviving ref exposes its

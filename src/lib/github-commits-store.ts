@@ -48,6 +48,7 @@ export class CheckpointConflictError extends Error {
 export interface GitHubAccountCheckpoint {
   latestEventId: string | null;
   paused: boolean;
+  refBackfillSinceAt: Date;
 }
 
 export interface GitHubIntakeResult {
@@ -90,6 +91,7 @@ export const readGitHubAccountCheckpoint = async (
     .select({
       latestEventId: githubAccountCheckpoints.latestEventId,
       paused: githubAccountCheckpoints.paused,
+      refBackfillSinceAt: githubAccountCheckpoints.refBackfillSinceAt,
     })
     .from(githubAccountCheckpoints)
     .where(eq(githubAccountCheckpoints.account, account))

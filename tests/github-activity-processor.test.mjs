@@ -372,6 +372,7 @@ describe("GitHub activity commit acquisition", () => {
       afterSha,
       beforeSha,
       expectedCommitCount: null,
+      historySinceAt: new Date("2026-08-18T00:00:00.000Z"),
       knownShas: [],
       observedAt: new Date("2026-08-28T12:34:00.000Z"),
       refName: "refs/heads/main",
@@ -381,19 +382,21 @@ describe("GitHub activity commit acquisition", () => {
     expect(source).toEqual({ commitShas: [], commits: [] });
   });
 
-  test("falls back to full reachable history when a force-push base is gone", async () => {
+  test("falls back to bounded reachable history when a force-push base is gone", async () => {
     const beforeSha = "1".repeat(40);
     const olderSha = "2".repeat(40);
     const afterSha = "3".repeat(40);
     const paths = [];
     process.env.GITHUB_F0RR0_TOKEN = "test-token";
-    globalThis.fetch = async (input) => {
+    globalThis.fetch = async (input, init) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
       paths.push(url.pathname);
       if (url.pathname.includes("/compare/")) {
         return new Response(null, { status: 404 });
       }
+      const request = JSON.parse(init?.body);
+      expect(request.variables.since).toBe("2026-08-18T00:00:00.000Z");
       return Response.json({
         data: {
           repository: {
@@ -428,6 +431,7 @@ describe("GitHub activity commit acquisition", () => {
       afterSha,
       beforeSha,
       expectedCommitCount: null,
+      historySinceAt: new Date("2026-08-18T00:00:00.000Z"),
       knownShas: [],
       observedAt: new Date("2026-08-28T12:34:00.000Z"),
       refName: "refs/heads/main",
@@ -453,6 +457,7 @@ describe("GitHub activity commit acquisition", () => {
       expect(init?.method).toBe("POST");
       const request = JSON.parse(init?.body);
       expect(request.variables.pageSize).toBe(2);
+      expect(request.variables.since).toBeNull();
       return Response.json({
         data: {
           repository: {
@@ -487,6 +492,7 @@ describe("GitHub activity commit acquisition", () => {
       afterSha,
       beforeSha: "0".repeat(40),
       expectedCommitCount: 2,
+      historySinceAt: new Date("2026-08-18T00:00:00.000Z"),
       knownShas: [olderSha, afterSha],
       observedAt: new Date("2026-08-28T12:00:00.000Z"),
       refName: "refs/heads/new",
@@ -497,7 +503,7 @@ describe("GitHub activity commit acquisition", () => {
     expect(source.commits.map(({ sha }) => sha)).toEqual([afterSha]);
   });
 
-  test("walks complete new-ref history when the event has no commit count", async () => {
+  test("walks new-ref history back to the fixed timeline boundary", async () => {
     const olderSha = "1".repeat(40);
     const middleSha = "2".repeat(40);
     const afterSha = "3".repeat(40);
@@ -507,6 +513,7 @@ describe("GitHub activity commit acquisition", () => {
       const request = JSON.parse(init?.body);
       cursors.push(request.variables.cursor);
       expect(request.variables.pageSize).toBe(100);
+      expect(request.variables.since).toBe("2026-08-18T00:00:00.000Z");
       const secondPage = request.variables.cursor === "page-2";
       return Response.json({
         data: {
@@ -558,6 +565,7 @@ describe("GitHub activity commit acquisition", () => {
       afterSha,
       beforeSha: "0".repeat(40),
       expectedCommitCount: null,
+      historySinceAt: new Date("2026-08-18T00:00:00.000Z"),
       knownShas: [],
       observedAt: new Date("2026-08-28T12:00:00.000Z"),
       refName: "refs/heads/new",
@@ -567,6 +575,41 @@ describe("GitHub activity commit acquisition", () => {
     expect(cursors).toEqual([null, "page-2"]);
     expect(source.commitShas).toEqual([olderSha, middleSha, afterSha]);
     expect(source.commits.map(({ sha }) => sha)).toEqual([middleSha, afterSha]);
+  });
+
+  test("accepts a ref whose reachable history predates the boundary", async () => {
+    const afterSha = "4".repeat(40);
+    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    globalThis.fetch = async (_input, init) => {
+      const request = JSON.parse(init?.body);
+      expect(request.variables.since).toBe("2026-08-18T00:00:00.000Z");
+      return Response.json({
+        data: {
+          repository: {
+            object: {
+              history: {
+                nodes: [],
+                pageInfo: { endCursor: null, hasNextPage: false },
+              },
+            },
+          },
+        },
+      });
+    };
+
+    const source = await fetchGitHubPushObservationSource({
+      account: "f0rr0",
+      afterSha,
+      beforeSha: "0".repeat(40),
+      expectedCommitCount: null,
+      historySinceAt: new Date("2026-08-18T00:00:00.000Z"),
+      knownShas: [],
+      observedAt: new Date("2026-08-28T12:00:00.000Z"),
+      refName: "refs/heads/old",
+      repository: "example-org/example-repo",
+      repositoryId: "123",
+    });
+    expect(source).toEqual({ commitShas: [], commits: [] });
   });
 });
 
