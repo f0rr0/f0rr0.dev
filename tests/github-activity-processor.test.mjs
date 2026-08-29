@@ -458,6 +458,7 @@ describe("GitHub activity commit acquisition", () => {
       const request = JSON.parse(init?.body);
       expect(request.variables.pageSize).toBe(2);
       expect(request.variables.since).toBeNull();
+      expect(request.variables.until).toBeNull();
       return Response.json({
         data: {
           repository: {
@@ -514,6 +515,7 @@ describe("GitHub activity commit acquisition", () => {
       cursors.push(request.variables.cursor);
       expect(request.variables.pageSize).toBe(100);
       expect(request.variables.since).toBe("2026-08-18T00:00:00.000Z");
+      expect(request.variables.until).toBeNull();
       const secondPage = request.variables.cursor === "page-2";
       return Response.json({
         data: {
@@ -575,6 +577,53 @@ describe("GitHub activity commit acquisition", () => {
     expect(cursors).toEqual([null, "page-2"]);
     expect(source.commitShas).toEqual([olderSha, middleSha, afterSha]);
     expect(source.commits.map(({ sha }) => sha)).toEqual([middleSha, afterSha]);
+  });
+
+  test("backfills a closed date window without requiring the current ref head", async () => {
+    const rangedSha = "4".repeat(40);
+    const afterSha = "5".repeat(40);
+    process.env.GITHUB_F0RR0_TOKEN = "test-token";
+    globalThis.fetch = async (_input, init) => {
+      const request = JSON.parse(init?.body);
+      expect(request.variables.since).toBe("2026-07-01T00:00:00.000Z");
+      expect(request.variables.until).toBe("2026-07-31T23:59:59.999Z");
+      return Response.json({
+        data: {
+          repository: {
+            object: {
+              history: {
+                nodes: [
+                  {
+                    author: { user: { login: "f0rr0" } },
+                    authoredDate: "2026-07-15T12:00:00Z",
+                    message: "historical change",
+                    oid: rangedSha,
+                    url: `https://github.com/example-org/example-repo/commit/${rangedSha}`,
+                  },
+                ],
+                pageInfo: { endCursor: null, hasNextPage: false },
+              },
+            },
+          },
+        },
+      });
+    };
+
+    const source = await fetchGitHubPushObservationSource({
+      account: "f0rr0",
+      afterSha,
+      beforeSha: "0".repeat(40),
+      expectedCommitCount: null,
+      historySinceAt: new Date("2026-07-01T00:00:00.000Z"),
+      historyUntilAt: new Date("2026-07-31T23:59:59.999Z"),
+      knownShas: [],
+      observedAt: new Date("2026-08-29T12:00:00.000Z"),
+      refName: "refs/heads/main",
+      repository: "example-org/example-repo",
+      repositoryId: "123",
+    });
+    expect(source.commitShas).toEqual([rangedSha]);
+    expect(source.commits.map(({ sha }) => sha)).toEqual([rangedSha]);
   });
 
   test("accepts a ref whose reachable history predates the boundary", async () => {

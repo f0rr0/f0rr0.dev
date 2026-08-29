@@ -56,6 +56,19 @@ describe("GitHub repository reconciliation", () => {
     ]);
   });
 
+  test("fetches one opaque repository ID without enumerating affiliations", async () => {
+    globalThis.fetch = async (input) => {
+      const url =
+        input instanceof Request ? new URL(input.url) : new URL(input);
+      expect(url.pathname).toBe("/repositories/123");
+      return Response.json(repository);
+    };
+
+    expect(await collectAccessibleGitHubRepositories("token", "123")).toEqual([
+      repositoryFacts,
+    ]);
+  });
+
   test("enumerates heads and peels annotated tags to commit SHAs", async () => {
     const headSha = "a".repeat(40);
     const tagSha = "b".repeat(40);

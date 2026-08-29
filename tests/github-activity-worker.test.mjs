@@ -10,6 +10,7 @@ import {
   githubSummaryCanPublish,
   GITHUB_EXACT_DIFF_DIGEST_RECIPE,
   nextGitHubPullRequestReconciliationAt,
+  workerBatchSizeFrom,
   workerDeadlineReached,
 } from "../src/lib/github-activity-worker-core.ts";
 
@@ -134,6 +135,10 @@ describe("GitHub activity worker bounds", () => {
     expect(boundedWorkerLimit(8)).toBe(8);
     expect(() => boundedWorkerLimit(0)).toThrow("batch size");
     expect(() => boundedWorkerLimit(9)).toThrow("batch size");
+    expect(workerBatchSizeFrom(null)).toBeUndefined();
+    expect(workerBatchSizeFrom("8")).toBe(8);
+    expect(workerBatchSizeFrom("0")).toBeNull();
+    expect(workerBatchSizeFrom("08")).toBeNull();
   });
 
   test("uses a deterministic wall-clock deadline", () => {

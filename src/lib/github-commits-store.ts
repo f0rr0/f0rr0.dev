@@ -4,6 +4,7 @@ import {
   and,
   eq,
   gt,
+  inArray,
   isNull,
   lt,
   lte,
@@ -73,6 +74,17 @@ export interface GitHubRepositoryRefSnapshot {
 export interface GitHubRepositoryRefIntakeResult {
   knownCommits: number;
   pushes: number;
+  refs: number;
+}
+
+export interface GitHubBackfillWindow {
+  sinceAt: Date;
+  untilAt: Date;
+}
+
+export interface GitHubRepositoryBackfillIntakeResult {
+  duplicates: number;
+  observations: number;
   refs: number;
 }
 
@@ -281,6 +293,7 @@ const insertPushObservations = async (
 };
 
 const ZERO_SHA = "0".repeat(40);
+const BACKFILL_OBSERVATION_INSERT_BATCH = 250;
 
 const refObservationSourceId = (input: {
   afterSha: string;
@@ -295,6 +308,128 @@ const refObservationSourceId = (input: {
       )
     )
     .digest("hex")}`;
+
+const backfillObservationSourceId = (input: {
+  afterSha: string;
+  repositoryId: string;
+  sinceAt: Date;
+  untilAt: Date;
+}) =>
+  `backfill:${createHash("sha256")
+    .update(
+      [
+        input.repositoryId,
+        input.afterSha,
+        input.sinceAt.toISOString(),
+        input.untilAt.toISOString(),
+      ].join("\0")
+    )
+    .digest("hex")}`;
+
+export const persistGitHubRepositoryBackfill = async (input: {
+  account: TrackedGitHubAccount;
+  observedAt: Date;
+  refs: readonly GitHubRepositoryRefSnapshot[];
+  repository: GitHubRepositoryFacts;
+  windows: readonly GitHubBackfillWindow[];
+}): Promise<GitHubRepositoryBackfillIntakeResult> => {
+  if (
+    input.windows.length === 0 ||
+    input.windows.some(
+      ({ sinceAt, untilAt }) =>
+        Number.isNaN(sinceAt.getTime()) ||
+        Number.isNaN(untilAt.getTime()) ||
+        sinceAt > untilAt
+    )
+  ) {
+    throw new RangeError("The GitHub backfill windows are invalid.");
+  }
+  const windowIdentities = input.windows.map(({ sinceAt, untilAt }) =>
+    [sinceAt.toISOString(), untilAt.toISOString()].join("\0")
+  );
+  if (new Set(windowIdentities).size !== windowIdentities.length) {
+    throw new RangeError("The GitHub backfill windows are duplicated.");
+  }
+
+  const refsByHead = new Map<string, GitHubRepositoryRefSnapshot>();
+  for (const ref of input.refs) {
+    const existing = refsByHead.get(ref.headSha);
+    if (existing === undefined || ref.refName < existing.refName) {
+      refsByHead.set(ref.headSha, ref);
+    }
+  }
+  const refs = [...refsByHead.values()].toSorted((left, right) =>
+    left.refName < right.refName ? -1 : left.refName > right.refName ? 1 : 0
+  );
+  const rows = refs.flatMap((ref) =>
+    input.windows.map(({ sinceAt, untilAt }) => ({
+      account: input.account,
+      afterSha: ref.headSha,
+      beforeSha: ZERO_SHA,
+      expectedCommitCount: null,
+      historySinceAt: sinceAt,
+      historyUntilAt: untilAt,
+      observedAt: input.observedAt,
+      providerCreatedAt: null,
+      refName: ref.refName,
+      repositoryId: input.repository.id,
+      repositoryNameSnapshot: input.repository.fullName,
+      source: "backfill" as const,
+      sourceId: backfillObservationSourceId({
+        afterSha: ref.headSha,
+        repositoryId: input.repository.id,
+        sinceAt,
+        untilAt,
+      }),
+      state: "pending" as const,
+    }))
+  );
+
+  return await getDatabase().transaction(async (transaction) => {
+    await transaction
+      .insert(githubAccountCheckpoints)
+      .values({ account: input.account })
+      .onConflictDoNothing({ target: githubAccountCheckpoints.account });
+    await upsertRepository(transaction, input.repository, input.observedAt);
+
+    let queued = 0;
+    for (
+      let offset = 0;
+      offset < rows.length;
+      offset += BACKFILL_OBSERVATION_INSERT_BATCH
+    ) {
+      const persisted = await transaction
+        .insert(githubPushObservations)
+        .values(rows.slice(offset, offset + BACKFILL_OBSERVATION_INSERT_BATCH))
+        .onConflictDoUpdate({
+          set: {
+            completedAt: null,
+            errorCode: null,
+            leaseToken: null,
+            leaseUntil: null,
+            observedAt: input.observedAt,
+            state: "pending",
+          },
+          setWhere: and(
+            eq(githubPushObservations.source, "backfill"),
+            inArray(githubPushObservations.state, ["deferred", "unavailable"])
+          ),
+          target: [
+            githubPushObservations.source,
+            githubPushObservations.sourceId,
+          ],
+        })
+        .returning({ id: githubPushObservations.id });
+      queued += persisted.length;
+    }
+
+    return {
+      duplicates: rows.length - queued,
+      observations: queued,
+      refs: refs.length,
+    };
+  });
+};
 
 export const persistGitHubRepositoryRefs = async (input: {
   account: TrackedGitHubAccount;

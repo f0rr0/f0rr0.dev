@@ -14,6 +14,7 @@ export const env = createEnv({
     DATABASE_URL: z.url().optional(),
     DATABASE_URL_UNPOOLED: z.url().optional(),
     GH_TOKEN: z.string().min(1).optional(),
+    GITHUB_BACKFILL_SECRET: z.string().min(32).optional(),
     GITHUB_F0RR0_TOKEN: z.string().min(1).optional(),
     GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS: z
       .string()

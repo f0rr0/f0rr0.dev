@@ -1,0 +1,7 @@
+ALTER TABLE "github_push_observations" DROP CONSTRAINT "github_push_observations_source";--> statement-breakpoint
+DROP INDEX "github_push_observations_push_unique";--> statement-breakpoint
+ALTER TABLE "github_push_observations" ADD COLUMN "history_since_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "github_push_observations" ADD COLUMN "history_until_at" timestamp with time zone;--> statement-breakpoint
+CREATE UNIQUE INDEX "github_push_observations_push_unique" ON "github_push_observations" USING btree ("repository_id","ref_name","before_sha","after_sha") WHERE "github_push_observations"."source" <> 'backfill';--> statement-breakpoint
+ALTER TABLE "github_push_observations" ADD CONSTRAINT "github_push_observations_history_bounds" CHECK (("github_push_observations"."source" <> 'backfill' AND "github_push_observations"."history_since_at" IS NULL AND "github_push_observations"."history_until_at" IS NULL) OR ("github_push_observations"."source" = 'backfill' AND "github_push_observations"."history_since_at" IS NOT NULL AND "github_push_observations"."history_until_at" IS NOT NULL AND "github_push_observations"."history_since_at" <= "github_push_observations"."history_until_at" AND "github_push_observations"."expected_commit_count" IS NULL AND "github_push_observations"."before_sha" = repeat('0', 40)));--> statement-breakpoint
+ALTER TABLE "github_push_observations" ADD CONSTRAINT "github_push_observations_source" CHECK ("github_push_observations"."source" IN ('webhook', 'events', 'refs', 'backfill'));

@@ -77,6 +77,7 @@ export interface GitHubActivityPushObservationReference {
   beforeSha: string;
   expectedCommitCount: number | null;
   historySinceAt: Date;
+  historyUntilAt: Date | null;
   knownShas: readonly string[];
   observedAt: Date;
   refName: string;
@@ -600,6 +601,10 @@ const newBranchCommitValuesWithToken = async (
   const { expectedCommitCount } = row;
   const historySinceAt =
     expectedCommitCount === null ? row.historySinceAt.toISOString() : null;
+  const historyUntilAt =
+    expectedCommitCount === null
+      ? (row.historyUntilAt?.toISOString() ?? null)
+      : null;
   if (expectedCommitCount !== null && expectedCommitCount < 1) {
     throw new ActivityProcessingError(
       "source_incomplete",
@@ -613,11 +618,11 @@ const newBranchCommitValuesWithToken = async (
       "The stored GitHub repository reference is invalid."
     );
   }
-  const query = `query NewBranchCommits($owner: String!, $name: String!, $oid: GitObjectID!, $pageSize: Int!, $cursor: String, $since: GitTimestamp) {
+  const query = `query NewBranchCommits($owner: String!, $name: String!, $oid: GitObjectID!, $pageSize: Int!, $cursor: String, $since: GitTimestamp, $until: GitTimestamp) {
     repository(owner: $owner, name: $name) {
       object(oid: $oid) {
         ... on Commit {
-          history(first: $pageSize, after: $cursor, since: $since) {
+          history(first: $pageSize, after: $cursor, since: $since, until: $until) {
             nodes {
               oid
               message
@@ -649,6 +654,7 @@ const newBranchCommitValuesWithToken = async (
           owner,
           pageSize,
           since: historySinceAt,
+          until: historyUntilAt,
         },
       }),
       method: "POST",
@@ -775,7 +781,9 @@ export const validateGitHubPushObservationCommitShas = (
     (!emptyRewind && !emptyBoundedHistory && commitShas.length === 0) ||
     (row.expectedCommitCount !== null &&
       commitShas.length !== row.expectedCommitCount) ||
-    (commitShas.length > 0 && commitShas.at(-1) !== row.afterSha) ||
+    (commitShas.length > 0 &&
+      (row.historyUntilAt ?? null) === null &&
+      commitShas.at(-1) !== row.afterSha) ||
     new Set(commitShas).size !== commitShas.length ||
     commitShas.some((sha) => commitShaFrom(sha) === null)
   ) {

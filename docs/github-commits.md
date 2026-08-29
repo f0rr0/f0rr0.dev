@@ -305,6 +305,7 @@ DATABASE_URL=postgresql://...:6543/postgres
 DATABASE_URL_UNPOOLED=postgresql://...:5432/postgres
 GITHUB_F0RR0_TOKEN=github_pat_...
 GITHUB_YUPPIESTECHDEV_TOKEN=github_pat_...
+GITHUB_BACKFILL_SECRET=<at-least-32-random-characters>
 GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS=30
 GITHUB_WEBHOOK_SECRET=<at-least-32-random-characters>
 CRON_SECRET=<at-least-32-random-characters>
@@ -372,6 +373,46 @@ call OpenAI, or build the public timeline inline.
 The rollout order is schema, Vercel environment, Supabase jobs, GitHub App
 subscriptions, then end-to-end observation. Nothing in this document implies
 that a particular environment has already been migrated or deployed.
+
+### Date-bounded backfill Action
+
+The `Backfill GitHub activity` workflow is manually dispatched from GitHub
+Actions after its workflow file is present on the default branch. It accepts an
+inclusive UTC start and end date, one tracked credential or both, an optional
+numeric repository ID, and up to 50 immediate worker passes. A request may span
+at most 366 days; run adjacent ranges for older history.
+
+The Action sends only the request bounds to the production backfill route. It
+does not receive a database URL or either GitHub account token. The production
+`GITHUB_BACKFILL_SECRET` is mirrored into the repository Actions secret
+`ACTIVITY_BACKFILL_SECRET`. This dedicated bearer value is the only GitHub
+Actions secret the workflow needs.
+
+The server divides the requested range into non-overlapping 31-day windows,
+enumerates current refs with the selected server-side credential, collapses
+refs that share a head, and queues durable `backfill` observations. Repository
+ID, ref head, and window bounds form the idempotency identity: rerunning the
+same request is a no-op for completed observations and requeues deferred or
+unavailable observations. Normal five-minute worker runs finish anything not
+processed by the Action's immediate passes.
+
+Use an opaque numeric ID when targeting one repository so a private repository
+name does not appear in public workflow inputs. Resolve it locally with:
+
+```sh
+gh api repos/OWNER/REPOSITORY --jq .id
+```
+
+To queue the same request without GitHub Actions:
+
+```sh
+curl --fail-with-body \
+  --request POST \
+  --header "Authorization: Bearer $GITHUB_BACKFILL_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{"account":"f0rr0","startDate":"2026-08-01","endDate":"2026-08-29","repositoryId":""}' \
+  https://f0rr0.dev/api/cron/github-backfill
+```
 
 Run the normal synchronization locally:
 

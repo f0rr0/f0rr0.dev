@@ -1,0 +1,122 @@
+name: Backfill GitHub activity
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: First UTC date to include (YYYY-MM-DD)
+        required: true
+        type: string
+      end_date:
+        description: Last UTC date to include (YYYY-MM-DD, maximum 366 days)
+        required: true
+        type: string
+      account:
+        description: Credential used to discover accessible repositories
+        required: true
+        default: f0rr0
+        type: choice
+        options:
+          - f0rr0
+          - yuppiestechdev
+          - all
+      repository_id:
+        description: Optional numeric repository ID; blank scans all accessible repositories
+        required: false
+        type: string
+      worker_passes:
+        description: Immediate worker passes after queuing (0-50; cron finishes the rest)
+        required: true
+        default: 8
+        type: number
+
+concurrency:
+  group: github-activity-backfill
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    name: Queue and process backfill
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ACCOUNT: ${{ inputs.account }}
+      BACKFILL_SECRET: ${{ secrets.ACTIVITY_BACKFILL_SECRET }}
+      END_DATE: ${{ inputs.end_date }}
+      REPOSITORY_ID: ${{ inputs.repository_id }}
+      SITE_URL: https://f0rr0.dev
+      START_DATE: ${{ inputs.start_date }}
+      WORKER_PASSES: ${{ inputs.worker_passes }}
+    steps:
+      - name: Queue bounded history observations
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$BACKFILL_SECRET" ]]; then
+            echo "The ACTIVITY_BACKFILL_SECRET repository secret is not configured." >&2
+            exit 1
+          fi
+          if ! [[ "$WORKER_PASSES" =~ ^[0-9]+$ ]] || (( WORKER_PASSES > 50 )); then
+            echo "worker_passes must be an integer from 0 through 50." >&2
+            exit 1
+          fi
+
+          response_file=$(mktemp)
+          trap 'rm -f "$response_file"' EXIT
+          payload=$(jq -n \
+            --arg account "$ACCOUNT" \
+            --arg endDate "$END_DATE" \
+            --arg repositoryId "$REPOSITORY_ID" \
+            --arg startDate "$START_DATE" \
+            '{account: $account, endDate: $endDate, repositoryId: $repositoryId, startDate: $startDate}')
+          status=$(curl --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $BACKFILL_SECRET" \
+            --header "Content-Type: application/json" \
+            --data "$payload" \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            "$SITE_URL/api/cron/github-backfill")
+
+          jq '{accounts, duplicates, endDate, failedAccounts, observations, ok, paused, refs, repositories, startDate, windows}' "$response_file"
+          if [[ "$status" -lt 200 || "$status" -ge 300 ]] || ! jq -e '.ok == true' "$response_file" >/dev/null; then
+            echo "Backfill queueing failed with HTTP $status." >&2
+            exit 1
+          fi
+          {
+            echo "### GitHub activity backfill"
+            echo
+            jq -r '"Queued **\(.observations)** observations across **\(.repositories)** repositories and **\(.windows)** date windows; **\(.duplicates)** were already durable."' "$response_file"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Process queued work immediately
+        if: ${{ inputs.worker_passes > 0 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file=$(mktemp)
+          trap 'rm -f "$response_file"' EXIT
+          for (( pass = 1; pass <= WORKER_PASSES; pass += 1 )); do
+            status=$(curl --silent --show-error \
+              --request POST \
+              --header "Authorization: Bearer $BACKFILL_SECRET" \
+              --header "Content-Type: application/json" \
+              --data '{"source":"github-actions-backfill"}' \
+              --output "$response_file" \
+              --write-out '%{http_code}' \
+              "$SITE_URL/api/cron/github-worker?batch=8")
+            if [[ "$status" -lt 200 || "$status" -ge 300 ]] || ! jq -e '.ok == true' "$response_file" >/dev/null; then
+              jq '{error, ok}' "$response_file"
+              echo "Worker pass $pass failed with HTTP $status." >&2
+              exit 1
+            fi
+
+            claimed=$(jq '[.activity.commits.claimed, .activity.observations.claimed, .activity.pullRequestDiscovery.claimed, .activity.pullRequests.claimed, .activity.summaries.claimed] | add' "$response_file")
+            echo "Worker pass $pass claimed $claimed items."
+            if (( claimed == 0 )); then
+              break
+            fi
+          done

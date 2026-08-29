@@ -146,6 +146,15 @@ export const boundedWorkerLimit = (value: number | undefined, fallback = 2) => {
   return selected;
 };
 
+export const workerBatchSizeFrom = (
+  value: string | null
+): number | null | undefined => {
+  if (value === null) {
+    return undefined;
+  }
+  return /^[1-8]$/.test(value) ? Number(value) : null;
+};
+
 export const githubPrReconciliationMaximumAgeDays = (
   value = process.env.GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS
 ) => {

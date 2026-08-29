@@ -80,6 +80,7 @@ describe.skipIf(!dockerAvailable)(
     let originalCronSecret;
     let originalDatabaseUrl;
     let persistAccountIntake;
+    let persistGitHubRepositoryBackfill;
     let persistGitHubRepositoryRefs;
     let readPublicGitHubActivityPage;
 
@@ -159,8 +160,11 @@ describe.skipIf(!dockerAvailable)(
         ensureGitHubSummaryAttempt,
         ensureMissingGitHubSummaryAttempts,
       } = await import("../src/lib/github-activity-worker-store.ts"));
-      ({ persistAccountIntake, persistGitHubRepositoryRefs } =
-        await import("../src/lib/github-commits-store.ts"));
+      ({
+        persistAccountIntake,
+        persistGitHubRepositoryBackfill,
+        persistGitHubRepositoryRefs,
+      } = await import("../src/lib/github-commits-store.ts"));
     });
 
     afterAll(async () => {
@@ -259,6 +263,91 @@ describe.skipIf(!dockerAvailable)(
           source: "refs",
         },
       ]);
+    });
+
+    test("queues idempotent bounded backfill observations per distinct ref head", async () => {
+      const headSha = "8".repeat(40);
+      const repository = {
+        fullName: "example-org/backfill-checkpoints",
+        htmlUrl: "https://github.com/example-org/backfill-checkpoints",
+        id: "405",
+        ownerAvatarUrl: null,
+        ownerId: "202",
+        ownerLogin: "example-org",
+        ownerType: "Organization",
+        visibility: "private",
+      };
+      const input = {
+        account: "f0rr0",
+        observedAt: new Date("2026-08-29T11:00:00.000Z"),
+        refs: [
+          { headSha, kind: "head", refName: "refs/heads/main" },
+          { headSha, kind: "tag", refName: "refs/tags/v1" },
+        ],
+        repository,
+        windows: [
+          {
+            sinceAt: new Date("2026-07-01T00:00:00.000Z"),
+            untilAt: new Date("2026-07-31T23:59:59.999Z"),
+          },
+          {
+            sinceAt: new Date("2026-08-01T00:00:00.000Z"),
+            untilAt: new Date("2026-08-29T23:59:59.999Z"),
+          },
+        ],
+      };
+
+      try {
+        expect(await persistGitHubRepositoryBackfill(input)).toEqual({
+          duplicates: 0,
+          observations: 2,
+          refs: 1,
+        });
+        expect(await persistGitHubRepositoryBackfill(input)).toEqual({
+          duplicates: 2,
+          observations: 0,
+          refs: 1,
+        });
+        const observations = await admin`
+        select before_sha, history_since_at, history_until_at, ref_name, source
+        from github_push_observations
+        where repository_id = '405'
+        order by history_since_at
+      `;
+        expect(observations).toEqual([
+          {
+            before_sha: "0".repeat(40),
+            history_since_at: "2026-07-01 00:00:00+00",
+            history_until_at: "2026-07-31 23:59:59.999+00",
+            ref_name: "refs/heads/main",
+            source: "backfill",
+          },
+          {
+            before_sha: "0".repeat(40),
+            history_since_at: "2026-08-01 00:00:00+00",
+            history_until_at: "2026-08-29 23:59:59.999+00",
+            ref_name: "refs/heads/main",
+            source: "backfill",
+          },
+        ]);
+
+        await admin`
+        update github_push_observations
+        set state = 'unavailable'
+        where repository_id = '405'
+          and history_since_at = '2026-07-01T00:00:00.000Z'
+      `;
+        expect(
+          await persistGitHubRepositoryBackfill({
+            ...input,
+            observedAt: new Date("2026-08-29T12:00:00.000Z"),
+          })
+        ).toEqual({ duplicates: 1, observations: 1, refs: 1 });
+      } finally {
+        await admin`delete from github_push_observations where repository_id = '405'`;
+        await admin`delete from github_repositories where id = '405'`;
+        await admin`delete from github_account_checkpoints where account = 'f0rr0'`;
+      }
     });
 
     test("pages complete UTC days and projects only current complete PR membership", async () => {

@@ -1,5 +1,6 @@
 import { DatabaseConfigurationError, isDatabaseConfigured } from "@/db/client";
 import { fetchGitHub, githubApiUrl, nextGitHubPage } from "@/lib/github-api";
+import type { GitHubBackfillRequest } from "@/lib/github-backfill-core";
 import {
   authenticatedGitHubAccountFrom,
   githubEventFrom,
@@ -17,6 +18,7 @@ import {
 } from "@/lib/github-commits-store";
 import {
   hydrateSparseGitHubPullRequestEvents,
+  queueAccessibleGitHubHistoryBackfill,
   reconcileAccessibleGitHubRepositoryRefs,
 } from "@/lib/github-reconciliation";
 
@@ -56,6 +58,19 @@ export interface GitHubSyncResult {
   paused: number;
   pullRequests: number;
   pushes: number;
+  refs: number;
+  repositories: number;
+}
+
+export interface GitHubBackfillResult {
+  accounts: number;
+  duplicates: number;
+  failedAccounts: readonly {
+    account: TrackedGitHubAccount;
+    error: string;
+  }[];
+  observations: number;
+  paused: number;
   refs: number;
   repositories: number;
 }
@@ -281,6 +296,68 @@ export const syncGitHubAccounts = async (): Promise<GitHubSyncResult> => {
       0
     ),
     pushes: results.reduce((total, result) => total + result.pushes, 0),
+    refs: results.reduce((total, result) => total + result.refs, 0),
+    repositories: results.reduce(
+      (total, result) => total + result.repositories,
+      0
+    ),
+  };
+};
+
+export const queueGitHubBackfill = async (
+  request: GitHubBackfillRequest
+): Promise<GitHubBackfillResult> => {
+  if (!isDatabaseConfigured()) {
+    throw new DatabaseConfigurationError();
+  }
+  const settled = await Promise.allSettled(
+    request.accounts.map(async (account) => {
+      const checkpoint = await readGitHubAccountCheckpoint(account);
+      if (isGitHubAccountPaused(checkpoint)) {
+        return { account, paused: true as const, result: null };
+      }
+      const token = tokenFor(account);
+      await assertTokenIdentity(account, token);
+      return {
+        account,
+        paused: false as const,
+        result: await queueAccessibleGitHubHistoryBackfill({
+          account,
+          repositoryId: request.repositoryId,
+          token,
+          windows: request.windows,
+        }),
+      };
+    })
+  );
+  const succeeded = settled.flatMap((outcome) =>
+    outcome.status === "fulfilled" ? [outcome.value] : []
+  );
+  const failedAccounts = settled.flatMap((outcome, index) =>
+    outcome.status === "fulfilled"
+      ? []
+      : [
+          {
+            account: request.accounts[index],
+            error:
+              outcome.reason instanceof Error
+                ? outcome.reason.name.slice(0, 80)
+                : "UnknownError",
+          },
+        ]
+  );
+  const results = succeeded.flatMap(({ result }) =>
+    result === null ? [] : [result]
+  );
+  return {
+    accounts: results.length,
+    duplicates: results.reduce((total, result) => total + result.duplicates, 0),
+    failedAccounts,
+    observations: results.reduce(
+      (total, result) => total + result.observations,
+      0
+    ),
+    paused: succeeded.filter(({ paused }) => paused).length,
     refs: results.reduce((total, result) => total + result.refs, 0),
     repositories: results.reduce(
       (total, result) => total + result.repositories,
