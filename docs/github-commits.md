@@ -25,6 +25,10 @@ Supabase Cron every 5 minutes
   -> expand observations, enrich commits, discover/reconcile PRs,
      canonicalize proven copies, summarize, and publish
 
+Manual GitHub Actions backfill
+  -> authenticated GitHub APIs + Supabase transaction pooler
+  -> queue bounded historical observations and run the same durable worker
+
 Next.js server render / GET /api/github/activity
   -> snapshot-stable pages of complete UTC days
 ```
@@ -132,10 +136,11 @@ order:
 5. Create and claim one summary attempt for each still-canonical, non-merge
    commit, make one Nano call, and publish the activity only after it succeeds.
 
-Routine runs claim four items from each bounded stage. Manual backfill runs use
-eight. Both share a 90-second internal deadline and an absolute maximum batch
-of eight, so the regular worker can use available Hobby capacity without
-allowing one invocation to grow without bound.
+Routine Vercel runs claim four items from each bounded stage with a 90-second
+internal deadline. Direct GitHub Actions backfills claim up to 16 with a
+four-minute per-pass deadline. Both keep claims bounded; the Action runner uses
+its longer job lifetime through repeated durable passes rather than one
+unbounded operation.
 
 A commit with more than one parent is a regular merge commit. It remains fully
 stored for intake, ancestry, and alias evidence, but it is excluded from summary
@@ -295,15 +300,14 @@ refetch GitHub.
 
 ## Database and environment
 
-Use the Supabase transaction pooler at runtime and the direct connection for
-migrations and cron setup:
+Use the Supabase transaction pooler at runtime and a direct or session-pooler
+connection for migrations and cron setup:
 
 ```dotenv
 DATABASE_URL=postgresql://...:6543/postgres
 DATABASE_URL_UNPOOLED=postgresql://...:5432/postgres
 GITHUB_F0RR0_TOKEN=github_pat_...
 GITHUB_YUPPIESTECHDEV_TOKEN=github_pat_...
-GITHUB_BACKFILL_SECRET=<at-least-32-random-characters>
 GITHUB_WEBHOOK_SECRET=<at-least-32-random-characters>
 CRON_SECRET=<at-least-32-random-characters>
 OPENAI_API_KEY=...
@@ -388,40 +392,39 @@ that a particular environment has already been migrated or deployed.
 
 The `Backfill GitHub activity` workflow is manually dispatched from GitHub
 Actions after its workflow file is present on the default branch. It accepts an
-inclusive UTC start and end date, one tracked credential or both, an optional
-numeric repository ID, and up to 50 immediate worker passes. A request may span
-at most 366 days; run adjacent ranges for older history.
+inclusive oldest and newest commit date, one tracked credential or both, an
+optional numeric repository ID, and a wall-clock budget of up to 330 minutes.
+The standard GitHub-hosted job has a 350-minute ceiling, leaving a 20-minute
+setup and cleanup margin beneath GitHub's six-hour hard limit.
 
-The Action sends only the request bounds to the production backfill route. It
-does not receive a database URL or either GitHub account token. The production
-`GITHUB_BACKFILL_SECRET` is mirrored into the repository Actions secret
-`ACTIVITY_BACKFILL_SECRET`. This dedicated bearer value is the only GitHub
-Actions secret the workflow needs.
+The Action runs the ingestion code directly. Its repository secrets map to the
+same typed runtime names used by Vercel:
 
-The server divides the requested range into non-overlapping 31-day windows,
-enumerates current refs with the selected server-side credential, collapses
-refs that share a head, and queues durable `backfill` observations. Repository
-ID, ref head, and window bounds form the idempotency identity: rerunning the
-same request is a no-op for completed observations and requeues deferred or
-unavailable observations. Normal five-minute worker runs finish anything not
-processed by the Action's immediate passes.
+```text
+ACTIVITY_DATABASE_URL
+ACTIVITY_F0RR0_TOKEN
+ACTIVITY_YUPPIESTECHDEV_TOKEN
+ACTIVITY_OPENAI_API_KEY
+```
+
+The runner divides an arbitrary date range into requests of at most 366 days,
+then into non-overlapping 31-day history windows. It enumerates current refs,
+collapses refs that share a head, and queues durable `backfill` observations.
+If a request would exceed the 5,000-observation database bound, the runner
+divides that date request again rather than weakening the bound. Repository ID,
+ref head, and window bounds form the idempotency identity: rerunning the same
+range is a no-op for completed observations and requeues deferred or
+unavailable observations.
+
+Direct worker passes claim at most 16 items from each bounded stage and stop
+when the queue drains or the selected wall-clock budget expires. Normal
+five-minute Vercel worker runs finish any durable work left behind.
 
 Use an opaque numeric ID when targeting one repository so a private repository
 name does not appear in public workflow inputs. Resolve it locally with:
 
 ```sh
 gh api repos/OWNER/REPOSITORY --jq .id
-```
-
-To queue the same request without GitHub Actions:
-
-```sh
-curl --fail-with-body \
-  --request POST \
-  --header "Authorization: Bearer $GITHUB_BACKFILL_SECRET" \
-  --header "Content-Type: application/json" \
-  --data '{"account":"f0rr0","startDate":"2026-08-01","endDate":"2026-08-29","repositoryId":""}' \
-  https://f0rr0.dev/api/cron/github-backfill
 ```
 
 Run the normal synchronization locally:

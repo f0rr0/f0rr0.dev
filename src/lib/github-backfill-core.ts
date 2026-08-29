@@ -37,10 +37,17 @@ export interface GitHubBackfillRequest {
   windows: readonly GitHubBackfillWindow[];
 }
 
-export const githubBackfillRequestFrom = (
+interface NormalizedGitHubBackfillInput {
+  accounts: readonly TrackedGitHubAccount[];
+  endDay: Date;
+  repositoryId: string | null;
+  startAt: Date;
+}
+
+const normalizedGitHubBackfillInputFrom = (
   value: unknown,
-  now = new Date()
-): GitHubBackfillRequest | null => {
+  now: Date
+): NormalizedGitHubBackfillInput | null => {
   if (!isObject(value)) {
     return null;
   }
@@ -58,11 +65,6 @@ export const githubBackfillRequestFrom = (
   ) {
     return null;
   }
-  const dayCount = (endDay.getTime() - startAt.getTime()) / DAY_MS + 1;
-  if (dayCount > MAXIMUM_BACKFILL_DAYS) {
-    return null;
-  }
-
   const account =
     value.account === "all" ? "all" : trackedGitHubAccountFrom(value.account);
   if (account === null) {
@@ -77,6 +79,17 @@ export const githubBackfillRequestFrom = (
   if (rawRepositoryId.length > 0 && repositoryId === null) {
     return null;
   }
+
+  return { accounts, endDay, repositoryId, startAt };
+};
+
+const githubBackfillRequestFor = (
+  input: Pick<NormalizedGitHubBackfillInput, "accounts" | "repositoryId"> & {
+    endDay: Date;
+    startAt: Date;
+  }
+): GitHubBackfillRequest => {
+  const { accounts, endDay, repositoryId, startAt } = input;
 
   const windows: GitHubBackfillWindow[] = [];
   const rangeEndExclusive = endDay.getTime() + DAY_MS;
@@ -102,4 +115,78 @@ export const githubBackfillRequestFrom = (
     startDate: startAt.toISOString().slice(0, 10),
     windows,
   };
+};
+
+export const githubBackfillRequestFrom = (
+  value: unknown,
+  now = new Date()
+): GitHubBackfillRequest | null => {
+  const input = normalizedGitHubBackfillInputFrom(value, now);
+  if (input === null) {
+    return null;
+  }
+  const dayCount =
+    (input.endDay.getTime() - input.startAt.getTime()) / DAY_MS + 1;
+  return dayCount > MAXIMUM_BACKFILL_DAYS
+    ? null
+    : githubBackfillRequestFor(input);
+};
+
+export const githubBackfillRequestSeriesFrom = (
+  value: unknown,
+  now = new Date()
+): readonly GitHubBackfillRequest[] | null => {
+  const input = normalizedGitHubBackfillInputFrom(value, now);
+  if (input === null) {
+    return null;
+  }
+  const requests: GitHubBackfillRequest[] = [];
+  const finalEnd = input.endDay.getTime();
+  for (
+    let start = input.startAt.getTime();
+    start <= finalEnd;
+    start += MAXIMUM_BACKFILL_DAYS * DAY_MS
+  ) {
+    requests.push(
+      githubBackfillRequestFor({
+        accounts: input.accounts,
+        endDay: new Date(
+          Math.min(start + (MAXIMUM_BACKFILL_DAYS - 1) * DAY_MS, finalEnd)
+        ),
+        repositoryId: input.repositoryId,
+        startAt: new Date(start),
+      })
+    );
+  }
+  return requests;
+};
+
+export const splitGitHubBackfillRequest = (
+  request: GitHubBackfillRequest
+): readonly [GitHubBackfillRequest, GitHubBackfillRequest] | null => {
+  const startAt = utcDayFrom(request.startDate);
+  const endDay = utcDayFrom(request.endDate);
+  if (startAt === null || endDay === null) {
+    return null;
+  }
+  const dayCount = (endDay.getTime() - startAt.getTime()) / DAY_MS + 1;
+  if (!Number.isSafeInteger(dayCount) || dayCount <= 1) {
+    return null;
+  }
+  const leftDayCount = Math.floor(dayCount / 2);
+  const rightStartAt = new Date(startAt.getTime() + leftDayCount * DAY_MS);
+  return [
+    githubBackfillRequestFor({
+      accounts: request.accounts,
+      endDay: new Date(rightStartAt.getTime() - DAY_MS),
+      repositoryId: request.repositoryId,
+      startAt,
+    }),
+    githubBackfillRequestFor({
+      accounts: request.accounts,
+      endDay,
+      repositoryId: request.repositoryId,
+      startAt: rightStartAt,
+    }),
+  ];
 };

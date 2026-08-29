@@ -4,6 +4,7 @@ import type { PublicCommitEvidence } from "@/lib/github-activity-public-summary"
 
 export const GITHUB_EXACT_DIFF_DIGEST_RECIPE = "github-exact-diff-v2";
 export const DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE = 4;
+export const MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE = 16;
 export const GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS = 30;
 
 export interface GitHubExactDiffDigest {
@@ -137,7 +138,11 @@ export const boundedWorkerLimit = (
   fallback = DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE
 ) => {
   const selected = value ?? fallback;
-  if (!Number.isSafeInteger(selected) || selected < 1 || selected > 8) {
+  if (
+    !Number.isSafeInteger(selected) ||
+    selected < 1 ||
+    selected > MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE
+  ) {
     throw new RangeError("The GitHub activity worker batch size is invalid.");
   }
   return selected;

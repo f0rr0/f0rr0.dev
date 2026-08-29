@@ -10,6 +10,7 @@ import {
   GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS,
   githubSummaryCanPublish,
   GITHUB_EXACT_DIFF_DIGEST_RECIPE,
+  MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE,
   nextGitHubPullRequestReconciliationAt,
   workerBatchSizeFrom,
   workerDeadlineReached,
@@ -133,12 +134,14 @@ describe("GitHub exact diff digest", () => {
 describe("GitHub activity worker bounds", () => {
   test("accepts only deliberately small batches", () => {
     expect(DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE).toBe(4);
+    expect(MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE).toBe(16);
     expect(boundedWorkerLimit()).toBe(4);
-    expect(boundedWorkerLimit(8)).toBe(8);
+    expect(boundedWorkerLimit(16)).toBe(16);
     expect(() => boundedWorkerLimit(0)).toThrow("batch size");
-    expect(() => boundedWorkerLimit(9)).toThrow("batch size");
+    expect(() => boundedWorkerLimit(17)).toThrow("batch size");
     expect(workerBatchSizeFrom(null)).toBeUndefined();
     expect(workerBatchSizeFrom("8")).toBe(8);
+    expect(workerBatchSizeFrom("9")).toBeNull();
     expect(workerBatchSizeFrom("0")).toBeNull();
     expect(workerBatchSizeFrom("08")).toBeNull();
   });

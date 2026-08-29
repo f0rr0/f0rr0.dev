@@ -28,6 +28,13 @@ const GITHUB_PAGE_SIZE = 100;
 const GITHUB_REQUEST_CONCURRENCY = 4;
 const MAXIMUM_BACKFILL_OBSERVATIONS = 5000;
 
+export class GitHubBackfillCapacityError extends RangeError {
+  constructor() {
+    super("The GitHub backfill would create too many durable observations.");
+    this.name = "GitHubBackfillCapacityError";
+  }
+}
+
 type JsonObject = Record<string, unknown>;
 
 const isObject = (value: unknown): value is JsonObject =>
@@ -355,9 +362,7 @@ export const queueAccessibleGitHubHistoryBackfill = async (input: {
       new Set(refs.map(({ headSha }) => headSha)).size * input.windows.length;
   }
   if (observationCount > MAXIMUM_BACKFILL_OBSERVATIONS) {
-    throw new RangeError(
-      "The GitHub backfill would create too many durable observations."
-    );
+    throw new GitHubBackfillCapacityError();
   }
 
   const persisted = await mapWithConcurrency(

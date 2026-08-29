@@ -12,10 +12,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const authorization = request.headers.get("authorization");
-  if (
-    !hasBearerSecret(authorization, env.CRON_SECRET) &&
-    !hasBearerSecret(authorization, env.GITHUB_BACKFILL_SECRET)
-  ) {
+  if (!hasBearerSecret(authorization, env.CRON_SECRET)) {
     return Response.json({ ok: false }, { status: 401 });
   }
   const batchSize = workerBatchSizeFrom(
