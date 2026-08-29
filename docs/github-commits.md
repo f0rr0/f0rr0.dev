@@ -17,8 +17,8 @@ GitHub push / pull_request / issues webhooks
 
 Supabase Cron every 3 hours
   -> Vercel /api/cron/github-sync
-  -> authenticated GitHub user Events feeds
-  -> transactionally persist observations + checkpoint
+  -> authenticated GitHub user Events feeds + accessible repository refs
+  -> hydrate sparse PRs, persist observations, reconcile ref checkpoints
 
 Supabase Cron every 5 minutes
   -> Vercel /api/cron/github-worker
@@ -30,17 +30,19 @@ Next.js server render / GET /api/github/activity
 ```
 
 The webhook is the low-latency path for repositories where the GitHub App is
-installed. Authenticated Events polling is the coverage path for pushes made by
-either account in any repository visible to that account. The two intake paths
-converge on the same durable observation and source-identity tables. Leases and
-unique constraints make overlapping webhook, polling, and worker invocations
-safe.
+installed. Authenticated Events polling accelerates discovery for pushes made
+by either account. A complete sweep of every accessible repository's branch and
+tag tips is the coverage path, including commits pushed to non-default branches
+without a PR. All three intake paths converge on the same durable observation
+and source-identity tables. Leases and unique constraints make overlapping
+webhook, polling, ref reconciliation, and worker invocations safe.
 
 The poller verifies each token with `/user` before requesting
 `/users/{account}/events`; a token mix-up cannot silently turn private activity
-into a public-only feed. Only pushes performed by the tracked account are
-observed, and a candidate commit is retained only after GitHub identifies its
-top-level commit author as one of the tracked accounts.
+into a public-only feed. The same token enumerates repositories through
+`/user/repos` and only the `refs/heads/*` and `refs/tags/*` namespaces. A
+candidate commit is retained only after GitHub identifies its top-level commit
+author as one of the tracked accounts.
 
 ## Durable intake and checkpoints
 
@@ -53,14 +55,18 @@ The intake boundary is intentionally cheap:
 - A push observation records its source, account, repository, ref, before/after
   SHAs, expected commit count, and any SHA list GitHub supplied. The worker can
   later expand a truncated push with authenticated GitHub APIs.
-- The Events poll persists all newly seen push observations, complete PR
-  snapshots when GitHub supplies them, and tracked-author issue-opened
-  milestones, then advances that account's event checkpoint in the same
-  transaction. GitHub currently returns a sparse PR shape from this feed. A
-  strictly validated sparse event can schedule reconciliation only for an
-  already-known PR belonging to the polled account; it cannot create a PR or
-  cross account boundaries. Stale event timestamps cannot overwrite or
+- The Events poll hydrates GitHub's sparse PR shape from the canonical pull
+  request endpoint before persistence. A newly authored PR can therefore be
+  created immediately; a 404 retains the strictly validated signal for
+  known-only reconciliation. The poll then persists push observations, PR
+  snapshots, and tracked-author issue milestones before advancing the event
+  checkpoint transactionally. Stale event timestamps cannot overwrite or
   reschedule newer provider state.
+- Repository reconciliation stores the last observed commit target for every
+  current branch and tag. A new or changed target creates the same durable push
+  observation used by Events and webhooks. Missing refs are marked inactive,
+  annotated tags are peeled to commits, and identical heads are not expanded
+  twice. Ref state and its observation are committed together.
 - Checkpoint updates use compare-and-swap. A concurrent winner causes the
   loser to reread and retry instead of overwriting newer progress.
 
@@ -71,8 +77,15 @@ available observation, advances to the newest event, and records the expected
 and oldest available event IDs as a durable `detected` gap. It does not loop
 forever on an unrecoverable checkpoint.
 
-There is no arbitrary 400-day scan. A first run assimilates only the activity
-currently exposed by GitHub; historical backfill is a separate operation.
+There is no time-window backfill. A first ref sweep walks the complete commit
+history currently reachable from accessible branch and tag tips. Later sweeps
+expand only ref movements. Commits remain keyed by repository ID and SHA after
+a branch is deleted or force-pushed.
+
+A ref created and deleted (or force-pushed away) between observations is not
+recoverable unless an Event, webhook, PR, or another surviving ref exposes its
+commit. This is the remaining observability boundary; polling cannot discover a
+Git object GitHub no longer exposes.
 
 ### Pause or resume an account
 
@@ -103,8 +116,10 @@ The five-minute worker is bounded and restart-safe. It runs these stages in
 order:
 
 1. Claim push observations and expand their complete pushed SHA set using the
-   compare endpoint (or branch commits for a newly created branch). Persist the
-   source membership, then create candidate rows only for tracked authors.
+   compare endpoint. For a newly observed ref or compact new-branch Event, walk
+   the GraphQL commit-history cursor to completion. Persist the source
+   membership, then create candidate rows only for tracked authors. Ref rewinds
+   with no newly reachable commits complete successfully.
 2. Claim candidate commits and fetch repository plus paginated commit evidence.
    Verify repository ID, SHA, and tracked author again; persist commit metadata,
    GitHub aggregate counters, file-derived languages, repository facts, and a
@@ -128,7 +143,8 @@ persists its stable node/repository IDs, original title/link snapshots, creation
 time, and a published issue milestone transactionally. Both `IssuesEvent` and
 an `issues` webhook converge on those same unique identities.
 
-Observation and commit fetches use retryable database states and honor GitHub
+Observation and commit fetches require GitHub's provider timestamp rather than
+substituting the poll time. They use retryable database states and honor GitHub
 rate-limit timing; permanent source failures become `unavailable`. Work is
 owned through conditional leases, so a timed-out Vercel invocation can be
 continued safely by a later worker. The worker stops starting expensive work

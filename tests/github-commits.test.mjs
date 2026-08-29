@@ -730,7 +730,10 @@ describe("pull request observation normalization", () => {
       pullRequestSignal: {
         action: "merged",
         number: 42,
-        repositoryId: "123",
+        repository: {
+          fullName: "another-org/private-repo",
+          id: "123",
+        },
       },
       push: null,
     });
@@ -914,7 +917,10 @@ describe("bounded event collection", () => {
     expect(collected.events[0]?.pullRequestSignal).toEqual({
       action: "merged",
       number: 42,
-      repositoryId: "123",
+      repository: {
+        fullName: "another-org/private-repo",
+        id: "123",
+      },
     });
   });
 

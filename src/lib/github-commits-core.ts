@@ -101,7 +101,7 @@ export interface GitHubPullRequestWebhookObservation {
 export interface GitHubPullRequestEventSignal {
   action: string;
   number: number;
-  repositoryId: string;
+  repository: GitHubRepository;
 }
 
 export interface GitHubEvent {
@@ -805,7 +805,7 @@ const sparsePullRequestEventSignalFrom = (
   ) {
     return null;
   }
-  return { action, number, repositoryId: repository.id };
+  return { action, number, repository };
 };
 
 const pullRequestEventFrom = (

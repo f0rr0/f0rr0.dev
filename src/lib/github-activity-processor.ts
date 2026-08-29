@@ -38,7 +38,6 @@ const MAXIMUM_GITHUB_FILE_PAGES = 30;
 const MAXIMUM_GITHUB_PULL_REQUEST_PAGES = 10;
 const MAXIMUM_GITHUB_PULL_REQUEST_COMMIT_PAGES = 3;
 const MAXIMUM_GITHUB_PULL_REQUEST_GRAPHQL_PAGES = 30;
-const MAXIMUM_GITHUB_PUSH_PAGES = 30;
 const ZERO_SHA = "0".repeat(40);
 
 type JsonObject = Record<string, unknown>;
@@ -535,20 +534,32 @@ const compareCommitValuesWithToken = async (
     )
   );
   url.searchParams.set("per_page", "100");
-
-  for (
-    let page = 0;
-    url !== null && page < MAXIMUM_GITHUB_PUSH_PAGES;
-    page += 1
-  ) {
+  const visited = new Set<string>();
+  let aheadBy: number | null = null;
+  while (url !== null) {
+    if (visited.has(url.href)) {
+      throw new ActivityProcessingError(
+        "source_invalid",
+        "GitHub returned cyclic compare pagination."
+      );
+    }
+    visited.add(url.href);
     const result = await fetchJsonWithResponse(url, token);
     const pageValues = isObject(result.payload) ? result.payload.commits : null;
-    if (!Array.isArray(pageValues)) {
+    const pageAheadBy = isObject(result.payload)
+      ? requiredInteger(result.payload.ahead_by, "compare ahead count")
+      : null;
+    if (
+      !Array.isArray(pageValues) ||
+      pageAheadBy === null ||
+      (aheadBy !== null && aheadBy !== pageAheadBy)
+    ) {
       throw new ActivityProcessingError(
         "source_invalid",
         "GitHub returned invalid push commit evidence."
       );
     }
+    aheadBy = pageAheadBy;
     values.push(...pageValues);
     url = nextGitHubPage(result.response);
     if (
@@ -563,7 +574,8 @@ const compareCommitValuesWithToken = async (
   }
 
   if (
-    url !== null ||
+    aheadBy === null ||
+    values.length !== aheadBy ||
     (row.expectedCommitCount !== null &&
       values.length !== row.expectedCommitCount)
   ) {
@@ -576,22 +588,19 @@ const compareCommitValuesWithToken = async (
 };
 
 // GitHub cannot compare the all-zero SHA used for a new branch. GraphQL's
-// cursor lets us request exactly the observed number of commits without
-// truncating an arbitrary REST history page.
+// cursor lets us request exactly the observed number of commits when legacy
+// payloads include it, or the complete reachable history for today's sparse
+// Events and a newly observed ref.
 // oxlint-disable-next-line complexity -- Every GraphQL history invariant fails closed.
 const newBranchCommitValuesWithToken = async (
   row: GitHubActivityPushObservationReference,
   token: string
 ) => {
   const { expectedCommitCount } = row;
-  if (
-    expectedCommitCount === null ||
-    expectedCommitCount < 1 ||
-    expectedCommitCount > MAXIMUM_GITHUB_PUSH_PAGES * 100
-  ) {
+  if (expectedCommitCount !== null && expectedCommitCount < 1) {
     throw new ActivityProcessingError(
       "source_incomplete",
-      "A new-branch push has no safely bounded commit range."
+      "A new-branch push has an invalid commit count."
     );
   }
   const [owner, name] = row.repository.split("/");
@@ -621,8 +630,12 @@ const newBranchCommitValuesWithToken = async (
   }`;
   const values: unknown[] = [];
   let cursor: string | null = null;
-  while (values.length < expectedCommitCount) {
-    const pageSize = Math.min(100, expectedCommitCount - values.length);
+  const visitedCursors = new Set<string>();
+  while (true) {
+    const pageSize =
+      expectedCommitCount === null
+        ? 100
+        : Math.min(100, expectedCommitCount - values.length);
     const response = await fetchGitHub(githubApiUrl("/graphql"), {
       body: JSON.stringify({
         query,
@@ -647,7 +660,9 @@ const newBranchCommitValuesWithToken = async (
     if (
       !isObject(history) ||
       !Array.isArray(history.nodes) ||
-      history.nodes.length !== pageSize ||
+      history.nodes.length === 0 ||
+      history.nodes.length > pageSize ||
+      (expectedCommitCount !== null && history.nodes.length !== pageSize) ||
       !isObject(history.pageInfo) ||
       typeof history.pageInfo.hasNextPage !== "boolean"
     ) {
@@ -674,19 +689,27 @@ const newBranchCommitValuesWithToken = async (
         sha: node.oid,
       });
     }
-    if (values.length < expectedCommitCount) {
+    const needsNextPage =
+      expectedCommitCount === null
+        ? history.pageInfo.hasNextPage
+        : values.length < expectedCommitCount;
+    if (needsNextPage) {
       const nextCursor = history.pageInfo.endCursor;
       if (
         !history.pageInfo.hasNextPage ||
         typeof nextCursor !== "string" ||
-        nextCursor.length === 0
+        nextCursor.length === 0 ||
+        visitedCursors.has(nextCursor)
       ) {
         throw new ActivityProcessingError(
           "source_incomplete",
           "GitHub ended new-branch history before the observed commit count."
         );
       }
+      visitedCursors.add(nextCursor);
       cursor = nextCursor;
+    } else {
+      break;
     }
   }
   return values.toReversed();
@@ -695,20 +718,44 @@ const newBranchCommitValuesWithToken = async (
 const pushCommitValuesWithToken = async (
   row: GitHubActivityPushObservationReference,
   token: string
-) =>
-  row.beforeSha === ZERO_SHA
-    ? await newBranchCommitValuesWithToken(row, token)
-    : await compareCommitValuesWithToken(row, token);
+) => {
+  if (row.beforeSha === ZERO_SHA) {
+    return await newBranchCommitValuesWithToken(row, token);
+  }
+  try {
+    return await compareCommitValuesWithToken(row, token);
+  } catch (error) {
+    if (
+      !(error instanceof GitHubResponseError) ||
+      ![404, 409].includes(error.status)
+    ) {
+      throw error;
+    }
+    try {
+      return await newBranchCommitValuesWithToken(
+        { ...row, beforeSha: ZERO_SHA, expectedCommitCount: null },
+        token
+      );
+    } catch {
+      // Preserve the response error so token fallback can try another identity.
+      throw error;
+    }
+  }
+};
 
 export const validateGitHubPushObservationCommitShas = (
   row: GitHubActivityPushObservationReference,
   commitShas: readonly string[]
 ) => {
+  const emptyRewind =
+    commitShas.length === 0 &&
+    row.expectedCommitCount === null &&
+    row.beforeSha !== ZERO_SHA;
   if (
-    commitShas.length === 0 ||
+    (!emptyRewind && commitShas.length === 0) ||
     (row.expectedCommitCount !== null &&
       commitShas.length !== row.expectedCommitCount) ||
-    commitShas.at(-1) !== row.afterSha ||
+    (commitShas.length > 0 && commitShas.at(-1) !== row.afterSha) ||
     new Set(commitShas).size !== commitShas.length ||
     commitShas.some((sha) => commitShaFrom(sha) === null)
   ) {
@@ -733,8 +780,7 @@ export const validateGitHubPushObservationCommitShas = (
 const trackedCommitFromPushValue = (
   value: unknown,
   sha: string,
-  repository: GitHubRepository,
-  observedAt: Date
+  repository: GitHubRepository
 ): GitHubCommit | null => {
   if (!isObject(value)) {
     return null;
@@ -753,9 +799,12 @@ const trackedCommitFromPushValue = (
       : null;
   const providerDate =
     typeof rawDate === "string" ? new Date(rawDate) : new Date(Number.NaN);
-  const committedAt = Number.isNaN(providerDate.getTime())
-    ? observedAt
-    : providerDate;
+  if (Number.isNaN(providerDate.getTime())) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "GitHub returned an invalid commit author date."
+    );
+  }
   const message =
     typeof rawCommit?.message === "string"
       ? (rawCommit.message.split(/\r?\n/, 1)[0] ?? "")
@@ -765,7 +814,7 @@ const trackedCommitFromPushValue = (
       : "";
   return {
     author,
-    committedAt: committedAt.toISOString(),
+    committedAt: providerDate.toISOString(),
     message,
     repository: repository.fullName,
     repositoryId: repository.id,
@@ -796,12 +845,7 @@ const pushObservationSourceWithToken = async (
     }
     seen.add(sha);
     commitShas.push(sha);
-    const commit = trackedCommitFromPushValue(
-      value,
-      sha,
-      repository,
-      row.observedAt
-    );
+    const commit = trackedCommitFromPushValue(value, sha, repository);
     if (commit !== null) {
       commits.push(commit);
     }

@@ -154,7 +154,7 @@
 
   .github-activity-entry {
     border-bottom: 1px solid var(--border);
-    padding-block: 1.5rem;
+    padding-block: 1.25rem;
     content-visibility: auto;
     contain-intrinsic-size: auto 11rem;
   }
@@ -173,20 +173,45 @@
     gap: 0.625rem;
   }
 
-  .github-activity-avatar,
-  .github-activity-avatar-fallback {
-    width: 1.75rem;
-    height: 1.75rem;
+  .github-activity-avatar-frame {
+    position: relative;
+    width: 1.375rem;
+    height: 1.375rem;
     flex: none;
-    border: 1px solid color-mix(in oklab, var(--border) 82%, transparent);
-    border-radius: 0.45rem;
+  }
+
+  .github-activity-avatar-image-frame {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 9999px;
     background: var(--muted);
   }
 
-  .github-activity-avatar-fallback {
+  .github-activity-avatar {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .github-activity-avatar-private {
+    filter: blur(2px);
+    transform: scale(1.1);
+  }
+
+  .github-activity-avatar-lock {
+    position: absolute;
+    right: -0.175rem;
+    bottom: -0.175rem;
     display: grid;
+    width: 0.875rem;
+    height: 0.875rem;
     place-items: center;
+    border-radius: 9999px;
+    background: var(--background);
     color: var(--muted-foreground);
+    box-shadow: 0 0 0 1px var(--background);
   }
 
   .github-activity-repository-label,
@@ -195,13 +220,15 @@
     min-width: 0;
     align-items: center;
     gap: 0.3rem;
-    overflow: hidden;
     color: var(--muted-foreground);
     font-family: var(--font-site-mono);
     font-size: 0.75rem;
     line-height: 1.35;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  }
+
+  .github-activity-repository-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .github-activity-repository-link {
@@ -223,25 +250,25 @@
   .github-activity-headline,
   .github-activity-summary {
     max-width: 50rem;
-    margin-top: 1rem;
     color: var(--foreground);
     overflow-wrap: anywhere;
     white-space: pre-wrap;
   }
 
   .github-activity-headline {
-    font-family: var(--font-site-heading);
-    font-size: clamp(1.2rem, 3vw, 1.45rem);
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1.25;
+    margin-top: 0.75rem;
+    font-family: var(--font-site-body);
+    font-size: 1rem;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: 1.625;
   }
 
   .github-activity-kind {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    margin-top: 1rem;
+    margin-top: 0.75rem;
     color: var(--primary);
     font-family: var(--font-site-ui);
     font-size: 0.6875rem;
@@ -252,23 +279,28 @@
 
   .github-activity-work-title {
     max-width: 50rem;
-    margin-top: 0.45rem;
+    margin-top: 0.35rem;
     color: var(--foreground);
-    font-family: var(--font-site-heading);
-    font-size: clamp(1.2rem, 3vw, 1.45rem);
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1.25;
+    font-family: var(--font-site-body);
+    font-size: 1rem;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: 1.625;
     overflow-wrap: anywhere;
   }
 
   .github-activity-disclosure > summary {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
-    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    column-gap: 0.75rem;
+    row-gap: 0;
     list-style: none;
     cursor: pointer;
+  }
+
+  .github-activity-disclosure > summary.github-activity-timed-commit-row {
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
   }
 
   .github-activity-disclosure > summary::-webkit-details-marker {
@@ -281,39 +313,74 @@
     outline-offset: 0.35rem;
   }
 
+  .github-activity-disclosure > summary .github-activity-headline {
+    min-width: 0;
+    margin-top: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .github-activity-commit-group {
+    border-bottom: 0;
+    padding-block: 1rem 1.125rem;
+  }
+
+  .github-activity-commit-group-header {
+    display: flex;
+    align-items: center;
+  }
+
+  .github-activity-grouped-commits {
+    display: grid;
+    margin-top: 0.35rem;
+  }
+
+  .github-activity-grouped-commits > li {
+    padding-block: 0.45rem;
+  }
+
   .github-activity-disclosure-label {
-    padding-bottom: 0.15rem;
+    display: inline-flex;
+    align-items: center;
     color: var(--muted-foreground);
-    font-family: var(--font-site-ui);
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
   }
 
   .github-activity-disclosure[open] .github-activity-disclosure-label {
     color: var(--primary);
   }
 
+  .github-activity-disclosure-chevron {
+    width: 0.875rem;
+    height: 0.875rem;
+    transition: transform 160ms ease;
+  }
+
+  .github-activity-disclosure[open] .github-activity-disclosure-chevron {
+    transform: rotate(180deg);
+  }
+
   .github-activity-nested-commits {
     display: grid;
-    gap: 1.15rem;
-    margin-top: 1.25rem;
+    gap: 1rem;
+    margin-top: 1rem;
     border-left: 1px solid color-mix(in oklab, var(--border) 86%, transparent);
     padding-left: clamp(1rem, 3vw, 1.5rem);
   }
 
   .github-activity-nested-commits .github-activity-headline {
     margin-top: 0;
-    font-size: clamp(1rem, 2.4vw, 1.15rem);
+    font-size: 1rem;
   }
 
   .github-activity-nested-commits .github-activity-summary {
-    margin-top: 0.75rem;
+    margin-top: 0.5rem;
     font-size: 0.925rem;
   }
 
   .github-activity-summary {
+    margin-top: 0.625rem;
+    color: var(--muted-foreground);
     font-size: 0.975rem;
     line-height: 1.75;
   }
@@ -334,11 +401,15 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.7rem 1rem;
-    margin-top: 1rem;
+    margin-top: 0.625rem;
     color: var(--muted-foreground);
     font-family: var(--font-site-mono);
     font-size: 0.6875rem;
     letter-spacing: 0.02em;
+  }
+
+  .github-activity-visible-facts {
+    margin-top: 0;
   }
 
   .github-activity-loc,
@@ -385,8 +456,8 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .github-activity-repository-link,
-    .group\/link svg {
+    .github-activity-disclosure-chevron,
+    .github-activity-repository-link {
       transition: none;
     }
   }

@@ -1,4 +1,17 @@
-import { and, eq, gt, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
+
+import {
+  and,
+  eq,
+  gt,
+  isNull,
+  lt,
+  lte,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import {
@@ -10,6 +23,7 @@ import {
   githubPushObservationCommits,
   githubPushObservations,
   githubRepositories,
+  githubRepositoryRefs,
   githubWebhookDeliveries,
 } from "@/db/schema";
 import { trackedGitHubAccountFrom } from "@/lib/github-commits-core";
@@ -47,6 +61,18 @@ export interface GitHubWebhookIntakeResult extends GitHubIntakeResult {
   duplicate: boolean;
   ignored: boolean;
   paused: boolean;
+}
+
+export interface GitHubRepositoryRefSnapshot {
+  headSha: string;
+  kind: "head" | "tag";
+  refName: string;
+}
+
+export interface GitHubRepositoryRefIntakeResult {
+  knownCommits: number;
+  pushes: number;
+  refs: number;
 }
 
 type DatabaseTransaction = Parameters<
@@ -103,41 +129,7 @@ const upsertRepository = async (
         ownerType: sql`coalesce(excluded.owner_type, ${githubRepositories.ownerType})`,
         visibility: sql`coalesce(excluded.visibility, ${githubRepositories.visibility})`,
       },
-      target: githubRepositories.id,
-    });
-};
-
-const persistIssueRepository = async (
-  transaction: DatabaseTransaction,
-  issue: GitHubIssue,
-  observedAt: Date
-) => {
-  const { repository } = issue;
-  await transaction
-    .insert(githubRepositories)
-    .values({
-      firstObservedAt: observedAt,
-      fullName: repository.fullName,
-      htmlUrl: repository.htmlUrl,
-      id: repository.id,
-      lastObservedAt: observedAt,
-      ownerAvatarUrl: repository.ownerAvatarUrl,
-      ownerId: repository.ownerId,
-      ownerLogin: repository.ownerLogin,
-      ownerType: repository.ownerType,
-      visibility: repository.visibility,
-    })
-    .onConflictDoUpdate({
-      set: {
-        fullName: repository.fullName,
-        htmlUrl: sql`coalesce(excluded.html_url, ${githubRepositories.htmlUrl})`,
-        lastObservedAt: observedAt,
-        ownerAvatarUrl: sql`coalesce(excluded.owner_avatar_url, ${githubRepositories.ownerAvatarUrl})`,
-        ownerId: sql`coalesce(excluded.owner_id, ${githubRepositories.ownerId})`,
-        ownerLogin: sql`coalesce(excluded.owner_login, ${githubRepositories.ownerLogin})`,
-        ownerType: sql`coalesce(excluded.owner_type, ${githubRepositories.ownerType})`,
-        visibility: sql`coalesce(excluded.visibility, ${githubRepositories.visibility})`,
-      },
+      setWhere: lte(githubRepositories.lastObservedAt, observedAt),
       target: githubRepositories.id,
     });
 };
@@ -147,7 +139,7 @@ const persistIssue = async (
   issue: GitHubIssue,
   observedAt: Date
 ) => {
-  await persistIssueRepository(transaction, issue, observedAt);
+  await upsertRepository(transaction, issue.repository, observedAt);
   const [insertedIssue] = await transaction
     .insert(githubIssues)
     .values({
@@ -188,7 +180,7 @@ interface PushObservationInput {
   observedAt: Date;
   providerCreatedAt: Date | null;
   push: GitHubPush;
-  source: "events" | "webhook";
+  source: "events" | "refs" | "webhook";
   sourceId: string;
 }
 
@@ -224,6 +216,7 @@ const insertPushObservations = async (
         fullName: sql`excluded.full_name`,
         lastObservedAt: sql`excluded.last_observed_at`,
       },
+      setWhere: lte(githubRepositories.lastObservedAt, observedAt),
       target: githubRepositories.id,
     });
 
@@ -284,6 +277,137 @@ const insertPushObservations = async (
     pushes: inserted.length,
   };
 };
+
+const ZERO_SHA = "0".repeat(40);
+
+const refObservationSourceId = (input: {
+  afterSha: string;
+  beforeSha: string;
+  refName: string;
+  repositoryId: string;
+}) =>
+  `ref:${createHash("sha256")
+    .update(
+      [input.repositoryId, input.refName, input.beforeSha, input.afterSha].join(
+        "\0"
+      )
+    )
+    .digest("hex")}`;
+
+export const persistGitHubRepositoryRefs = async (input: {
+  account: TrackedGitHubAccount;
+  observedAt: Date;
+  refs: readonly GitHubRepositoryRefSnapshot[];
+  repository: GitHubRepositoryFacts;
+}): Promise<GitHubRepositoryRefIntakeResult> =>
+  await getDatabase().transaction(async (transaction) => {
+    await upsertRepository(transaction, input.repository, input.observedAt);
+    const existing = await transaction
+      .select({
+        active: githubRepositoryRefs.active,
+        headSha: githubRepositoryRefs.headSha,
+        lastObservedAt: githubRepositoryRefs.lastObservedAt,
+        refName: githubRepositoryRefs.refName,
+      })
+      .from(githubRepositoryRefs)
+      .where(eq(githubRepositoryRefs.repositoryId, input.repository.id));
+    const existingByName = new Map(existing.map((ref) => [ref.refName, ref]));
+    const knownActiveHeads = new Set(
+      existing.filter((ref) => ref.active).map((ref) => ref.headSha)
+    );
+    const observedRanges = new Set<string>();
+    const observations: PushObservationInput[] = [];
+
+    for (const ref of input.refs) {
+      const previous = existingByName.get(ref.refName);
+      if (
+        previous !== undefined &&
+        (previous.lastObservedAt > input.observedAt ||
+          (previous.active && previous.headSha === ref.headSha))
+      ) {
+        knownActiveHeads.add(ref.headSha);
+        continue;
+      }
+      const beforeSha = previous?.active === true ? previous.headSha : ZERO_SHA;
+      const range = `${beforeSha}:${ref.headSha}`;
+      if (!knownActiveHeads.has(ref.headSha) && !observedRanges.has(range)) {
+        const push: GitHubPush = {
+          before: beforeSha,
+          commitShas: [],
+          head: ref.headSha,
+          pushedBy: input.account,
+          ref: ref.refName,
+          repository: input.repository,
+          size: null,
+        };
+        observations.push({
+          observedAt: input.observedAt,
+          providerCreatedAt: null,
+          push,
+          source: "refs",
+          sourceId: refObservationSourceId({
+            afterSha: ref.headSha,
+            beforeSha,
+            refName: ref.refName,
+            repositoryId: input.repository.id,
+          }),
+        });
+        observedRanges.add(range);
+      }
+      knownActiveHeads.add(ref.headSha);
+    }
+
+    const persisted = await insertPushObservations(transaction, observations);
+    if (input.refs.length > 0) {
+      await transaction
+        .insert(githubRepositoryRefs)
+        .values(
+          input.refs.map((ref) => ({
+            active: true,
+            firstObservedAt: input.observedAt,
+            headSha: ref.headSha,
+            kind: ref.kind,
+            lastObservedAt: input.observedAt,
+            refName: ref.refName,
+            repositoryId: input.repository.id,
+          }))
+        )
+        .onConflictDoUpdate({
+          set: {
+            active: true,
+            headSha: sql`excluded.head_sha`,
+            kind: sql`excluded.kind`,
+            lastObservedAt: input.observedAt,
+          },
+          setWhere: lte(githubRepositoryRefs.lastObservedAt, input.observedAt),
+          target: [
+            githubRepositoryRefs.repositoryId,
+            githubRepositoryRefs.refName,
+          ],
+        });
+    }
+
+    const currentRefNames = input.refs.map((ref) => ref.refName);
+    await transaction
+      .update(githubRepositoryRefs)
+      .set({ active: false, lastObservedAt: input.observedAt })
+      .where(
+        and(
+          eq(githubRepositoryRefs.repositoryId, input.repository.id),
+          eq(githubRepositoryRefs.active, true),
+          lte(githubRepositoryRefs.lastObservedAt, input.observedAt),
+          ...(currentRefNames.length === 0
+            ? []
+            : [notInArray(githubRepositoryRefs.refName, currentRefNames)])
+        )
+      );
+
+    return {
+      knownCommits: persisted.knownCommits,
+      pushes: persisted.pushes,
+      refs: input.refs.length,
+    };
+  });
 
 const insertPushObservation = async (
   transaction: DatabaseTransaction,
@@ -550,7 +674,7 @@ const signalKnownPullRequestReconciliation = async (
     .where(
       and(
         eq(githubPullRequests.account, account),
-        eq(githubPullRequests.repositoryId, signal.repositoryId),
+        eq(githubPullRequests.repositoryId, signal.repository.id),
         eq(githubPullRequests.number, signal.number)
       )
     )

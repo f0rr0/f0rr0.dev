@@ -14,6 +14,7 @@ import {
   githubPushObservationCommits,
   githubPushObservations,
   githubRepositories,
+  githubRepositoryRefs,
   githubSummaryAttempts,
   githubWebhookDeliveries,
 } from "../src/db/schema.ts";
@@ -66,6 +67,11 @@ describe("GitHub activity persistence schema", () => {
       ])
     );
     expect(githubPushObservations.state.default).toBe("pending");
+    expect(getTableName(githubRepositoryRefs)).toBe("github_repository_refs");
+    expect(githubRepositoryRefs.active.default).toBe(true);
+    expect(indexNames(githubRepositoryRefs)).toContain(
+      "github_repository_refs_active_idx"
+    );
 
     const observationCommitForeignKeys = config(
       githubPushObservationCommits
@@ -165,6 +171,7 @@ describe("GitHub activity persistence schema", () => {
       githubCommits,
       githubAccountCheckpoints,
       githubRepositories,
+      githubRepositoryRefs,
       githubWebhookDeliveries,
       githubPushObservations,
       githubPushObservationCommits,

@@ -80,6 +80,7 @@ describe.skipIf(!dockerAvailable)(
     let originalCronSecret;
     let originalDatabaseUrl;
     let persistAccountIntake;
+    let persistGitHubRepositoryRefs;
     let readPublicGitHubActivityPage;
 
     beforeAll(async () => {
@@ -158,7 +159,7 @@ describe.skipIf(!dockerAvailable)(
         ensureGitHubSummaryAttempt,
         ensureMissingGitHubSummaryAttempts,
       } = await import("../src/lib/github-activity-worker-store.ts"));
-      ({ persistAccountIntake } =
+      ({ persistAccountIntake, persistGitHubRepositoryRefs } =
         await import("../src/lib/github-commits-store.ts"));
     });
 
@@ -181,6 +182,83 @@ describe.skipIf(!dockerAvailable)(
           stdout: "ignore",
         });
       }
+    });
+
+    test("checkpoints repository refs and emits only new reachable ranges", async () => {
+      const repository = {
+        fullName: "example-org/ref-checkpoints",
+        htmlUrl: "https://github.com/example-org/ref-checkpoints",
+        id: "404",
+        ownerAvatarUrl: null,
+        ownerId: "202",
+        ownerLogin: "example-org",
+        ownerType: "Organization",
+        visibility: "private",
+      };
+      const firstSha = "6".repeat(40);
+      const secondSha = "7".repeat(40);
+      const first = await persistGitHubRepositoryRefs({
+        account: "f0rr0",
+        observedAt: new Date("2026-08-29T08:00:00.000Z"),
+        refs: [
+          { headSha: firstSha, kind: "head", refName: "refs/heads/main" },
+          { headSha: firstSha, kind: "tag", refName: "refs/tags/v1" },
+        ],
+        repository,
+      });
+      expect(first).toEqual({ knownCommits: 0, pushes: 1, refs: 2 });
+
+      const unchanged = await persistGitHubRepositoryRefs({
+        account: "f0rr0",
+        observedAt: new Date("2026-08-29T09:00:00.000Z"),
+        refs: [
+          { headSha: firstSha, kind: "head", refName: "refs/heads/main" },
+          { headSha: firstSha, kind: "tag", refName: "refs/tags/v1" },
+        ],
+        repository,
+      });
+      expect(unchanged.pushes).toBe(0);
+
+      const moved = await persistGitHubRepositoryRefs({
+        account: "f0rr0",
+        observedAt: new Date("2026-08-29T10:00:00.000Z"),
+        refs: [
+          { headSha: secondSha, kind: "head", refName: "refs/heads/main" },
+        ],
+        repository,
+      });
+      expect(moved.pushes).toBe(1);
+
+      const refs = await admin`
+        select active, head_sha, ref_name
+        from github_repository_refs
+        where repository_id = '404'
+        order by ref_name
+      `;
+      expect(refs).toEqual([
+        { active: true, head_sha: secondSha, ref_name: "refs/heads/main" },
+        { active: false, head_sha: firstSha, ref_name: "refs/tags/v1" },
+      ]);
+      const observations = await admin`
+        select after_sha, before_sha, ref_name, source
+        from github_push_observations
+        where repository_id = '404'
+        order by observed_at
+      `;
+      expect(observations).toEqual([
+        {
+          after_sha: firstSha,
+          before_sha: "0".repeat(40),
+          ref_name: "refs/heads/main",
+          source: "refs",
+        },
+        {
+          after_sha: secondSha,
+          before_sha: firstSha,
+          ref_name: "refs/heads/main",
+          source: "refs",
+        },
+      ]);
     });
 
     test("pages complete UTC days and projects only current complete PR membership", async () => {
@@ -882,7 +960,10 @@ describe.skipIf(!dockerAvailable)(
       const sparseTerminalSignal = {
         action: "merged",
         number: 80,
-        repositoryId: "202",
+        repository: {
+          fullName: "example-org/upstream",
+          id: "202",
+        },
       };
       const crossAccount = await persistAccountIntake({
         account: "yuppiestechdev",

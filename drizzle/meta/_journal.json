@@ -57,6 +57,13 @@
       "when": 1787949510936,
       "tag": "0007_rare_toad_men",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788014897142,
+      "tag": "0008_warm_bedlam",
+      "breakpoints": true
     }
   ]
 }

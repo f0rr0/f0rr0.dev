@@ -15,6 +15,10 @@ import {
   persistAccountIntake,
   readGitHubAccountCheckpoint,
 } from "@/lib/github-commits-store";
+import {
+  hydrateSparseGitHubPullRequestEvents,
+  reconcileAccessibleGitHubRepositoryRefs,
+} from "@/lib/github-reconciliation";
 
 const ACCOUNT_TOKEN_VARIABLES = {
   f0rr0: "GITHUB_F0RR0_TOKEN",
@@ -34,6 +38,8 @@ export interface GitHubAccountSyncResult {
   paused: boolean;
   pullRequests: number;
   pushes: number;
+  refs: number;
+  repositories: number;
 }
 
 export interface GitHubSyncResult {
@@ -50,6 +56,8 @@ export interface GitHubSyncResult {
   paused: number;
   pullRequests: number;
   pushes: number;
+  refs: number;
+  repositories: number;
 }
 
 export class GitHubSyncConfigurationError extends Error {
@@ -170,6 +178,8 @@ export const syncGitHubAccount = async (
         paused: true,
         pullRequests: 0,
         pushes: 0,
+        refs: 0,
+        repositories: 0,
       };
     }
     if (token === null) {
@@ -181,15 +191,23 @@ export const syncGitHubAccount = async (
       token,
       checkpoint?.latestEventId ?? null
     );
+    const events = await hydrateSparseGitHubPullRequestEvents(
+      collected.events,
+      token
+    );
 
     try {
       const persisted = await persistAccountIntake({
         account,
-        events: collected.events,
+        events,
         expectedCheckpoint: checkpoint,
         gap: collected.gap,
         latestEventId: collected.latestEventId,
       });
+      const refs = await reconcileAccessibleGitHubRepositoryRefs(
+        account,
+        token
+      );
       return {
         account,
         checkpointChanged:
@@ -197,10 +215,12 @@ export const syncGitHubAccount = async (
         events: collected.events.length,
         gapRecorded: collected.gap !== null,
         issues: persisted.issues,
-        knownCommits: persisted.knownCommits,
+        knownCommits: persisted.knownCommits + refs.knownCommits,
         paused: false,
         pullRequests: persisted.pullRequests,
-        pushes: persisted.pushes,
+        pushes: persisted.pushes + refs.pushes,
+        refs: refs.refs,
+        repositories: refs.repositories,
       };
     } catch (error) {
       if (
@@ -261,5 +281,10 @@ export const syncGitHubAccounts = async (): Promise<GitHubSyncResult> => {
       0
     ),
     pushes: results.reduce((total, result) => total + result.pushes, 0),
+    refs: results.reduce((total, result) => total + result.refs, 0),
+    repositories: results.reduce(
+      (total, result) => total + result.repositories,
+      0
+    ),
   };
 };
