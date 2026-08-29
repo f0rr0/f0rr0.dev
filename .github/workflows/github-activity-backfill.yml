@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       start_date:
-        description: First UTC date to include (YYYY-MM-DD)
+        description: Oldest commit date to include (YYYY-MM-DD)
         required: true
         type: string
       end_date:
-        description: Last UTC date to include (YYYY-MM-DD, maximum 366 days)
+        description: Newest commit date to include (YYYY-MM-DD; up to 366 calendar days including both dates)
         required: true
         type: string
       account:
