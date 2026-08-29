@@ -141,7 +141,7 @@ const optionalDate = (value: unknown) => {
   return { valid: date !== null, value: date } as const;
 };
 
-const repositoryIdFrom = (value: unknown) => {
+export const repositoryIdFrom = (value: unknown) => {
   if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
     return String(value);
   }
@@ -212,18 +212,21 @@ export const githubDeliveryIdFrom = (value: unknown) => {
   return GITHUB_DELIVERY_ID.test(deliveryId) ? deliveryId : null;
 };
 
+export const repositoryFullNameFrom = (value: unknown) => {
+  const fullName = normalizedText(value, 200);
+  return fullName !== null && REPOSITORY_FULL_NAME.test(fullName)
+    ? fullName
+    : null;
+};
+
 export const repositoryFrom = (value: unknown): GitHubRepository | null => {
   if (!isObject(value)) {
     return null;
   }
 
   const id = repositoryIdFrom(value.id);
-  const fullName = normalizedText(value.full_name ?? value.name, 200);
-  if (
-    id === null ||
-    fullName === null ||
-    !REPOSITORY_FULL_NAME.test(fullName)
-  ) {
+  const fullName = repositoryFullNameFrom(value.full_name ?? value.name);
+  if (id === null || fullName === null) {
     return null;
   }
 

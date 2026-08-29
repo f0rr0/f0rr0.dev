@@ -3,6 +3,8 @@ import { Buffer } from "node:buffer";
 import remarkEmbedderModule from "@remark-embedder/core";
 import { codeToHtml } from "shiki";
 
+import { env } from "../env.ts";
+
 function resolveDefaultExport(value) {
   if (typeof value === "function") {
     return value;
@@ -454,7 +456,7 @@ async function fetchGitHubResource(parsed) {
             .map((segment) => encodeURIComponent(segment))
             .join("/")}?ref=${encodeURIComponent(parsed.commit)}`
         : `repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}`;
-  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  const token = env.GITHUB_TOKEN ?? env.GH_TOKEN;
   const headers = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": GITHUB_API_VERSION,

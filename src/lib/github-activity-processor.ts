@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { openai } from "@ai-sdk/openai";
 import { APICallError, generateText } from "ai";
 
+import { env } from "@/env";
 import {
   formatPublicCommitSummaryMarkdown,
   parseCommitPublicSummary,
@@ -77,6 +78,7 @@ export interface GitHubActivityPushObservationReference {
   beforeSha: string;
   expectedCommitCount: number | null;
   historySinceAt: Date;
+  historyUntilAt: Date | null;
   knownShas: readonly string[];
   observedAt: Date;
   refName: string;
@@ -207,15 +209,15 @@ const repositoryReferenceFrom = (row: {
 const tokenCandidatesFor = (account: TrackedGitHubAccount) => {
   const accountToken =
     account === "f0rr0"
-      ? process.env.GITHUB_F0RR0_TOKEN
-      : process.env.GITHUB_YUPPIESTECHDEV_TOKEN;
+      ? env.GITHUB_F0RR0_TOKEN
+      : env.GITHUB_YUPPIESTECHDEV_TOKEN;
   const otherToken =
     account === "f0rr0"
-      ? process.env.GITHUB_YUPPIESTECHDEV_TOKEN
-      : process.env.GITHUB_F0RR0_TOKEN;
+      ? env.GITHUB_YUPPIESTECHDEV_TOKEN
+      : env.GITHUB_F0RR0_TOKEN;
   return [
     ...new Set(
-      [accountToken, otherToken, process.env.GITHUB_TOKEN].flatMap((value) => {
+      [accountToken, otherToken, env.GITHUB_TOKEN].flatMap((value) => {
         const token = value?.trim();
         return token === undefined || token.length === 0 ? [] : [token];
       })
@@ -600,6 +602,10 @@ const newBranchCommitValuesWithToken = async (
   const { expectedCommitCount } = row;
   const historySinceAt =
     expectedCommitCount === null ? row.historySinceAt.toISOString() : null;
+  const historyUntilAt =
+    expectedCommitCount === null
+      ? (row.historyUntilAt?.toISOString() ?? null)
+      : null;
   if (expectedCommitCount !== null && expectedCommitCount < 1) {
     throw new ActivityProcessingError(
       "source_incomplete",
@@ -613,11 +619,11 @@ const newBranchCommitValuesWithToken = async (
       "The stored GitHub repository reference is invalid."
     );
   }
-  const query = `query NewBranchCommits($owner: String!, $name: String!, $oid: GitObjectID!, $pageSize: Int!, $cursor: String, $since: GitTimestamp) {
+  const query = `query NewBranchCommits($owner: String!, $name: String!, $oid: GitObjectID!, $pageSize: Int!, $cursor: String, $since: GitTimestamp, $until: GitTimestamp) {
     repository(owner: $owner, name: $name) {
       object(oid: $oid) {
         ... on Commit {
-          history(first: $pageSize, after: $cursor, since: $since) {
+          history(first: $pageSize, after: $cursor, since: $since, until: $until) {
             nodes {
               oid
               message
@@ -649,6 +655,7 @@ const newBranchCommitValuesWithToken = async (
           owner,
           pageSize,
           since: historySinceAt,
+          until: historyUntilAt,
         },
       }),
       method: "POST",
@@ -775,7 +782,9 @@ export const validateGitHubPushObservationCommitShas = (
     (!emptyRewind && !emptyBoundedHistory && commitShas.length === 0) ||
     (row.expectedCommitCount !== null &&
       commitShas.length !== row.expectedCommitCount) ||
-    (commitShas.length > 0 && commitShas.at(-1) !== row.afterSha) ||
+    (commitShas.length > 0 &&
+      (row.historyUntilAt ?? null) === null &&
+      commitShas.at(-1) !== row.afterSha) ||
     new Set(commitShas).size !== commitShas.length ||
     commitShas.some((sha) => commitShaFrom(sha) === null)
   ) {

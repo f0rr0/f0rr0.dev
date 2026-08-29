@@ -5,6 +5,7 @@ import { generateText } from "ai";
 
 import { closeDatabase, getDatabase } from "../src/db/client";
 import { githubCommits } from "../src/db/schema";
+import { env } from "../src/env";
 import { fetchGitHubActivityCommitSource } from "../src/lib/github-activity-processor";
 import type { GitHubActivityCommitReference } from "../src/lib/github-activity-processor";
 import {
@@ -152,7 +153,7 @@ const callNano = async (modelInput: string) => {
 };
 
 const main = async () => {
-  if ((process.env.OPENAI_API_KEY?.trim().length ?? 0) === 0) {
+  if ((env.OPENAI_API_KEY?.trim().length ?? 0) === 0) {
     throw new Error("OPENAI_API_KEY is not configured.");
   }
   const selected = await selectedRows();

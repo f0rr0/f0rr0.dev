@@ -3,9 +3,17 @@ import { once } from "node:events";
 
 import postgres from "postgres";
 
+import { env } from "../src/env";
+
 const MIGRATION_LOCK_NAME = "f0rr0.dev:drizzle-migrations";
 
-type Environment = Readonly<Record<string, string | undefined>>;
+interface Environment {
+  DATABASE_URL?: string;
+  DATABASE_URL_UNPOOLED?: string;
+  POSTGRES_URL_NON_POOLING?: string;
+  VERCEL?: string;
+  VERCEL_ENV?: string;
+}
 
 export class ProductionMigrationConfigurationError extends Error {
   constructor(message: string) {
@@ -95,7 +103,7 @@ const runDrizzleMigrations = async (databaseUrl: string) => {
 };
 
 export const applyProductionMigrations = async (
-  environment: Environment = process.env
+  environment: Environment = env
 ) => {
   if (!shouldApplyProductionMigrations(environment)) {
     process.stdout.write("Skipping production database migrations.\n");

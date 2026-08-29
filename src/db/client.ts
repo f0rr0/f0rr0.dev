@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import * as schema from "@/db/schema";
+import { env } from "@/env";
 
 export class DatabaseConfigurationError extends Error {
   constructor() {
@@ -14,7 +15,7 @@ let client: ReturnType<typeof postgres> | null = null;
 let database: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 const readDatabaseUrl = () => {
-  const value = process.env.DATABASE_URL?.trim();
+  const value = env.DATABASE_URL?.trim();
   return value === undefined || value.length === 0 ? null : value;
 };
 

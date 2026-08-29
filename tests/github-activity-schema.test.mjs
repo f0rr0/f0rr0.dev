@@ -69,6 +69,15 @@ describe("GitHub activity persistence schema", () => {
       ])
     );
     expect(githubPushObservations.state.default).toBe("pending");
+    expect(githubPushObservations.historySinceAt.notNull).toBe(false);
+    expect(githubPushObservations.historyUntilAt.notNull).toBe(false);
+    expect(checkNames(githubPushObservations)).toContain(
+      "github_push_observations_history_bounds"
+    );
+    const pushIdentity = config(githubPushObservations).indexes.find(
+      (item) => item.config.name === "github_push_observations_push_unique"
+    );
+    expect(pushIdentity?.config.where).toBeDefined();
     expect(getTableName(githubRepositoryRefs)).toBe("github_repository_refs");
     expect(githubRepositoryRefs.active.default).toBe(true);
     expect(indexNames(githubRepositoryRefs)).toContain(

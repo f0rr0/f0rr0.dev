@@ -91,6 +91,7 @@ export interface ClaimedGitHubPushObservation {
   beforeSha: string;
   expectedCommitCount: number | null;
   historySinceAt: Date;
+  historyUntilAt: Date | null;
   id: string;
   knownShas: readonly string[];
   leaseToken: string;
@@ -162,7 +163,8 @@ export const claimGitHubPushObservations = async (
         afterSha: githubPushObservations.afterSha,
         beforeSha: githubPushObservations.beforeSha,
         expectedCommitCount: githubPushObservations.expectedCommitCount,
-        historySinceAt: githubAccountCheckpoints.refBackfillSinceAt,
+        historySinceAt: sql<Date>`coalesce(${githubPushObservations.historySinceAt}, ${githubAccountCheckpoints.refBackfillSinceAt})`,
+        historyUntilAt: githubPushObservations.historyUntilAt,
         id: githubPushObservations.id,
         observedAt: githubPushObservations.observedAt,
         refName: githubPushObservations.refName,

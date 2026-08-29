@@ -379,6 +379,14 @@ export const githubPushObservations = pgTable(
     }),
     errorCode: varchar("error_code", { length: 80 }),
     expectedCommitCount: integer("expected_commit_count"),
+    historySinceAt: timestamp("history_since_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    historyUntilAt: timestamp("history_until_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
     id: uuid("id").defaultRandom().primaryKey(),
     leaseToken: uuid("lease_token"),
     leaseUntil: timestamp("lease_until", {
@@ -409,12 +417,9 @@ export const githubPushObservations = pgTable(
       table.source,
       table.sourceId
     ),
-    uniqueIndex("github_push_observations_push_unique").on(
-      table.repositoryId,
-      table.refName,
-      table.beforeSha,
-      table.afterSha
-    ),
+    uniqueIndex("github_push_observations_push_unique")
+      .on(table.repositoryId, table.refName, table.beforeSha, table.afterSha)
+      .where(sql`${table.source} <> 'backfill'`),
     index("github_push_observations_pending_idx").on(
       table.state,
       table.leaseUntil,
@@ -435,7 +440,7 @@ export const githubPushObservations = pgTable(
     ),
     check(
       "github_push_observations_source",
-      sql`${table.source} IN ('webhook', 'events', 'refs')`
+      sql`${table.source} IN ('webhook', 'events', 'refs', 'backfill')`
     ),
     check(
       "github_push_observations_sha_shape",
@@ -444,6 +449,10 @@ export const githubPushObservations = pgTable(
     check(
       "github_push_observations_nonnegative_count",
       sql`${table.expectedCommitCount} IS NULL OR ${table.expectedCommitCount} >= 0`
+    ),
+    check(
+      "github_push_observations_history_bounds",
+      sql`(${table.source} <> 'backfill' AND ${table.historySinceAt} IS NULL AND ${table.historyUntilAt} IS NULL) OR (${table.source} = 'backfill' AND ${table.historySinceAt} IS NOT NULL AND ${table.historyUntilAt} IS NOT NULL AND ${table.historySinceAt} <= ${table.historyUntilAt} AND ${table.expectedCommitCount} IS NULL AND ${table.beforeSha} = repeat('0', 40))`
     ),
     check(
       "github_push_observations_state",

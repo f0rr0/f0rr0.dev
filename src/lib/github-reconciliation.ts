@@ -15,11 +15,18 @@ import type {
   GitHubRepositoryFacts,
   TrackedGitHubAccount,
 } from "@/lib/github-commits-core";
-import { persistGitHubRepositoryRefs } from "@/lib/github-commits-store";
-import type { GitHubRepositoryRefSnapshot } from "@/lib/github-commits-store";
+import {
+  persistGitHubRepositoryBackfill,
+  persistGitHubRepositoryRefs,
+} from "@/lib/github-commits-store";
+import type {
+  GitHubBackfillWindow,
+  GitHubRepositoryRefSnapshot,
+} from "@/lib/github-commits-store";
 
 const GITHUB_PAGE_SIZE = 100;
 const GITHUB_REQUEST_CONCURRENCY = 4;
+const MAXIMUM_BACKFILL_OBSERVATIONS = 5000;
 
 type JsonObject = Record<string, unknown>;
 
@@ -80,7 +87,21 @@ const fetchPaginatedArray = async (initialUrl: URL, token: string) => {
   return values;
 };
 
-export const collectAccessibleGitHubRepositories = async (token: string) => {
+export const collectAccessibleGitHubRepositories = async (
+  token: string,
+  repositoryId: string | null = null
+) => {
+  if (repositoryId !== null) {
+    const { payload } = await fetchJson(
+      githubApiUrl(`/repositories/${encodeURIComponent(repositoryId)}`),
+      token
+    );
+    const facts = repositoryFactsFrom(payload);
+    if (facts === null) {
+      throw new TypeError("GitHub returned an invalid repository response.");
+    }
+    return [facts];
+  }
   const url = githubApiUrl("/user/repos");
   url.searchParams.set("affiliation", "owner,collaborator,organization_member");
   url.searchParams.set("direction", "asc");
@@ -300,6 +321,70 @@ export interface GitHubRefReconciliationResult {
   refs: number;
   repositories: number;
 }
+
+export interface GitHubHistoryBackfillResult {
+  duplicates: number;
+  observations: number;
+  refs: number;
+  repositories: number;
+}
+
+export const queueAccessibleGitHubHistoryBackfill = async (input: {
+  account: TrackedGitHubAccount;
+  repositoryId: string | null;
+  token: string;
+  windows: readonly GitHubBackfillWindow[];
+}): Promise<GitHubHistoryBackfillResult> => {
+  const repositories = await collectAccessibleGitHubRepositories(
+    input.token,
+    input.repositoryId
+  );
+  const collected = await mapWithConcurrency(
+    repositories,
+    async (repository) => ({
+      refs: await collectGitHubRepositoryRefs(repository, input.token),
+      repository,
+    })
+  );
+  const accessible = collected.flatMap(({ refs, repository }) =>
+    refs === null ? [] : [{ refs, repository }]
+  );
+  let observationCount = 0;
+  for (const { refs } of accessible) {
+    observationCount +=
+      new Set(refs.map(({ headSha }) => headSha)).size * input.windows.length;
+  }
+  if (observationCount > MAXIMUM_BACKFILL_OBSERVATIONS) {
+    throw new RangeError(
+      "The GitHub backfill would create too many durable observations."
+    );
+  }
+
+  const persisted = await mapWithConcurrency(
+    accessible,
+    async ({ refs, repository }) =>
+      await persistGitHubRepositoryBackfill({
+        account: input.account,
+        observedAt: new Date(),
+        refs,
+        repository,
+        windows: input.windows,
+      })
+  );
+  const result: GitHubHistoryBackfillResult = {
+    duplicates: 0,
+    observations: 0,
+    refs: 0,
+    repositories: 0,
+  };
+  for (const repository of persisted) {
+    result.duplicates += repository.duplicates;
+    result.observations += repository.observations;
+    result.refs += repository.refs;
+    result.repositories += 1;
+  }
+  return result;
+};
 
 export const reconcileAccessibleGitHubRepositoryRefs = async (
   account: TrackedGitHubAccount,

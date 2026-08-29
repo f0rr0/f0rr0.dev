@@ -3,14 +3,8 @@ import { createHash } from "node:crypto";
 import type { PublicCommitEvidence } from "@/lib/github-activity-public-summary";
 
 export const GITHUB_EXACT_DIFF_DIGEST_RECIPE = "github-exact-diff-v2";
-export const DEFAULT_GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS = 30;
-
-export class GitHubActivityConfigurationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "GitHubActivityConfigurationError";
-  }
-}
+export const DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE = 4;
+export const GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS = 30;
 
 export interface GitHubExactDiffDigest {
   complete: boolean;
@@ -138,7 +132,10 @@ export const exactGitHubDiffDigest = (
   };
 };
 
-export const boundedWorkerLimit = (value: number | undefined, fallback = 2) => {
+export const boundedWorkerLimit = (
+  value: number | undefined,
+  fallback = DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE
+) => {
   const selected = value ?? fallback;
   if (!Number.isSafeInteger(selected) || selected < 1 || selected > 8) {
     throw new RangeError("The GitHub activity worker batch size is invalid.");
@@ -146,28 +143,13 @@ export const boundedWorkerLimit = (value: number | undefined, fallback = 2) => {
   return selected;
 };
 
-export const githubPrReconciliationMaximumAgeDays = (
-  value = process.env.GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS
-) => {
-  const normalized = value?.trim().toLowerCase();
-  if (normalized === undefined || normalized.length === 0) {
-    return DEFAULT_GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS;
+export const workerBatchSizeFrom = (
+  value: string | null
+): number | null | undefined => {
+  if (value === null) {
+    return undefined;
   }
-  if (normalized === "infinity") {
-    return Number.POSITIVE_INFINITY;
-  }
-  if (!/^[1-9]\d*$/.test(normalized)) {
-    throw new GitHubActivityConfigurationError(
-      "GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS must be a positive integer or infinity."
-    );
-  }
-  const days = Number(normalized);
-  if (!Number.isSafeInteger(days)) {
-    throw new GitHubActivityConfigurationError(
-      "GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS is outside the supported range."
-    );
-  }
-  return days;
+  return /^[1-8]$/.test(value) ? Number(value) : null;
 };
 
 export const githubPrReconciliationCutoff = (

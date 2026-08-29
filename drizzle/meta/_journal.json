@@ -71,6 +71,13 @@
       "when": 1788018865000,
       "tag": "0009_freezing_cobalt_man",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788020225272,
+      "tag": "0010_clear_wonder_man",
+      "breakpoints": true
     }
   ]
 }

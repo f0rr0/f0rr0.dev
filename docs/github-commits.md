@@ -132,6 +132,11 @@ order:
 5. Create and claim one summary attempt for each still-canonical, non-merge
    commit, make one Nano call, and publish the activity only after it succeeds.
 
+Routine runs claim four items from each bounded stage. Manual backfill runs use
+eight. Both share a 90-second internal deadline and an absolute maximum batch
+of eight, so the regular worker can use available Hobby capacity without
+allowing one invocation to grow without bound.
+
 A commit with more than one parent is a regular merge commit. It remains fully
 stored for intake, ancestry, and alias evidence, but it is excluded from summary
 creation, summary claims, the public activity projection, pagination days, and
@@ -186,19 +191,12 @@ SHA changes or the current head's prior membership is incomplete. A base-only,
 title, or body edit does not fetch membership again and does not make another
 Nano call.
 
-Each worker run claims at most 25 due PRs per tracked account. The age window is
-configured with:
-
-```dotenv
-GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS=30
-```
-
-The default is `30`. Set a positive integer for another number of days, or the
-literal `infinity` for no age cutoff. Eligibility is calculated from PR
-`created_at` at query time, not permanently written into a stopped state.
-Increasing the value or switching to `infinity` therefore makes older open PRs
-eligible again. The cap applies only to scheduled reconciliation; a webhook or
-an associated-PR observation can still update an older PR opportunistically.
+Each worker run claims at most 25 due PRs per tracked account. Open PR
+reconciliation has a reviewed 30-day age horizon in code. It is a product and
+resource policy, not an environment-specific deployment setting. Eligibility
+is calculated from PR `created_at` at query time, not permanently written into
+a stopped state. The cap applies only to scheduled reconciliation; a webhook
+or an associated-PR observation can still update an older PR opportunistically.
 
 The age cutoff applies to ongoing open-PR reconciliation. A known merged or
 closed PR still gets its terminal refresh. After that successful final refresh,
@@ -305,7 +303,7 @@ DATABASE_URL=postgresql://...:6543/postgres
 DATABASE_URL_UNPOOLED=postgresql://...:5432/postgres
 GITHUB_F0RR0_TOKEN=github_pat_...
 GITHUB_YUPPIESTECHDEV_TOKEN=github_pat_...
-GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS=30
+GITHUB_BACKFILL_SECRET=<at-least-32-random-characters>
 GITHUB_WEBHOOK_SECRET=<at-least-32-random-characters>
 CRON_SECRET=<at-least-32-random-characters>
 OPENAI_API_KEY=...
@@ -316,6 +314,14 @@ SITE_URL=https://f0rr0.dev
 the other tracked account token, and then the optional default token so a PR or
 repository readable by either identity can still be processed. All tokens stay
 server-side.
+
+Application and maintenance-script configuration is parsed through the shared
+T3 Env schema in `src/env.ts`. Next.js loads root `.env.local` for local work;
+Bun loads the same file for the maintenance scripts. Vercel environment values
+are the production source. `.env.example` lists only values the application or
+a maintenance script actually reads. Provider ceilings, schedules, batches,
+windows, and retry timings remain reviewed code constants rather than
+environment variables.
 
 Every Vercel production build applies pending migrations before the Next.js
 build. Vercel remains the source of truth for which Git branch is production.
@@ -345,6 +351,11 @@ URLs and bearer secret, replaces jobs with the same names, and installs:
 */5 * * * *   # bounded activity worker
 ```
 
+Both cron requests have a 120-second HTTP timeout. The worker stops claiming
+new work after 90 seconds, leaving time for its final database writes and
+response. Full syncs currently complete inside the same bound; if they outgrow
+it, checkpoint the sync itself instead of merely extending the timeout.
+
 No Vercel Cron configuration is required. Inspect scheduling and HTTP delivery
 from Supabase with:
 
@@ -372,6 +383,46 @@ call OpenAI, or build the public timeline inline.
 The rollout order is schema, Vercel environment, Supabase jobs, GitHub App
 subscriptions, then end-to-end observation. Nothing in this document implies
 that a particular environment has already been migrated or deployed.
+
+### Date-bounded backfill Action
+
+The `Backfill GitHub activity` workflow is manually dispatched from GitHub
+Actions after its workflow file is present on the default branch. It accepts an
+inclusive UTC start and end date, one tracked credential or both, an optional
+numeric repository ID, and up to 50 immediate worker passes. A request may span
+at most 366 days; run adjacent ranges for older history.
+
+The Action sends only the request bounds to the production backfill route. It
+does not receive a database URL or either GitHub account token. The production
+`GITHUB_BACKFILL_SECRET` is mirrored into the repository Actions secret
+`ACTIVITY_BACKFILL_SECRET`. This dedicated bearer value is the only GitHub
+Actions secret the workflow needs.
+
+The server divides the requested range into non-overlapping 31-day windows,
+enumerates current refs with the selected server-side credential, collapses
+refs that share a head, and queues durable `backfill` observations. Repository
+ID, ref head, and window bounds form the idempotency identity: rerunning the
+same request is a no-op for completed observations and requeues deferred or
+unavailable observations. Normal five-minute worker runs finish anything not
+processed by the Action's immediate passes.
+
+Use an opaque numeric ID when targeting one repository so a private repository
+name does not appear in public workflow inputs. Resolve it locally with:
+
+```sh
+gh api repos/OWNER/REPOSITORY --jq .id
+```
+
+To queue the same request without GitHub Actions:
+
+```sh
+curl --fail-with-body \
+  --request POST \
+  --header "Authorization: Bearer $GITHUB_BACKFILL_SECRET" \
+  --header "Content-Type: application/json" \
+  --data '{"account":"f0rr0","startDate":"2026-08-01","endDate":"2026-08-29","repositoryId":""}' \
+  https://f0rr0.dev/api/cron/github-backfill
+```
 
 Run the normal synchronization locally:
 
