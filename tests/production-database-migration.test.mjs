@@ -7,12 +7,11 @@ import {
 } from "../scripts/migrate-production-database.ts";
 
 describe("production migration environment", () => {
-  test("runs only for production deployments from next", () => {
+  test("runs only for Vercel production deployments", () => {
     expect(
       shouldApplyProductionMigrations({
         VERCEL: "1",
         VERCEL_ENV: "production",
-        VERCEL_GIT_COMMIT_REF: "next",
       })
     ).toBe(true);
     expect(shouldApplyProductionMigrations({})).toBe(false);
@@ -20,19 +19,8 @@ describe("production migration environment", () => {
       shouldApplyProductionMigrations({
         VERCEL: "1",
         VERCEL_ENV: "preview",
-        VERCEL_GIT_COMMIT_REF: "feature",
       })
     ).toBe(false);
-  });
-
-  test("rejects an unexpected production branch", () => {
-    expect(() =>
-      shouldApplyProductionMigrations({
-        VERCEL: "1",
-        VERCEL_ENV: "production",
-        VERCEL_GIT_COMMIT_REF: "feature",
-      })
-    ).toThrow(ProductionMigrationConfigurationError);
   });
 });
 

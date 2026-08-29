@@ -3,7 +3,6 @@ import { once } from "node:events";
 
 import postgres from "postgres";
 
-const PRODUCTION_BRANCH = "next";
 const MIGRATION_LOCK_NAME = "f0rr0.dev:drizzle-migrations";
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -33,11 +32,6 @@ export const shouldApplyProductionMigrations = (environment: Environment) => {
   if (environment.VERCEL_ENV !== "production") {
     throw new ProductionMigrationConfigurationError(
       "VERCEL_ENV is unavailable during a Vercel build."
-    );
-  }
-  if (environment.VERCEL_GIT_COMMIT_REF !== PRODUCTION_BRANCH) {
-    throw new ProductionMigrationConfigurationError(
-      `Production migrations may only run from ${PRODUCTION_BRANCH}.`
     );
   }
   return true;

@@ -315,12 +315,13 @@ the other tracked account token, and then the optional default token so a PR or
 repository readable by either identity can still be processed. All tokens stay
 server-side.
 
-Every Vercel production build from `next` applies pending migrations before the
-Next.js build. `scripts/migrate-production-database.ts` uses the database URL
-already synchronized from Supabase to Vercel; when only the transaction-pooler
-URL is present, it derives the corresponding session-pooler URL. A PostgreSQL
-advisory lock serializes overlapping builds. Preview and local builds skip the
-database entirely. Apply migrations manually in other environments with:
+Every Vercel production build applies pending migrations before the Next.js
+build. Vercel remains the source of truth for which Git branch is production.
+`scripts/migrate-production-database.ts` uses the database URL already
+synchronized from Supabase to Vercel; when only the transaction-pooler URL is
+present, it derives the corresponding session-pooler URL. A PostgreSQL advisory
+lock serializes overlapping builds. Preview and local builds skip the database
+entirely. Apply migrations manually in other environments with:
 
 ```sh
 bun run db:migrate
