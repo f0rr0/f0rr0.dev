@@ -26,7 +26,9 @@ bun test
 bun run build
 ```
 
-Database migrations are explicit and are never run during install or build:
+Vercel production builds apply pending migrations before building the site,
+using the database connection already synchronized by Supabase. Preview and
+local builds skip migrations. Apply them manually in other environments with:
 
 ```sh
 bun run db:migrate
