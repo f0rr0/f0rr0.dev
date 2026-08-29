@@ -269,6 +269,54 @@ export const githubRepositories = pgTable(
   ]
 ).enableRLS();
 
+export const githubRepositoryRefs = pgTable(
+  "github_repository_refs",
+  {
+    active: boolean("active").default(true).notNull(),
+    firstObservedAt: timestamp("first_observed_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+    headSha: varchar("head_sha", { length: 40 }).notNull(),
+    kind: varchar("kind", { length: 8 }).notNull(),
+    lastObservedAt: timestamp("last_observed_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+    refName: text("ref_name").notNull(),
+    repositoryId: varchar("repository_id", { length: 32 }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.repositoryId, table.refName] }),
+    index("github_repository_refs_active_idx").on(
+      table.repositoryId,
+      table.active
+    ),
+    foreignKey({
+      columns: [table.repositoryId],
+      foreignColumns: [githubRepositories.id],
+      name: "github_repository_refs_repository_fk",
+    }).onDelete("cascade"),
+    check("github_repository_refs_kind", sql`${table.kind} IN ('head', 'tag')`),
+    check(
+      "github_repository_refs_name",
+      sql`(${table.kind} = 'head' AND ${table.refName} LIKE 'refs/heads/%') OR (${table.kind} = 'tag' AND ${table.refName} LIKE 'refs/tags/%')`
+    ),
+    check(
+      "github_repository_refs_sha_shape",
+      sql`${table.headSha} ~ '^[a-f0-9]{40}$'`
+    ),
+    check(
+      "github_repository_refs_observation_order",
+      sql`${table.lastObservedAt} >= ${table.firstObservedAt}`
+    ),
+  ]
+).enableRLS();
+
 export const githubWebhookDeliveries = pgTable(
   "github_webhook_deliveries",
   {
@@ -381,7 +429,7 @@ export const githubPushObservations = pgTable(
     ),
     check(
       "github_push_observations_source",
-      sql`${table.source} IN ('webhook', 'events')`
+      sql`${table.source} IN ('webhook', 'events', 'refs')`
     ),
     check(
       "github_push_observations_sha_shape",

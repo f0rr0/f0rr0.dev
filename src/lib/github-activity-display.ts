@@ -1,5 +1,3 @@
-import { trackedGitHubAccountFrom } from "@/lib/github-commits-core";
-
 const languageIconSlug: Readonly<Record<string, string>> = {
   c: "c",
   cpp: "cplusplus",
@@ -52,11 +50,11 @@ const repositoryLabel = (input: {
   private: boolean;
   repository: string;
 }) => {
-  const directlyOwned = trackedGitHubAccountFrom(input.ownerLogin) !== null;
-  const canName = !input.private || directlyOwned;
-  return canName
-    ? (input.repository.split("/").at(-1) ?? input.repository)
-    : null;
+  if (input.private) {
+    return "Private";
+  }
+  const repositoryName = input.repository.split("/").at(-1);
+  return `${input.ownerLogin}/${repositoryName ?? input.repository}`;
 };
 
 const safeGitHubUrl = (value: string) => {
