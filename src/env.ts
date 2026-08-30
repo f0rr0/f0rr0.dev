@@ -23,8 +23,6 @@ export const env = createEnv({
     NODE_ENV: z.enum(["development", "production", "test"]).optional(),
     OPENAI_API_KEY: optionalString,
     PORT: optionalString,
-    POSTGRES_URL_NON_POOLING: z.url().optional(),
-    SITE_URL: optionalString,
     VERCEL: z.literal("1").optional(),
     VERCEL_ENV: z.enum(["development", "preview", "production"]).optional(),
     VERCEL_PROJECT_PRODUCTION_URL: optionalString,

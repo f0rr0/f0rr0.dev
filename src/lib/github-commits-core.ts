@@ -81,7 +81,13 @@ export interface GitHubPullRequest {
   headRepository: GitHubRepositoryFacts | null;
   headSha: string;
   id: string;
-  mergeCommitSha: string | null;
+  /**
+   * GitHub's observed integration-commit candidate.
+   * `undefined` means the versioned REST representation omitted the field;
+   * `null` means no candidate exists. Durable merge identity must be verified
+   * from GraphQL `PullRequest.mergeCommit` before it is treated as authoritative.
+   */
+  mergeCommitSha: string | null | undefined;
   merged: boolean;
   mergedAt: string | null;
   nodeId: string;
@@ -199,6 +205,9 @@ export const commitShaFrom = (value: unknown) => {
 };
 
 const optionalCommitSha = (value: unknown) => {
+  if (value === undefined) {
+    return { valid: true, value: undefined } as const;
+  }
   if (value === null) {
     return { valid: true, value: null } as const;
   }
@@ -421,10 +430,10 @@ export const commitFromGitHub = (
       ? (normalizedText(value.commit.message.split(/\r?\n/, 1)[0], 240) ?? "")
       : null;
   const committedAt = normalizedDate(
-    (isObject(value.commit.author) ? value.commit.author.date : undefined) ??
-      (isObject(value.commit.committer)
-        ? value.commit.committer.date
-        : undefined)
+    (isObject(value.commit.committer)
+      ? value.commit.committer.date
+      : undefined) ??
+      (isObject(value.commit.author) ? value.commit.author.date : undefined)
   );
   if (sha === null || message === null || committedAt === null) {
     throw new TypeError("GitHub returned an invalid commit response.");
@@ -626,7 +635,6 @@ export const pullRequestFromGitHub = (
   const deletions = optionalNonNegativeInteger(value.deletions);
   const branches = pullRequestBranchesFrom(value, repository);
   const stateFacts = pullRequestStateFrom(value, closedAt, mergedAt);
-  const mergeCommitSha = optionalCommitSha(value.merge_commit_sha);
   const required = requiredPullRequestScalarsFrom({
     body,
     createdAt,
@@ -640,6 +648,12 @@ export const pullRequestFromGitHub = (
   if (branches === null || stateFacts === null || required === null) {
     return null;
   }
+  // Before a pull request is merged, GitHub's legacy REST field identifies a
+  // synthetic test merge commit. It is not stable integration evidence and
+  // must never enter durable merge identity state.
+  const mergeCommitSha = stateFacts.merged
+    ? optionalCommitSha(value.merge_commit_sha)
+    : ({ valid: true, value: null } as const);
   const expectedUrl = `https://github.com/${repository.fullName}/pull/${required.number}`;
 
   if (

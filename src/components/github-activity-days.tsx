@@ -297,7 +297,7 @@ function groupCommitsByRepository(
       continue;
     }
 
-    const repositoryKey = item.repository.label ?? "private";
+    const repositoryKey = item.repository.key;
     const existingGroup = commitGroups.get(repositoryKey);
     if (existingGroup !== undefined) {
       existingGroup.commits.push(item);

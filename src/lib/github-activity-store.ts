@@ -76,6 +76,13 @@ const activityDay = sql<string>`to_char(${githubPublicActivities.occurredAt} AT 
 const commitKey = (repositoryId: string, sha: string) =>
   `${repositoryId}:${sha}`;
 
+const publicRepositoryKey = (identity: string) =>
+  createHash("sha256")
+    .update("public-github-repository-group-v1\0")
+    .update(identity)
+    .digest("base64url")
+    .slice(0, 22);
+
 const publicPullRequestSliceId = (nodeId: string, day: string) =>
   `pr-${createHash("sha256")
     .update(nodeId)
@@ -109,7 +116,13 @@ const publicRepository = (
     repository.ownerLogin === null ||
     repository.visibility === null
   ) {
-    return { avatarUrl: null, label: null, url: null };
+    const identity = "sha" in destination ? destination.sha : destination.url;
+    return {
+      avatarUrl: null,
+      key: publicRepositoryKey(identity),
+      label: null,
+      url: null,
+    };
   }
   const privateRepository = repository.visibility !== "public";
   const display =
@@ -128,6 +141,7 @@ const publicRepository = (
         });
   return {
     avatarUrl: safeAvatarUrl(repository.ownerAvatarUrl),
+    key: publicRepositoryKey(repository.id),
     label: display.repositoryLabel,
     url: display.url,
   };
@@ -181,7 +195,8 @@ const publicCommit = (
       iconUrl: publicLanguageIconUrl(language.id),
     })),
     providerFileCapReached: commit.providerFileCapReached,
-    summary: showDetail ? summary.short : null,
+    summary:
+      showDetail && summary.short !== summary.headline ? summary.short : null,
   };
 };
 

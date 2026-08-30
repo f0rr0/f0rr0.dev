@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 
 import { openai } from "@ai-sdk/openai";
-import { APICallError, generateText } from "ai";
+import { generateText } from "ai";
 
 import { env } from "@/env";
 import {
   formatPublicCommitSummaryMarkdown,
   parseCommitPublicSummary,
+  PUBLIC_COMMIT_SUMMARY_RECIPE,
   PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT,
 } from "@/lib/github-activity-public-summary";
 import type {
@@ -34,11 +35,14 @@ import type {
 } from "@/lib/github-commits-core";
 
 export const GITHUB_ACTIVITY_SUMMARY_MODEL = "gpt-5-nano-2025-08-07";
+export const GITHUB_ACTIVITY_FALLBACK_SUMMARY_MODEL = "deterministic";
+export const GITHUB_ACTIVITY_FALLBACK_SUMMARY_RECIPE =
+  "commit-message-summary-v1";
 const GITHUB_FILE_PAGE_SIZE = 100;
 const MAXIMUM_GITHUB_FILE_PAGES = 30;
-const MAXIMUM_GITHUB_PULL_REQUEST_PAGES = 10;
 const MAXIMUM_GITHUB_PULL_REQUEST_COMMIT_PAGES = 3;
-const MAXIMUM_GITHUB_PULL_REQUEST_GRAPHQL_PAGES = 30;
+const GITHUB_GRAPHQL_NODE_BATCH_SIZE = 100;
+const GITHUB_GRAPHQL_SECONDARY_LIMIT_WAIT_MS = 60_000;
 const ZERO_SHA = "0".repeat(40);
 
 type JsonObject = Record<string, unknown>;
@@ -100,13 +104,24 @@ export interface GitHubActivityPullRequestReference {
 
 export interface GitHubActivityPullRequestSource {
   commitShas: readonly string[];
+  commits: readonly GitHubCommit[];
   membershipComplete: boolean;
   pullRequest: GitHubPullRequest;
+}
+
+export interface GitHubActivityPullRequestMembershipSource {
+  commitShas: readonly string[];
+  commits: readonly GitHubCommit[];
+  membershipComplete: boolean;
 }
 
 export interface GitHubActivityPullRequestSnapshot {
   expectedCommitCount: number;
   pullRequest: GitHubPullRequest;
+}
+
+export interface GitHubProviderRequestOptions {
+  deadlineAt?: number;
 }
 
 export class ActivityProcessingError extends Error {
@@ -119,8 +134,148 @@ export class ActivityProcessingError extends Error {
   }
 }
 
+export type GitHubGraphQlResponseErrorKind =
+  | "invalid_response"
+  | "partial_response"
+  | "rate_limited"
+  | "request_failed"
+  | "request_rejected"
+  | "unresolved_merge_commit";
+
+// oxlint-disable-next-line max-classes-per-file -- This provider error carries retry metadata across worker boundaries.
+export class GitHubGraphQlResponseError extends ActivityProcessingError {
+  readonly kind: GitHubGraphQlResponseErrorKind;
+  readonly retryable: boolean;
+  readonly retryAt: Date | null;
+
+  constructor(
+    kind: GitHubGraphQlResponseErrorKind,
+    options: { retryable: boolean; retryAt?: Date | null }
+  ) {
+    super(
+      options.retryable ? "source_incomplete" : "source_invalid",
+      kind === "rate_limited"
+        ? "GitHub GraphQL is rate limited."
+        : kind === "unresolved_merge_commit"
+          ? "GitHub has not returned an authoritative pull request merge commit."
+          : "GitHub returned an unusable GraphQL response."
+    );
+    this.name = "GitHubGraphQlResponseError";
+    this.kind = kind;
+    this.retryable = options.retryable;
+    this.retryAt = options.retryAt ?? null;
+  }
+}
+
+export interface GitHubPullRequestMergeCommitResolution {
+  mergeCommitSha: string | null;
+  nodeId: string;
+}
+
 const isObject = (value: unknown): value is JsonObject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const retryAtFromHeaders = (headers: Headers, now = Date.now()) => {
+  const retryAfter = headers.get("retry-after")?.trim();
+  if (retryAfter !== undefined && retryAfter !== "") {
+    if (/^\d+$/.test(retryAfter)) {
+      const timestamp = now + Number(retryAfter) * 1000;
+      if (Number.isFinite(timestamp) && timestamp <= 8_640_000_000_000_000) {
+        return new Date(timestamp);
+      }
+    }
+    const parsed = new Date(retryAfter);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  const reset = headers.get("x-ratelimit-reset")?.trim();
+  if (reset !== undefined && /^\d+$/.test(reset)) {
+    const timestamp = Number(reset) * 1000;
+    if (Number.isFinite(timestamp) && timestamp <= 8_640_000_000_000_000) {
+      return new Date(timestamp);
+    }
+  }
+  return null;
+};
+
+const graphQlErrorSignals = (
+  errors: readonly JsonObject[],
+  includeMessages: boolean
+) => {
+  const signals: string[] = [];
+  for (const error of errors) {
+    const extensions = isObject(error.extensions) ? error.extensions : null;
+    const values = [
+      ...(includeMessages ? [error.message] : []),
+      error.type,
+      extensions?.classification,
+      extensions?.code,
+      extensions?.type,
+    ];
+    for (const value of values) {
+      if (typeof value === "string") {
+        signals.push(value.toUpperCase());
+      }
+    }
+  }
+  return signals;
+};
+
+const graphQlErrorIsRateLimited = (
+  errors: readonly JsonObject[],
+  headers: Headers
+) => {
+  if (
+    headers.get("x-ratelimit-remaining")?.trim() === "0" ||
+    headers.has("retry-after")
+  ) {
+    return true;
+  }
+  return graphQlErrorSignals(errors, true).some(
+    (signal) =>
+      signal.includes("RATE_LIMIT") ||
+      signal.includes("RATE LIMIT") ||
+      signal.includes("SECONDARY RATE")
+  );
+};
+
+const graphQlErrorIsPermanent = (errors: readonly JsonObject[]) => {
+  const permanentSignals = [
+    "BAD_USER_INPUT",
+    "FORBIDDEN",
+    "GRAPHQL_VALIDATION_FAILED",
+    "NOT_FOUND",
+    "UNAUTHORIZED",
+    "UNDEFINED_FIELD",
+  ];
+  const signals = graphQlErrorSignals(errors, false);
+  return signals.some((signal) =>
+    permanentSignals.some((permanent) => signal.includes(permanent))
+  );
+};
+
+const graphQlErrorsFrom = (payload: JsonObject) => {
+  if (!Object.hasOwn(payload, "errors")) {
+    return null;
+  }
+  if (
+    !Array.isArray(payload.errors) ||
+    payload.errors.length === 0 ||
+    payload.errors.some(
+      (item) =>
+        !isObject(item) ||
+        typeof item.message !== "string" ||
+        item.message.length === 0
+    )
+  ) {
+    throw new GitHubGraphQlResponseError("invalid_response", {
+      retryable: false,
+    });
+  }
+  return payload.errors as JsonObject[];
+};
 
 const requiredString = (value: unknown, label: string) => {
   if (typeof value !== "string" || value.length === 0) {
@@ -258,14 +413,229 @@ const withGitHubTokenCandidate = async <Value>(
       );
 };
 
-const fetchJson = async (path: string, token: string) => {
-  const response = await fetchGitHub(githubApiUrl(path), { token });
+const fetchJson = async (
+  path: string,
+  token: string,
+  options: GitHubProviderRequestOptions = {}
+) => {
+  const response = await fetchGitHub(githubApiUrl(path), {
+    deadlineAt: options.deadlineAt,
+    token,
+  });
   return (await response.json()) as unknown;
 };
 
-const fetchJsonWithResponse = async (url: URL, token: string) => {
-  const response = await fetchGitHub(url, { token });
+const fetchJsonWithResponse = async (
+  url: URL,
+  token: string,
+  options: GitHubProviderRequestOptions = {}
+) => {
+  const response = await fetchGitHub(url, {
+    deadlineAt: options.deadlineAt,
+    token,
+  });
   return { payload: (await response.json()) as unknown, response };
+};
+
+const PULL_REQUEST_MERGE_COMMITS_QUERY = `query PullRequestMergeCommits($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    __typename
+    ... on PullRequest {
+      id
+      merged
+      mergeCommit { oid }
+    }
+  }
+}`;
+
+const graphQlNodeIdFrom = (value: unknown) =>
+  typeof value === "string" &&
+  value.length > 0 &&
+  value.length <= 100 &&
+  !/\s/u.test(value)
+    ? value
+    : null;
+
+export const githubGraphQlPayloadFrom = async (response: Response) => {
+  let value: unknown;
+  try {
+    value = await response.json();
+  } catch {
+    throw new GitHubGraphQlResponseError("invalid_response", {
+      retryable: false,
+    });
+  }
+  if (!isObject(value)) {
+    throw new GitHubGraphQlResponseError("invalid_response", {
+      retryable: false,
+    });
+  }
+  const errors = graphQlErrorsFrom(value);
+  if (errors !== null) {
+    if (graphQlErrorIsRateLimited(errors, response.headers)) {
+      throw new GitHubGraphQlResponseError("rate_limited", {
+        retryAt:
+          retryAtFromHeaders(response.headers) ??
+          new Date(Date.now() + GITHUB_GRAPHQL_SECONDARY_LIMIT_WAIT_MS),
+        retryable: true,
+      });
+    }
+    const retryable = !graphQlErrorIsPermanent(errors);
+    const hasPartialData = Object.hasOwn(value, "data") && value.data !== null;
+    throw new GitHubGraphQlResponseError(
+      hasPartialData
+        ? "partial_response"
+        : retryable
+          ? "request_failed"
+          : "request_rejected",
+      { retryable }
+    );
+  }
+  return value;
+};
+
+const resolveGitHubPullRequestMergeCommitBatch = async (
+  nodeIds: readonly string[],
+  token: string,
+  options: GitHubProviderRequestOptions
+) => {
+  const response = await fetchGitHub(githubApiUrl("/graphql"), {
+    body: JSON.stringify({
+      query: PULL_REQUEST_MERGE_COMMITS_QUERY,
+      variables: { ids: nodeIds },
+    }),
+    deadlineAt: options.deadlineAt,
+    method: "POST",
+    token,
+  });
+  const payload = await githubGraphQlPayloadFrom(response);
+  const nodes = isObject(payload.data) ? payload.data.nodes : null;
+  if (!Array.isArray(nodes) || nodes.length !== nodeIds.length) {
+    throw new GitHubGraphQlResponseError("invalid_response", {
+      retryable: false,
+    });
+  }
+
+  const requestedNodeIds = new Set(nodeIds);
+  const resolutions = new Map<string, GitHubPullRequestMergeCommitResolution>();
+  for (const node of nodes) {
+    if (node === null) {
+      throw new GitHubGraphQlResponseError("unresolved_merge_commit", {
+        retryable: true,
+      });
+    }
+    if (!isObject(node) || node.__typename !== "PullRequest") {
+      throw new GitHubGraphQlResponseError("invalid_response", {
+        retryable: false,
+      });
+    }
+    const nodeId = graphQlNodeIdFrom(node.id);
+    if (
+      nodeId === null ||
+      !requestedNodeIds.has(nodeId) ||
+      resolutions.has(nodeId)
+    ) {
+      throw new GitHubGraphQlResponseError("invalid_response", {
+        retryable: false,
+      });
+    }
+    if (node.merged !== true) {
+      throw new GitHubGraphQlResponseError("unresolved_merge_commit", {
+        retryable: true,
+      });
+    }
+    if (node.mergeCommit === null) {
+      resolutions.set(nodeId, { mergeCommitSha: null, nodeId });
+      continue;
+    }
+    const mergeCommitSha = isObject(node.mergeCommit)
+      ? commitShaFrom(node.mergeCommit.oid)
+      : null;
+    if (mergeCommitSha === null) {
+      throw new GitHubGraphQlResponseError("invalid_response", {
+        retryable: false,
+      });
+    }
+    resolutions.set(nodeId, { mergeCommitSha, nodeId });
+  }
+  if (resolutions.size !== requestedNodeIds.size) {
+    throw new GitHubGraphQlResponseError("unresolved_merge_commit", {
+      retryable: true,
+    });
+  }
+  return nodeIds.map((nodeId) => {
+    const resolution = resolutions.get(nodeId);
+    if (resolution === undefined) {
+      throw new GitHubGraphQlResponseError("unresolved_merge_commit", {
+        retryable: true,
+      });
+    }
+    return resolution;
+  });
+};
+
+/** Resolves only GitHub's authoritative post-merge commit identity. */
+export const resolveGitHubPullRequestMergeCommits = async (
+  rawNodeIds: readonly string[],
+  token: string,
+  options: GitHubProviderRequestOptions = {}
+): Promise<readonly GitHubPullRequestMergeCommitResolution[]> => {
+  const nodeIds = [...new Set(rawNodeIds)];
+  if (
+    rawNodeIds.some((nodeId) => graphQlNodeIdFrom(nodeId) === null) ||
+    nodeIds.length !== rawNodeIds.length
+  ) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "The GitHub pull request node IDs are invalid."
+    );
+  }
+  const resolutions: GitHubPullRequestMergeCommitResolution[] = [];
+  for (
+    let offset = 0;
+    offset < nodeIds.length;
+    offset += GITHUB_GRAPHQL_NODE_BATCH_SIZE
+  ) {
+    resolutions.push(
+      ...(await resolveGitHubPullRequestMergeCommitBatch(
+        nodeIds.slice(offset, offset + GITHUB_GRAPHQL_NODE_BATCH_SIZE),
+        token,
+        options
+      ))
+    );
+  }
+  return resolutions;
+};
+
+const withAuthoritativeMergeCommits = async (
+  pullRequests: readonly GitHubPullRequest[],
+  token: string,
+  options: GitHubProviderRequestOptions = {}
+) => {
+  const merged = pullRequests.filter((pullRequest) => pullRequest.merged);
+  if (merged.length === 0) {
+    return pullRequests;
+  }
+  const resolutions = await resolveGitHubPullRequestMergeCommits(
+    merged.map((pullRequest) => pullRequest.nodeId),
+    token,
+    options
+  );
+  const mergeCommitShas = new Map(
+    resolutions.map(({ mergeCommitSha, nodeId }) => [nodeId, mergeCommitSha])
+  );
+  return pullRequests.map((pullRequest) => {
+    if (!pullRequest.merged) {
+      return pullRequest;
+    }
+    const mergeCommitSha = mergeCommitShas.get(pullRequest.nodeId);
+    if (!mergeCommitShas.has(pullRequest.nodeId)) {
+      throw new GitHubGraphQlResponseError("unresolved_merge_commit", {
+        retryable: true,
+      });
+    }
+    return { ...pullRequest, mergeCommitSha };
+  });
 };
 
 const safeAvatarUrl = (value: unknown) => {
@@ -435,11 +805,13 @@ const commitEvidenceFrom = (
 
 const fetchCommitSourceWithToken = async (
   row: GitHubActivityCommitReference,
-  token: string
+  token: string,
+  options: GitHubProviderRequestOptions = {}
 ): Promise<GitHubActivityCommitSource> => {
   const repositoryPayload = await fetchJson(
     repositoryApiPath(row.repository),
-    token
+    token,
+    options
   );
   const repository = repositoryEvidenceFrom(
     repositoryPayload,
@@ -454,7 +826,8 @@ const fetchCommitSourceWithToken = async (
         repository.fullName,
         `/commits/${encodeURIComponent(row.sha)}?per_page=${GITHUB_FILE_PAGE_SIZE}&page=${page}`
       ),
-      token
+      token,
+      options
     );
     if (!isObject(value) || !Array.isArray(value.files)) {
       throw new ActivityProcessingError(
@@ -515,16 +888,18 @@ const fetchCommitSourceWithToken = async (
 };
 
 export const fetchGitHubActivityCommitSource = async (
-  row: GitHubActivityCommitReference
+  row: GitHubActivityCommitReference,
+  options: GitHubProviderRequestOptions = {}
 ) =>
   await withGitHubTokenCandidate(
     row.author,
-    async (token) => await fetchCommitSourceWithToken(row, token)
+    async (token) => await fetchCommitSourceWithToken(row, token, options)
   );
 
 const compareCommitValuesWithToken = async (
   row: GitHubActivityPushObservationReference,
-  token: string
+  token: string,
+  options: GitHubProviderRequestOptions = {}
 ) => {
   const repository = repositoryReferenceFrom(row);
   const values: unknown[] = [];
@@ -547,7 +922,7 @@ const compareCommitValuesWithToken = async (
       );
     }
     visited.add(url.href);
-    const result = await fetchJsonWithResponse(url, token);
+    const result = await fetchJsonWithResponse(url, token, options);
     const pageValues = isObject(result.payload) ? result.payload.commits : null;
     const pageAheadBy = isObject(result.payload)
       ? requiredInteger(result.payload.ahead_by, "compare ahead count")
@@ -597,7 +972,8 @@ const compareCommitValuesWithToken = async (
 // oxlint-disable-next-line complexity -- Every GraphQL history invariant fails closed.
 const newBranchCommitValuesWithToken = async (
   row: GitHubActivityPushObservationReference,
-  token: string
+  token: string,
+  options: GitHubProviderRequestOptions = {}
 ) => {
   const { expectedCommitCount } = row;
   const historySinceAt =
@@ -628,6 +1004,7 @@ const newBranchCommitValuesWithToken = async (
               oid
               message
               authoredDate
+              committedDate
               url
               author { user { login } }
             }
@@ -658,10 +1035,11 @@ const newBranchCommitValuesWithToken = async (
           until: historyUntilAt,
         },
       }),
+      deadlineAt: options.deadlineAt,
       method: "POST",
       token,
     });
-    const payload = (await response.json()) as unknown;
+    const payload = await githubGraphQlPayloadFrom(response);
     const repository =
       isObject(payload) && isObject(payload.data)
         ? payload.data.repository
@@ -706,6 +1084,7 @@ const newBranchCommitValuesWithToken = async (
         author: isObject(user) ? { login: user.login } : null,
         commit: {
           author: { date: node.authoredDate },
+          committer: { date: node.committedDate },
           message: node.message,
         },
         html_url: node.url,
@@ -740,13 +1119,14 @@ const newBranchCommitValuesWithToken = async (
 
 const pushCommitValuesWithToken = async (
   row: GitHubActivityPushObservationReference,
-  token: string
+  token: string,
+  options: GitHubProviderRequestOptions = {}
 ) => {
   if (row.beforeSha === ZERO_SHA) {
-    return await newBranchCommitValuesWithToken(row, token);
+    return await newBranchCommitValuesWithToken(row, token, options);
   }
   try {
-    return await compareCommitValuesWithToken(row, token);
+    return await compareCommitValuesWithToken(row, token, options);
   } catch (error) {
     if (
       !(error instanceof GitHubResponseError) ||
@@ -757,7 +1137,8 @@ const pushCommitValuesWithToken = async (
     try {
       return await newBranchCommitValuesWithToken(
         { ...row, beforeSha: ZERO_SHA, expectedCommitCount: null },
-        token
+        token,
+        options
       );
     } catch {
       // Preserve the response error so token fallback can try another identity.
@@ -821,17 +1202,17 @@ const trackedCommitFromPushValue = (
     return null;
   }
   const rawCommit = isObject(value.commit) ? value.commit : null;
-  const rawDate = isObject(rawCommit?.author)
-    ? rawCommit.author.date
-    : isObject(rawCommit?.committer)
-      ? rawCommit.committer.date
+  const rawDate = isObject(rawCommit?.committer)
+    ? rawCommit.committer.date
+    : isObject(rawCommit?.author)
+      ? rawCommit.author.date
       : null;
   const providerDate =
     typeof rawDate === "string" ? new Date(rawDate) : new Date(Number.NaN);
   if (Number.isNaN(providerDate.getTime())) {
     throw new ActivityProcessingError(
       "source_invalid",
-      "GitHub returned an invalid commit author date."
+      "GitHub returned an invalid commit timestamp."
     );
   }
   const message =
@@ -852,12 +1233,41 @@ const trackedCommitFromPushValue = (
   };
 };
 
+const trackedCommitFromPullRequestValue = (
+  value: unknown,
+  sha: string,
+  repository: GitHubRepository
+) => {
+  if (!isObject(value)) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "GitHub returned an invalid pull request commit."
+    );
+  }
+  const author = isObject(value.author)
+    ? trackedGitHubAccountFrom(value.author.login)
+    : null;
+  if (author === null) {
+    return null;
+  }
+  if (!isObject(value.commit)) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "GitHub returned incomplete tracked pull request commit evidence."
+    );
+  }
+  // Backfill window semantics and final activity ordering both use the
+  // committer timestamp; author identity remains the top-level user.
+  return trackedCommitFromPushValue(value, sha, repository);
+};
+
 const pushObservationSourceWithToken = async (
   row: GitHubActivityPushObservationReference,
-  token: string
+  token: string,
+  options: GitHubProviderRequestOptions = {}
 ): Promise<GitHubActivityPushObservationSource> => {
   const repository = repositoryReferenceFrom(row);
-  const values = await pushCommitValuesWithToken(row, token);
+  const values = await pushCommitValuesWithToken(row, token, options);
   const commitShas: string[] = [];
   const commits: GitHubCommit[] = [];
   const seen = new Set<string>();
@@ -884,16 +1294,18 @@ const pushObservationSourceWithToken = async (
 };
 
 export const fetchGitHubPushObservationSource = async (
-  row: GitHubActivityPushObservationReference
+  row: GitHubActivityPushObservationReference,
+  options: GitHubProviderRequestOptions = {}
 ) =>
   await withGitHubTokenCandidate(
     row.account,
-    async (token) => await pushObservationSourceWithToken(row, token)
+    async (token) => await pushObservationSourceWithToken(row, token, options)
   );
 
 const fetchAssociatedPullRequestsWithToken = async (
   row: GitHubActivityCommitReference,
-  token: string
+  token: string,
+  options: GitHubProviderRequestOptions = {}
 ) => {
   const repository = repositoryReferenceFrom(row);
   let url: URL | null = githubApiUrl(
@@ -904,13 +1316,17 @@ const fetchAssociatedPullRequestsWithToken = async (
   );
   url.searchParams.set("per_page", "100");
   const pullRequests = new Map<string, GitHubPullRequest>();
+  const seenPages = new Set<string>();
 
-  for (
-    let page = 0;
-    url !== null && page < MAXIMUM_GITHUB_PULL_REQUEST_PAGES;
-    page += 1
-  ) {
-    const result = await fetchJsonWithResponse(url, token);
+  while (url !== null) {
+    if (seenPages.has(url.href)) {
+      throw new ActivityProcessingError(
+        "source_invalid",
+        "GitHub returned cyclic associated pull request pagination."
+      );
+    }
+    seenPages.add(url.href);
+    const result = await fetchJsonWithResponse(url, token, options);
     if (!Array.isArray(result.payload)) {
       throw new ActivityProcessingError(
         "source_invalid",
@@ -926,19 +1342,22 @@ const fetchAssociatedPullRequestsWithToken = async (
         baseRepository === null
           ? null
           : pullRequestFromGitHub(value, baseRepository);
-      if (pullRequest !== null) {
-        pullRequests.set(pullRequest.nodeId, pullRequest);
+      if (pullRequest === null) {
+        throw new ActivityProcessingError(
+          "source_invalid",
+          "GitHub returned an invalid associated pull request."
+        );
       }
+      pullRequests.set(pullRequest.nodeId, pullRequest);
     }
     url = nextGitHubPage(result.response);
   }
-  if (url !== null) {
-    throw new ActivityProcessingError(
-      "source_invalid",
-      "GitHub associated pull requests exceeded the pagination limit."
-    );
-  }
-  return [...pullRequests.values()].toSorted((left, right) => {
+  const resolved = await withAuthoritativeMergeCommits(
+    [...pullRequests.values()],
+    token,
+    options
+  );
+  return resolved.toSorted((left, right) => {
     if (left.createdAt !== right.createdAt) {
       return left.createdAt < right.createdAt ? -1 : 1;
     }
@@ -947,7 +1366,8 @@ const fetchAssociatedPullRequestsWithToken = async (
 };
 
 export const fetchGitHubAssociatedPullRequests = async (
-  row: GitHubActivityCommitReference
+  row: GitHubActivityCommitReference,
+  options: GitHubProviderRequestOptions = {}
 ) => {
   const tokens = tokenCandidatesFor(row.author);
   if (tokens.length === 0) {
@@ -961,7 +1381,11 @@ export const fetchGitHubAssociatedPullRequests = async (
   let lastError: unknown;
   for (const token of tokens) {
     try {
-      const visible = await fetchAssociatedPullRequestsWithToken(row, token);
+      const visible = await fetchAssociatedPullRequestsWithToken(
+        row,
+        token,
+        options
+      );
       successfulTokens += 1;
       for (const pullRequest of visible) {
         pullRequests.set(pullRequest.nodeId, pullRequest);
@@ -993,16 +1417,21 @@ export const fetchGitHubAssociatedPullRequests = async (
   });
 };
 
-const fetchPullRequestSnapshotWithToken = async (
+/**
+ * Reads the versioned REST snapshot without claiming merge-SHA authority.
+ * A merged snapshot can contain `mergeCommitSha: undefined` under REST 2026.
+ */
+export const fetchGitHubPullRequestRestSnapshotWithToken = async (
   row: GitHubActivityPullRequestReference,
-  token: string
+  token: string,
+  options: GitHubProviderRequestOptions = {}
 ): Promise<GitHubActivityPullRequestSnapshot> => {
   const repository = repositoryReferenceFrom(row);
   const pullRequestPath = repositoryApiPath(
     repository.fullName,
     `/pulls/${String(row.number)}`
   );
-  const root = await fetchJson(pullRequestPath, token);
+  const root = await fetchJson(pullRequestPath, token, options);
   const pullRequest = pullRequestFromGitHub(root, repository, "reconciled");
   if (pullRequest === null) {
     throw new ActivityProcessingError(
@@ -1023,11 +1452,41 @@ const fetchPullRequestSnapshotWithToken = async (
   return { expectedCommitCount, pullRequest };
 };
 
+const fetchPullRequestSnapshotWithToken = async (
+  row: GitHubActivityPullRequestReference,
+  token: string,
+  options: GitHubProviderRequestOptions = {}
+): Promise<GitHubActivityPullRequestSnapshot> => {
+  const snapshot = await fetchGitHubPullRequestRestSnapshotWithToken(
+    row,
+    token,
+    options
+  );
+  const [resolved] = await withAuthoritativeMergeCommits(
+    [snapshot.pullRequest],
+    token,
+    options
+  );
+  if (resolved === undefined) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "GitHub returned an invalid pull request snapshot."
+    );
+  }
+  return {
+    expectedCommitCount: snapshot.expectedCommitCount,
+    pullRequest: resolved,
+  };
+};
+
 // oxlint-disable-next-line complexity -- Every GraphQL pagination invariant is validated fail-closed.
-const pullRequestCommitShasFromGraphQl = async (
+const pullRequestMembershipFromGraphQl = async (
   row: GitHubActivityPullRequestReference,
   expectedCommitCount: number,
-  token: string
+  token: string,
+  commitRepository: GitHubRepository,
+  expectedHeadSha: string | null,
+  deadlineAt: number | undefined
 ) => {
   const [owner, name] = row.repository.split("/");
   if (owner === undefined || name === undefined) {
@@ -1041,34 +1500,37 @@ const pullRequestCommitShasFromGraphQl = async (
       pullRequest(number: $number) {
         commits(first: 100, after: $cursor) {
           totalCount
-          nodes { commit { oid } }
+          nodes {
+            commit {
+              oid
+              message
+              committedDate
+              author { user { login } }
+            }
+          }
           pageInfo { hasNextPage endCursor }
         }
       }
     }
   }`;
   const commitShas: string[] = [];
+  const commits: GitHubCommit[] = [];
   const seen = new Set<string>();
+  const seenCursors = new Set<string>();
   let cursor: string | null = null;
   let hasNextPage = true;
-  for (
-    let page = 0;
-    hasNextPage && page < MAXIMUM_GITHUB_PULL_REQUEST_GRAPHQL_PAGES;
-    page += 1
-  ) {
+  while (hasNextPage) {
     const response = await fetchGitHub(githubApiUrl("/graphql"), {
       body: JSON.stringify({
         query,
         variables: { cursor, name, number: row.number, owner },
       }),
+      deadlineAt,
       method: "POST",
       token,
     });
-    const payload = (await response.json()) as unknown;
-    const repository =
-      isObject(payload) && isObject(payload.data)
-        ? payload.data.repository
-        : null;
+    const payload = await githubGraphQlPayloadFrom(response);
+    const repository = isObject(payload.data) ? payload.data.repository : null;
     const pullRequest = isObject(repository) ? repository.pullRequest : null;
     const connection = isObject(pullRequest) ? pullRequest.commits : null;
     if (
@@ -1084,6 +1546,7 @@ const pullRequestCommitShasFromGraphQl = async (
         "GitHub returned invalid GraphQL pull request membership."
       );
     }
+    const commitsBeforePage = commitShas.length;
     for (const node of connection.nodes) {
       const sha =
         isObject(node) && isObject(node.commit)
@@ -1098,34 +1561,91 @@ const pullRequestCommitShasFromGraphQl = async (
       if (!seen.has(sha)) {
         seen.add(sha);
         commitShas.push(sha);
+        const commitValue = isObject(node) ? node.commit : null;
+        const user =
+          isObject(commitValue) && isObject(commitValue.author)
+            ? commitValue.author.user
+            : null;
+        const commit = trackedCommitFromPushValue(
+          {
+            author: isObject(user) ? { login: user.login } : null,
+            commit: {
+              committer: {
+                date: isObject(commitValue) ? commitValue.committedDate : null,
+              },
+              message: isObject(commitValue) ? commitValue.message : null,
+            },
+            sha,
+          },
+          sha,
+          commitRepository
+        );
+        if (commit !== null) {
+          commits.push(commit);
+        }
       }
     }
     ({ hasNextPage } = connection.pageInfo);
+    if (
+      commitShas.length > expectedCommitCount ||
+      (hasNextPage && commitShas.length === commitsBeforePage)
+    ) {
+      throw new ActivityProcessingError(
+        "source_invalid",
+        "GitHub returned inconsistent GraphQL pull request membership."
+      );
+    }
     const nextCursor = connection.pageInfo.endCursor;
     if (
       hasNextPage &&
-      (typeof nextCursor !== "string" || nextCursor.length === 0)
+      (typeof nextCursor !== "string" ||
+        nextCursor.length === 0 ||
+        seenCursors.has(nextCursor))
     ) {
       throw new ActivityProcessingError(
         "source_invalid",
         "GitHub returned an invalid pull request membership cursor."
       );
     }
+    if (typeof nextCursor === "string") {
+      seenCursors.add(nextCursor);
+    }
     cursor = typeof nextCursor === "string" ? nextCursor : null;
   }
   return {
     commitShas,
+    commits,
     membershipComplete:
-      !hasNextPage && commitShas.length === expectedCommitCount,
+      !hasNextPage &&
+      commitShas.length === expectedCommitCount &&
+      (expectedHeadSha === null ||
+        expectedCommitCount === 0 ||
+        commitShas.at(-1) === expectedHeadSha),
   };
 };
 
-const fetchPullRequestMembershipWithToken = async (
+export const fetchGitHubPullRequestMembershipWithToken = async (
   row: GitHubActivityPullRequestReference,
   expectedCommitCount: number,
-  token: string
-) => {
+  token: string,
+  options: {
+    commitRepository?: GitHubRepository;
+    deadlineAt?: number;
+    expectedHeadSha?: string;
+  } = {}
+): Promise<GitHubActivityPullRequestMembershipSource> => {
   const repository = repositoryReferenceFrom(row);
+  const commitRepository = options.commitRepository ?? repository;
+  const expectedHeadSha =
+    options.expectedHeadSha === undefined
+      ? null
+      : commitShaFrom(options.expectedHeadSha);
+  if (options.expectedHeadSha !== undefined && expectedHeadSha === null) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "The expected GitHub pull request head is invalid."
+    );
+  }
   const pullRequestPath = repositoryApiPath(
     repository.fullName,
     `/pulls/${String(row.number)}`
@@ -1133,6 +1653,7 @@ const fetchPullRequestMembershipWithToken = async (
   let url: URL | null = githubApiUrl(`${pullRequestPath}/commits`);
   url.searchParams.set("per_page", "100");
   const commitShas: string[] = [];
+  const commits: GitHubCommit[] = [];
   const seen = new Set<string>();
 
   for (
@@ -1140,7 +1661,7 @@ const fetchPullRequestMembershipWithToken = async (
     url !== null && page < MAXIMUM_GITHUB_PULL_REQUEST_COMMIT_PAGES;
     page += 1
   ) {
-    const result = await fetchJsonWithResponse(url, token);
+    const result = await fetchJsonWithResponse(url, token, options);
     if (!Array.isArray(result.payload)) {
       throw new ActivityProcessingError(
         "source_invalid",
@@ -1158,43 +1679,82 @@ const fetchPullRequestMembershipWithToken = async (
       if (!seen.has(sha)) {
         seen.add(sha);
         commitShas.push(sha);
+        const commit = trackedCommitFromPullRequestValue(
+          value,
+          sha,
+          commitRepository
+        );
+        if (commit !== null) {
+          commits.push(commit);
+        }
       }
     }
     url = nextGitHubPage(result.response);
   }
 
   const membershipComplete =
-    url === null && commitShas.length === expectedCommitCount;
+    url === null &&
+    commitShas.length === expectedCommitCount &&
+    (expectedHeadSha === null ||
+      expectedCommitCount === 0 ||
+      commitShas.at(-1) === expectedHeadSha);
   return membershipComplete
-    ? { commitShas, membershipComplete }
-    : await pullRequestCommitShasFromGraphQl(row, expectedCommitCount, token);
+    ? { commitShas, commits, membershipComplete }
+    : await pullRequestMembershipFromGraphQl(
+        row,
+        expectedCommitCount,
+        token,
+        commitRepository,
+        expectedHeadSha,
+        options.deadlineAt
+      );
 };
 
 export const fetchGitHubPullRequestSnapshot = async (
-  row: GitHubActivityPullRequestReference
-) =>
-  await withGitHubTokenCandidate(
-    row.account,
-    async (token) => await fetchPullRequestSnapshotWithToken(row, token)
-  );
-
-export const fetchGitHubPullRequestMembership = async (
   row: GitHubActivityPullRequestReference,
-  expectedCommitCount: number
+  options: GitHubProviderRequestOptions = {}
 ) =>
   await withGitHubTokenCandidate(
     row.account,
     async (token) =>
-      await fetchPullRequestMembershipWithToken(row, expectedCommitCount, token)
+      await fetchPullRequestSnapshotWithToken(row, token, options)
+  );
+
+export const fetchGitHubPullRequestMembership = async (
+  row: GitHubActivityPullRequestReference,
+  expectedCommitCount: number,
+  options: {
+    commitRepository?: GitHubRepository;
+    deadlineAt?: number;
+    expectedHeadSha?: string;
+  } = {}
+) =>
+  await withGitHubTokenCandidate(
+    row.account,
+    async (token) =>
+      await fetchGitHubPullRequestMembershipWithToken(
+        row,
+        expectedCommitCount,
+        token,
+        options
+      )
   );
 
 export const fetchGitHubPullRequestSource = async (
-  row: GitHubActivityPullRequestReference
+  row: GitHubActivityPullRequestReference,
+  options: GitHubProviderRequestOptions = {}
 ) => {
-  const snapshot = await fetchGitHubPullRequestSnapshot(row);
+  const snapshot = await fetchGitHubPullRequestSnapshot(row, options);
   const membership = await fetchGitHubPullRequestMembership(
     row,
-    snapshot.expectedCommitCount
+    snapshot.expectedCommitCount,
+    {
+      commitRepository:
+        snapshot.pullRequest.headRepository ??
+        snapshot.pullRequest.baseRepository,
+      deadlineAt: options.deadlineAt,
+      expectedHeadSha: snapshot.pullRequest.headSha,
+    }
   );
   return { ...membership, pullRequest: snapshot.pullRequest };
 };
@@ -1202,7 +1762,22 @@ export const fetchGitHubPullRequestSource = async (
 const directlyOwnedRepository = (source: GitHubActivityCommitSource) =>
   trackedGitHubAccountFrom(source.repository.ownerLogin) !== null;
 
-const generateCommitSummary = async (source: GitHubActivityCommitSource) => {
+const MAXIMUM_ABORT_SIGNAL_TIMEOUT_MS = 2_147_483_647;
+
+const abortSignalBefore = (deadlineAt: number) => {
+  const remaining = Math.floor(deadlineAt - Date.now());
+  if (!Number.isFinite(deadlineAt) || deadlineAt < 0 || remaining <= 0) {
+    return null;
+  }
+  return AbortSignal.timeout(
+    Math.min(remaining, MAXIMUM_ABORT_SIGNAL_TIMEOUT_MS)
+  );
+};
+
+const generateCommitSummary = async (
+  source: GitHubActivityCommitSource,
+  options: GitHubProviderRequestOptions
+) => {
   const modelInput = await buildCommitPublicSummaryModelInput(source.commit, {
     avatarUrl: source.repository.avatarUrl,
     description: source.repository.description,
@@ -1219,7 +1794,17 @@ const generateCommitSummary = async (source: GitHubActivityCommitSource) => {
     .update("\n")
     .update(modelInput)
     .digest("hex");
+  const { deadlineAt } = options;
+  const abortSignal =
+    deadlineAt === undefined ? null : abortSignalBefore(deadlineAt);
+  if (deadlineAt !== undefined && abortSignal === null) {
+    throw new ActivityProcessingError(
+      "worker_deadline",
+      "The activity-summary deadline was reached."
+    );
+  }
   const result = await generateText({
+    ...(abortSignal === null ? {} : { abortSignal }),
     maxRetries: 0,
     model: openai(GITHUB_ACTIVITY_SUMMARY_MODEL),
     prompt: modelInput,
@@ -1235,24 +1820,54 @@ const generateCommitSummary = async (source: GitHubActivityCommitSource) => {
   return { inputHash, text: result.text };
 };
 
-const modelFailureCode = (error: unknown) => {
-  if (APICallError.isInstance(error) && error.statusCode !== undefined) {
-    return `model_${error.statusCode}`;
-  }
-  return "model_failed";
+const conventionalCommitPrefix =
+  /^(?:revert:\s*)?(?:build|chore|ci|docs|feat|fix|perf|refactor|style|test)(?:\([^\r\n)]*\))?!?:\s*/iu;
+
+const deterministicCommitSummary = (source: GitHubActivityCommitSource) => {
+  const firstLine = source.commit.message.split(/\r?\n/u, 1)[0] ?? "";
+  const unprefixed = firstLine.replace(conventionalCommitPrefix, "").trim();
+  const normalized = (unprefixed || "Updated the repository")
+    .replaceAll(/\s+/gu, " ")
+    .slice(0, 240);
+  const headline = normalized.replace(/^([a-z])/u, (first) =>
+    first.toUpperCase()
+  );
+  const summary = formatPublicCommitSummaryMarkdown(
+    { headline, short: headline },
+    source.commit
+  );
+  const inputHash = createHash("sha256")
+    .update(GITHUB_ACTIVITY_FALLBACK_SUMMARY_RECIPE)
+    .update("\n")
+    .update(source.commit.sha)
+    .update("\n")
+    .update(source.commit.message)
+    .digest("hex");
+  return {
+    inputHash,
+    model: GITHUB_ACTIVITY_FALLBACK_SUMMARY_MODEL,
+    recipe: GITHUB_ACTIVITY_FALLBACK_SUMMARY_RECIPE,
+    summary,
+  };
 };
 
 export const generateValidatedGitHubActivitySummary = async (
-  source: GitHubActivityCommitSource
+  source: GitHubActivityCommitSource,
+  options: GitHubProviderRequestOptions = {}
 ) => {
+  // Private patches never leave the application. The deterministic path also
+  // keeps publication independent of optional model credentials and uptime.
+  if (
+    source.repository.private ||
+    (env.OPENAI_API_KEY?.trim().length ?? 0) === 0
+  ) {
+    return deterministicCommitSummary(source);
+  }
   let generated: Awaited<ReturnType<typeof generateCommitSummary>>;
   try {
-    generated = await generateCommitSummary(source);
-  } catch (error) {
-    throw new ActivityProcessingError(
-      modelFailureCode(error),
-      error instanceof Error ? error.message : "The model request failed."
-    );
+    generated = await generateCommitSummary(source, options);
+  } catch {
+    return deterministicCommitSummary(source);
   }
   let summary;
   try {
@@ -1260,11 +1875,13 @@ export const generateValidatedGitHubActivitySummary = async (
       parseCommitPublicSummary(generated.text),
       source.commit
     );
-  } catch (error) {
-    throw new ActivityProcessingError(
-      "output_invalid",
-      error instanceof Error ? error.message : "The model output was invalid."
-    );
+  } catch {
+    return deterministicCommitSummary(source);
   }
-  return { inputHash: generated.inputHash, summary };
+  return {
+    inputHash: generated.inputHash,
+    model: GITHUB_ACTIVITY_SUMMARY_MODEL,
+    recipe: PUBLIC_COMMIT_SUMMARY_RECIPE,
+    summary,
+  };
 };

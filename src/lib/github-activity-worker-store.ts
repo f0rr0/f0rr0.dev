@@ -22,12 +22,14 @@ import {
   githubPublicActivities,
   githubPullRequestMemberships,
   githubPullRequests,
+  githubPullRequestSignals,
   githubPullRequestVersions,
   githubPushObservationCommits,
   githubPushObservations,
   githubRepositories,
   githubSummaryAttempts,
 } from "@/db/schema";
+import { invalidateGitHubPullRequestDerivedAliases } from "@/lib/github-activity-alias-store";
 import type {
   GitHubActivityCommitReference,
   GitHubActivityCommitSource,
@@ -41,6 +43,7 @@ import {
 } from "@/lib/github-activity-public-summary";
 import {
   githubCommitActivityOccurredAt,
+  githubActivityRetryAt,
   githubPullRequestSnapshotDisposition,
   githubPrReconciliationCutoff,
   githubSummaryCanPublish,
@@ -59,7 +62,6 @@ type DatabaseTransaction = Parameters<
 >[0];
 
 const DEFAULT_LEASE_MS = 5 * 60 * 1000;
-const DEFAULT_DEFER_MS = 15 * 60 * 1000;
 const isNonMergeCommit = sql<boolean>`
   ${githubCommits.parentShas} IS NOT NULL
   AND jsonb_array_length(${githubCommits.parentShas}) <= 1
@@ -80,13 +82,258 @@ const commitIdentity = (commit: { repositoryId: string; sha: string }) =>
 const observationIdentity = (observation: { id: string }) =>
   eq(githubPushObservations.id, observation.id);
 
-const dueAt = (now: Date, requested: Date | null = null) =>
-  requested !== null && requested > now
-    ? requested
-    : new Date(now.getTime() + DEFAULT_DEFER_MS);
+const dueAt = (
+  attemptCount: number,
+  now: Date,
+  requested: Date | null = null
+) => githubActivityRetryAt(attemptCount, now, requested);
+
+const GITHUB_EVIDENCE_RECOVERY_CONSTRAINT =
+  "github_pull_requests_verified_merge_sha";
+const GITHUB_EVIDENCE_RECOVERY_LOCK = "github-evidence-recovery-v1";
+export const GITHUB_EVIDENCE_RECOVERY_CONFIRMATION =
+  "REPAIR_GITHUB_EVIDENCE_V1";
+
+export interface GitHubEvidenceRecoveryPlan {
+  aliasesToClear: number;
+  canonicalizedCommitsToReset: number;
+  commitActivitiesToUnpublish: number;
+  commitsToRediscoverPullRequests: number;
+  constraintInstalled: boolean;
+  pullRequestsToReconcile: number;
+  summariesToRequeue: number;
+  unverifiedMergeShasToClear: number;
+}
+
+export interface GitHubEvidenceRecoveryResult {
+  plan: GitHubEvidenceRecoveryPlan;
+  repairedAt: string | null;
+  status: "already_applied" | "applied";
+}
+
+const appliedGitHubEvidenceRecoveryPlan = (): GitHubEvidenceRecoveryPlan => ({
+  aliasesToClear: 0,
+  canonicalizedCommitsToReset: 0,
+  commitActivitiesToUnpublish: 0,
+  commitsToRediscoverPullRequests: 0,
+  constraintInstalled: true,
+  pullRequestsToReconcile: 0,
+  summariesToRequeue: 0,
+  unverifiedMergeShasToClear: 0,
+});
+
+const invalidGitHubMergeEvidence = sql<boolean>`NOT (
+  (${githubPullRequests.mergeSha} IS NULL AND ${githubPullRequests.mergeShaVerifiedAt} IS NULL)
+  OR (
+    ${githubPullRequests.state} = 'merged'
+    AND ${githubPullRequests.mergeShaVerifiedAt} IS NOT NULL
+  )
+)`;
+
+const legacyGitHubCanonicalAlias = and(
+  eq(githubPublicActivities.kind, "commit"),
+  or(
+    isNotNull(githubPublicActivities.aliasEvidence),
+    isNotNull(githubPublicActivities.aliasReason),
+    isNotNull(githubPublicActivities.canonicalPublicId),
+    isNotNull(githubPublicActivities.hiddenAt)
+  )
+);
+
+const currentNoncompleteCommitSummary = and(
+  inArray(githubSummaryAttempts.state, [
+    "pending",
+    "failed",
+    "indeterminate",
+    "processing",
+  ]),
+  sql<boolean>`EXISTS (
+    SELECT 1
+    FROM ${githubPublicActivities} AS recovery_activity
+    WHERE recovery_activity.public_id = ${githubSummaryAttempts.activityPublicId}
+      AND recovery_activity.revision = ${githubSummaryAttempts.revision}
+      AND recovery_activity.kind = 'commit'
+  )`
+);
+
+const githubEvidenceRecoveryConstraintInstalled = async (
+  transaction: DatabaseTransaction
+) => {
+  const [row] = await transaction.execute<{ installed: boolean }>(sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conname = ${GITHUB_EVIDENCE_RECOVERY_CONSTRAINT}
+        AND conrelid = 'github_pull_requests'::regclass
+    ) AS installed
+  `);
+  return row?.installed ?? false;
+};
+
+const githubEvidenceRecoveryPlanInTransaction = async (
+  transaction: DatabaseTransaction
+): Promise<GitHubEvidenceRecoveryPlan> => {
+  const [unverifiedMergeShas] = await transaction
+    .select({ value: sql<number>`count(*)::integer` })
+    .from(githubPullRequests)
+    .where(invalidGitHubMergeEvidence);
+  const [aliases] = await transaction
+    .select({ value: sql<number>`count(*)::integer` })
+    .from(githubPublicActivities)
+    .where(legacyGitHubCanonicalAlias);
+  const [canonicalizedCommits] = await transaction
+    .select({ value: sql<number>`count(*)::integer` })
+    .from(githubCommits)
+    .where(isNotNull(githubCommits.canonicalizedAt));
+  const [publishedCommitActivities] = await transaction
+    .select({ value: sql<number>`count(*)::integer` })
+    .from(githubPublicActivities)
+    .where(
+      and(
+        legacyGitHubCanonicalAlias,
+        isNotNull(githubPublicActivities.publishedAt)
+      )
+    );
+  const [commits] = await transaction
+    .select({ value: sql<number>`count(*)::integer` })
+    .from(githubCommits)
+    .where(eq(githubCommits.enrichmentState, "complete"));
+  const [pullRequests] = await transaction
+    .select({ value: sql<number>`count(*)::integer` })
+    .from(githubPullRequests);
+  const [summaries] = await transaction
+    .select({ value: sql<number>`count(*)::integer` })
+    .from(githubSummaryAttempts)
+    .where(currentNoncompleteCommitSummary);
+
+  return {
+    aliasesToClear: aliases?.value ?? 0,
+    canonicalizedCommitsToReset: canonicalizedCommits?.value ?? 0,
+    commitActivitiesToUnpublish: publishedCommitActivities?.value ?? 0,
+    commitsToRediscoverPullRequests: commits?.value ?? 0,
+    constraintInstalled:
+      await githubEvidenceRecoveryConstraintInstalled(transaction),
+    pullRequestsToReconcile: pullRequests?.value ?? 0,
+    summariesToRequeue: summaries?.value ?? 0,
+    unverifiedMergeShasToClear: unverifiedMergeShas?.value ?? 0,
+  };
+};
+
+/**
+ * Previews the one-time repair without claiming work or mutating source rows.
+ * Counts describe the shared database, not a repository-scoped backfill.
+ */
+export const inspectGitHubEvidenceRecovery = async () =>
+  await getDatabase().transaction(githubEvidenceRecoveryPlanInTransaction);
+
+/**
+ * Completes the post-deploy evidence migration if its constraint marker is
+ * absent. The catalog fast path keeps this safe to call at every worker start.
+ *
+ * Invalidates legacy merge evidence and every projection derived from it.
+ * The transaction preserves commits, PR snapshots, memberships, and summaries;
+ * workers rebuild the canonical/public projection from authoritative evidence.
+ */
+export const ensureGitHubEvidenceIntegrity = async (
+  now = new Date()
+): Promise<GitHubEvidenceRecoveryResult> => {
+  if (Number.isNaN(now.getTime())) {
+    throw new TypeError("The GitHub evidence repair timestamp is invalid.");
+  }
+
+  return await getDatabase().transaction(async (transaction) => {
+    await transaction.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${GITHUB_EVIDENCE_RECOVERY_LOCK}, 0))`
+    );
+    if (await githubEvidenceRecoveryConstraintInstalled(transaction)) {
+      return {
+        plan: appliedGitHubEvidenceRecoveryPlan(),
+        repairedAt: null,
+        status: "already_applied",
+      };
+    }
+    const plan = await githubEvidenceRecoveryPlanInTransaction(transaction);
+
+    await transaction
+      .update(githubPullRequests)
+      .set({ mergeSha: null, mergeShaVerifiedAt: null })
+      .where(invalidGitHubMergeEvidence);
+    await transaction
+      .update(githubPublicActivities)
+      .set({
+        aliasEvidence: null,
+        aliasReason: null,
+        canonicalPublicId: null,
+        hiddenAt: null,
+        publishedAt: null,
+      })
+      .where(legacyGitHubCanonicalAlias);
+    await transaction
+      .update(githubCommits)
+      .set({
+        canonicalizedAt: null,
+        pullRequestDiscoveryAttempts: 0,
+        pullRequestDiscoveryError: null,
+        pullRequestDiscoveryLeaseToken: null,
+        pullRequestDiscoveryLeaseUntil: now,
+        pullRequestDiscoveryState: "pending",
+      })
+      .where(eq(githubCommits.enrichmentState, "complete"));
+    await transaction.update(githubPullRequests).set({
+      nextReconcileAt: now,
+      reconcileAttempts: 0,
+      reconcileError: null,
+    });
+    await transaction
+      .update(githubSummaryAttempts)
+      .set({
+        attemptCount: 0,
+        attemptedAt: null,
+        completedAt: null,
+        errorCode: null,
+        inputHash: null,
+        leaseToken: null,
+        leaseUntil: null,
+        model: null,
+        state: "pending",
+        summaryHeadline: null,
+        summaryShort: null,
+      })
+      .where(currentNoncompleteCommitSummary);
+    await transaction.execute(sql`
+      ALTER TABLE "github_pull_requests"
+      ADD CONSTRAINT "github_pull_requests_verified_merge_sha"
+      CHECK (
+        (merge_sha IS NULL AND merge_sha_verified_at IS NULL)
+        OR (
+          state = 'merged'
+          AND merge_sha_verified_at IS NOT NULL
+        )
+      )
+    `);
+
+    return {
+      plan,
+      repairedAt: now.toISOString(),
+      status: "applied",
+    };
+  });
+};
+
+/** Manual repair entry point guarded by an explicit workflow confirmation. */
+export const repairLegacyGitHubEvidence = async (
+  confirmation: string,
+  now = new Date()
+): Promise<GitHubEvidenceRecoveryResult> => {
+  if (confirmation !== GITHUB_EVIDENCE_RECOVERY_CONFIRMATION) {
+    throw new TypeError("The GitHub evidence repair confirmation is invalid.");
+  }
+  return await ensureGitHubEvidenceIntegrity(now);
+};
 
 export interface ClaimedGitHubPushObservation {
   account: TrackedGitHubAccount;
+  attemptCount: number;
   afterSha: string;
   beforeSha: string;
   expectedCommitCount: number | null;
@@ -96,17 +343,29 @@ export interface ClaimedGitHubPushObservation {
   knownShas: readonly string[];
   leaseToken: string;
   observedAt: Date;
+  priorAttemptCount: number;
+  priorErrorCode: string | null;
+  priorRetryAt: Date | null;
+  priorState: "deferred" | "pending";
   refName: string;
   repository: string;
   repositoryId: string;
 }
 
 export interface ClaimedGitHubCommit extends GitHubActivityCommitReference {
+  attemptCount: number;
   leaseToken: string;
+  priorAttemptCount: number;
+  priorErrorCode: string | null;
+  priorRetryAt: Date | null;
 }
 
 export interface ClaimedGitHubPullRequestDiscovery extends GitHubActivityCommitReference {
+  attemptCount: number;
   leaseToken: string;
+  priorAttemptCount: number;
+  priorErrorCode: string | null;
+  priorRetryAt: Date | null;
 }
 
 export interface HydratedGitHubCommit {
@@ -115,19 +374,26 @@ export interface HydratedGitHubCommit {
 }
 
 export interface StoredPullRequestSnapshot {
+  baseRepositoryId: string;
   commitRepositoryId: string;
   membershipRefreshRequired: boolean;
   pullRequestNodeId: string;
+  retryLifecycleReset: boolean;
   versionId: string;
 }
 
 export interface DueGitHubPullRequest {
   account: TrackedGitHubAccount;
+  attemptCount: number;
+  createdAt: Date;
   lastReconciledAt: Date | null;
   leaseUntil: Date;
   membershipComplete: boolean;
   nodeId: string;
   number: number;
+  priorAttemptCount: number;
+  priorErrorCode: string | null;
+  priorRetryAt: Date;
   repository: string;
   repositoryId: string;
   versionObservedAt: Date | null;
@@ -135,8 +401,27 @@ export interface DueGitHubPullRequest {
 
 export interface ClaimedGitHubSummary extends GitHubActivityCommitReference {
   activityPublicId: string;
+  attemptCount: number;
   leaseToken: string;
+  priorAttemptCount: number;
+  priorAttemptedAt: Date | null;
+  priorErrorCode: string | null;
+  priorRetryAt: Date | null;
   revision: number;
+}
+
+export interface ClaimedGitHubPullRequestSignal {
+  account: TrackedGitHubAccount;
+  action: string;
+  attemptCount: number;
+  id: string;
+  leaseToken: string;
+  number: number;
+  priorAttemptCount: number;
+  priorErrorCode: string | null;
+  priorRetryAt: Date | null;
+  repository: string;
+  repositoryId: string;
 }
 
 const isActiveAccount = (
@@ -161,11 +446,14 @@ export const claimGitHubPushObservations = async (
       .select({
         account: githubPushObservations.account,
         afterSha: githubPushObservations.afterSha,
+        attemptCount: githubPushObservations.attemptCount,
         beforeSha: githubPushObservations.beforeSha,
+        errorCode: githubPushObservations.errorCode,
         expectedCommitCount: githubPushObservations.expectedCommitCount,
         historySinceAt: sql<Date>`coalesce(${githubPushObservations.historySinceAt}, ${githubAccountCheckpoints.refBackfillSinceAt})`,
         historyUntilAt: githubPushObservations.historyUntilAt,
         id: githubPushObservations.id,
+        leaseUntil: githubPushObservations.leaseUntil,
         observedAt: githubPushObservations.observedAt,
         refName: githubPushObservations.refName,
         repository: githubPushObservations.repositoryNameSnapshot,
@@ -196,6 +484,8 @@ export const claimGitHubPushObservations = async (
         )
       )
       .orderBy(
+        sql`CASE WHEN ${githubPushObservations.state} = 'pending' THEN 0 ELSE 1 END`,
+        asc(githubPushObservations.leaseUntil),
         asc(githubPushObservations.observedAt),
         asc(githubPushObservations.id)
       )
@@ -210,6 +500,7 @@ export const claimGitHubPushObservations = async (
       const [updated] = await transaction
         .update(githubPushObservations)
         .set({
+          attemptCount: candidate.attemptCount + 1,
           errorCode: null,
           leaseToken,
           leaseUntil: new Date(now.getTime() + DEFAULT_LEASE_MS),
@@ -219,6 +510,7 @@ export const claimGitHubPushObservations = async (
           and(
             observationIdentity(candidate),
             eq(githubPushObservations.state, candidate.state),
+            eq(githubPushObservations.attemptCount, candidate.attemptCount),
             or(
               isNull(githubPushObservations.leaseUntil),
               lte(githubPushObservations.leaseUntil, now)
@@ -238,10 +530,24 @@ export const claimGitHubPushObservations = async (
         .where(eq(githubPushObservationCommits.observationId, candidate.id))
         .orderBy(asc(githubPushObservationCommits.position));
       claimed.push({
-        ...candidate,
         account: candidate.account,
+        afterSha: candidate.afterSha,
+        attemptCount: candidate.attemptCount + 1,
+        beforeSha: candidate.beforeSha,
+        expectedCommitCount: candidate.expectedCommitCount,
+        historySinceAt: candidate.historySinceAt,
+        historyUntilAt: candidate.historyUntilAt,
+        id: candidate.id,
         knownShas: known.map(({ sha }) => sha),
         leaseToken,
+        observedAt: candidate.observedAt,
+        priorAttemptCount: candidate.attemptCount,
+        priorErrorCode: candidate.errorCode,
+        priorRetryAt: candidate.leaseUntil,
+        priorState: candidate.state === "pending" ? "pending" : "deferred",
+        refName: candidate.refName,
+        repository: candidate.repository,
+        repositoryId: candidate.repositoryId,
       });
     }
     return claimed;
@@ -344,8 +650,29 @@ export const deferGitHubPushObservation = async (
     .set({
       errorCode,
       leaseToken: null,
-      leaseUntil: dueAt(now, retryAt),
+      leaseUntil: dueAt(observation.attemptCount, now, retryAt),
       state: "deferred",
+    })
+    .where(
+      and(
+        observationIdentity(observation),
+        eq(githubPushObservations.state, "processing"),
+        eq(githubPushObservations.leaseToken, observation.leaseToken)
+      )
+    );
+};
+
+export const releaseGitHubPushObservation = async (
+  observation: ClaimedGitHubPushObservation
+) => {
+  await getDatabase()
+    .update(githubPushObservations)
+    .set({
+      attemptCount: observation.priorAttemptCount,
+      errorCode: observation.priorErrorCode,
+      leaseToken: null,
+      leaseUntil: observation.priorRetryAt,
+      state: observation.priorState,
     })
     .where(
       and(
@@ -394,7 +721,10 @@ export const claimGitHubCommitsForEnrichment = async (
     const candidates = await transaction
       .select({
         author: githubCommits.author,
+        attemptCount: githubCommits.enrichmentAttempts,
         committedAt: githubCommits.committedAt,
+        errorCode: githubCommits.enrichmentError,
+        leaseUntil: githubCommits.enrichmentLeaseUntil,
         message: githubCommits.message,
         repository: githubCommits.repository,
         repositoryId: githubCommits.repositoryId,
@@ -432,6 +762,7 @@ export const claimGitHubCommitsForEnrichment = async (
       const [updated] = await transaction
         .update(githubCommits)
         .set({
+          enrichmentAttempts: candidate.attemptCount + 1,
           enrichmentError: null,
           enrichmentLeaseToken: leaseToken,
           enrichmentLeaseUntil: new Date(now.getTime() + DEFAULT_LEASE_MS),
@@ -451,9 +782,13 @@ export const claimGitHubCommitsForEnrichment = async (
       if (updated !== undefined) {
         claimed.push({
           author: account,
+          attemptCount: candidate.attemptCount + 1,
           committedAt: candidate.committedAt.toISOString(),
           leaseToken,
           message: candidate.message,
+          priorAttemptCount: candidate.attemptCount,
+          priorErrorCode: candidate.errorCode,
+          priorRetryAt: candidate.leaseUntil,
           repository: candidate.repository,
           repositoryId: candidate.repositoryId,
           sha: candidate.sha,
@@ -626,7 +961,28 @@ export const deferGitHubCommitEnrichment = async (
     .set({
       enrichmentError: errorCode,
       enrichmentLeaseToken: null,
-      enrichmentLeaseUntil: dueAt(now, retryAt),
+      enrichmentLeaseUntil: dueAt(commit.attemptCount, now, retryAt),
+      enrichmentState: "pending",
+    })
+    .where(
+      and(
+        commitIdentity(commit),
+        eq(githubCommits.enrichmentState, "processing"),
+        eq(githubCommits.enrichmentLeaseToken, commit.leaseToken)
+      )
+    );
+};
+
+export const releaseGitHubCommitEnrichment = async (
+  commit: ClaimedGitHubCommit
+) => {
+  await getDatabase()
+    .update(githubCommits)
+    .set({
+      enrichmentAttempts: commit.priorAttemptCount,
+      enrichmentError: commit.priorErrorCode,
+      enrichmentLeaseToken: null,
+      enrichmentLeaseUntil: commit.priorRetryAt,
       enrichmentState: "pending",
     })
     .where(
@@ -674,7 +1030,10 @@ export const claimGitHubCommitsForPullRequestDiscovery = async (
     const candidates = await transaction
       .select({
         author: githubCommits.author,
+        attemptCount: githubCommits.pullRequestDiscoveryAttempts,
         committedAt: githubCommits.committedAt,
+        errorCode: githubCommits.pullRequestDiscoveryError,
+        leaseUntil: githubCommits.pullRequestDiscoveryLeaseUntil,
         message: githubCommits.message,
         repository: githubCommits.repository,
         repositoryId: githubCommits.repositoryId,
@@ -713,6 +1072,7 @@ export const claimGitHubCommitsForPullRequestDiscovery = async (
       const [updated] = await transaction
         .update(githubCommits)
         .set({
+          pullRequestDiscoveryAttempts: candidate.attemptCount + 1,
           pullRequestDiscoveryError: null,
           pullRequestDiscoveryLeaseToken: leaseToken,
           pullRequestDiscoveryLeaseUntil: new Date(
@@ -734,9 +1094,13 @@ export const claimGitHubCommitsForPullRequestDiscovery = async (
       if (updated !== undefined) {
         claimed.push({
           author,
+          attemptCount: candidate.attemptCount + 1,
           committedAt: candidate.committedAt.toISOString(),
           leaseToken,
           message: candidate.message,
+          priorAttemptCount: candidate.attemptCount,
+          priorErrorCode: candidate.errorCode,
+          priorRetryAt: candidate.leaseUntil,
           repository: candidate.repository,
           repositoryId: candidate.repositoryId,
           sha: candidate.sha,
@@ -758,7 +1122,28 @@ export const deferGitHubPullRequestDiscovery = async (
     .set({
       pullRequestDiscoveryError: errorCode,
       pullRequestDiscoveryLeaseToken: null,
-      pullRequestDiscoveryLeaseUntil: dueAt(now, retryAt),
+      pullRequestDiscoveryLeaseUntil: dueAt(commit.attemptCount, now, retryAt),
+      pullRequestDiscoveryState: "pending",
+    })
+    .where(
+      and(
+        commitIdentity(commit),
+        eq(githubCommits.pullRequestDiscoveryState, "processing"),
+        eq(githubCommits.pullRequestDiscoveryLeaseToken, commit.leaseToken)
+      )
+    );
+};
+
+export const releaseGitHubPullRequestDiscovery = async (
+  commit: ClaimedGitHubPullRequestDiscovery
+) => {
+  await getDatabase()
+    .update(githubCommits)
+    .set({
+      pullRequestDiscoveryAttempts: commit.priorAttemptCount,
+      pullRequestDiscoveryError: commit.priorErrorCode,
+      pullRequestDiscoveryLeaseToken: null,
+      pullRequestDiscoveryLeaseUntil: commit.priorRetryAt,
       pullRequestDiscoveryState: "pending",
     })
     .where(
@@ -789,6 +1174,176 @@ export const markGitHubPullRequestDiscoveryUnavailable = async (
         eq(githubCommits.pullRequestDiscoveryLeaseToken, commit.leaseToken)
       )
     );
+};
+
+export const claimGitHubPullRequestSignals = async (
+  limit: number,
+  activeAccounts: readonly TrackedGitHubAccount[],
+  now = new Date()
+): Promise<readonly ClaimedGitHubPullRequestSignal[]> => {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 8) {
+    throw new RangeError("The GitHub PR signal claim limit is invalid.");
+  }
+  if (activeAccounts.length === 0) {
+    return [];
+  }
+  return await getDatabase().transaction(async (transaction) => {
+    const candidates = await transaction
+      .select({
+        account: githubPullRequestSignals.account,
+        action: githubPullRequestSignals.action,
+        attemptCount: githubPullRequestSignals.attemptCount,
+        errorCode: githubPullRequestSignals.errorCode,
+        id: githubPullRequestSignals.id,
+        leaseUntil: githubPullRequestSignals.leaseUntil,
+        number: githubPullRequestSignals.number,
+        repository: githubPullRequestSignals.repositoryNameSnapshot,
+        repositoryId: githubPullRequestSignals.repositoryId,
+        state: githubPullRequestSignals.state,
+      })
+      .from(githubPullRequestSignals)
+      .where(
+        and(
+          inArray(githubPullRequestSignals.account, [...activeAccounts]),
+          or(
+            and(
+              eq(githubPullRequestSignals.state, "pending"),
+              or(
+                isNull(githubPullRequestSignals.leaseUntil),
+                lte(githubPullRequestSignals.leaseUntil, now)
+              )
+            ),
+            and(
+              eq(githubPullRequestSignals.state, "processing"),
+              lte(githubPullRequestSignals.leaseUntil, now)
+            )
+          )
+        )
+      )
+      .orderBy(
+        sql`CASE WHEN ${githubPullRequestSignals.state} = 'pending' THEN 0 ELSE 1 END`,
+        asc(githubPullRequestSignals.leaseUntil),
+        asc(githubPullRequestSignals.observedAt),
+        asc(githubPullRequestSignals.id)
+      )
+      .limit(limit);
+    const claimed: ClaimedGitHubPullRequestSignal[] = [];
+    for (const candidate of candidates) {
+      const account = trackedGitHubAccountFrom(candidate.account);
+      if (account === null || !isActiveAccount(account, activeAccounts)) {
+        continue;
+      }
+      const leaseToken = randomUUID();
+      const [updated] = await transaction
+        .update(githubPullRequestSignals)
+        .set({
+          attemptCount: candidate.attemptCount + 1,
+          errorCode: null,
+          leaseToken,
+          leaseUntil: new Date(now.getTime() + DEFAULT_LEASE_MS),
+          state: "processing",
+        })
+        .where(
+          and(
+            eq(githubPullRequestSignals.id, candidate.id),
+            eq(githubPullRequestSignals.state, candidate.state),
+            or(
+              isNull(githubPullRequestSignals.leaseUntil),
+              lte(githubPullRequestSignals.leaseUntil, now)
+            )
+          )
+        )
+        .returning({ id: githubPullRequestSignals.id });
+      if (updated !== undefined) {
+        claimed.push({
+          account,
+          action: candidate.action,
+          attemptCount: candidate.attemptCount + 1,
+          id: candidate.id,
+          leaseToken,
+          number: candidate.number,
+          priorAttemptCount: candidate.attemptCount,
+          priorErrorCode: candidate.errorCode,
+          priorRetryAt: candidate.leaseUntil,
+          repository: candidate.repository,
+          repositoryId: candidate.repositoryId,
+        });
+      }
+    }
+    return claimed;
+  });
+};
+
+const pullRequestSignalLease = (signal: ClaimedGitHubPullRequestSignal) =>
+  and(
+    eq(githubPullRequestSignals.id, signal.id),
+    eq(githubPullRequestSignals.state, "processing"),
+    eq(githubPullRequestSignals.leaseToken, signal.leaseToken)
+  );
+
+export const completeGitHubPullRequestSignal = async (
+  signal: ClaimedGitHubPullRequestSignal,
+  now = new Date()
+) => {
+  await getDatabase()
+    .update(githubPullRequestSignals)
+    .set({
+      completedAt: now,
+      errorCode: null,
+      leaseToken: null,
+      leaseUntil: null,
+      state: "complete",
+    })
+    .where(pullRequestSignalLease(signal));
+};
+
+export const deferGitHubPullRequestSignal = async (
+  signal: ClaimedGitHubPullRequestSignal,
+  errorCode: string,
+  retryAt: Date | null,
+  now = new Date()
+) => {
+  await getDatabase()
+    .update(githubPullRequestSignals)
+    .set({
+      errorCode,
+      leaseToken: null,
+      leaseUntil: dueAt(signal.attemptCount, now, retryAt),
+      state: "pending",
+    })
+    .where(pullRequestSignalLease(signal));
+};
+
+export const releaseGitHubPullRequestSignal = async (
+  signal: ClaimedGitHubPullRequestSignal
+) => {
+  await getDatabase()
+    .update(githubPullRequestSignals)
+    .set({
+      attemptCount: signal.priorAttemptCount,
+      errorCode: signal.priorErrorCode,
+      leaseToken: null,
+      leaseUntil: signal.priorRetryAt,
+      state: "pending",
+    })
+    .where(pullRequestSignalLease(signal));
+};
+
+export const markGitHubPullRequestSignalUnavailable = async (
+  signal: ClaimedGitHubPullRequestSignal,
+  errorCode: string,
+  now = new Date()
+) => {
+  await getDatabase()
+    .update(githubPullRequestSignals)
+    .set({
+      completedAt: now,
+      errorCode,
+      leaseToken: null,
+      leaseUntil: null,
+      state: "unavailable",
+    })
+    .where(pullRequestSignalLease(signal));
 };
 
 const pullRequestState = (pullRequest: GitHubPullRequest) =>
@@ -842,6 +1397,7 @@ const persistPullRequestSnapshotInTransaction = async (
   pullRequest: GitHubPullRequest,
   refreshMembership: boolean,
   authoritative: boolean,
+  reconciliationLeaseUntil: Date | null,
   now: Date
 ): Promise<StoredPullRequestSnapshot | null> => {
   const [existing] = await transaction
@@ -853,9 +1409,13 @@ const persistPullRequestSnapshotInTransaction = async (
       headRepositoryId: githubPullRequests.headRepositoryId,
       headSha: githubPullRequests.headSha,
       lastReconciledAt: githubPullRequests.lastReconciledAt,
+      mergeSha: githubPullRequests.mergeSha,
+      mergeShaVerifiedAt: githubPullRequests.mergeShaVerifiedAt,
       nextReconcileAt: githubPullRequests.nextReconcileAt,
       nodeId: githubPullRequests.nodeId,
       providerUpdatedAt: githubPullRequests.providerUpdatedAt,
+      repositoryId: githubPullRequests.repositoryId,
+      state: githubPullRequests.state,
     })
     .from(githubPullRequests)
     .where(eq(githubPullRequests.nodeId, pullRequest.nodeId))
@@ -885,6 +1445,61 @@ const persistPullRequestSnapshotInTransaction = async (
     );
   }
   const state = pullRequestState(pullRequest);
+  const mergeShaResolved =
+    state === "merged" && pullRequest.mergeCommitSha !== undefined;
+  const resolvedMergeSha = mergeShaResolved
+    ? (pullRequest.mergeCommitSha ?? null)
+    : null;
+  const existingMergeShaResolved =
+    existing?.mergeShaVerifiedAt !== null &&
+    existing?.mergeShaVerifiedAt !== undefined;
+  const mergeSha =
+    state === "merged"
+      ? mergeShaResolved
+        ? resolvedMergeSha
+        : existingMergeShaResolved
+          ? (existing?.mergeSha ?? null)
+          : null
+      : null;
+  const mergeShaVerifiedAt =
+    state === "merged"
+      ? mergeShaResolved
+        ? now
+        : (existing?.mergeShaVerifiedAt ?? null)
+      : null;
+  const canonicalEvidenceChanged =
+    existing !== undefined &&
+    (existing.headSha !== pullRequest.headSha ||
+      (pullRequest.headRepository !== null &&
+        existing.headRepositoryId !== pullRequest.headRepository.id) ||
+      existing.repositoryId !== pullRequest.repository.id ||
+      existing.mergeSha !== mergeSha ||
+      (existing.mergeShaVerifiedAt === null) !==
+        (mergeShaVerifiedAt === null) ||
+      existing.state !== state);
+  const retryLifecycleReset =
+    existing !== undefined &&
+    (disposition === "newer" || canonicalEvidenceChanged);
+  const retryLifecycleUpdate = retryLifecycleReset
+    ? {
+        nextReconcileAt: reconciliationLeaseUntil ?? now,
+        reconcileAttempts: 0,
+        reconcileError: null,
+      }
+    : {};
+  if (canonicalEvidenceChanged) {
+    await invalidateGitHubPullRequestDerivedAliases(
+      transaction,
+      pullRequest.nodeId,
+      [
+        existing.repositoryId,
+        existing.headRepositoryId,
+        pullRequest.repository.id,
+        pullRequest.baseRepository.id,
+        pullRequest.headRepository?.id,
+      ]
+    );
+  }
   const mutable = {
     additions: pullRequest.additions,
     baseRefName: pullRequest.baseRef,
@@ -902,7 +1517,8 @@ const persistPullRequestSnapshotInTransaction = async (
     headSha: pullRequest.headSha,
     mergedAt:
       pullRequest.mergedAt === null ? null : new Date(pullRequest.mergedAt),
-    mergeSha: pullRequest.mergeCommitSha,
+    mergeSha,
+    mergeShaVerifiedAt,
     providerFileCapReached: false,
     providerUpdatedAt,
     state,
@@ -937,7 +1553,7 @@ const persistPullRequestSnapshotInTransaction = async (
   } else if (disposition === "newer") {
     await transaction
       .update(githubPullRequests)
-      .set(mutableUpdate)
+      .set({ ...mutableUpdate, ...retryLifecycleUpdate })
       .where(
         and(
           eq(githubPullRequests.nodeId, pullRequest.nodeId),
@@ -949,7 +1565,7 @@ const persistPullRequestSnapshotInTransaction = async (
       .update(githubPullRequests)
       .set(
         authoritative
-          ? mutableUpdate
+          ? { ...mutableUpdate, ...retryLifecycleUpdate }
           : {
               additions: pullRequest.additions ?? existing.additions,
               changedFiles: pullRequest.changedFiles ?? existing.changedFiles,
@@ -957,6 +1573,7 @@ const persistPullRequestSnapshotInTransaction = async (
               deletions: pullRequest.deletions ?? existing.deletions,
               headRepositoryId:
                 pullRequest.headRepository?.id ?? existing.headRepositoryId,
+              ...retryLifecycleUpdate,
             }
       )
       .where(
@@ -1088,24 +1705,26 @@ const persistPullRequestSnapshotInTransaction = async (
         )
       );
   }
-  if (pullRequest.mergeCommitSha !== null) {
+  if (typeof resolvedMergeSha === "string") {
     await transaction
       .update(githubCommits)
       .set({ canonicalizedAt: null })
       .where(
         and(
           eq(githubCommits.repositoryId, pullRequest.repository.id),
-          eq(githubCommits.sha, pullRequest.mergeCommitSha)
+          eq(githubCommits.sha, resolvedMergeSha)
         )
       );
   }
   return {
+    baseRepositoryId: pullRequest.repository.id,
     commitRepositoryId:
       pullRequest.headRepository?.id ??
       existing?.headRepositoryId ??
       pullRequest.repository.id,
     membershipRefreshRequired,
     pullRequestNodeId: pullRequest.nodeId,
+    retryLifecycleReset,
     versionId,
   };
 };
@@ -1113,7 +1732,10 @@ const persistPullRequestSnapshotInTransaction = async (
 export const persistGitHubPullRequestSnapshot = async (
   account: TrackedGitHubAccount,
   pullRequest: GitHubPullRequest,
-  options: { refreshMembership?: boolean } = {},
+  options: {
+    reconciliationLeaseUntil?: Date;
+    refreshMembership?: boolean;
+  } = {},
   now = new Date()
 ) =>
   await getDatabase().transaction(
@@ -1124,6 +1746,7 @@ export const persistGitHubPullRequestSnapshot = async (
         pullRequest,
         options.refreshMembership === true,
         true,
+        options.reconciliationLeaseUntil ?? null,
         now
       )
   );
@@ -1155,6 +1778,7 @@ export const completeGitHubPullRequestDiscovery = async (
         pullRequest,
         true,
         false,
+        null,
         now
       );
     }
@@ -1180,10 +1804,10 @@ export const completeGitHubPullRequestDiscovery = async (
 export const claimDueGitHubPullRequests = async (
   account: TrackedGitHubAccount,
   maximumAgeDays: number,
-  limit = 25,
+  limit = 4,
   now = new Date()
 ): Promise<readonly DueGitHubPullRequest[]> => {
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 25) {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 8) {
     throw new RangeError("The GitHub pull request claim limit is invalid.");
   }
   const reconciliationCutoff = githubPrReconciliationCutoff(
@@ -1198,9 +1822,12 @@ export const claimDueGitHubPullRequests = async (
     const candidates = await transaction
       .select({
         account: githubPullRequests.account,
+        attemptCount: githubPullRequests.reconcileAttempts,
+        createdAt: githubPullRequests.createdAt,
         lastReconciledAt: githubPullRequests.lastReconciledAt,
         membershipComplete: githubPullRequestVersions.membershipComplete,
         nextReconcileAt: githubPullRequests.nextReconcileAt,
+        reconcileError: githubPullRequests.reconcileError,
         nodeId: githubPullRequests.nodeId,
         number: githubPullRequests.number,
         repository: githubRepositories.fullName,
@@ -1248,10 +1875,15 @@ export const claimDueGitHubPullRequests = async (
       const leaseUntil = new Date(now.getTime() + DEFAULT_LEASE_MS);
       const [updated] = await transaction
         .update(githubPullRequests)
-        .set({ nextReconcileAt: leaseUntil })
+        .set({
+          nextReconcileAt: leaseUntil,
+          reconcileAttempts: candidate.attemptCount + 1,
+          reconcileError: null,
+        })
         .where(
           and(
             eq(githubPullRequests.nodeId, candidate.nodeId),
+            eq(githubPullRequests.reconcileAttempts, candidate.attemptCount),
             eq(githubPullRequests.nextReconcileAt, candidate.nextReconcileAt)
           )
         )
@@ -1259,11 +1891,16 @@ export const claimDueGitHubPullRequests = async (
       if (updated !== undefined) {
         claimed.push({
           account: candidate.account as TrackedGitHubAccount,
+          attemptCount: candidate.attemptCount + 1,
+          createdAt: candidate.createdAt,
           lastReconciledAt: candidate.lastReconciledAt,
           leaseUntil,
           membershipComplete: candidate.membershipComplete ?? false,
           nodeId: candidate.nodeId,
           number: candidate.number,
+          priorAttemptCount: candidate.attemptCount,
+          priorErrorCode: candidate.reconcileError,
+          priorRetryAt: candidate.nextReconcileAt,
           repository: candidate.repository,
           repositoryId: candidate.repositoryId,
           versionObservedAt: candidate.versionObservedAt,
@@ -1296,6 +1933,11 @@ export const persistGitHubPullRequestMembership = async (
         .where(eq(githubPullRequestVersions.id, stored.versionId));
       return false;
     }
+    await invalidateGitHubPullRequestDerivedAliases(
+      transaction,
+      stored.pullRequestNodeId,
+      [stored.baseRepositoryId, stored.commitRepositoryId]
+    );
     await transaction
       .delete(githubPullRequestMemberships)
       .where(eq(githubPullRequestMemberships.versionId, stored.versionId));
@@ -1339,7 +1981,13 @@ export const completeGitHubPullRequestReconciliation = async (
       .update(githubPullRequests)
       .set({
         lastReconciledAt: now,
-        nextReconcileAt: nextGitHubPullRequestReconciliationAt(state, now),
+        nextReconcileAt: nextGitHubPullRequestReconciliationAt(
+          state,
+          now,
+          due.createdAt
+        ),
+        reconcileAttempts: 0,
+        reconcileError: null,
       })
       .where(
         and(
@@ -1379,12 +2027,34 @@ export const completeGitHubPullRequestReconciliation = async (
 
 export const deferGitHubPullRequestReconciliation = async (
   due: DueGitHubPullRequest,
+  errorCode: string,
   retryAt: Date | null,
   now = new Date()
 ) => {
   await getDatabase()
     .update(githubPullRequests)
-    .set({ nextReconcileAt: dueAt(now, retryAt) })
+    .set({
+      nextReconcileAt: dueAt(due.attemptCount, now, retryAt),
+      reconcileError: errorCode,
+    })
+    .where(
+      and(
+        eq(githubPullRequests.nodeId, due.nodeId),
+        eq(githubPullRequests.nextReconcileAt, due.leaseUntil)
+      )
+    );
+};
+
+export const releaseGitHubPullRequestReconciliation = async (
+  due: DueGitHubPullRequest
+) => {
+  await getDatabase()
+    .update(githubPullRequests)
+    .set({
+      nextReconcileAt: due.priorRetryAt,
+      reconcileAttempts: due.priorAttemptCount,
+      reconcileError: due.priorErrorCode,
+    })
     .where(
       and(
         eq(githubPullRequests.nodeId, due.nodeId),
@@ -1395,11 +2065,16 @@ export const deferGitHubPullRequestReconciliation = async (
 
 export const stopGitHubPullRequestReconciliation = async (
   due: DueGitHubPullRequest,
+  errorCode: string,
   now = new Date()
 ) => {
   await getDatabase()
     .update(githubPullRequests)
-    .set({ lastReconciledAt: now, nextReconcileAt: null })
+    .set({
+      lastReconciledAt: now,
+      nextReconcileAt: null,
+      reconcileError: errorCode,
+    })
     .where(
       and(
         eq(githubPullRequests.nodeId, due.nodeId),
@@ -1614,195 +2289,6 @@ const markGitHubCommitCanonicalized = async (
   await publishCompletedSummaryForCommit(transaction, repositoryId, sha, now);
 };
 
-const comparableCommitHeadline = (message: string | null) => {
-  const headline = message?.split("\n", 1)[0]?.trim();
-  if (headline === undefined || headline.length === 0) {
-    return null;
-  }
-  return headline.replace(/\s+\(#[1-9]\d*\)$/u, "");
-};
-
-interface AuthoredRewriteCandidate {
-  authoredAt: Date | null;
-  authorUserId: string | null;
-  committedAt: Date;
-  committerAt: Date | null;
-  firstObservedAt: Date;
-  fullMessage: string | null;
-  parentShas: readonly string[] | null;
-  publicId: string;
-  sha: string;
-}
-
-const authoredRewriteOrder = (commit: AuthoredRewriteCandidate) =>
-  (commit.committerAt ?? commit.committedAt).getTime();
-
-const compareAuthoredRewriteCandidates = (
-  left: AuthoredRewriteCandidate,
-  right: AuthoredRewriteCandidate
-) => {
-  const byCommitter = authoredRewriteOrder(left) - authoredRewriteOrder(right);
-  if (byCommitter !== 0) {
-    return byCommitter;
-  }
-  const byObservation =
-    left.firstObservedAt.getTime() - right.firstObservedAt.getTime();
-  if (byObservation !== 0) {
-    return byObservation;
-  }
-  if (left.sha === right.sha) {
-    return 0;
-  }
-  return left.sha < right.sha ? -1 : 1;
-};
-
-const canonicalizeAuthoredRewriteLineage = async (
-  transaction: DatabaseTransaction,
-  repositoryId: string,
-  candidate: AuthoredRewriteCandidate,
-  now: Date,
-  allowedMemberMergeSha: string | null = null
-) => {
-  if (
-    candidate.authorUserId === null ||
-    candidate.authoredAt === null ||
-    candidate.fullMessage === null ||
-    candidate.parentShas === null ||
-    candidate.parentShas.length > 1
-  ) {
-    return { aliases: 0, candidateAliased: false };
-  }
-  const lineage = await transaction
-    .select({
-      authoredAt: githubCommits.authoredAt,
-      authorUserId: githubCommits.authorUserId,
-      committedAt: githubCommits.committedAt,
-      committerAt: githubCommits.committerAt,
-      firstObservedAt: githubCommits.firstObservedAt,
-      fullMessage: githubCommits.fullMessage,
-      parentShas: githubCommits.parentShas,
-      publicId: githubPublicActivities.publicId,
-      sha: githubCommits.sha,
-    })
-    .from(githubCommits)
-    .innerJoin(githubPublicActivities, commitActivityIdentity)
-    .where(
-      and(
-        eq(githubCommits.repositoryId, repositoryId),
-        eq(githubCommits.authorUserId, candidate.authorUserId),
-        eq(githubCommits.authoredAt, candidate.authoredAt),
-        eq(githubCommits.fullMessage, candidate.fullMessage),
-        eq(githubCommits.enrichmentState, "complete"),
-        inArray(githubCommits.pullRequestDiscoveryState, [
-          "complete",
-          "unavailable",
-        ]),
-        isNonMergeCommit,
-        isNull(githubPublicActivities.canonicalPublicId),
-        isNull(githubPublicActivities.hiddenAt),
-        or(
-          allowedMemberMergeSha === null
-            ? undefined
-            : eq(githubCommits.sha, allowedMemberMergeSha),
-          sql<boolean>`NOT EXISTS (
-            SELECT 1
-            FROM ${githubPullRequests} AS rewrite_merge_pr
-            WHERE rewrite_merge_pr.repository_id = ${githubCommits.repositoryId}
-              AND rewrite_merge_pr.merge_sha = ${githubCommits.sha}
-              AND rewrite_merge_pr.state = 'merged'
-          )`
-        )
-      )
-    )
-    .orderBy(asc(githubCommits.sha))
-    .for("update");
-  if (lineage.length < 2) {
-    return { aliases: 0, candidateAliased: false };
-  }
-
-  const winner = lineage.toSorted(compareAuthoredRewriteCandidates).at(-1);
-  if (winner === undefined) {
-    throw new Error("The authored rewrite lineage has no canonical commit.");
-  }
-  const losers = lineage.filter(({ publicId }) => publicId !== winner.publicId);
-  const loserPublicIds = losers.map(({ publicId }) => publicId);
-
-  await transaction.execute(sql`
-    WITH RECURSIVE rewrite_alias_descendants AS (
-      SELECT alias_activity.public_id
-      FROM ${githubPublicActivities} AS alias_activity
-      WHERE alias_activity.canonical_public_id IN (
-        ${sql.join(
-          loserPublicIds.map((publicId) => sql`${publicId}`),
-          sql`, `
-        )}
-      )
-      UNION
-      SELECT child_activity.public_id
-      FROM ${githubPublicActivities} AS child_activity
-      INNER JOIN rewrite_alias_descendants AS parent_activity
-        ON child_activity.canonical_public_id = parent_activity.public_id
-    )
-    UPDATE ${githubPublicActivities} AS rewrite_alias
-    SET
-      alias_evidence = COALESCE(rewrite_alias.alias_evidence, '{}'::jsonb)
-        || jsonb_build_object(
-          'canonicalRetargetReason', 'same_authored_rewrite',
-          'canonicalRetargetedFrom', rewrite_alias.canonical_public_id
-        ),
-      canonical_public_id = ${winner.publicId}
-    WHERE rewrite_alias.public_id IN (
-      SELECT public_id FROM rewrite_alias_descendants
-    )
-      AND rewrite_alias.public_id <> ${winner.publicId}
-  `);
-
-  let aliases = 0;
-  for (const loser of losers) {
-    if (
-      await setCanonicalAlias(
-        transaction,
-        loser.publicId,
-        winner.publicId,
-        "same_authored_rewrite",
-        {
-          authoredAt: candidate.authoredAt.toISOString(),
-          authorUserId: candidate.authorUserId,
-          canonicalCommitterAt: (
-            winner.committerAt ?? winner.committedAt
-          ).toISOString(),
-          sourceSha: winner.sha,
-        },
-        now
-      )
-    ) {
-      aliases += 1;
-    }
-  }
-  await transaction
-    .update(githubCommits)
-    .set({ canonicalizedAt: now })
-    .where(
-      and(
-        eq(githubCommits.repositoryId, repositoryId),
-        inArray(
-          githubCommits.activityPublicId,
-          lineage.map(({ publicId }) => publicId)
-        )
-      )
-    );
-  await publishCompletedSummaryForCommit(
-    transaction,
-    repositoryId,
-    winner.sha,
-    now
-  );
-  return {
-    aliases,
-    candidateAliased: candidate.publicId !== winner.publicId,
-  };
-};
-
 export const canonicalizeGitHubCommitActivity = async (
   repositoryId: string,
   sha: string,
@@ -1815,10 +2301,7 @@ export const canonicalizeGitHubCommitActivity = async (
     );
     const [candidate] = await transaction
       .select({
-        authoredAt: githubCommits.authoredAt,
-        authorUserId: githubCommits.authorUserId,
         changeFingerprint: githubCommits.changeFingerprint,
-        committedAt: githubCommits.committedAt,
         committerAt: githubCommits.committerAt,
         fingerprintComplete: githubCommits.fingerprintComplete,
         firstObservedAt: githubCommits.firstObservedAt,
@@ -1853,6 +2336,7 @@ export const canonicalizeGitHubCommitActivity = async (
         and(
           eq(githubPullRequests.repositoryId, repositoryId),
           eq(githubPullRequests.mergeSha, sha),
+          isNotNull(githubPullRequests.mergeShaVerifiedAt),
           eq(githubPullRequests.state, "merged")
         )
       )
@@ -1867,20 +2351,6 @@ export const canonicalizeGitHubCommitActivity = async (
         sha
       );
       if (mergeEvidence.integrationIsMember) {
-        const rewrite = await canonicalizeAuthoredRewriteLineage(
-          transaction,
-          repositoryId,
-          { ...candidate, sha },
-          now,
-          sha
-        );
-        if (rewrite.aliases > 0) {
-          return {
-            aliased: rewrite.candidateAliased,
-            aliases: rewrite.aliases,
-            publicId: candidate.publicId,
-          };
-        }
         await markGitHubCommitCanonicalized(
           transaction,
           repositoryId,
@@ -1920,20 +2390,6 @@ export const canonicalizeGitHubCommitActivity = async (
       }
     }
 
-    const rewrite = await canonicalizeAuthoredRewriteLineage(
-      transaction,
-      repositoryId,
-      { ...candidate, sha },
-      now
-    );
-    if (rewrite.aliases > 0) {
-      return {
-        aliased: rewrite.candidateAliased,
-        aliases: rewrite.aliases,
-        publicId: candidate.publicId,
-      };
-    }
-
     if (
       !candidate.fingerprintComplete ||
       candidate.changeFingerprint === null
@@ -1943,13 +2399,9 @@ export const canonicalizeGitHubCommitActivity = async (
     }
     const copies = await transaction
       .select({
-        authoredAt: githubCommits.authoredAt,
-        authorUserId: githubCommits.authorUserId,
         canonicalPublicId: githubPublicActivities.canonicalPublicId,
         committerAt: githubCommits.committerAt,
         firstObservedAt: githubCommits.firstObservedAt,
-        fullMessage: githubCommits.fullMessage,
-        parentShas: githubCommits.parentShas,
         publicId: githubPublicActivities.publicId,
         sha: githubCommits.sha,
       })
@@ -1986,9 +2438,10 @@ export const canonicalizeGitHubCommitActivity = async (
         )
       )
       .orderBy(asc(githubCommits.firstObservedAt), asc(githubCommits.sha));
-    const cherryPickSource = /cherry picked from commit ([a-f0-9]{40})/iu.exec(
-      candidate.fullMessage ?? ""
-    )?.[1];
+    const cherryPickSource =
+      /^\(cherry picked from commit ([a-f0-9]{40})\)\r?$/imu.exec(
+        candidate.fullMessage ?? ""
+      )?.[1];
     const candidatePullRequests = await pullRequestMembershipsForCommit(
       transaction,
       repositoryId,
@@ -2006,24 +2459,6 @@ export const canonicalizeGitHubCommitActivity = async (
       const directMergeParent =
         (candidate.parentShas?.length ?? 0) > 1 &&
         candidate.parentShas?.includes(copy.sha) === true;
-      const sameAuthorSingleParent =
-        candidate.parentShas?.length === 1 &&
-        copy.parentShas?.length === 1 &&
-        candidate.authorUserId !== null &&
-        candidate.authorUserId === copy.authorUserId;
-      const sameAuthoredCommit =
-        sameAuthorSingleParent &&
-        candidate.authoredAt !== null &&
-        copy.authoredAt !== null &&
-        candidate.authoredAt.getTime() === copy.authoredAt.getTime() &&
-        candidate.fullMessage !== null &&
-        candidate.fullMessage === copy.fullMessage;
-      const candidateHeadline = comparableCommitHeadline(candidate.fullMessage);
-      const copyHeadline = comparableCommitHeadline(copy.fullMessage);
-      const sameHeadlineCommit =
-        sameAuthorSingleParent &&
-        candidateHeadline !== null &&
-        candidateHeadline === copyHeadline;
       const candidateOrder =
         candidate.committerAt?.getTime() ?? candidate.firstObservedAt.getTime();
       const copyOrder =
@@ -2059,8 +2494,6 @@ export const canonicalizeGitHubCommitActivity = async (
       if (
         !explicitCherryPick &&
         !directMergeParent &&
-        !sameAuthoredCommit &&
-        !sameHeadlineCommit &&
         sharedPullRequest === undefined
       ) {
         continue;
@@ -2069,11 +2502,7 @@ export const canonicalizeGitHubCommitActivity = async (
         ? "direct_parent_merge"
         : explicitCherryPick
           ? "cherry_pick"
-          : sameAuthoredCommit
-            ? "same_authored_exact_copy"
-            : sameHeadlineCommit
-              ? "same_author_headline_exact_copy"
-              : "pr_history_exact_copy";
+          : "pr_history_exact_copy";
       const aliased = await setCanonicalAlias(
         transaction,
         candidate.publicId,
@@ -2082,14 +2511,7 @@ export const canonicalizeGitHubCommitActivity = async (
         {
           fingerprint: candidate.changeFingerprint,
           fingerprintComplete: true,
-          authoredAt: sameAuthoredCommit
-            ? candidate.authoredAt?.toISOString()
-            : null,
           directMergeParent,
-          headline:
-            !sameAuthoredCommit && sameHeadlineCommit
-              ? candidateHeadline
-              : null,
           pullRequestNodeId: sharedPullRequest ?? null,
           sourceSha: copy.sha,
         },
@@ -2240,11 +2662,10 @@ export const claimGitHubSummaryAttempts = async (
     await transaction
       .update(githubSummaryAttempts)
       .set({
-        completedAt: now,
         errorCode: "lease_expired",
         leaseToken: null,
         leaseUntil: null,
-        state: "indeterminate",
+        state: "pending",
       })
       .where(
         and(
@@ -2255,8 +2676,12 @@ export const claimGitHubSummaryAttempts = async (
     const candidates = await transaction
       .select({
         activityPublicId: githubSummaryAttempts.activityPublicId,
+        attemptCount: githubSummaryAttempts.attemptCount,
+        attemptedAt: githubSummaryAttempts.attemptedAt,
         author: githubCommits.author,
         committedAt: githubCommits.committedAt,
+        errorCode: githubSummaryAttempts.errorCode,
+        leaseUntil: githubSummaryAttempts.leaseUntil,
         message: githubCommits.message,
         repository: githubCommits.repository,
         repositoryId: githubCommits.repositoryId,
@@ -2278,6 +2703,10 @@ export const claimGitHubSummaryAttempts = async (
       .where(
         and(
           eq(githubSummaryAttempts.state, "pending"),
+          or(
+            isNull(githubSummaryAttempts.leaseUntil),
+            lte(githubSummaryAttempts.leaseUntil, now)
+          ),
           eq(githubPublicActivities.kind, "commit"),
           isNull(githubPublicActivities.canonicalPublicId),
           isNull(githubPublicActivities.hiddenAt),
@@ -2302,6 +2731,7 @@ export const claimGitHubSummaryAttempts = async (
       const [updated] = await transaction
         .update(githubSummaryAttempts)
         .set({
+          attemptCount: candidate.attemptCount + 1,
           attemptedAt: now,
           errorCode: null,
           leaseToken,
@@ -2324,10 +2754,15 @@ export const claimGitHubSummaryAttempts = async (
       if (updated !== undefined) {
         claimed.push({
           activityPublicId: candidate.activityPublicId,
+          attemptCount: candidate.attemptCount + 1,
           author,
           committedAt: candidate.committedAt.toISOString(),
           leaseToken,
           message: candidate.message,
+          priorAttemptCount: candidate.attemptCount,
+          priorAttemptedAt: candidate.attemptedAt,
+          priorErrorCode: candidate.errorCode,
+          priorRetryAt: candidate.leaseUntil,
           repository: candidate.repository,
           repositoryId: candidate.repositoryId,
           revision: candidate.revision,
@@ -2421,19 +2856,19 @@ export const completeGitHubSummaryAttempt = async (
     return true;
   });
 
-export const failGitHubSummaryAttempt = async (
+export const deferGitHubSummaryAttempt = async (
   attempt: ClaimedGitHubSummary,
   errorCode: string,
+  retryAt: Date | null,
   now = new Date()
 ) => {
   await getDatabase()
     .update(githubSummaryAttempts)
     .set({
-      completedAt: now,
       errorCode,
       leaseToken: null,
-      leaseUntil: null,
-      state: "failed",
+      leaseUntil: dueAt(attempt.attemptCount, now, retryAt),
+      state: "pending",
     })
     .where(
       and(
@@ -2451,10 +2886,11 @@ export const releaseGitHubSummaryAttempt = async (
   await getDatabase()
     .update(githubSummaryAttempts)
     .set({
-      attemptedAt: null,
-      errorCode: null,
+      attemptCount: attempt.priorAttemptCount,
+      attemptedAt: attempt.priorAttemptedAt,
+      errorCode: attempt.priorErrorCode,
       leaseToken: null,
-      leaseUntil: null,
+      leaseUntil: attempt.priorRetryAt,
       state: "pending",
     })
     .where(

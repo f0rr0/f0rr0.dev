@@ -78,6 +78,13 @@
       "when": 1788020225272,
       "tag": "0010_clear_wonder_man",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788087185472,
+      "tag": "0011_vengeful_reavers",
+      "breakpoints": true
     }
   ]
 }

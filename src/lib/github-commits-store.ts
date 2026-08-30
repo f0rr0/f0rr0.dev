@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   and,
+  asc,
   eq,
   gt,
   inArray,
@@ -9,7 +10,6 @@ import {
   lt,
   lte,
   ne,
-  notInArray,
   or,
   sql,
 } from "drizzle-orm";
@@ -17,9 +17,11 @@ import {
 import { getDatabase } from "@/db/client";
 import {
   githubAccountCheckpoints,
+  githubCommits,
   githubIssues,
   githubPublicActivities,
   githubPullRequests,
+  githubPullRequestSignals,
   githubPullRequestVersions,
   githubPushObservationCommits,
   githubPushObservations,
@@ -27,8 +29,10 @@ import {
   githubRepositoryRefs,
   githubWebhookDeliveries,
 } from "@/db/schema";
+import { invalidateGitHubPullRequestDerivedAliases } from "@/lib/github-activity-alias-store";
 import { trackedGitHubAccountFrom } from "@/lib/github-commits-core";
 import type {
+  GitHubCommit,
   GitHubEvent,
   GitHubIssue,
   GitHubPullRequest,
@@ -47,9 +51,28 @@ export class CheckpointConflictError extends Error {
 }
 
 export interface GitHubAccountCheckpoint {
+  eventsEtag: string | null;
+  eventsLastAttemptedAt: Date | null;
+  eventsLastSucceededAt: Date | null;
+  eventsNextPollAt: Date | null;
   latestEventId: string | null;
   paused: boolean;
   refBackfillSinceAt: Date;
+}
+
+export interface GitHubEventPollStart {
+  checkpoint: GitHubAccountCheckpoint;
+  shouldPoll: boolean;
+}
+
+export type GitHubRepositoryRefKind = GitHubRepositoryRefSnapshot["kind"];
+
+export interface GitHubRefReconciliationLease {
+  cursorRepositoryId: string | null;
+  kind: GitHubRepositoryRefKind;
+  leaseToken: string;
+  nextPage: number | null;
+  scanStartedAt: Date | null;
 }
 
 export interface GitHubIntakeResult {
@@ -77,17 +100,6 @@ export interface GitHubRepositoryRefIntakeResult {
   refs: number;
 }
 
-export interface GitHubBackfillWindow {
-  sinceAt: Date;
-  untilAt: Date;
-}
-
-export interface GitHubRepositoryBackfillIntakeResult {
-  duplicates: number;
-  observations: number;
-  refs: number;
-}
-
 type DatabaseTransaction = Parameters<
   Parameters<ReturnType<typeof getDatabase>["transaction"]>[0]
 >[0];
@@ -101,6 +113,10 @@ export const readGitHubAccountCheckpoint = async (
 ): Promise<GitHubAccountCheckpoint | null> => {
   const [checkpoint] = await getDatabase()
     .select({
+      eventsEtag: githubAccountCheckpoints.eventsEtag,
+      eventsLastAttemptedAt: githubAccountCheckpoints.eventsLastAttemptedAt,
+      eventsLastSucceededAt: githubAccountCheckpoints.eventsLastSucceededAt,
+      eventsNextPollAt: githubAccountCheckpoints.eventsNextPollAt,
       latestEventId: githubAccountCheckpoints.latestEventId,
       paused: githubAccountCheckpoints.paused,
       refBackfillSinceAt: githubAccountCheckpoints.refBackfillSinceAt,
@@ -110,6 +126,60 @@ export const readGitHubAccountCheckpoint = async (
     .limit(1);
   return checkpoint ?? null;
 };
+
+export const beginGitHubEventPoll = async (
+  account: TrackedGitHubAccount,
+  attemptedAt = new Date()
+): Promise<GitHubEventPollStart> =>
+  await getDatabase().transaction(async (transaction) => {
+    await transaction
+      .insert(githubAccountCheckpoints)
+      .values({ account })
+      .onConflictDoNothing({ target: githubAccountCheckpoints.account });
+    const minimumPreviousAttemptAt = new Date(attemptedAt.getTime() - 60_000);
+    const selection = {
+      eventsEtag: githubAccountCheckpoints.eventsEtag,
+      eventsLastAttemptedAt: githubAccountCheckpoints.eventsLastAttemptedAt,
+      eventsLastSucceededAt: githubAccountCheckpoints.eventsLastSucceededAt,
+      eventsNextPollAt: githubAccountCheckpoints.eventsNextPollAt,
+      latestEventId: githubAccountCheckpoints.latestEventId,
+      paused: githubAccountCheckpoints.paused,
+      refBackfillSinceAt: githubAccountCheckpoints.refBackfillSinceAt,
+    } as const;
+    const [started] = await transaction
+      .update(githubAccountCheckpoints)
+      .set({ eventsLastAttemptedAt: attemptedAt })
+      .where(
+        and(
+          eq(githubAccountCheckpoints.account, account),
+          eq(githubAccountCheckpoints.paused, false),
+          or(
+            isNull(githubAccountCheckpoints.eventsNextPollAt),
+            lte(githubAccountCheckpoints.eventsNextPollAt, attemptedAt)
+          ),
+          or(
+            isNull(githubAccountCheckpoints.eventsLastAttemptedAt),
+            lte(
+              githubAccountCheckpoints.eventsLastAttemptedAt,
+              minimumPreviousAttemptAt
+            )
+          )
+        )
+      )
+      .returning(selection);
+    if (started !== undefined) {
+      return { checkpoint: started, shouldPoll: true };
+    }
+    const [checkpoint] = await transaction
+      .select(selection)
+      .from(githubAccountCheckpoints)
+      .where(eq(githubAccountCheckpoints.account, account))
+      .limit(1);
+    if (checkpoint === undefined) {
+      throw new Error("The GitHub account checkpoint could not be created.");
+    }
+    return { checkpoint, shouldPoll: false };
+  });
 
 const upsertRepository = async (
   transaction: DatabaseTransaction,
@@ -198,14 +268,149 @@ interface PushObservationInput {
   sourceId: string;
 }
 
+// oxlint-disable-next-line eslint/max-classes-per-file -- Durable intake exposes distinct optimistic-lock and evidence errors.
+export class GitHubPushObservationEvidenceConflictError extends Error {
+  constructor() {
+    super("Conflicting GitHub push evidence was observed.");
+    this.name = "GitHubPushObservationEvidenceConflictError";
+  }
+}
+
+const pushObservationIdentityKey = (input: {
+  afterSha: string;
+  beforeSha: string;
+  refName: string;
+  repositoryId: string;
+}) =>
+  JSON.stringify([
+    input.repositoryId,
+    input.refName,
+    input.beforeSha,
+    input.afterSha,
+  ]);
+
+const pushInputIdentityKey = (input: PushObservationInput) =>
+  pushObservationIdentityKey({
+    afterSha: input.push.head,
+    beforeSha: input.push.before,
+    refName: input.push.ref,
+    repositoryId: input.push.repository.id,
+  });
+
+const pushSourceIdentityKey = (input: { source: string; sourceId: string }) =>
+  JSON.stringify([input.source, input.sourceId]);
+
+const isOrderedSubsequence = (
+  candidate: readonly string[],
+  complete: readonly string[]
+) => {
+  let offset = 0;
+  for (const sha of candidate) {
+    const index = complete.indexOf(sha, offset);
+    if (index === -1) {
+      return false;
+    }
+    offset = index + 1;
+  }
+  return true;
+};
+
 const PUSH_COMMIT_INSERT_BATCH = 1000;
 
+export interface GitHubCommitReferenceIntakeResult {
+  duplicates: number;
+  inserted: number;
+}
+
+/** Inserts independently discovered commit references for normal worker enrichment. */
+export const persistGitHubCommitReferences = async (input: {
+  commits: readonly GitHubCommit[];
+  observedAt?: Date;
+}): Promise<GitHubCommitReferenceIntakeResult> => {
+  const observedAt = input.observedAt ?? new Date();
+  if (Number.isNaN(observedAt.getTime())) {
+    throw new RangeError("The GitHub commit observation time is invalid.");
+  }
+  const commits = new Map<string, GitHubCommit>();
+  for (const commit of input.commits) {
+    const committedAt = new Date(commit.committedAt);
+    if (Number.isNaN(committedAt.getTime())) {
+      throw new TypeError("A GitHub commit reference has an invalid date.");
+    }
+    const identity = `${commit.repositoryId}:${commit.sha}`;
+    const existing = commits.get(identity);
+    if (
+      existing !== undefined &&
+      (existing.author !== commit.author ||
+        existing.committedAt !== commit.committedAt ||
+        existing.message !== commit.message ||
+        existing.repository !== commit.repository)
+    ) {
+      throw new TypeError("GitHub returned conflicting commit references.");
+    }
+    commits.set(identity, commit);
+  }
+  if (commits.size === 0) {
+    return { duplicates: 0, inserted: 0 };
+  }
+
+  return await getDatabase().transaction(async (transaction) => {
+    const repositories = new Map<string, GitHubRepository>();
+    for (const commit of commits.values()) {
+      repositories.set(commit.repositoryId, {
+        fullName: commit.repository,
+        id: commit.repositoryId,
+      });
+    }
+    for (const repository of repositories.values()) {
+      await upsertRepository(transaction, repository, observedAt);
+    }
+
+    let inserted = 0;
+    const values = [...commits.values()];
+    for (
+      let offset = 0;
+      offset < values.length;
+      offset += PUSH_COMMIT_INSERT_BATCH
+    ) {
+      const rows = await transaction
+        .insert(githubCommits)
+        .values(
+          values
+            .slice(offset, offset + PUSH_COMMIT_INSERT_BATCH)
+            .map((commit) => ({
+              author: commit.author,
+              committedAt: new Date(commit.committedAt),
+              firstObservedAt: observedAt,
+              message: commit.message,
+              repository: commit.repository,
+              repositoryId: commit.repositoryId,
+              sha: commit.sha,
+            }))
+        )
+        .onConflictDoNothing({
+          target: [githubCommits.repositoryId, githubCommits.sha],
+        })
+        .returning({ sha: githubCommits.sha });
+      inserted += rows.length;
+    }
+    return { duplicates: input.commits.length - inserted, inserted };
+  });
+};
+
+// oxlint-disable-next-line eslint/complexity -- Conflict promotion validates each independent evidence invariant before mutation.
 const insertPushObservations = async (
   transaction: DatabaseTransaction,
   inputs: readonly PushObservationInput[]
 ) => {
   if (inputs.length === 0) {
     return { duplicates: 0, knownCommits: 0, pushes: 0 };
+  }
+  if (
+    new Set(inputs.map(pushInputIdentityKey)).size !== inputs.length ||
+    new Set(inputs.map(pushSourceIdentityKey)).size !== inputs.length
+  ) {
+    throw new GitHubPushObservationEvidenceConflictError();
   }
 
   const repositories = new Map<string, GitHubRepository>();
@@ -259,13 +464,16 @@ const insertPushObservations = async (
     .onConflictDoNothing()
     .returning({
       id: githubPushObservations.id,
+      source: githubPushObservations.source,
       sourceId: githubPushObservations.sourceId,
     });
-  const inputsBySourceId = new Map(
-    inputs.map((input) => [input.sourceId, input])
+  const inputsBySource = new Map(
+    inputs.map((input) => [pushSourceIdentityKey(input), input])
   );
-  const commitRows = inserted.flatMap(({ id, sourceId }) => {
-    const input = inputsBySourceId.get(sourceId);
+  const commitRows = inserted.flatMap(({ id, source, sourceId }) => {
+    const input = inputsBySource.get(
+      pushSourceIdentityKey({ source, sourceId })
+    );
     if (input === undefined) {
       throw new Error("A persisted GitHub push observation lost its source.");
     }
@@ -276,6 +484,160 @@ const insertPushObservations = async (
       sha,
     }));
   });
+  const insertedSources = new Set(inserted.map(pushSourceIdentityKey));
+  const duplicateInputs = inputs.filter(
+    (input) => !insertedSources.has(pushSourceIdentityKey(input))
+  );
+  let promoted = 0;
+  let promotedCommitCount = 0;
+  if (duplicateInputs.length > 0) {
+    const conflicts = await transaction
+      .select({
+        afterSha: githubPushObservations.afterSha,
+        beforeSha: githubPushObservations.beforeSha,
+        expectedCommitCount: githubPushObservations.expectedCommitCount,
+        id: githubPushObservations.id,
+        providerCreatedAt: githubPushObservations.providerCreatedAt,
+        refName: githubPushObservations.refName,
+        repositoryId: githubPushObservations.repositoryId,
+        source: githubPushObservations.source,
+        sourceId: githubPushObservations.sourceId,
+      })
+      .from(githubPushObservations)
+      .where(
+        or(
+          ...duplicateInputs.flatMap((input) => [
+            and(
+              eq(githubPushObservations.source, input.source),
+              eq(githubPushObservations.sourceId, input.sourceId)
+            ),
+            and(
+              eq(githubPushObservations.repositoryId, input.push.repository.id),
+              eq(githubPushObservations.refName, input.push.ref),
+              eq(githubPushObservations.beforeSha, input.push.before),
+              eq(githubPushObservations.afterSha, input.push.head),
+              ne(githubPushObservations.source, "backfill")
+            ),
+          ])
+        )
+      )
+      .for("update");
+    const conflictIds = conflicts.map(({ id }) => id);
+    const storedCommitRows =
+      conflictIds.length === 0
+        ? []
+        : await transaction
+            .select({
+              observationId: githubPushObservationCommits.observationId,
+              position: githubPushObservationCommits.position,
+              repositoryId: githubPushObservationCommits.repositoryId,
+              sha: githubPushObservationCommits.sha,
+            })
+            .from(githubPushObservationCommits)
+            .where(
+              inArray(githubPushObservationCommits.observationId, conflictIds)
+            )
+            .orderBy(
+              asc(githubPushObservationCommits.observationId),
+              asc(githubPushObservationCommits.position)
+            );
+    const commitsByObservation = new Map<string, string[]>();
+    const conflictsById = new Map(
+      conflicts.map((conflict) => [conflict.id, conflict])
+    );
+    for (const row of storedCommitRows) {
+      const commits = commitsByObservation.get(row.observationId) ?? [];
+      if (
+        row.position !== commits.length ||
+        conflictsById.get(row.observationId)?.repositoryId !== row.repositoryId
+      ) {
+        throw new GitHubPushObservationEvidenceConflictError();
+      }
+      commits.push(row.sha);
+      commitsByObservation.set(row.observationId, commits);
+    }
+    const byPush = new Map(
+      conflicts.map((conflict) => [
+        pushObservationIdentityKey(conflict),
+        conflict,
+      ])
+    );
+    const bySource = new Map(
+      conflicts.map((conflict) => [pushSourceIdentityKey(conflict), conflict])
+    );
+
+    for (const input of duplicateInputs) {
+      const sourceConflict = bySource.get(pushSourceIdentityKey(input));
+      const pushConflict = byPush.get(pushInputIdentityKey(input));
+      if (
+        (sourceConflict !== undefined &&
+          pushConflict !== undefined &&
+          sourceConflict.id !== pushConflict.id) ||
+        (sourceConflict !== undefined &&
+          pushObservationIdentityKey(sourceConflict) !==
+            pushInputIdentityKey(input))
+      ) {
+        throw new GitHubPushObservationEvidenceConflictError();
+      }
+      const conflict = pushConflict ?? sourceConflict;
+      if (conflict === undefined) {
+        throw new GitHubPushObservationEvidenceConflictError();
+      }
+      const exact =
+        input.push.size !== null &&
+        input.push.commitShas.length === input.push.size;
+      const storedCommits = commitsByObservation.get(conflict.id) ?? [];
+      if (
+        (input.push.size !== null &&
+          conflict.expectedCommitCount !== null &&
+          input.push.size !== conflict.expectedCommitCount) ||
+        (exact &&
+          !isOrderedSubsequence(storedCommits, input.push.commitShas)) ||
+        (!exact &&
+          storedCommits.length > 0 &&
+          input.push.commitShas.length > 0 &&
+          !isOrderedSubsequence(storedCommits, input.push.commitShas) &&
+          !isOrderedSubsequence(input.push.commitShas, storedCommits))
+      ) {
+        throw new GitHubPushObservationEvidenceConflictError();
+      }
+      if (conflict.source !== "refs" || !exact) {
+        continue;
+      }
+
+      const complete = input.push.size === 0;
+      await transaction
+        .update(githubPushObservations)
+        .set({
+          account: input.push.pushedBy,
+          attemptCount: 0,
+          completedAt: complete ? input.observedAt : null,
+          errorCode: null,
+          expectedCommitCount: input.push.size,
+          leaseToken: null,
+          leaseUntil: null,
+          providerCreatedAt:
+            input.providerCreatedAt ?? conflict.providerCreatedAt,
+          state: complete ? "complete" : "pending",
+        })
+        .where(eq(githubPushObservations.id, conflict.id));
+      await transaction
+        .delete(githubPushObservationCommits)
+        .where(eq(githubPushObservationCommits.observationId, conflict.id));
+      if (input.push.commitShas.length > 0) {
+        await transaction.insert(githubPushObservationCommits).values(
+          input.push.commitShas.map((sha, position) => ({
+            observationId: conflict.id,
+            position,
+            repositoryId: input.push.repository.id,
+            sha,
+          }))
+        );
+      }
+      promoted += 1;
+      promotedCommitCount += input.push.commitShas.length;
+    }
+  }
   for (
     let offset = 0;
     offset < commitRows.length;
@@ -286,14 +648,13 @@ const insertPushObservations = async (
       .values(commitRows.slice(offset, offset + PUSH_COMMIT_INSERT_BATCH));
   }
   return {
-    duplicates: inputs.length - inserted.length,
-    knownCommits: commitRows.length,
-    pushes: inserted.length,
+    duplicates: inputs.length - inserted.length - promoted,
+    knownCommits: commitRows.length + promotedCommitCount,
+    pushes: inserted.length + promoted,
   };
 };
 
 const ZERO_SHA = "0".repeat(40);
-const BACKFILL_OBSERVATION_INSERT_BATCH = 250;
 
 const refObservationSourceId = (input: {
   afterSha: string;
@@ -309,157 +670,239 @@ const refObservationSourceId = (input: {
     )
     .digest("hex")}`;
 
-const backfillObservationSourceId = (input: {
-  afterSha: string;
-  repositoryId: string;
-  sinceAt: Date;
-  untilAt: Date;
-}) =>
-  `backfill:${createHash("sha256")
-    .update(
-      [
-        input.repositoryId,
-        input.afterSha,
-        input.sinceAt.toISOString(),
-        input.untilAt.toISOString(),
-      ].join("\0")
-    )
-    .digest("hex")}`;
+// oxlint-disable-next-line eslint/max-classes-per-file -- Lease loss is recoverable and must remain distinguishable by callers.
+export class GitHubRefReconciliationLeaseLostError extends Error {
+  constructor() {
+    super("The GitHub ref reconciliation lease was lost.");
+    this.name = "GitHubRefReconciliationLeaseLostError";
+  }
+}
 
-export const persistGitHubRepositoryBackfill = async (input: {
+const refCheckpointColumns = (kind: GitHubRepositoryRefKind) =>
+  kind === "head"
+    ? {
+        cursor: githubAccountCheckpoints.headRefCursorRepositoryId,
+        cycleStartedAt: githubAccountCheckpoints.headRefCycleStartedAt,
+        lastAttemptedAt: githubAccountCheckpoints.headRefLastAttemptedAt,
+        lastSucceededAt: githubAccountCheckpoints.headRefLastSucceededAt,
+        leaseToken: githubAccountCheckpoints.headRefLeaseToken,
+        leaseUntil: githubAccountCheckpoints.headRefLeaseUntil,
+        nextPage: githubAccountCheckpoints.headRefNextPage,
+        scanStartedAt: githubAccountCheckpoints.headRefScanStartedAt,
+      }
+    : {
+        cursor: githubAccountCheckpoints.tagRefCursorRepositoryId,
+        cycleStartedAt: githubAccountCheckpoints.tagRefCycleStartedAt,
+        lastAttemptedAt: githubAccountCheckpoints.tagRefLastAttemptedAt,
+        lastSucceededAt: githubAccountCheckpoints.tagRefLastSucceededAt,
+        leaseToken: githubAccountCheckpoints.tagRefLeaseToken,
+        leaseUntil: githubAccountCheckpoints.tagRefLeaseUntil,
+        nextPage: githubAccountCheckpoints.tagRefNextPage,
+        scanStartedAt: githubAccountCheckpoints.tagRefScanStartedAt,
+      };
+
+const refLeaseValues = (
+  kind: GitHubRepositoryRefKind,
+  input: { leaseToken: string | null; leaseUntil: Date | null }
+) =>
+  kind === "head"
+    ? {
+        headRefLeaseToken: input.leaseToken,
+        headRefLeaseUntil: input.leaseUntil,
+      }
+    : {
+        tagRefLeaseToken: input.leaseToken,
+        tagRefLeaseUntil: input.leaseUntil,
+      };
+
+export const acquireGitHubRefReconciliationLease = async (input: {
   account: TrackedGitHubAccount;
-  observedAt: Date;
-  refs: readonly GitHubRepositoryRefSnapshot[];
-  repository: GitHubRepositoryFacts;
-  windows: readonly GitHubBackfillWindow[];
-}): Promise<GitHubRepositoryBackfillIntakeResult> => {
+  kind: GitHubRepositoryRefKind;
+  leaseDurationMs: number;
+  now?: Date;
+}): Promise<GitHubRefReconciliationLease | null> => {
   if (
-    input.windows.length === 0 ||
-    input.windows.some(
-      ({ sinceAt, untilAt }) =>
-        Number.isNaN(sinceAt.getTime()) ||
-        Number.isNaN(untilAt.getTime()) ||
-        sinceAt > untilAt
-    )
+    !Number.isSafeInteger(input.leaseDurationMs) ||
+    input.leaseDurationMs < 1000 ||
+    input.leaseDurationMs > 300_000
   ) {
-    throw new RangeError("The GitHub backfill windows are invalid.");
+    throw new RangeError("The GitHub ref lease duration is invalid.");
   }
-  const windowIdentities = input.windows.map(({ sinceAt, untilAt }) =>
-    [sinceAt.toISOString(), untilAt.toISOString()].join("\0")
-  );
-  if (new Set(windowIdentities).size !== windowIdentities.length) {
-    throw new RangeError("The GitHub backfill windows are duplicated.");
-  }
-
-  const refsByHead = new Map<string, GitHubRepositoryRefSnapshot>();
-  for (const ref of input.refs) {
-    const existing = refsByHead.get(ref.headSha);
-    if (existing === undefined || ref.refName < existing.refName) {
-      refsByHead.set(ref.headSha, ref);
-    }
-  }
-  const refs = [...refsByHead.values()].toSorted((left, right) =>
-    left.refName < right.refName ? -1 : left.refName > right.refName ? 1 : 0
-  );
-  const rows = refs.flatMap((ref) =>
-    input.windows.map(({ sinceAt, untilAt }) => ({
-      account: input.account,
-      afterSha: ref.headSha,
-      beforeSha: ZERO_SHA,
-      expectedCommitCount: null,
-      historySinceAt: sinceAt,
-      historyUntilAt: untilAt,
-      observedAt: input.observedAt,
-      providerCreatedAt: null,
-      refName: ref.refName,
-      repositoryId: input.repository.id,
-      repositoryNameSnapshot: input.repository.fullName,
-      source: "backfill" as const,
-      sourceId: backfillObservationSourceId({
-        afterSha: ref.headSha,
-        repositoryId: input.repository.id,
-        sinceAt,
-        untilAt,
-      }),
-      state: "pending" as const,
-    }))
-  );
-
+  const now = input.now ?? new Date();
+  const leaseUntil = new Date(now.getTime() + input.leaseDurationMs);
+  const leaseToken = randomUUID();
+  const columns = refCheckpointColumns(input.kind);
   return await getDatabase().transaction(async (transaction) => {
     await transaction
       .insert(githubAccountCheckpoints)
       .values({ account: input.account })
       .onConflictDoNothing({ target: githubAccountCheckpoints.account });
-    await upsertRepository(transaction, input.repository, input.observedAt);
-
-    let queued = 0;
-    for (
-      let offset = 0;
-      offset < rows.length;
-      offset += BACKFILL_OBSERVATION_INSERT_BATCH
-    ) {
-      const persisted = await transaction
-        .insert(githubPushObservations)
-        .values(rows.slice(offset, offset + BACKFILL_OBSERVATION_INSERT_BATCH))
-        .onConflictDoUpdate({
-          set: {
-            completedAt: null,
-            errorCode: null,
-            leaseToken: null,
-            leaseUntil: null,
-            observedAt: input.observedAt,
-            state: "pending",
-          },
-          setWhere: and(
-            eq(githubPushObservations.source, "backfill"),
-            inArray(githubPushObservations.state, ["deferred", "unavailable"])
-          ),
-          target: [
-            githubPushObservations.source,
-            githubPushObservations.sourceId,
-          ],
-        })
-        .returning({ id: githubPushObservations.id });
-      queued += persisted.length;
+    const attemptedValues =
+      input.kind === "head"
+        ? {
+            headRefCycleStartedAt: sql`coalesce(${columns.cycleStartedAt}, ${sql.param(now, columns.cycleStartedAt)})`,
+            headRefLastAttemptedAt: now,
+          }
+        : {
+            tagRefCycleStartedAt: sql`coalesce(${columns.cycleStartedAt}, ${sql.param(now, columns.cycleStartedAt)})`,
+            tagRefLastAttemptedAt: now,
+          };
+    const [leased] = await transaction
+      .update(githubAccountCheckpoints)
+      .set({
+        ...attemptedValues,
+        ...refLeaseValues(input.kind, { leaseToken, leaseUntil }),
+      })
+      .where(
+        and(
+          eq(githubAccountCheckpoints.account, input.account),
+          eq(githubAccountCheckpoints.paused, false),
+          or(isNull(columns.leaseUntil), lte(columns.leaseUntil, now))
+        )
+      )
+      .returning({
+        cursorRepositoryId: columns.cursor,
+        nextPage: columns.nextPage,
+        scanStartedAt: columns.scanStartedAt,
+      });
+    if (leased === undefined) {
+      return null;
     }
-
-    return {
-      duplicates: rows.length - queued,
-      observations: queued,
-      refs: refs.length,
-    };
+    if ((leased.nextPage === null) !== (leased.scanStartedAt === null)) {
+      throw new Error("The GitHub ref scan checkpoint is inconsistent.");
+    }
+    return { ...leased, kind: input.kind, leaseToken };
   });
 };
 
-export const persistGitHubRepositoryRefs = async (input: {
+const updateLeasedRefCheckpoint = async (
+  transaction: DatabaseTransaction,
+  input: {
+    account: TrackedGitHubAccount;
+    cursorRepositoryId: string;
+    kind: GitHubRepositoryRefKind;
+    leaseToken: string;
+    nextPage: number | null;
+    scanStartedAt: Date | null;
+  }
+) => {
+  const columns = refCheckpointColumns(input.kind);
+  const progressValues =
+    input.kind === "head"
+      ? {
+          headRefCursorRepositoryId: input.cursorRepositoryId,
+          headRefNextPage: input.nextPage,
+          headRefScanStartedAt: input.scanStartedAt,
+        }
+      : {
+          tagRefCursorRepositoryId: input.cursorRepositoryId,
+          tagRefNextPage: input.nextPage,
+          tagRefScanStartedAt: input.scanStartedAt,
+        };
+  const updated = await transaction
+    .update(githubAccountCheckpoints)
+    .set(progressValues)
+    .where(
+      and(
+        eq(githubAccountCheckpoints.account, input.account),
+        eq(columns.leaseToken, input.leaseToken)
+      )
+    )
+    .returning({ account: githubAccountCheckpoints.account });
+  if (updated.length !== 1) {
+    throw new GitHubRefReconciliationLeaseLostError();
+  }
+};
+
+const refKindRepositoryValues = (
+  kind: GitHubRepositoryRefKind,
+  reconciledAt: Date
+) =>
+  kind === "head"
+    ? { headsLastReconciledAt: reconciledAt }
+    : { tagsLastReconciledAt: reconciledAt };
+
+const refKindRepositoryColumn = (kind: GitHubRepositoryRefKind) =>
+  kind === "head"
+    ? githubRepositories.headsLastReconciledAt
+    : githubRepositories.tagsLastReconciledAt;
+
+export const persistGitHubRepositoryRefPage = async (input: {
   account: TrackedGitHubAccount;
+  complete: boolean;
+  kind: GitHubRepositoryRefKind;
+  leaseToken: string;
+  nextPage: number | null;
   observedAt: Date;
   refs: readonly GitHubRepositoryRefSnapshot[];
   repository: GitHubRepositoryFacts;
-}): Promise<GitHubRepositoryRefIntakeResult> =>
-  await getDatabase().transaction(async (transaction) => {
+  scanStartedAt: Date;
+}): Promise<GitHubRepositoryRefIntakeResult> => {
+  if (
+    input.refs.some((ref) => ref.kind !== input.kind) ||
+    input.complete !== (input.nextPage === null) ||
+    (!input.complete && input.nextPage !== null && input.nextPage < 2)
+  ) {
+    throw new RangeError("The GitHub reference page state is invalid.");
+  }
+  const refNames = input.refs.map((ref) => ref.refName);
+  if (new Set(refNames).size !== refNames.length) {
+    throw new TypeError("The GitHub reference page contains duplicates.");
+  }
+
+  return await getDatabase().transaction(async (transaction) => {
     await upsertRepository(transaction, input.repository, input.observedAt);
-    const existing = await transaction
+    const [repositoryState] = await transaction
       .select({
-        active: githubRepositoryRefs.active,
-        headSha: githubRepositoryRefs.headSha,
-        lastObservedAt: githubRepositoryRefs.lastObservedAt,
-        refName: githubRepositoryRefs.refName,
+        lastReconciledAt: refKindRepositoryColumn(input.kind),
       })
-      .from(githubRepositoryRefs)
-      .where(eq(githubRepositoryRefs.repositoryId, input.repository.id));
+      .from(githubRepositories)
+      .where(eq(githubRepositories.id, input.repository.id))
+      .limit(1);
+    if (repositoryState === undefined) {
+      throw new Error("The GitHub repository checkpoint could not be read.");
+    }
+    const establishingBaseline = repositoryState.lastReconciledAt === null;
+    const existing =
+      refNames.length === 0
+        ? []
+        : await transaction
+            .select({
+              active: githubRepositoryRefs.active,
+              headSha: githubRepositoryRefs.headSha,
+              lastObservedAt: githubRepositoryRefs.lastObservedAt,
+              refName: githubRepositoryRefs.refName,
+            })
+            .from(githubRepositoryRefs)
+            .where(
+              and(
+                eq(githubRepositoryRefs.repositoryId, input.repository.id),
+                inArray(githubRepositoryRefs.refName, refNames)
+              )
+            );
+    const incomingHeads = [...new Set(input.refs.map((ref) => ref.headSha))];
+    const knownHeads =
+      incomingHeads.length === 0
+        ? []
+        : await transaction
+            .select({ headSha: githubRepositoryRefs.headSha })
+            .from(githubRepositoryRefs)
+            .where(
+              and(
+                eq(githubRepositoryRefs.repositoryId, input.repository.id),
+                eq(githubRepositoryRefs.active, true),
+                inArray(githubRepositoryRefs.headSha, incomingHeads)
+              )
+            );
     const existingByName = new Map(existing.map((ref) => [ref.refName, ref]));
-    const knownActiveHeads = new Set(
-      existing.filter((ref) => ref.active).map((ref) => ref.headSha)
-    );
+    const knownActiveHeads = new Set(knownHeads.map((ref) => ref.headSha));
     const observedRanges = new Set<string>();
     const observations: PushObservationInput[] = [];
-
     for (const ref of input.refs) {
       const previous = existingByName.get(ref.refName);
       if (
         previous !== undefined &&
-        (previous.lastObservedAt > input.observedAt ||
+        (previous.lastObservedAt > input.scanStartedAt ||
           (previous.active && previous.headSha === ref.headSha))
       ) {
         knownActiveHeads.add(ref.headSha);
@@ -467,20 +910,23 @@ export const persistGitHubRepositoryRefs = async (input: {
       }
       const beforeSha = previous?.active === true ? previous.headSha : ZERO_SHA;
       const range = `${beforeSha}:${ref.headSha}`;
-      if (!knownActiveHeads.has(ref.headSha) && !observedRanges.has(range)) {
-        const push: GitHubPush = {
-          before: beforeSha,
-          commitShas: [],
-          head: ref.headSha,
-          pushedBy: input.account,
-          ref: ref.refName,
-          repository: input.repository,
-          size: null,
-        };
+      if (
+        !establishingBaseline &&
+        !knownActiveHeads.has(ref.headSha) &&
+        !observedRanges.has(range)
+      ) {
         observations.push({
           observedAt: input.observedAt,
           providerCreatedAt: null,
-          push,
+          push: {
+            before: beforeSha,
+            commitShas: [],
+            head: ref.headSha,
+            pushedBy: input.account,
+            ref: ref.refName,
+            repository: input.repository,
+            size: null,
+          },
           source: "refs",
           sourceId: refObservationSourceId({
             afterSha: ref.headSha,
@@ -501,10 +947,10 @@ export const persistGitHubRepositoryRefs = async (input: {
         .values(
           input.refs.map((ref) => ({
             active: true,
-            firstObservedAt: input.observedAt,
+            firstObservedAt: input.scanStartedAt,
             headSha: ref.headSha,
             kind: ref.kind,
-            lastObservedAt: input.observedAt,
+            lastObservedAt: input.scanStartedAt,
             refName: ref.refName,
             repositoryId: input.repository.id,
           }))
@@ -514,37 +960,138 @@ export const persistGitHubRepositoryRefs = async (input: {
             active: true,
             headSha: sql`excluded.head_sha`,
             kind: sql`excluded.kind`,
-            lastObservedAt: input.observedAt,
+            lastObservedAt: input.scanStartedAt,
           },
-          setWhere: lte(githubRepositoryRefs.lastObservedAt, input.observedAt),
+          setWhere: lte(
+            githubRepositoryRefs.lastObservedAt,
+            input.scanStartedAt
+          ),
           target: [
             githubRepositoryRefs.repositoryId,
             githubRepositoryRefs.refName,
           ],
         });
     }
-
-    const currentRefNames = input.refs.map((ref) => ref.refName);
-    await transaction
-      .update(githubRepositoryRefs)
-      .set({ active: false, lastObservedAt: input.observedAt })
-      .where(
-        and(
-          eq(githubRepositoryRefs.repositoryId, input.repository.id),
-          eq(githubRepositoryRefs.active, true),
-          lte(githubRepositoryRefs.lastObservedAt, input.observedAt),
-          ...(currentRefNames.length === 0
-            ? []
-            : [notInArray(githubRepositoryRefs.refName, currentRefNames)])
-        )
-      );
-
+    if (input.complete) {
+      await transaction
+        .update(githubRepositoryRefs)
+        .set({ active: false, lastObservedAt: input.scanStartedAt })
+        .where(
+          and(
+            eq(githubRepositoryRefs.repositoryId, input.repository.id),
+            eq(githubRepositoryRefs.kind, input.kind),
+            eq(githubRepositoryRefs.active, true),
+            lt(githubRepositoryRefs.lastObservedAt, input.scanStartedAt)
+          )
+        );
+    }
+    if (input.complete) {
+      await transaction
+        .update(githubRepositories)
+        .set(refKindRepositoryValues(input.kind, input.observedAt))
+        .where(eq(githubRepositories.id, input.repository.id));
+    }
+    await updateLeasedRefCheckpoint(transaction, {
+      account: input.account,
+      cursorRepositoryId: input.repository.id,
+      kind: input.kind,
+      leaseToken: input.leaseToken,
+      nextPage: input.nextPage,
+      scanStartedAt: input.complete ? null : input.scanStartedAt,
+    });
     return {
       knownCommits: persisted.knownCommits,
       pushes: persisted.pushes,
       refs: input.refs.length,
     };
   });
+};
+
+export const skipGitHubRefRepository = async (input: {
+  account: TrackedGitHubAccount;
+  kind: GitHubRepositoryRefKind;
+  leaseToken: string;
+  repositoryId: string;
+}) => {
+  await getDatabase().transaction(async (transaction) => {
+    await updateLeasedRefCheckpoint(transaction, {
+      account: input.account,
+      cursorRepositoryId: input.repositoryId,
+      kind: input.kind,
+      leaseToken: input.leaseToken,
+      nextPage: null,
+      scanStartedAt: null,
+    });
+  });
+};
+
+export const finishGitHubRefReconciliationLease = async (input: {
+  account: TrackedGitHubAccount;
+  complete: boolean;
+  kind: GitHubRepositoryRefKind;
+  leaseToken: string;
+  now?: Date;
+}) => {
+  const now = input.now ?? new Date();
+  const columns = refCheckpointColumns(input.kind);
+  const completionValues =
+    input.kind === "head"
+      ? {
+          ...(input.complete
+            ? {
+                headRefCursorRepositoryId: null,
+                headRefCycleStartedAt: null,
+                headRefNextPage: null,
+                headRefScanStartedAt: null,
+              }
+            : {}),
+          headRefLastSucceededAt: now,
+        }
+      : {
+          ...(input.complete
+            ? {
+                tagRefCursorRepositoryId: null,
+                tagRefCycleStartedAt: null,
+                tagRefNextPage: null,
+                tagRefScanStartedAt: null,
+              }
+            : {}),
+          tagRefLastSucceededAt: now,
+        };
+  const updated = await getDatabase()
+    .update(githubAccountCheckpoints)
+    .set({
+      ...completionValues,
+      ...refLeaseValues(input.kind, { leaseToken: null, leaseUntil: null }),
+    })
+    .where(
+      and(
+        eq(githubAccountCheckpoints.account, input.account),
+        eq(columns.leaseToken, input.leaseToken)
+      )
+    )
+    .returning({ account: githubAccountCheckpoints.account });
+  if (updated.length !== 1) {
+    throw new GitHubRefReconciliationLeaseLostError();
+  }
+};
+
+export const releaseGitHubRefReconciliationLease = async (input: {
+  account: TrackedGitHubAccount;
+  kind: GitHubRepositoryRefKind;
+  leaseToken: string;
+}) => {
+  const columns = refCheckpointColumns(input.kind);
+  await getDatabase()
+    .update(githubAccountCheckpoints)
+    .set(refLeaseValues(input.kind, { leaseToken: null, leaseUntil: null }))
+    .where(
+      and(
+        eq(githubAccountCheckpoints.account, input.account),
+        eq(columns.leaseToken, input.leaseToken)
+      )
+    );
+};
 
 const insertPushObservation = async (
   transaction: DatabaseTransaction,
@@ -619,6 +1166,74 @@ const markWebhookDeliveryAccepted = async (
 const pullRequestState = (pullRequest: GitHubPullRequest) =>
   pullRequest.merged ? ("merged" as const) : pullRequest.state;
 
+const pullRequestTerminalTimestamp = (
+  pullRequest: GitHubPullRequest,
+  state: "closed" | "merged" | "open"
+) => {
+  if (state === "merged") {
+    return pullRequest.mergedAt;
+  }
+  return state === "closed" ? pullRequest.closedAt : null;
+};
+
+const pullRequestAliasEvidenceChanged = (
+  existing: Readonly<{
+    headRepositoryId: string | null;
+    headSha: string | null;
+    providerUpdatedAt: Date;
+    repositoryId: string;
+    state: string;
+  }>,
+  pullRequest: GitHubPullRequest,
+  providerUpdatedAt: Date,
+  state: "closed" | "merged" | "open"
+) =>
+  providerUpdatedAt >= existing.providerUpdatedAt &&
+  (pullRequest.headSha !== existing.headSha ||
+    (pullRequest.headRepository !== null &&
+      pullRequest.headRepository.id !== existing.headRepositoryId) ||
+    pullRequest.repository.id !== existing.repositoryId ||
+    state !== existing.state);
+
+const invalidateChangedPullRequestAliases = async (
+  transaction: DatabaseTransaction,
+  existing:
+    | Readonly<{
+        headRepositoryId: string | null;
+        headSha: string | null;
+        providerUpdatedAt: Date;
+        repositoryId: string;
+        state: string;
+      }>
+    | undefined,
+  pullRequest: GitHubPullRequest,
+  providerUpdatedAt: Date,
+  state: "closed" | "merged" | "open"
+) => {
+  if (
+    existing === undefined ||
+    !pullRequestAliasEvidenceChanged(
+      existing,
+      pullRequest,
+      providerUpdatedAt,
+      state
+    )
+  ) {
+    return;
+  }
+  await invalidateGitHubPullRequestDerivedAliases(
+    transaction,
+    pullRequest.nodeId,
+    [
+      existing.repositoryId,
+      existing.headRepositoryId,
+      pullRequest.repository.id,
+      pullRequest.baseRepository.id,
+      pullRequest.headRepository?.id,
+    ]
+  );
+};
+
 const upsertPullRequest = async (
   transaction: DatabaseTransaction,
   account: TrackedGitHubAccount,
@@ -632,12 +1247,25 @@ const upsertPullRequest = async (
 
   const providerUpdatedAt = new Date(pullRequest.providerUpdatedAt);
   const state = pullRequestState(pullRequest);
-  const terminalTimestamp =
-    state === "merged"
-      ? pullRequest.mergedAt
-      : state === "closed"
-        ? pullRequest.closedAt
-        : null;
+  const [existing] = await transaction
+    .select({
+      headRepositoryId: githubPullRequests.headRepositoryId,
+      headSha: githubPullRequests.headSha,
+      providerUpdatedAt: githubPullRequests.providerUpdatedAt,
+      repositoryId: githubPullRequests.repositoryId,
+      state: githubPullRequests.state,
+    })
+    .from(githubPullRequests)
+    .where(eq(githubPullRequests.nodeId, pullRequest.nodeId))
+    .for("update");
+  await invalidateChangedPullRequestAliases(
+    transaction,
+    existing,
+    pullRequest,
+    providerUpdatedAt,
+    state
+  );
+  const terminalTimestamp = pullRequestTerminalTimestamp(pullRequest, state);
   if (state !== "open" && terminalTimestamp === null) {
     throw new Error("A terminal GitHub pull request has no terminal time.");
   }
@@ -660,7 +1288,10 @@ const upsertPullRequest = async (
     headSha: pullRequest.headSha,
     mergedAt:
       pullRequest.mergedAt === null ? null : new Date(pullRequest.mergedAt),
-    mergeSha: pullRequest.mergeCommitSha,
+    // REST and webhook PR representations are state signals only. GitHub's
+    // GraphQL PullRequest.mergeCommit is the sole merge-SHA authority.
+    mergeSha: null,
+    mergeShaVerifiedAt: null,
     nextReconcileAt: observedAt,
     providerUpdatedAt,
     state,
@@ -690,6 +1321,14 @@ const upsertPullRequest = async (
         commitCount: sql`coalesce(excluded.commit_count, ${githubPullRequests.commitCount})`,
         deletions: sql`coalesce(excluded.deletions, ${githubPullRequests.deletions})`,
         headRepositoryId: sql`coalesce(excluded.head_repository_id, ${githubPullRequests.headRepositoryId})`,
+        mergeSha:
+          state === "merged"
+            ? sql`CASE WHEN ${githubPullRequests.mergeShaVerifiedAt} IS NOT NULL THEN ${githubPullRequests.mergeSha} ELSE NULL END`
+            : null,
+        mergeShaVerifiedAt:
+          state === "merged" ? githubPullRequests.mergeShaVerifiedAt : null,
+        reconcileAttempts: 0,
+        reconcileError: null,
       },
       setWhere: lt(githubPullRequests.providerUpdatedAt, providerUpdatedAt),
       target: githubPullRequests.nodeId,
@@ -709,8 +1348,15 @@ const upsertPullRequest = async (
         .set({
           closedAt: mutableValues.closedAt,
           mergedAt: mutableValues.mergedAt,
-          mergeSha: mutableValues.mergeSha,
+          mergeSha:
+            state === "merged"
+              ? sql`CASE WHEN ${githubPullRequests.mergeShaVerifiedAt} IS NOT NULL THEN ${githubPullRequests.mergeSha} ELSE NULL END`
+              : null,
+          mergeShaVerifiedAt:
+            state === "merged" ? githubPullRequests.mergeShaVerifiedAt : null,
           nextReconcileAt: observedAt,
+          reconcileAttempts: 0,
+          reconcileError: null,
           state,
           terminalAt,
         })
@@ -803,8 +1449,10 @@ const signalKnownPullRequestReconciliation = async (
 ) => {
   const [known] = await transaction
     .select({
+      headRepositoryId: githubPullRequests.headRepositoryId,
       nodeId: githubPullRequests.nodeId,
       providerUpdatedAt: githubPullRequests.providerUpdatedAt,
+      repositoryId: githubPullRequests.repositoryId,
       state: githubPullRequests.state,
     })
     .from(githubPullRequests)
@@ -826,10 +1474,22 @@ const signalKnownPullRequestReconciliation = async (
   const promoteToProvisionalClosed =
     TERMINAL_PULL_REQUEST_EVENT_ACTIONS.has(signal.action) &&
     known.state === "open";
+  const retryEvidenceImproved =
+    occurredAt > known.providerUpdatedAt ||
+    TERMINAL_PULL_REQUEST_EVENT_ACTIONS.has(signal.action);
+  if (promoteToProvisionalClosed) {
+    await invalidateGitHubPullRequestDerivedAliases(transaction, known.nodeId, [
+      known.repositoryId,
+      known.headRepositoryId,
+    ]);
+  }
   await transaction
     .update(githubPullRequests)
     .set({
       nextReconcileAt: observedAt,
+      ...(retryEvidenceImproved
+        ? { reconcileAttempts: 0, reconcileError: null }
+        : {}),
       ...(promoteToProvisionalClosed
         ? {
             closedAt: occurredAt,
@@ -845,6 +1505,36 @@ const signalKnownPullRequestReconciliation = async (
       )
     );
   return true;
+};
+
+const persistPullRequestSignal = async (
+  transaction: DatabaseTransaction,
+  input: {
+    account: TrackedGitHubAccount;
+    eventId: string;
+    observedAt: Date;
+    occurredAt: Date;
+    signal: GitHubPullRequestEventSignal;
+  }
+) => {
+  await transaction
+    .insert(githubPullRequestSignals)
+    .values({
+      account: input.account,
+      action: input.signal.action,
+      eventId: input.eventId,
+      number: input.signal.number,
+      observedAt: input.observedAt,
+      occurredAt: input.occurredAt,
+      repositoryId: input.signal.repository.id,
+      repositoryNameSnapshot: input.signal.repository.fullName,
+    })
+    .onConflictDoNothing({
+      target: [
+        githubPullRequestSignals.account,
+        githubPullRequestSignals.eventId,
+      ],
+    });
 };
 
 const lockWebhookAccount = async (
@@ -1048,6 +1738,8 @@ const updateCheckpoint = async (
   transaction: DatabaseTransaction,
   input: {
     account: TrackedGitHubAccount;
+    eventsEtag?: string | null;
+    eventsNextPollAt?: Date | null;
     expectedCheckpoint: GitHubAccountCheckpoint | null;
     gap: {
       expectedEventId: string;
@@ -1071,6 +1763,10 @@ const updateCheckpoint = async (
       .insert(githubAccountCheckpoints)
       .values({
         account: input.account,
+        eventsEtag: input.eventsEtag ?? null,
+        eventsLastAttemptedAt: now,
+        eventsLastSucceededAt: now,
+        eventsNextPollAt: input.eventsNextPollAt ?? null,
         latestEventId: input.latestEventId,
         ...gapValues,
       })
@@ -1089,13 +1785,31 @@ const updateCheckpoint = async (
           githubAccountCheckpoints.latestEventId,
           input.expectedCheckpoint.latestEventId
         );
+  const pollAttemptCondition =
+    input.expectedCheckpoint.eventsLastAttemptedAt === null
+      ? isNull(githubAccountCheckpoints.eventsLastAttemptedAt)
+      : eq(
+          githubAccountCheckpoints.eventsLastAttemptedAt,
+          input.expectedCheckpoint.eventsLastAttemptedAt
+        );
   const updated = await transaction
     .update(githubAccountCheckpoints)
-    .set({ latestEventId: input.latestEventId, ...gapValues })
+    .set({
+      eventsEtag: input.eventsEtag ?? null,
+      eventsLastAttemptedAt:
+        input.expectedCheckpoint.eventsLastAttemptedAt ?? now,
+      eventsLastSucceededAt: now,
+      ...(input.eventsNextPollAt === undefined
+        ? {}
+        : { eventsNextPollAt: input.eventsNextPollAt }),
+      latestEventId: input.latestEventId,
+      ...gapValues,
+    })
     .where(
       and(
         eq(githubAccountCheckpoints.account, input.account),
         checkpointCondition,
+        pollAttemptCondition,
         eq(githubAccountCheckpoints.paused, input.expectedCheckpoint.paused)
       )
     )
@@ -1108,6 +1822,8 @@ const updateCheckpoint = async (
 export const persistAccountIntake = async (input: {
   account: TrackedGitHubAccount;
   events: readonly GitHubEvent[];
+  eventsEtag?: string | null;
+  eventsNextPollAt?: Date | null;
   expectedCheckpoint: GitHubAccountCheckpoint | null;
   gap: {
     expectedEventId: string;
@@ -1185,17 +1901,26 @@ export const persistAccountIntake = async (input: {
           result.pullRequests += 1;
         }
       }
-      if (
-        event.pullRequestSignal !== undefined &&
-        (await signalKnownPullRequestReconciliation(
+      if (event.pullRequestSignal !== undefined) {
+        const occurredAt = new Date(event.occurredAt);
+        const known = await signalKnownPullRequestReconciliation(
           transaction,
           input.account,
           event.pullRequestSignal,
-          new Date(event.occurredAt),
+          occurredAt,
           now
-        ))
-      ) {
-        result.pullRequests += 1;
+        );
+        if (known) {
+          result.pullRequests += 1;
+        } else {
+          await persistPullRequestSignal(transaction, {
+            account: input.account,
+            eventId: event.id,
+            observedAt: now,
+            occurredAt,
+            signal: event.pullRequestSignal,
+          });
+        }
       }
     }
 

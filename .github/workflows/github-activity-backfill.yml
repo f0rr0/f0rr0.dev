@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       start_date:
-        description: Oldest commit date to include (YYYY-MM-DD)
+        description: Start date — earliest UTC day included (YYYY-MM-DD)
         required: true
         type: string
       end_date:
-        description: Newest commit date to include (YYYY-MM-DD)
+        description: End date — latest UTC day included, not in future (YYYY-MM-DD)
         required: true
         type: string
       account:
-        description: Credential used to discover accessible repositories
+        description: Account whose token and accessible repositories are scanned
         required: true
         default: f0rr0
         type: choice
@@ -21,11 +21,11 @@ on:
           - yuppiestechdev
           - all
       repository_id:
-        description: Optional numeric repository ID; blank scans all accessible repositories
+        description: Numeric repository ID to scan; blank scans every accessible repository
         required: false
         type: string
       maximum_minutes:
-        description: Maximum run time, including queueing and processing (1-330 minutes)
+        description: Discovery/processing budget; durable work can continue (1-330 min)
         required: true
         default: 300
         type: number
@@ -39,20 +39,20 @@ permissions:
 
 jobs:
   backfill:
-    name: Queue and process backfill
+    name: Discover and process backfill
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Setup mise
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Queue and process GitHub history
+      - name: Discover history and process shared work
         env:
           ACCOUNT: ${{ inputs.account }}
           DATABASE_URL: ${{ secrets.ACTIVITY_DATABASE_URL }}

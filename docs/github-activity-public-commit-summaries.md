@@ -5,7 +5,7 @@
 Generate and persist public prose per canonical commit. Organize commits under
 pull requests only when GitHub supplies deterministic membership; do not infer
 work-item groups with an LLM. PR grouping changes the timeline projection, not
-the unit sent to Nano or the identity of the stored source activity.
+the unit summarized or the identity of the stored source activity.
 
 ## Per-commit processing
 
@@ -15,14 +15,18 @@ verified tracked-author non-merge commit
   -> read commit-wide and per-file additions/deletions from GitHub
   -> derive languages and substantive churn from the per-file counters
   -> discover GitHub PR membership and suppress exact-evidence integration copies
-  -> one gpt-5-nano call producing both public summary lengths
+  -> for public repositories, one gpt-5-nano call when configured
+  -> otherwise, or on model failure, a deterministic commit-message summary
   -> persist one revision-scoped attempt, both summaries, recipe/model/input
      hash, languages, and churn
   -> always show the headline; add short for higher-churn commits
 ```
 
-The model runs once per commit with no retry and `store: false`. The generic
-prompt asks for two plain-text values in one response:
+Private commit evidence never leaves the application. Those commits always use
+the deterministic first-line summary. For a public repository with
+`OPENAI_API_KEY` configured, the model runs once per commit with no retry and
+`store: false`. The generic prompt asks for two plain-text values in one
+response:
 
 - `HEADLINE`: a compact, action-led headline containing the main outcome and
   enough natural project context to stand alone.
@@ -46,13 +50,13 @@ not asked to infer languages.
 
 ## Model context and output
 
-The pipeline starts with the repository and commit evidence that the
-authenticated GitHub fetch path returns. Repository evidence includes its
-owner, full name, visibility, ownership relationship, description, homepage,
-topics, and avatar URL. Commit evidence includes the complete commit message,
-time, SHA, parents, aggregate statistics, every returned file's metadata, and
-every patch string GitHub returns. A missing GitHub patch is represented as
-unavailable.
+For eligible public repositories, the model pipeline starts with the repository
+and commit evidence that the authenticated GitHub fetch path returns.
+Repository evidence includes its owner, full name, visibility, ownership
+relationship, description, homepage, topics, and avatar URL. Commit evidence
+includes the complete commit message, time, SHA, parents, aggregate statistics,
+every returned file's metadata, and every patch string GitHub returns. A
+missing GitHub patch is represented as unavailable.
 
 The completed request is measured locally with Nano's model-specific tokenizer.
 Ordinary requests through 240,000 input tokens keep all evidence unabridged in
@@ -139,16 +143,16 @@ which manages multi-turn state rather than a single commit diff.
 There is no content disclosure validator, privacy-term filter, word-count
 rejection, response-length rejection, or display truncation. The response must
 contain non-empty `HEADLINE` and `SHORT` labels in the requested order; malformed
-protocol text fails instead of being copied into both public fields. Once parsed,
-both values—including a multiline `SHORT`—are stored and displayed in full. The
-deterministic final pass only adds missing Markdown
-backticks to unmistakable code references and capitalizes the first headline
-character; it does not remove text.
+protocol text selects the deterministic fallback instead of copying arbitrary
+text into both public fields. Once parsed, both values—including a multiline
+`SHORT`—are stored and displayed in full. The deterministic final pass only
+adds missing Markdown backticks to unmistakable code references and capitalizes
+the first headline character; it does not remove text.
 
-A source-fetch failure, model request or transport failure, empty Nano response,
-or malformed labelled output fails processing. Such a failure is terminal for
-explicit operational inspection and omitted from the public feed. The call is
-not retried inside or after the request. Repository descriptions and other
+A source-fetch failure remains retryable ingestion work. A missing model key,
+model request or transport failure, empty Nano response, or malformed labelled
+output selects the deterministic commit-message summary instead of blocking
+publication. The model call is not retried. Repository descriptions and other
 display facts are persisted as repository snapshots; raw per-file and patch
 evidence is not.
 
@@ -156,15 +160,15 @@ The displayed additions and deletions are GitHub's commit-wide `stats` values.
 The headline threshold and language weights use GitHub's per-file additions and
 deletions so generated output, lockfiles, vendored files, and binary assets can
 still be excluded procedurally. Missing or truncated patch text does not make
-these counts partial. Patch text is used only as Nano evidence.
+these counts partial. Within model summary generation, patch text is used only
+as Nano evidence.
 
-Both Nano outputs are persisted on the activity's revision-scoped summary
-attempt, along with the exact model snapshot, prompt recipe, and input hash. The
-page always uses the headline and conditionally adds the short value without
-another model call. A failed attempt is terminal; an expired in-flight lease is
-`indeterminate`, because its remote outcome may be unknown. Neither state is
-automatically retried. PR title/body reconciliation does not create a new
-summary revision.
+The selected outputs are persisted on the activity's revision-scoped summary
+attempt, along with the model or deterministic recipe and input hash. The page
+always uses the headline and conditionally adds the short value without another
+model call. Database and lease failures defer the attempt with bounded
+exponential backoff. PR title/body reconciliation does not create a new summary
+revision.
 
 ## Timeline presentation
 
@@ -176,7 +180,7 @@ published after the first page. Pagination never splits one day across pages.
 Canonical commits with the same primary GitHub PR and UTC day render as one PR
 slice containing their individual headlines/disclosures. A PR spanning several
 days produces one slice per day. Stored multi-parent merge commits are omitted
-from both Nano and the timeline. The PR merge is a separate milestone. Daily
+from summary generation and the timeline. The PR merge is a separate milestone. Daily
 totals include repositories, additions, deletions, merged PRs, and opened
 issues; proven aliases and omitted merge commits do not add duplicate churn.
 
