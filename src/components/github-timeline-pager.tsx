@@ -59,7 +59,7 @@ export function GitHubTimelinePager({
 
   return (
     <>
-      <div id="github-activity-paginated-days">
+      <div className="contents" id="github-activity-paginated-days">
         {pages.map((page) => (
           <GitHubActivityDays
             days={page.days}
@@ -68,7 +68,7 @@ export function GitHubTimelinePager({
         ))}
       </div>
       {cursor === null ? null : (
-        <div className="github-activity-pager">
+        <div className="flex flex-col items-start gap-3">
           <button
             aria-controls="github-activity-paginated-days"
             className="site-action-link"

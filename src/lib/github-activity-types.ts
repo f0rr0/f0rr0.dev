@@ -41,14 +41,6 @@ export interface PublicGitHubPullRequestCommitActivity {
   title: string;
 }
 
-export interface PublicGitHubPullRequestMergedActivity {
-  id: string;
-  kind: "pull-request-merged";
-  occurredAt: string;
-  repository: PublicGitHubActivityRepository;
-  title: string;
-}
-
 export interface PublicGitHubIssueOpenedActivity {
   id: string;
   kind: "issue-opened";
@@ -60,7 +52,6 @@ export interface PublicGitHubIssueOpenedActivity {
 export type PublicGitHubActivityItem =
   | PublicGitHubIssueOpenedActivity
   | PublicGitHubPullRequestCommitActivity
-  | PublicGitHubPullRequestMergedActivity
   | PublicGitHubStandaloneCommitActivity;
 
 export interface PublicGitHubActivityDayTotals {

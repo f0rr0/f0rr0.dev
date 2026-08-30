@@ -185,10 +185,10 @@ state; an invocation boundary does not spend a retry attempt or add backoff.
 A commit with more than one parent is a regular merge commit. It remains fully
 stored for intake, ancestry, and alias evidence, but it is excluded from summary
 creation, summary claims, the public activity projection, pagination days, and
-daily LOC/repository totals. A merged pull request remains visible as its
-separate PR milestone. This intentionally omits even a merge commit with unique
-conflict-resolution changes: the public surface describes authored work and PR
-outcomes, not integration mechanics.
+daily LOC/repository totals. A merged pull request contributes to its day's
+aggregate total without producing a separate timeline entry. This intentionally
+omits even a merge commit with unique conflict-resolution changes: the public
+surface describes authored work and PR outcomes, not integration mechanics.
 
 An issue opened by a tracked account needs no enrichment or model call. Intake
 persists its stable node/repository IDs, original title/link snapshots, creation
@@ -226,7 +226,7 @@ base repository. The comparison must report the snapshot's exact commit count,
 terminate cleanly, and end at the snapshot head. An incomplete membership is
 never accepted as complete evidence. Association is not filtered by PR author,
 so a foreign-authored PR can still organize a tracked commit. Only a
-tracked-authored merged PR becomes the separate public merge milestone.
+tracked-authored merged PR contributes to the public daily merge total.
 
 When a commit appears in more than one current complete PR membership, the
 earliest-created PR (then stable node ID) is its deterministic primary PR. The
@@ -332,13 +332,15 @@ mix in activities published after the first page. A safety limit fails the read
 instead of returning a partial day.
 
 Each day shows totals for repositories, GitHub-reported additions/deletions,
-PRs merged, and issues opened. Repositories are ordered by their newest commit.
-A contracted commit is one line containing its truncated headline, line-change
-count, and chevron; expansion leaves those elements in place and adds the muted
-description, languages, and file count below. PR commits are shown under
-deterministic per-day PR slices, while a merge is a separate milestone with its
-GitHub link when the repository is public. Repository and owner display facts
-are served from persisted snapshots; the page does not refetch GitHub.
+PRs merged, and issues opened. Every repository appears once per day, ordered by
+its newest visible activity, with standalone commits, PR slices, and issues
+nested beneath that header. A contracted commit is one line containing its
+truncated headline, line-change count, and chevron; expansion leaves those
+elements in place and adds the muted description, languages, and file count
+below. PR commits are shown under deterministic per-day PR slices without a
+separate type label. PR merge outcomes contribute to the daily totals instead of
+rendering as separate timeline entries. Repository and owner display facts are
+served from persisted snapshots; the page does not refetch GitHub.
 Timestamps hydrate to the viewer's local time without a timezone suffix; UTC is
 used only for stable day grouping and pagination.
 

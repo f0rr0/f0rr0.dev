@@ -32,7 +32,7 @@ export function GitHubTimeline({
           available below.
         </p>
       ) : (
-        <div className="github-activity-days">
+        <div className="mt-[clamp(2.25rem,5vw,3.5rem)] grid gap-[clamp(2.75rem,6vw,4.5rem)]">
           <GitHubActivityDays days={initialPage.days} />
           {initialPage.nextCursor === null ? null : (
             <GitHubTimelinePager

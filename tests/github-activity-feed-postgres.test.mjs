@@ -1721,7 +1721,6 @@ describe.skipIf(!dockerAvailable)(
       ]);
       expect(firstPage.days[0]?.items.map((item) => item.kind)).toEqual([
         "issue-opened",
-        "pull-request-merged",
         "pull-request-commits",
       ]);
       expect(
