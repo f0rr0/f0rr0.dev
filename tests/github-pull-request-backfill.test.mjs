@@ -39,11 +39,15 @@ const rawRepository = {
   visibility: repository.visibility,
 };
 
-const pullRequestValue = (number, updatedAt) => ({
+const pullRequestValue = (
+  number,
+  updatedAt,
+  createdAt = "2026-07-01T00:00:00Z"
+) => ({
   base: { ref: "main", repo: rawRepository, sha: "a".repeat(40) },
   body: null,
   closed_at: null,
-  created_at: "2026-07-01T00:00:00Z",
+  created_at: createdAt,
   draft: false,
   head: {
     ref: `feature/${String(number)}`,
@@ -338,22 +342,25 @@ describe("GitHub pull request historical backfill", () => {
     ]);
   });
 
-  test("walks every all-state PR despite adversarially old update times", async () => {
+  test("walks stable created-order pages and accepts numeric pagination paths", async () => {
     const requests = [];
     globalThis.fetch = async (input) => {
       const url = new URL(input instanceof Request ? input.url : input);
       requests.push(url);
       if (url.searchParams.get("page") === "2") {
-        return Response.json([pullRequestValue(3, "2026-07-31T23:59:59Z")]);
+        return Response.json([
+          pullRequestValue(3, "2026-07-31T23:59:59Z", "2026-07-03T00:00:00Z"),
+        ]);
       }
       const next = new URL(url);
+      next.pathname = `/repositories/${repository.id}/pulls`;
       next.searchParams.set("page", "2");
       return Response.json(
         [
           // Updated after the commit window still matters: the PR may have
           // retained an in-window commit only after that window closed.
-          pullRequestValue(1, "2026-09-10T00:00:00Z"),
-          pullRequestValue(2, "2026-08-01T00:00:00Z"),
+          pullRequestValue(1, "2026-09-10T00:00:00Z", "2026-07-01T00:00:00Z"),
+          pullRequestValue(2, "2026-08-01T00:00:00Z", "2026-07-02T00:00:00Z"),
         ],
         { headers: { link: `<${next.href}>; rel="next"` } }
       );
@@ -373,14 +380,17 @@ describe("GitHub pull request historical backfill", () => {
       "PR_node_3",
     ]);
     expect(requests).toHaveLength(2);
+    expect(requests.map(({ pathname }) => pathname)).toEqual([
+      "/repos/example-org/example-repo/pulls",
+      "/repositories/123/pulls",
+    ]);
     for (const url of requests) {
-      expect(url.pathname).toBe("/repos/example-org/example-repo/pulls");
-      expect(url.searchParams.get("direction")).toBe("desc");
+      expect(url.searchParams.get("direction")).toBe("asc");
       expect(url.searchParams.get("page")).toBe(
         String(requests.indexOf(url) + 1)
       );
       expect(url.searchParams.get("per_page")).toBe("100");
-      expect(url.searchParams.get("sort")).toBe("updated");
+      expect(url.searchParams.get("sort")).toBe("created");
       expect(url.searchParams.get("state")).toBe("all");
     }
   });
@@ -406,11 +416,11 @@ describe("GitHub pull request historical backfill", () => {
     ).rejects.toThrow("invalid pull request pagination");
   });
 
-  test("rejects pages that violate the documented descending order", async () => {
+  test("rejects pages that violate the documented ascending created order", async () => {
     globalThis.fetch = async () =>
       Response.json([
-        pullRequestValue(1, "2026-08-01T00:00:00Z"),
-        pullRequestValue(2, "2026-08-02T00:00:00Z"),
+        pullRequestValue(1, "2026-08-01T00:00:00Z", "2026-07-02T00:00:00Z"),
+        pullRequestValue(2, "2026-08-02T00:00:00Z", "2026-07-01T00:00:00Z"),
       ]);
 
     await expect(
@@ -420,7 +430,7 @@ describe("GitHub pull request historical backfill", () => {
         repository,
         token: "test-token",
       })
-    ).rejects.toThrow("outside descending updated order");
+    ).rejects.toThrow("outside ascending created order");
   });
 
   test("fails incomplete when a listed pull request becomes inaccessible", async () => {

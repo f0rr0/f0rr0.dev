@@ -348,11 +348,16 @@ const pullRequestCandidateFromListValue = (
   }
   const root = value as Record<string, unknown>;
   const {
+    created_at: providerCreatedAt,
     html_url: htmlUrl,
     node_id: nodeId,
     number,
     updated_at: providerUpdatedAt,
   } = root;
+  const createdAt =
+    typeof providerCreatedAt === "string"
+      ? new Date(providerCreatedAt)
+      : new Date(Number.NaN);
   const updatedAt =
     typeof providerUpdatedAt === "string"
       ? new Date(providerUpdatedAt)
@@ -363,6 +368,7 @@ const pullRequestCandidateFromListValue = (
     typeof nodeId !== "string" ||
     nodeId.length === 0 ||
     nodeId.length > 100 ||
+    Number.isNaN(createdAt.getTime()) ||
     Number.isNaN(updatedAt.getTime()) ||
     htmlUrl !==
       `https://github.com/${input.repository.fullName}/pull/${String(number)}`
@@ -370,13 +376,16 @@ const pullRequestCandidateFromListValue = (
     return null;
   }
   return {
-    account: input.account,
-    nodeId,
-    number: Number(number),
-    providerUpdatedAt: updatedAt.toISOString(),
-    repository: input.repository.fullName,
-    repositoryId: input.repository.id,
-  } satisfies GitHubPullRequestBackfillCandidate;
+    candidate: {
+      account: input.account,
+      nodeId,
+      number: Number(number),
+      providerUpdatedAt: updatedAt.toISOString(),
+      repository: input.repository.fullName,
+      repositoryId: input.repository.id,
+    } satisfies GitHubPullRequestBackfillCandidate,
+    createdAt: createdAt.toISOString(),
+  };
 };
 
 const validateNextPullRequestPage = (
@@ -384,13 +393,16 @@ const validateNextPullRequestPage = (
   currentPage: number,
   repository: GitHubRepositoryFacts
 ) => {
+  const namedPath = repositoryApiPath(repository.fullName, "/pulls");
+  const numericPath = `/repositories/${encodeURIComponent(repository.id)}/pulls`;
   if (
-    next.pathname !== repositoryApiPath(repository.fullName, "/pulls") ||
-    next.searchParams.get("direction") !== "desc" ||
+    (next.pathname !== namedPath && next.pathname !== numericPath) ||
+    next.searchParams.get("direction") !== "asc" ||
     next.searchParams.get("page") !== String(currentPage + 1) ||
     next.searchParams.get("per_page") !== String(GITHUB_PAGE_SIZE) ||
-    next.searchParams.get("sort") !== "updated" ||
-    next.searchParams.get("state") !== "all"
+    next.searchParams.get("sort") !== "created" ||
+    next.searchParams.get("state") !== "all" ||
+    next.searchParams.size !== 5
   ) {
     throw new TypeError("GitHub returned invalid pull request pagination.");
   }
@@ -407,14 +419,14 @@ export const collectGitHubPullRequestBackfillCandidates = async (input: {
   let url: URL | null = githubApiUrl(
     repositoryApiPath(input.repository.fullName, "/pulls")
   );
-  url.searchParams.set("direction", "desc");
+  url.searchParams.set("direction", "asc");
   url.searchParams.set("page", "1");
   url.searchParams.set("per_page", String(GITHUB_PAGE_SIZE));
-  url.searchParams.set("sort", "updated");
+  url.searchParams.set("sort", "created");
   url.searchParams.set("state", "all");
   const pullRequests = new Map<string, GitHubPullRequestBackfillCandidate>();
   const visited = new Set<string>();
-  let previousUpdatedAt = Number.POSITIVE_INFINITY;
+  let previousCreatedAt = Number.NEGATIVE_INFINITY;
   let page = 1;
 
   while (url !== null) {
@@ -440,17 +452,18 @@ export const collectGitHubPullRequestBackfillCandidates = async (input: {
     }
 
     for (const value of payload) {
-      const candidate = pullRequestCandidateFromListValue(value, input);
-      if (candidate === null) {
+      const parsed = pullRequestCandidateFromListValue(value, input);
+      if (parsed === null) {
         throw new TypeError("GitHub returned an invalid pull request page.");
       }
-      const updatedAt = new Date(candidate.providerUpdatedAt).getTime();
-      if (updatedAt > previousUpdatedAt) {
+      const createdAt = new Date(parsed.createdAt).getTime();
+      if (createdAt < previousCreatedAt) {
         throw new TypeError(
-          "GitHub returned pull requests outside descending updated order."
+          "GitHub returned pull requests outside ascending created order."
         );
       }
-      previousUpdatedAt = updatedAt;
+      previousCreatedAt = createdAt;
+      const { candidate } = parsed;
       const existing = pullRequests.get(candidate.nodeId);
       if (
         existing !== undefined &&
@@ -667,6 +680,7 @@ const preparePullRequest = async (input: {
     {
       commitRepository,
       deadlineAt: input.deadlineAt,
+      expectedBaseSha: snapshot.pullRequest.baseSha,
       expectedHeadSha: snapshot.pullRequest.headSha,
     }
   );

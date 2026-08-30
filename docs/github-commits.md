@@ -219,10 +219,13 @@ source evidence but is not substituted for the public timestamp.
 PR membership comes from GitHub, not from an LLM. For each enriched commit the
 worker first uses GitHub's associated-PR endpoint. Each PR is stored by stable
 node ID with a current mutable snapshot and immutable head-SHA versions. The
-commit list is fetched for a new head SHA; REST is used first and GraphQL
-pagination covers PRs beyond the REST commit-list cap. An incomplete membership
-is never accepted as complete evidence. Association is not filtered by PR
-author, so a foreign-authored PR can still organize a tracked commit. Only a
+commit list is fetched for a new head SHA. GitHub's PR-commit endpoint serves
+memberships through its 250-commit limit; larger or otherwise incomplete
+responses fall back to the paginated `base SHA...head SHA` comparison on the
+base repository. The comparison must report the snapshot's exact commit count,
+terminate cleanly, and end at the snapshot head. An incomplete membership is
+never accepted as complete evidence. Association is not filtered by PR author,
+so a foreign-authored PR can still organize a tracked commit. Only a
 tracked-authored merged PR becomes the separate public merge milestone.
 
 When a commit appears in more than one current complete PR membership, the
@@ -545,13 +548,15 @@ selected Action time budget is the operational bound. Pull requests run first
 because the all-repository authored-PR stream cannot be repository-sharded:
 
 1. Enumerate every all-state pull request in each affiliated repository in
-   descending `updated_at` order; no timestamp cutoff is safe because Git commit
-   timestamps are author-controlled. An all-repository run independently walks
-   the tracked user's unbounded GraphQL `pullRequests` connection as well, so an
-   authored PR remains discoverable when its base is an unaffiliated external
-   repository. The author stream validates the returned user and PR author,
-   repository database ID/name, PR identity/link, total count, unique progress,
-   and every cursor before merging by PR node ID with the affiliated inventory.
+   ascending creation order. Creation order is stable while a mutable
+   `updated_at` ordering can move PRs between pages; no timestamp cutoff is safe
+   because Git commit timestamps are author-controlled. An all-repository run
+   independently walks the tracked user's unbounded GraphQL `pullRequests`
+   connection as well, so an authored PR remains discoverable when its base is
+   an unaffiliated external repository. The author stream validates the
+   returned user and PR author, repository database ID/name, PR identity/link,
+   total count, unique progress, and every cursor before merging by PR node ID
+   with the affiliated inventory.
    A repository-targeted run stays scoped to that numeric repository ID and does
    not invoke the author stream. Fetch complete membership, retain a PR when it
    contains a tracked commit in the interval or is a tracked-authored merge in
