@@ -213,8 +213,6 @@ interface PullRequestProjection {
   nodeId: string;
   repositoryId: string;
   state: string;
-  title: string;
-  url: string;
 }
 
 interface IssueProjection {
@@ -390,7 +388,7 @@ const addCommitActivity = (
   }
 };
 
-const addPullRequestActivity = (
+const addPullRequestTotal = (
   accumulator: DayAccumulator,
   activity: CheckedActivityRow,
   sources: ActivityProjectionSources
@@ -405,16 +403,6 @@ const addPullRequestActivity = (
   }
   accumulator.pullRequestsMerged += 1;
   accumulator.repositories.add(pullRequest.repositoryId);
-  accumulator.items.push({
-    id: activity.publicId,
-    kind: "pull-request-merged",
-    occurredAt: activity.occurredAt.toISOString(),
-    repository: publicRepository(
-      sources.repositories.get(pullRequest.repositoryId),
-      { url: pullRequest.url }
-    ),
-    title: pullRequest.title,
-  });
 };
 
 const addIssueActivity = (
@@ -456,7 +444,7 @@ const buildPublicActivityDays = (
     if (activity.kind === "commit") {
       addCommitActivity(accumulator, activity, sources);
     } else if (activity.kind === "pull_request") {
-      addPullRequestActivity(accumulator, activity, sources);
+      addPullRequestTotal(accumulator, activity, sources);
     } else {
       addIssueActivity(accumulator, activity, sources);
     }
@@ -558,8 +546,6 @@ const readActivitySourceRows = async (
             nodeId: githubPullRequests.nodeId,
             repositoryId: githubPullRequests.repositoryId,
             state: githubPullRequests.state,
-            title: githubPullRequests.title,
-            url: githubPullRequests.url,
           })
           .from(githubPullRequests)
           .where(inArray(githubPullRequests.nodeId, ids.pullRequestNodeIds)),

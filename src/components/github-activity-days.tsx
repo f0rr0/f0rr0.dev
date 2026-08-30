@@ -1,11 +1,4 @@
-import {
-  ChevronDown,
-  CircleDot,
-  Code2,
-  GitMerge,
-  GitPullRequest,
-  LockKeyhole,
-} from "lucide-react";
+import { ChevronDown, CircleDot, Code2, LockKeyhole } from "lucide-react";
 import Image from "next/image";
 import { Fragment } from "react";
 
@@ -17,6 +10,7 @@ import type {
   PublicGitHubActivityRepository,
   PublicGitHubStandaloneCommitActivity,
 } from "@/lib/github-activity-types";
+import { cn } from "@/lib/utils";
 
 const dayFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
@@ -28,11 +22,26 @@ const dayFormatter = new Intl.DateTimeFormat("en-US", {
 
 const countFormatter = new Intl.NumberFormat("en-US");
 const inlineMarkdownPattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*)/gu;
+const activityFactsClassName =
+  "mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-[0.7rem] font-mono text-[0.6875rem] tracking-[0.02em] text-muted-foreground";
+const activityTimeClassName =
+  "flex-none font-mono text-[0.6875rem] tracking-[0.03em] text-muted-foreground";
+const repositoryLabelClassName =
+  "inline-flex min-w-0 items-center gap-[0.3rem] font-mono text-xs leading-[1.35] text-muted-foreground";
+const workTitleClassName =
+  "max-w-[50rem] wrap-anywhere font-sans text-base font-normal leading-[1.625] tracking-normal text-foreground";
 
 function InlineSummary({ children }: Readonly<{ children: string }>) {
   return children.split(inlineMarkdownPattern).map((part, index) => {
     if (part.startsWith("`") && part.endsWith("`")) {
-      return <code key={`${index}:${part}`}>{part.slice(1, -1)}</code>;
+      return (
+        <code
+          className="rounded-[0.3rem] border border-border/85 bg-muted/[62%] px-[0.25em] py-[0.05em] font-mono text-[0.86em] font-medium"
+          key={`${index}:${part}`}
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
     }
     if (part.startsWith("**") && part.endsWith("**")) {
       return <strong key={`${index}:${part}`}>{part.slice(2, -2)}</strong>;
@@ -48,17 +57,16 @@ function RepositoryIdentity({
 }>) {
   const repositoryLabel = repository.label ?? "Private";
   return (
-    <div className="github-activity-repository">
+    <div className="flex min-w-0 items-center gap-2.5">
       {repository.avatarUrl === null ? null : (
-        <span aria-hidden="true" className="github-activity-avatar-frame">
-          <span className="github-activity-avatar-image-frame">
+        <span aria-hidden="true" className="relative size-[1.375rem] flex-none">
+          <span className="block size-full overflow-hidden rounded-full bg-muted">
             <Image
               alt=""
-              className={
-                repository.url === null
-                  ? "github-activity-avatar github-activity-avatar-private"
-                  : "github-activity-avatar"
-              }
+              className={cn(
+                "size-full object-cover",
+                repository.url === null && "scale-110 blur-[2px]"
+              )}
               height={22}
               sizes="22px"
               src={repository.avatarUrl}
@@ -67,49 +75,33 @@ function RepositoryIdentity({
             />
           </span>
           {repository.url === null ? (
-            <span className="github-activity-avatar-lock">
+            <span className="absolute -right-[0.175rem] -bottom-[0.175rem] grid size-3.5 place-items-center rounded-full bg-background text-muted-foreground shadow-[0_0_0_1px_var(--background)]">
               <LockKeyhole className="size-2.5" />
             </span>
           ) : null}
         </span>
       )}
       {repository.url === null ? (
-        <span className="github-activity-repository-label">
+        <span className={repositoryLabelClassName}>
           {repository.avatarUrl === null ? (
             <LockKeyhole aria-hidden="true" className="size-3" />
           ) : null}
-          <span className="github-activity-repository-name">
-            {repositoryLabel}
-          </span>
+          <span className="min-w-0 wrap-anywhere">{repositoryLabel}</span>
         </span>
       ) : (
         <a
-          className="github-activity-repository-link"
+          className={cn(
+            repositoryLabelClassName,
+            "transition-[color] duration-[160ms] ease-[ease] hover:text-brand-hover motion-reduce:transition-none"
+          )}
           href={repository.url}
           rel="noopener noreferrer"
           target="_blank"
         >
-          <span className="github-activity-repository-name">
-            {repositoryLabel}
-          </span>
+          <span className="min-w-0 wrap-anywhere">{repositoryLabel}</span>
           <span className="sr-only"> (opens on GitHub in a new tab)</span>
         </a>
       )}
-    </div>
-  );
-}
-
-function RepositoryHeader({
-  occurredAt,
-  repository,
-}: Readonly<{
-  occurredAt: string;
-  repository: PublicGitHubActivityRepository;
-}>) {
-  return (
-    <div className="github-activity-entry-header">
-      <RepositoryIdentity repository={repository} />
-      <LocalTime className="github-activity-time" dateTime={occurredAt} />
     </div>
   );
 }
@@ -118,19 +110,25 @@ function CommitLoc({
   commit,
 }: Readonly<{ commit: PublicGitHubActivityCommit }>) {
   return (
-    <span className="github-activity-facts github-activity-visible-facts">
+    <span className={cn(activityFactsClassName, "mt-0")}>
       <span
-        className="github-activity-loc"
+        className="inline-flex items-center gap-[0.45rem]"
         title={
           commit.providerFileCapReached
             ? "Total lines added and deleted according to GitHub. Per-language line counts cover only the file details GitHub returned and may be incomplete."
             : "Lines added and deleted according to GitHub"
         }
       >
-        <span aria-hidden="true" className="github-activity-additions">
+        <span
+          aria-hidden="true"
+          className="text-[light-dark(oklch(0.48_0.12_155),oklch(0.75_0.13_155))]"
+        >
           +{countFormatter.format(commit.additions)}
         </span>
-        <span aria-hidden="true" className="github-activity-deletions">
+        <span
+          aria-hidden="true"
+          className="text-[light-dark(oklch(0.52_0.16_25),oklch(0.76_0.13_25))]"
+        >
           −{countFormatter.format(commit.deletions)}
         </span>
         <span className="sr-only">
@@ -152,7 +150,7 @@ function CommitDetails({
   const visibleLanguages = commit.languages.slice(0, 6);
   const hiddenLanguageCount = commit.languages.length - visibleLanguages.length;
   return (
-    <div className="github-activity-facts github-activity-expanded-facts">
+    <div className={activityFactsClassName}>
       <span
         title={
           commit.providerFileCapReached
@@ -181,10 +179,11 @@ function CommitDetails({
               ? "Languages found in the first 3,000 files returned by GitHub; the full commit may include more"
               : "Languages"
           }
-          className="github-activity-languages"
+          className="inline-flex flex-wrap items-center gap-[0.45rem]"
         >
           {visibleLanguages.map((language) => (
             <li
+              className="inline-flex items-center gap-[0.3rem]"
               key={language.id}
               title={
                 commit.providerFileCapReached
@@ -197,6 +196,7 @@ function CommitDetails({
               ) : (
                 <Image
                   alt=""
+                  className="opacity-[0.82] dark:invert"
                   height={14}
                   sizes="14px"
                   src={language.iconUrl}
@@ -208,7 +208,10 @@ function CommitDetails({
             </li>
           ))}
           {hiddenLanguageCount > 0 ? (
-            <li aria-label={`${hiddenLanguageCount} more languages`}>
+            <li
+              aria-label={`${hiddenLanguageCount} more languages`}
+              className="inline-flex items-center gap-[0.3rem]"
+            >
               +{hiddenLanguageCount}
             </li>
           ) : null}
@@ -228,28 +231,40 @@ function CommitDisclosure({
   occurredAt?: string;
 }>) {
   const Heading = headingLevel;
+  const nested = headingLevel === "h5";
   return (
-    <details className="github-activity-commit github-activity-disclosure">
+    <details className="group/disclosure">
       <summary
-        className={
+        className={cn(
+          "grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-0 focus-visible:rounded-[0.25rem] focus-visible:outline-2 focus-visible:outline-offset-[0.35rem] focus-visible:outline-ring [&::-webkit-details-marker]:hidden",
           occurredAt === undefined
-            ? undefined
-            : "github-activity-timed-commit-row"
-        }
+            ? null
+            : "grid-cols-[minmax(0,1fr)_auto_auto_auto]"
+        )}
       >
-        <Heading className="github-activity-headline">
+        <Heading className="min-w-0 max-w-[50rem] overflow-hidden text-ellipsis whitespace-nowrap wrap-anywhere font-sans text-base font-normal leading-[1.625] tracking-normal text-foreground">
           <InlineSummary>{commit.headline}</InlineSummary>
         </Heading>
         <CommitLoc commit={commit} />
         {occurredAt === undefined ? null : (
-          <LocalTime className="github-activity-time" dateTime={occurredAt} />
+          <LocalTime className={activityTimeClassName} dateTime={occurredAt} />
         )}
-        <span className="github-activity-disclosure-label" aria-hidden="true">
-          <ChevronDown className="github-activity-disclosure-chevron" />
+        <span
+          aria-hidden="true"
+          className="inline-flex items-center text-muted-foreground group-open/disclosure:text-primary"
+        >
+          <ChevronDown className="size-3.5 transition-[rotate] duration-[160ms] ease-[ease] group-open/disclosure:rotate-180 motion-reduce:transition-none" />
         </span>
       </summary>
       {commit.summary === null ? null : (
-        <p className="github-activity-summary">
+        <p
+          className={cn(
+            "max-w-[50rem] whitespace-pre-wrap wrap-anywhere text-muted-foreground",
+            nested
+              ? "mt-2 text-[0.925rem] leading-[1.75]"
+              : "mt-2.5 text-[0.975rem] leading-[1.75]"
+          )}
+        >
           <InlineSummary>{commit.summary}</InlineSummary>
         </p>
       )}
@@ -258,10 +273,10 @@ function CommitDisclosure({
   );
 }
 
-interface RepositoryCommitGroup {
-  commits: PublicGitHubStandaloneCommitActivity[];
+interface RepositoryActivityGroup {
   id: string;
-  kind: "repository-commit-group";
+  items: PublicGitHubActivityItem[];
+  occurredAt: string;
   repository: PublicGitHubActivityRepository;
 }
 
@@ -270,8 +285,6 @@ type NonCommitActivityItem = Exclude<
   PublicGitHubStandaloneCommitActivity
 >;
 
-type GroupedActivityItem = NonCommitActivityItem | RepositoryCommitGroup;
-
 function compareIsoTimestampsDescending(left: string, right: string) {
   if (left === right) {
     return 0;
@@ -279,139 +292,149 @@ function compareIsoTimestampsDescending(left: string, right: string) {
   return left < right ? 1 : -1;
 }
 
-function groupedActivityTimestamp(item: GroupedActivityItem) {
-  return item.kind === "repository-commit-group"
-    ? (item.commits[0]?.commit.committedAt ?? "")
-    : item.occurredAt;
+function compareActivityItemsDescending(
+  left: PublicGitHubActivityItem,
+  right: PublicGitHubActivityItem
+) {
+  const byTime = compareIsoTimestampsDescending(
+    left.occurredAt,
+    right.occurredAt
+  );
+  return byTime === 0 ? right.id.localeCompare(left.id) : byTime;
 }
 
-function groupCommitsByRepository(
+function groupActivitiesByRepository(
   items: readonly PublicGitHubActivityItem[]
-): GroupedActivityItem[] {
-  const groupedItems: GroupedActivityItem[] = [];
-  const commitGroups = new Map<string, RepositoryCommitGroup>();
+): RepositoryActivityGroup[] {
+  const groups = new Map<string, RepositoryActivityGroup>();
 
   for (const item of items) {
-    if (item.kind !== "commit") {
-      groupedItems.push(item);
-      continue;
-    }
-
     const repositoryKey = item.repository.key;
-    const existingGroup = commitGroups.get(repositoryKey);
+    const existingGroup = groups.get(repositoryKey);
     if (existingGroup !== undefined) {
-      existingGroup.commits.push(item);
+      existingGroup.items.push(item);
       continue;
     }
 
-    const group: RepositoryCommitGroup = {
-      commits: [item],
-      id: `repository-commits:${item.id}`,
-      kind: "repository-commit-group",
+    groups.set(repositoryKey, {
+      id: `repository-activity:${repositoryKey}`,
+      items: [item],
+      occurredAt: item.occurredAt,
       repository: item.repository,
-    };
-    commitGroups.set(repositoryKey, group);
-    groupedItems.push(group);
+    });
   }
 
-  for (const group of commitGroups.values()) {
-    group.commits.sort((left, right) =>
-      compareIsoTimestampsDescending(
-        left.commit.committedAt,
-        right.commit.committedAt
-      )
+  for (const group of groups.values()) {
+    group.items.sort(compareActivityItemsDescending);
+    const [newestItem] = group.items;
+    if (newestItem !== undefined) {
+      group.occurredAt = newestItem.occurredAt;
+      const repositoryHeaderItem =
+        group.items.find((item) => item.kind === "commit") ?? newestItem;
+      group.repository = repositoryHeaderItem.repository;
+    }
+  }
+
+  return [...groups.values()].toSorted((left, right) => {
+    const byTime = compareIsoTimestampsDescending(
+      left.occurredAt,
+      right.occurredAt
+    );
+    return byTime === 0 ? right.id.localeCompare(left.id) : byTime;
+  });
+}
+
+function ActivityTitle({
+  className,
+  item,
+}: Readonly<{ className?: string; item: NonCommitActivityItem }>) {
+  return (
+    <h4 className={cn(workTitleClassName, className)}>
+      {item.repository.url === null ? (
+        item.title
+      ) : (
+        <a
+          className="rounded-[0.125rem] text-inherit transition-[color] duration-[160ms] ease-[ease] hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-[0.2rem] focus-visible:outline-ring motion-reduce:transition-none"
+          href={item.repository.url}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          {item.title}
+          <span className="sr-only"> (opens on GitHub in a new tab)</span>
+        </a>
+      )}
+    </h4>
+  );
+}
+
+function RepositoryActivityItem({
+  item,
+}: Readonly<{ item: PublicGitHubActivityItem }>) {
+  if (item.kind === "commit") {
+    return (
+      <li className="py-[0.45rem]">
+        <CommitDisclosure
+          commit={item.commit}
+          headingLevel="h4"
+          occurredAt={item.occurredAt}
+        />
+      </li>
     );
   }
 
-  return groupedItems.toSorted((left, right) =>
-    compareIsoTimestampsDescending(
-      groupedActivityTimestamp(left),
-      groupedActivityTimestamp(right)
-    )
-  );
-}
-
-function ActivityKind({
-  kind,
-}: Readonly<{ kind: PublicGitHubActivityItem["kind"] }>) {
-  const content =
-    kind === "pull-request-commits" ? (
-      <>
-        <GitPullRequest aria-hidden="true" className="size-3.5" />
-        Pull request work
-      </>
-    ) : kind === "pull-request-merged" ? (
-      <>
-        <GitMerge aria-hidden="true" className="size-3.5" />
-        Pull request merged
-      </>
-    ) : kind === "issue-opened" ? (
-      <>
-        <CircleDot aria-hidden="true" className="size-3.5" />
-        Issue opened
-      </>
-    ) : null;
-  return content === null ? null : (
-    <p className="github-activity-kind">{content}</p>
-  );
-}
-
-function ActivityEntry({ item }: Readonly<{ item: NonCommitActivityItem }>) {
   if (item.kind === "pull-request-commits") {
     return (
-      <li className="github-activity-entry">
-        <article>
-          <RepositoryHeader
-            occurredAt={item.occurredAt}
-            repository={item.repository}
+      <li className="py-[0.45rem]">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+          <ActivityTitle item={item} />
+          <LocalTime
+            className={activityTimeClassName}
+            dateTime={item.occurredAt}
           />
-          <ActivityKind kind={item.kind} />
-          <h4 className="github-activity-work-title">{item.title}</h4>
-          <ol className="github-activity-nested-commits">
-            {item.commits.map((commit) => (
-              <li key={commit.id}>
-                <CommitDisclosure commit={commit} headingLevel="h5" />
-              </li>
-            ))}
-          </ol>
-        </article>
+        </div>
+        <ol className="mt-4 grid gap-4 border-l border-border/[86%] pl-[clamp(1rem,3vw,1.5rem)]">
+          {item.commits.map((commit) => (
+            <li key={commit.id}>
+              <CommitDisclosure commit={commit} headingLevel="h5" />
+            </li>
+          ))}
+        </ol>
       </li>
     );
   }
 
   return (
-    <li className="github-activity-entry">
-      <article>
-        <RepositoryHeader
-          occurredAt={item.occurredAt}
-          repository={item.repository}
+    <li className="py-[0.45rem]">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+        <div>
+          <p className="inline-flex items-center gap-[0.35rem] font-ui text-[0.6875rem] font-[650] tracking-[0.08em] text-primary uppercase">
+            <CircleDot aria-hidden="true" className="size-3.5" />
+            Issue opened
+          </p>
+          <ActivityTitle className="mt-[0.35rem]" item={item} />
+        </div>
+        <LocalTime
+          className={activityTimeClassName}
+          dateTime={item.occurredAt}
         />
-        <ActivityKind kind={item.kind} />
-        <h4 className="github-activity-work-title">{item.title}</h4>
-      </article>
+      </div>
     </li>
   );
 }
 
-function RepositoryCommitGroupEntry({
+function RepositoryActivityGroupEntry({
   group,
-}: Readonly<{ group: RepositoryCommitGroup }>) {
+}: Readonly<{ group: RepositoryActivityGroup }>) {
   const repositoryLabel = group.repository.label ?? "Private";
   return (
-    <li className="github-activity-entry github-activity-commit-group">
-      <article aria-label={`${repositoryLabel} commits`}>
-        <div className="github-activity-commit-group-header">
+    <li className="border-b border-border py-5 [contain-intrinsic-size:auto_11rem] [content-visibility:auto]">
+      <article aria-label={`${repositoryLabel} activity`}>
+        <header className="flex items-center">
           <RepositoryIdentity repository={group.repository} />
-        </div>
-        <ol className="github-activity-grouped-commits">
-          {group.commits.map((item) => (
-            <li key={item.id}>
-              <CommitDisclosure
-                commit={item.commit}
-                headingLevel="h5"
-                occurredAt={item.occurredAt}
-              />
-            </li>
+        </header>
+        <ol className="mt-[0.35rem] grid">
+          {group.items.map((item) => (
+            <RepositoryActivityItem item={item} key={item.id} />
           ))}
         </ol>
       </article>
@@ -436,7 +459,7 @@ function DayTotals({ day }: Readonly<{ day: PublicGitHubActivityDay }>) {
   return (
     <dl
       aria-label={`Summary for ${day.day}`}
-      className="github-activity-day-totals"
+      className="flex flex-wrap gap-x-4 gap-y-[0.45rem] font-mono text-[0.6875rem] tracking-[0.02em] text-muted-foreground"
     >
       <DayTotal
         label={totals.repositories === 1 ? "repository" : "repositories"}
@@ -480,27 +503,25 @@ export function GitHubActivityDays({
   return days.map((day) => (
     <section
       aria-labelledby={`activity-day-${day.day}`}
-      className="github-activity-day"
+      className="[contain-intrinsic-size:auto_28rem] [content-visibility:auto]"
       key={day.day}
     >
-      <div className="github-activity-day-header">
-        <h3 className="github-activity-day-heading">
+      <div className="grid gap-[0.65rem]">
+        <h3 className="grid grid-cols-[auto_minmax(2rem,1fr)] items-center gap-4 font-mono text-[0.6875rem] font-medium leading-[1.5] tracking-[0.11em] text-muted-foreground uppercase">
           <time dateTime={day.day} id={`activity-day-${day.day}`}>
             {dayFormatter.format(new Date(`${day.day}T00:00:00.000Z`))}
           </time>
-          <span aria-hidden="true" />
+          <span aria-hidden="true" className="h-px bg-border/[86%]" />
         </h3>
         <DayTotals day={day} />
       </div>
-      <ol className="github-activity-list">
-        {groupCommitsByRepository(day.items).map((item) =>
-          item.kind === "repository-commit-group" ? (
-            <RepositoryCommitGroupEntry group={item} key={item.id} />
-          ) : (
-            <ActivityEntry item={item} key={item.id} />
-          )
-        )}
-      </ol>
+      {day.items.length === 0 ? null : (
+        <ol aria-label={`Activity for ${day.day}`} className="mt-2">
+          {groupActivitiesByRepository(day.items).map((group) => (
+            <RepositoryActivityGroupEntry group={group} key={group.id} />
+          ))}
+        </ol>
+      )}
     </section>
   ));
 }

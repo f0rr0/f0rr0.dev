@@ -179,10 +179,13 @@ published after the first page. Pagination never splits one day across pages.
 
 Canonical commits with the same primary GitHub PR and UTC day render as one PR
 slice containing their individual headlines/disclosures. A PR spanning several
-days produces one slice per day. Stored multi-parent merge commits are omitted
-from summary generation and the timeline. The PR merge is a separate milestone. Daily
-totals include repositories, additions, deletions, merged PRs, and opened
-issues; proven aliases and omitted merge commits do not add duplicate churn.
+days produces one slice per day. Each repository appears under one header per
+day, ordered by its newest visible activity, with its standalone commits, PR
+slices, and issues nested beneath it. Stored multi-parent merge commits are
+omitted from summary generation and the timeline. PR merge outcomes contribute
+to the daily totals without producing separate timeline entries. Daily totals
+include repositories, additions, deletions, merged PRs, and opened issues;
+proven aliases and omitted merge commits do not add duplicate churn.
 
 Language logos use version-pinned Simple Icons SVGs from the npm distribution.
 Repository owner avatars and durable repository/PR display facts come from the
