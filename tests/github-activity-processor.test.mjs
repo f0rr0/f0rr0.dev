@@ -286,6 +286,7 @@ describe("GitHub activity commit acquisition", () => {
       );
       return Response.json({
         ahead_by: 2,
+        total_commits: 2,
         commits: [
           pushCommitValue(trackedSha, "f0rr0", 100),
           pushCommitValue(foreignSha, "octocat", 200),
@@ -318,6 +319,7 @@ describe("GitHub activity commit acquisition", () => {
     globalThis.fetch = async () =>
       Response.json({
         ahead_by: 3,
+        total_commits: 3,
         commits: [
           pushCommitValue(firstSha, "f0rr0", 100),
           pushCommitValue(surplusSha, "octocat", 200),
@@ -348,6 +350,7 @@ describe("GitHub activity commit acquisition", () => {
     globalThis.fetch = async () =>
       Response.json({
         ahead_by: 2,
+        total_commits: 2,
         commits: [
           pushCommitValue(firstSha, "f0rr0", 100),
           pushCommitValue(afterSha, "f0rr0", 100),
@@ -377,6 +380,7 @@ describe("GitHub activity commit acquisition", () => {
     globalThis.fetch = async () =>
       Response.json({
         ahead_by: 2,
+        total_commits: 2,
         commits: [
           { author: { login: "octocat" }, commit: null, sha: foreignSha },
           {
@@ -419,6 +423,7 @@ describe("GitHub activity commit acquisition", () => {
     globalThis.fetch = async () =>
       Response.json({
         ahead_by: 1,
+        total_commits: 1,
         commits: [
           {
             author: { login: "f0rr0" },
@@ -447,7 +452,8 @@ describe("GitHub activity commit acquisition", () => {
     const beforeSha = "1".repeat(40);
     const afterSha = "2".repeat(40);
     env.GITHUB_F0RR0_TOKEN = "test-token";
-    globalThis.fetch = async () => Response.json({ ahead_by: 0, commits: [] });
+    globalThis.fetch = async () =>
+      Response.json({ ahead_by: 0, commits: [], total_commits: 0 });
 
     const source = await fetchGitHubPushObservationSource({
       account: "f0rr0",
@@ -1119,6 +1125,34 @@ describe("GitHub pull request acquisition", () => {
     });
   });
 
+  test("does not accept PR membership before pagination terminates", async () => {
+    let calls = 0;
+    globalThis.fetch = async (input) => {
+      calls += 1;
+      const url = new URL(input instanceof Request ? input.url : input);
+      const next = new URL(url);
+      next.searchParams.set("page", String(calls + 1));
+      return Response.json([pushCommitValue(headSha, "f0rr0", 100)], {
+        headers: { link: `<${next.href}>; rel="next"` },
+      });
+    };
+
+    const membership = await fetchGitHubPullRequestMembershipWithToken(
+      {
+        account: "f0rr0",
+        number: 7,
+        repository: repository.full_name,
+        repositoryId: String(repository.id),
+      },
+      1,
+      "test-token",
+      { expectedHeadSha: headSha }
+    );
+
+    expect(calls).toBe(3);
+    expect(membership.membershipComplete).toBe(false);
+  });
+
   test("accepts an upstream PR discovered from a fork commit", async () => {
     const commitSha = "9".repeat(40);
     const forkRepository = {
@@ -1239,72 +1273,88 @@ describe("GitHub pull request acquisition", () => {
     ]);
   });
 
-  test("fully paginates GraphQL membership beyond the REST cap", async () => {
+  test("recovers an incomplete bounded PR response from its pinned comparison", async () => {
+    const requestedPaths = [];
+    globalThis.fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      requestedPaths.push(url.pathname);
+      if (url.pathname.endsWith("/pulls/7/commits")) {
+        return Response.json([{ sha: memberShas[0] }]);
+      }
+      if (
+        url.pathname ===
+        `/repos/${repository.full_name}/compare/${baseSha}...${headSha}`
+      ) {
+        return Response.json({
+          ahead_by: 2,
+          commits: memberShas.map((sha) => pushCommitValue(sha, "f0rr0", 100)),
+          total_commits: 2,
+        });
+      }
+      return Response.json({ message: "not found" }, { status: 404 });
+    };
+
+    const membership = await fetchGitHubPullRequestMembershipWithToken(
+      {
+        account: "f0rr0",
+        number: 7,
+        repository: repository.full_name,
+        repositoryId: String(repository.id),
+      },
+      memberShas.length,
+      "test-token",
+      { expectedBaseSha: baseSha, expectedHeadSha: headSha }
+    );
+
+    expect(membership.commitShas).toEqual(memberShas);
+    expect(membership.membershipComplete).toBe(true);
+    expect(requestedPaths).toEqual([
+      `/repos/${repository.full_name}/pulls/7/commits`,
+      `/repos/${repository.full_name}/compare/${baseSha}...${headSha}`,
+    ]);
+  });
+
+  test("uses a complete paginated comparison beyond the PR commit cap", async () => {
     env.GITHUB_F0RR0_TOKEN = "test-token";
-    const graphQlCursors = [];
-    globalThis.fetch = async (input, init) => {
+    const comparePages = [];
+    globalThis.fetch = async (input) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
       if (url.pathname.endsWith("/pulls/7")) {
-        return Response.json({ ...pullRequest, commits: 3051 });
+        return Response.json({ ...pullRequest, commits: 368 });
       }
-      if (url.pathname.endsWith("/pulls/7/commits")) {
+      if (
+        url.pathname ===
+          `/repos/${repository.full_name}/compare/${baseSha}...${headSha}` ||
+        url.pathname ===
+          `/repositories/${String(repository.id)}/compare/${baseSha}...${headSha}`
+      ) {
         const page = Number(url.searchParams.get("page") ?? "1");
-        const shas = Array.from({ length: page < 3 ? 100 : 50 }, (_, index) =>
-          (BigInt(page * 100 + index) + 1n).toString(16).padStart(40, "0")
+        comparePages.push(page);
+        const count = page < 4 ? 100 : 68;
+        const commits = Array.from({ length: count }, (_, index) =>
+          pushCommitValue(
+            (BigInt((page - 1) * 100 + index) + 10_000n)
+              .toString(16)
+              .padStart(40, "0"),
+            "f0rr0",
+            100
+          )
         );
+        if (page === 4) {
+          commits.at(-1).sha = headSha;
+        }
         return Response.json(
-          shas.map((sha) => ({ sha })),
+          { ahead_by: 368, commits, total_commits: 368 },
           {
             headers:
-              page < 3
+              page < 4
                 ? {
-                    link: `<https://api.github.com/repos/example-org/example-repo/pulls/7/commits?per_page=100&page=${String(page + 1)}>; rel="next"`,
+                    link: `<https://api.github.com/repositories/${String(repository.id)}/compare/${baseSha}...${headSha}?per_page=100&page=${String(page + 1)}>; rel="next"`,
                   }
                 : undefined,
           }
         );
-      }
-      if (url.pathname === "/graphql") {
-        expect(init?.method).toBe("POST");
-        const request = JSON.parse(init?.body);
-        const { cursor } = request.variables;
-        graphQlCursors.push(cursor);
-        const page = cursor === null ? 0 : Number(cursor.slice(7));
-        const count = page < 30 ? 100 : 51;
-        const nodes = Array.from({ length: count }, (_, index) => ({
-          commit: {
-            ...(page === 0 && index === 0
-              ? {
-                  author: { user: { login: "f0rr0" } },
-                  committedDate: "2026-08-02T12:00:00Z",
-                  message: "feat: GraphQL membership",
-                }
-              : {}),
-            oid: (BigInt(page * 100 + index) + 10_000n)
-              .toString(16)
-              .padStart(40, "0"),
-          },
-        }));
-        if (page === 30) {
-          nodes.at(-1).commit.oid = headSha;
-        }
-        return Response.json({
-          data: {
-            repository: {
-              pullRequest: {
-                commits: {
-                  nodes,
-                  pageInfo: {
-                    endCursor: page < 30 ? `cursor-${String(page + 1)}` : null,
-                    hasNextPage: page < 30,
-                  },
-                  totalCount: 3051,
-                },
-              },
-            },
-          },
-        });
       }
       return Response.json({ message: "not found" }, { status: 404 });
     };
@@ -1315,12 +1365,79 @@ describe("GitHub pull request acquisition", () => {
       repository: "example-org/example-repo",
       repositoryId: "123",
     });
-    expect(source.commitShas).toHaveLength(3051);
+    expect(source.commitShas).toHaveLength(368);
     expect(source.membershipComplete).toBe(true);
-    expect(source.commits[0]?.committedAt).toBe("2026-08-02T12:00:00.000Z");
-    expect(graphQlCursors).toHaveLength(31);
-    expect(graphQlCursors.at(0)).toBeNull();
-    expect(graphQlCursors.at(-1)).toBe("cursor-30");
+    expect(source.commitShas.at(-1)).toBe(headSha);
+    expect(source.commits[0]?.committedAt).toBe("2026-08-28T12:00:00.000Z");
+    expect(comparePages).toEqual([1, 2, 3, 4]);
+  });
+
+  test("rejects a truncated comparison instead of accepting partial membership", async () => {
+    const commits = Array.from({ length: 250 }, (_, index) =>
+      pushCommitValue(
+        (BigInt(index) + 20_000n).toString(16).padStart(40, "0"),
+        "f0rr0",
+        100
+      )
+    );
+    globalThis.fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      expect(url.pathname).toBe(
+        `/repos/${repository.full_name}/compare/${baseSha}...${headSha}`
+      );
+      return Response.json({
+        ahead_by: 251,
+        commits,
+        total_commits: 251,
+      });
+    };
+
+    await expect(
+      fetchGitHubPullRequestMembershipWithToken(
+        {
+          account: "f0rr0",
+          number: 7,
+          repository: repository.full_name,
+          repositoryId: String(repository.id),
+        },
+        251,
+        "test-token",
+        { expectedBaseSha: baseSha, expectedHeadSha: headSha }
+      )
+    ).rejects.toMatchObject({ code: "source_incomplete" });
+  });
+
+  test("rejects comparison links that skip a page", async () => {
+    const commits = Array.from({ length: 100 }, (_, index) =>
+      pushCommitValue(
+        (BigInt(index) + 30_000n).toString(16).padStart(40, "0"),
+        "f0rr0",
+        100
+      )
+    );
+    globalThis.fetch = async () =>
+      Response.json(
+        { ahead_by: 251, commits, total_commits: 251 },
+        {
+          headers: {
+            link: `<https://api.github.com/repositories/${String(repository.id)}/compare/${baseSha}...${headSha}?per_page=100&page=3>; rel="next"`,
+          },
+        }
+      );
+
+    await expect(
+      fetchGitHubPullRequestMembershipWithToken(
+        {
+          account: "f0rr0",
+          number: 7,
+          repository: repository.full_name,
+          repositoryId: String(repository.id),
+        },
+        251,
+        "test-token",
+        { expectedBaseSha: baseSha, expectedHeadSha: headSha }
+      )
+    ).rejects.toMatchObject({ code: "source_invalid" });
   });
 });
 

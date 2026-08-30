@@ -668,8 +668,12 @@ describe.skipIf(!dockerAvailable)(
         on conflict (account) do nothing
       `;
       await admin`
-        insert into github_repositories (full_name, id)
-        values ('f0rr0/deadline-release', ${repositoryId})
+        insert into github_repositories (
+          first_observed_at, full_name, id, last_observed_at
+        ) values (
+          '2018-01-01T00:00:00.000Z', 'f0rr0/deadline-release',
+          ${repositoryId}, '2018-01-01T00:00:00.000Z'
+        )
       `;
       await admin`
         insert into github_push_observations (

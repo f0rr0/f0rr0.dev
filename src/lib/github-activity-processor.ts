@@ -40,7 +40,7 @@ export const GITHUB_ACTIVITY_FALLBACK_SUMMARY_RECIPE =
   "commit-message-summary-v1";
 const GITHUB_FILE_PAGE_SIZE = 100;
 const MAXIMUM_GITHUB_FILE_PAGES = 30;
-const MAXIMUM_GITHUB_PULL_REQUEST_COMMIT_PAGES = 3;
+const GITHUB_PULL_REQUEST_COMMIT_LIMIT = 250;
 const GITHUB_GRAPHQL_NODE_BATCH_SIZE = 100;
 const GITHUB_GRAPHQL_SECONDARY_LIMIT_WAIT_MS = 60_000;
 const ZERO_SHA = "0".repeat(40);
@@ -896,24 +896,66 @@ export const fetchGitHubActivityCommitSource = async (
     async (token) => await fetchCommitSourceWithToken(row, token, options)
   );
 
-const compareCommitValuesWithToken = async (
-  row: GitHubActivityPushObservationReference,
+interface GitHubCommitComparisonReference {
+  baseSha: string;
+  expectedCommitCount: number | null;
+  headSha: string;
+  repository: GitHubRepository;
+}
+
+const commitComparisonPath = (
+  comparison: GitHubCommitComparisonReference,
+  repositoryPath: string
+) =>
+  `${repositoryPath}/compare/${encodeURIComponent(
+    comparison.baseSha
+  )}...${encodeURIComponent(comparison.headSha)}`;
+
+const validateNextCommitComparisonPage = (
+  next: URL,
+  currentPage: number,
+  comparison: GitHubCommitComparisonReference
+) => {
+  const namedPath = commitComparisonPath(
+    comparison,
+    repositoryApiPath(comparison.repository.fullName, "")
+  );
+  const numericPath = commitComparisonPath(
+    comparison,
+    `/repositories/${encodeURIComponent(comparison.repository.id)}`
+  );
+  if (
+    (next.pathname !== namedPath && next.pathname !== numericPath) ||
+    next.searchParams.get("page") !== String(currentPage + 1) ||
+    next.searchParams.get("per_page") !== "100" ||
+    next.searchParams.size !== 2
+  ) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "GitHub returned invalid commit comparison pagination."
+    );
+  }
+};
+
+// oxlint-disable-next-line eslint/complexity -- Every comparison pagination invariant is validated fail-closed.
+const commitComparisonValuesWithToken = async (
+  comparison: GitHubCommitComparisonReference,
   token: string,
   options: GitHubProviderRequestOptions = {}
 ) => {
-  const repository = repositoryReferenceFrom(row);
   const values: unknown[] = [];
   let url: URL | null = githubApiUrl(
-    repositoryApiPath(
-      repository.fullName,
-      `/compare/${encodeURIComponent(row.beforeSha)}...${encodeURIComponent(
-        row.afterSha
-      )}`
+    commitComparisonPath(
+      comparison,
+      repositoryApiPath(comparison.repository.fullName, "")
     )
   );
   url.searchParams.set("per_page", "100");
   const visited = new Set<string>();
+  const seenShas = new Set<string>();
   let aheadBy: number | null = null;
+  let page = 1;
+  let totalCommits: number | null = null;
   while (url !== null) {
     if (visited.has(url.href)) {
       throw new ActivityProcessingError(
@@ -927,43 +969,91 @@ const compareCommitValuesWithToken = async (
     const pageAheadBy = isObject(result.payload)
       ? requiredInteger(result.payload.ahead_by, "compare ahead count")
       : null;
+    const pageTotalCommits = isObject(result.payload)
+      ? requiredInteger(result.payload.total_commits, "compare commit count")
+      : null;
     if (
       !Array.isArray(pageValues) ||
       pageAheadBy === null ||
-      (aheadBy !== null && aheadBy !== pageAheadBy)
+      pageTotalCommits === null ||
+      (aheadBy !== null && aheadBy !== pageAheadBy) ||
+      (totalCommits !== null && totalCommits !== pageTotalCommits) ||
+      pageAheadBy !== pageTotalCommits
     ) {
       throw new ActivityProcessingError(
         "source_invalid",
-        "GitHub returned invalid push commit evidence."
+        "GitHub returned invalid commit comparison evidence."
       );
     }
     aheadBy = pageAheadBy;
+    totalCommits = pageTotalCommits;
+    const previousSize = seenShas.size;
+    for (const value of pageValues) {
+      const sha = isObject(value) ? commitShaFrom(value.sha) : null;
+      if (sha === null || seenShas.has(sha)) {
+        throw new ActivityProcessingError(
+          "source_invalid",
+          "GitHub returned invalid commit comparison members."
+        );
+      }
+      seenShas.add(sha);
+    }
     values.push(...pageValues);
-    url = nextGitHubPage(result.response);
+    const next = nextGitHubPage(result.response);
+    if (next !== null) {
+      validateNextCommitComparisonPage(next, page, comparison);
+      if (seenShas.size === previousSize || values.length >= pageTotalCommits) {
+        throw new ActivityProcessingError(
+          "source_invalid",
+          "GitHub returned inconsistent commit comparison pagination."
+        );
+      }
+      page += 1;
+    }
+    url = next;
     if (
-      row.expectedCommitCount !== null &&
-      values.length > row.expectedCommitCount
+      values.length > pageTotalCommits ||
+      (comparison.expectedCommitCount !== null &&
+        values.length > comparison.expectedCommitCount)
     ) {
       throw new ActivityProcessingError(
         "source_incomplete",
-        "GitHub returned more commits than the durable push observation recorded."
+        "GitHub returned more commits than the expected comparison recorded."
       );
     }
   }
 
   if (
     aheadBy === null ||
+    totalCommits === null ||
     values.length !== aheadBy ||
-    (row.expectedCommitCount !== null &&
-      values.length !== row.expectedCommitCount)
+    values.length !== totalCommits ||
+    (comparison.expectedCommitCount !== null &&
+      values.length !== comparison.expectedCommitCount)
   ) {
     throw new ActivityProcessingError(
       "source_incomplete",
-      "GitHub did not return the complete pushed commit set."
+      "GitHub did not return the complete commit comparison."
     );
   }
   return values;
 };
+
+const compareCommitValuesWithToken = async (
+  row: GitHubActivityPushObservationReference,
+  token: string,
+  options: GitHubProviderRequestOptions = {}
+) =>
+  await commitComparisonValuesWithToken(
+    {
+      baseSha: row.beforeSha,
+      expectedCommitCount: row.expectedCommitCount,
+      headSha: row.afterSha,
+      repository: repositoryReferenceFrom(row),
+    },
+    token,
+    options
+  );
 
 // GitHub cannot compare the all-zero SHA used for a new branch. GraphQL's
 // cursor lets us request exactly the observed number of commits when legacy
@@ -1479,149 +1569,82 @@ const fetchPullRequestSnapshotWithToken = async (
   };
 };
 
-// oxlint-disable-next-line complexity -- Every GraphQL pagination invariant is validated fail-closed.
-const pullRequestMembershipFromGraphQl = async (
-  row: GitHubActivityPullRequestReference,
+const pullRequestMembershipFromValues = (
+  values: readonly unknown[],
   expectedCommitCount: number,
-  token: string,
   commitRepository: GitHubRepository,
   expectedHeadSha: string | null,
-  deadlineAt: number | undefined
-) => {
-  const [owner, name] = row.repository.split("/");
-  if (owner === undefined || name === undefined) {
-    throw new ActivityProcessingError(
-      "source_invalid",
-      "The stored GitHub repository reference is invalid."
-    );
-  }
-  const query = `query PullRequestCommits($owner: String!, $name: String!, $number: Int!, $cursor: String) {
-    repository(owner: $owner, name: $name) {
-      pullRequest(number: $number) {
-        commits(first: 100, after: $cursor) {
-          totalCount
-          nodes {
-            commit {
-              oid
-              message
-              committedDate
-              author { user { login } }
-            }
-          }
-          pageInfo { hasNextPage endCursor }
-        }
-      }
-    }
-  }`;
+  paginationComplete = true
+): GitHubActivityPullRequestMembershipSource => {
   const commitShas: string[] = [];
   const commits: GitHubCommit[] = [];
   const seen = new Set<string>();
-  const seenCursors = new Set<string>();
-  let cursor: string | null = null;
-  let hasNextPage = true;
-  while (hasNextPage) {
-    const response = await fetchGitHub(githubApiUrl("/graphql"), {
-      body: JSON.stringify({
-        query,
-        variables: { cursor, name, number: row.number, owner },
-      }),
-      deadlineAt,
-      method: "POST",
-      token,
-    });
-    const payload = await githubGraphQlPayloadFrom(response);
-    const repository = isObject(payload.data) ? payload.data.repository : null;
-    const pullRequest = isObject(repository) ? repository.pullRequest : null;
-    const connection = isObject(pullRequest) ? pullRequest.commits : null;
-    if (
-      !isObject(connection) ||
-      !Array.isArray(connection.nodes) ||
-      !isObject(connection.pageInfo) ||
-      requiredInteger(connection.totalCount, "pull request commit count") !==
-        expectedCommitCount ||
-      typeof connection.pageInfo.hasNextPage !== "boolean"
-    ) {
+  for (const value of values) {
+    const sha = isObject(value) ? commitShaFrom(value.sha) : null;
+    if (sha === null) {
       throw new ActivityProcessingError(
         "source_invalid",
-        "GitHub returned invalid GraphQL pull request membership."
+        "GitHub returned an invalid pull request commit."
       );
     }
-    const commitsBeforePage = commitShas.length;
-    for (const node of connection.nodes) {
-      const sha =
-        isObject(node) && isObject(node.commit)
-          ? commitShaFrom(node.commit.oid)
-          : null;
-      if (sha === null) {
-        throw new ActivityProcessingError(
-          "source_invalid",
-          "GitHub returned an invalid pull request commit."
-        );
-      }
-      if (!seen.has(sha)) {
-        seen.add(sha);
-        commitShas.push(sha);
-        const commitValue = isObject(node) ? node.commit : null;
-        const user =
-          isObject(commitValue) && isObject(commitValue.author)
-            ? commitValue.author.user
-            : null;
-        const commit = trackedCommitFromPushValue(
-          {
-            author: isObject(user) ? { login: user.login } : null,
-            commit: {
-              committer: {
-                date: isObject(commitValue) ? commitValue.committedDate : null,
-              },
-              message: isObject(commitValue) ? commitValue.message : null,
-            },
-            sha,
-          },
-          sha,
-          commitRepository
-        );
-        if (commit !== null) {
-          commits.push(commit);
-        }
-      }
+    if (seen.has(sha)) {
+      continue;
     }
-    ({ hasNextPage } = connection.pageInfo);
-    if (
-      commitShas.length > expectedCommitCount ||
-      (hasNextPage && commitShas.length === commitsBeforePage)
-    ) {
-      throw new ActivityProcessingError(
-        "source_invalid",
-        "GitHub returned inconsistent GraphQL pull request membership."
-      );
+    seen.add(sha);
+    commitShas.push(sha);
+    const commit = trackedCommitFromPullRequestValue(
+      value,
+      sha,
+      commitRepository
+    );
+    if (commit !== null) {
+      commits.push(commit);
     }
-    const nextCursor = connection.pageInfo.endCursor;
-    if (
-      hasNextPage &&
-      (typeof nextCursor !== "string" ||
-        nextCursor.length === 0 ||
-        seenCursors.has(nextCursor))
-    ) {
-      throw new ActivityProcessingError(
-        "source_invalid",
-        "GitHub returned an invalid pull request membership cursor."
-      );
-    }
-    if (typeof nextCursor === "string") {
-      seenCursors.add(nextCursor);
-    }
-    cursor = typeof nextCursor === "string" ? nextCursor : null;
   }
   return {
     commitShas,
     commits,
     membershipComplete:
-      !hasNextPage &&
+      paginationComplete &&
       commitShas.length === expectedCommitCount &&
       (expectedHeadSha === null ||
         expectedCommitCount === 0 ||
         commitShas.at(-1) === expectedHeadSha),
   };
+};
+
+const pullRequestMembershipFromComparison = async (
+  row: GitHubActivityPullRequestReference,
+  expectedCommitCount: number,
+  token: string,
+  commitRepository: GitHubRepository,
+  expectedBaseSha: string,
+  expectedHeadSha: string,
+  options: GitHubProviderRequestOptions
+) => {
+  const values = await commitComparisonValuesWithToken(
+    {
+      baseSha: expectedBaseSha,
+      expectedCommitCount,
+      headSha: expectedHeadSha,
+      repository: repositoryReferenceFrom(row),
+    },
+    token,
+    options
+  );
+  const membership = pullRequestMembershipFromValues(
+    values,
+    expectedCommitCount,
+    commitRepository,
+    expectedHeadSha
+  );
+  if (!membership.membershipComplete) {
+    throw new ActivityProcessingError(
+      "source_incomplete",
+      "GitHub returned ambiguous pull request comparison evidence."
+    );
+  }
+  return membership;
 };
 
 export const fetchGitHubPullRequestMembershipWithToken = async (
@@ -1631,19 +1654,48 @@ export const fetchGitHubPullRequestMembershipWithToken = async (
   options: {
     commitRepository?: GitHubRepository;
     deadlineAt?: number;
+    expectedBaseSha?: string;
     expectedHeadSha?: string;
   } = {}
 ): Promise<GitHubActivityPullRequestMembershipSource> => {
   const repository = repositoryReferenceFrom(row);
   const commitRepository = options.commitRepository ?? repository;
+  if (!Number.isSafeInteger(expectedCommitCount) || expectedCommitCount < 0) {
+    throw new ActivityProcessingError(
+      "source_invalid",
+      "The expected GitHub pull request commit count is invalid."
+    );
+  }
+  const expectedBaseSha =
+    options.expectedBaseSha === undefined
+      ? null
+      : commitShaFrom(options.expectedBaseSha);
   const expectedHeadSha =
     options.expectedHeadSha === undefined
       ? null
       : commitShaFrom(options.expectedHeadSha);
-  if (options.expectedHeadSha !== undefined && expectedHeadSha === null) {
+  if (
+    (options.expectedBaseSha !== undefined && expectedBaseSha === null) ||
+    (options.expectedHeadSha !== undefined && expectedHeadSha === null)
+  ) {
     throw new ActivityProcessingError(
       "source_invalid",
-      "The expected GitHub pull request head is invalid."
+      "The expected GitHub pull request comparison is invalid."
+    );
+  }
+  if (
+    expectedCommitCount > GITHUB_PULL_REQUEST_COMMIT_LIMIT &&
+    expectedBaseSha !== null &&
+    expectedHeadSha !== null
+  ) {
+    return await pullRequestMembershipFromComparison(
+      row,
+      expectedCommitCount,
+      token,
+      commitRepository,
+      expectedBaseSha,
+      expectedHeadSha,
+      options
     );
   }
   const pullRequestPath = repositoryApiPath(
@@ -1652,13 +1704,11 @@ export const fetchGitHubPullRequestMembershipWithToken = async (
   );
   let url: URL | null = githubApiUrl(`${pullRequestPath}/commits`);
   url.searchParams.set("per_page", "100");
-  const commitShas: string[] = [];
-  const commits: GitHubCommit[] = [];
-  const seen = new Set<string>();
+  const values: unknown[] = [];
 
   for (
     let page = 0;
-    url !== null && page < MAXIMUM_GITHUB_PULL_REQUEST_COMMIT_PAGES;
+    url !== null && page < Math.ceil(GITHUB_PULL_REQUEST_COMMIT_LIMIT / 100);
     page += 1
   ) {
     const result = await fetchJsonWithResponse(url, token, options);
@@ -1668,45 +1718,29 @@ export const fetchGitHubPullRequestMembershipWithToken = async (
         "GitHub returned invalid pull request commits."
       );
     }
-    for (const value of result.payload) {
-      const sha = isObject(value) ? commitShaFrom(value.sha) : null;
-      if (sha === null) {
-        throw new ActivityProcessingError(
-          "source_invalid",
-          "GitHub returned an invalid pull request commit."
-        );
-      }
-      if (!seen.has(sha)) {
-        seen.add(sha);
-        commitShas.push(sha);
-        const commit = trackedCommitFromPullRequestValue(
-          value,
-          sha,
-          commitRepository
-        );
-        if (commit !== null) {
-          commits.push(commit);
-        }
-      }
-    }
+    values.push(...result.payload);
     url = nextGitHubPage(result.response);
   }
 
-  const membershipComplete =
-    url === null &&
-    commitShas.length === expectedCommitCount &&
-    (expectedHeadSha === null ||
-      expectedCommitCount === 0 ||
-      commitShas.at(-1) === expectedHeadSha);
-  return membershipComplete
-    ? { commitShas, commits, membershipComplete }
-    : await pullRequestMembershipFromGraphQl(
+  const membership = pullRequestMembershipFromValues(
+    values,
+    expectedCommitCount,
+    commitRepository,
+    expectedHeadSha,
+    url === null
+  );
+  return membership.membershipComplete ||
+    expectedBaseSha === null ||
+    expectedHeadSha === null
+    ? membership
+    : await pullRequestMembershipFromComparison(
         row,
         expectedCommitCount,
         token,
         commitRepository,
+        expectedBaseSha,
         expectedHeadSha,
-        options.deadlineAt
+        options
       );
 };
 
@@ -1726,6 +1760,7 @@ export const fetchGitHubPullRequestMembership = async (
   options: {
     commitRepository?: GitHubRepository;
     deadlineAt?: number;
+    expectedBaseSha?: string;
     expectedHeadSha?: string;
   } = {}
 ) =>
@@ -1753,6 +1788,7 @@ export const fetchGitHubPullRequestSource = async (
         snapshot.pullRequest.headRepository ??
         snapshot.pullRequest.baseRepository,
       deadlineAt: options.deadlineAt,
+      expectedBaseSha: snapshot.pullRequest.baseSha,
       expectedHeadSha: snapshot.pullRequest.headSha,
     }
   );

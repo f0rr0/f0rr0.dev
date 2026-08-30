@@ -382,6 +382,7 @@ const reconcilePullRequest = async (
           snapshot.pullRequest.headRepository ??
           snapshot.pullRequest.baseRepository,
         deadlineAt: context.deadlineAt,
+        expectedBaseSha: snapshot.pullRequest.baseSha,
         expectedHeadSha: snapshot.pullRequest.headSha,
       }
     );
