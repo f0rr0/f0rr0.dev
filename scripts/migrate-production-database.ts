@@ -10,7 +10,6 @@ const MIGRATION_LOCK_NAME = "f0rr0.dev:drizzle-migrations";
 interface Environment {
   DATABASE_URL?: string;
   DATABASE_URL_UNPOOLED?: string;
-  POSTGRES_URL_NON_POOLING?: string;
   VERCEL?: string;
   VERCEL_ENV?: string;
 }
@@ -48,7 +47,6 @@ export const shouldApplyProductionMigrations = (environment: Environment) => {
 export const productionMigrationDatabaseUrl = (environment: Environment) => {
   const configured =
     configuredValue(environment.DATABASE_URL_UNPOOLED) ??
-    configuredValue(environment.POSTGRES_URL_NON_POOLING) ??
     configuredValue(environment.DATABASE_URL);
   if (configured === null) {
     throw new ProductionMigrationConfigurationError(

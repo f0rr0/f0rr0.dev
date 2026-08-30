@@ -7,6 +7,7 @@ export interface PublicGitHubActivityLanguage {
 
 export interface PublicGitHubActivityRepository {
   avatarUrl: string | null;
+  key: string;
   label: string | null;
   url: string | null;
 }

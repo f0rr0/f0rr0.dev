@@ -45,6 +45,7 @@ export const githubCommits = pgTable(
     committerUserId: varchar("committer_user_id", { length: 32 }),
     deletions: integer("deletions"),
     enrichmentError: varchar("enrichment_error", { length: 80 }),
+    enrichmentAttempts: integer("enrichment_attempts").default(0).notNull(),
     enrichmentLeaseToken: uuid("enrichment_lease_token"),
     // Pending rows use this as a not-before time; processing rows use it as
     // the expiry of the current ownership lease.
@@ -72,6 +73,9 @@ export const githubCommits = pgTable(
       .default(false)
       .notNull(),
     pullRequestDiscoveryError: varchar("pr_discovery_error", { length: 80 }),
+    pullRequestDiscoveryAttempts: integer("pr_discovery_attempts")
+      .default(0)
+      .notNull(),
     pullRequestDiscoveryLeaseToken: uuid("pr_discovery_lease_token"),
     pullRequestDiscoveryLeaseUntil: timestamp("pr_discovery_lease_until", {
       mode: "date",
@@ -170,6 +174,10 @@ export const githubCommits = pgTable(
       sql`(${table.changedFiles} IS NULL OR ${table.changedFiles} >= 0) AND (${table.additions} IS NULL OR ${table.additions} >= 0) AND (${table.deletions} IS NULL OR ${table.deletions} >= 0) AND (${table.substantiveLoc} IS NULL OR ${table.substantiveLoc} >= 0)`
     ),
     check(
+      "github_commits_nonnegative_attempts",
+      sql`${table.enrichmentAttempts} >= 0 AND ${table.pullRequestDiscoveryAttempts} >= 0`
+    ),
+    check(
       "github_commits_owner_type",
       sql`${table.repositoryOwnerType} IS NULL OR ${table.repositoryOwnerType} IN ('Organization', 'User')`
     ),
@@ -188,6 +196,19 @@ export const githubAccountCheckpoints = pgTable(
   "github_account_checkpoints",
   {
     account: varchar("account", { length: 39 }).primaryKey(),
+    eventsEtag: text("events_etag"),
+    eventsLastAttemptedAt: timestamp("events_last_attempted_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    eventsLastSucceededAt: timestamp("events_last_succeeded_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    eventsNextPollAt: timestamp("events_next_poll_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
     gapDetectedAt: timestamp("gap_detected_at", {
       mode: "date",
       withTimezone: true,
@@ -199,12 +220,62 @@ export const githubAccountCheckpoints = pgTable(
     gapState: varchar("gap_state", { length: 12 }).default("clear").notNull(),
     latestEventId: varchar("latest_event_id", { length: 64 }),
     paused: boolean("paused").default(false).notNull(),
+    headRefCursorRepositoryId: varchar("head_ref_cursor_repository_id", {
+      length: 32,
+    }),
+    headRefCycleStartedAt: timestamp("head_ref_cycle_started_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    headRefLastAttemptedAt: timestamp("head_ref_last_attempted_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    headRefLastSucceededAt: timestamp("head_ref_last_succeeded_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    headRefLeaseToken: uuid("head_ref_lease_token"),
+    headRefLeaseUntil: timestamp("head_ref_lease_until", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    headRefNextPage: integer("head_ref_next_page"),
+    headRefScanStartedAt: timestamp("head_ref_scan_started_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
     refBackfillSinceAt: timestamp("ref_backfill_since_at", {
       mode: "date",
       withTimezone: true,
     })
       .defaultNow()
       .notNull(),
+    tagRefCursorRepositoryId: varchar("tag_ref_cursor_repository_id", {
+      length: 32,
+    }),
+    tagRefCycleStartedAt: timestamp("tag_ref_cycle_started_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    tagRefLastAttemptedAt: timestamp("tag_ref_last_attempted_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    tagRefLastSucceededAt: timestamp("tag_ref_last_succeeded_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    tagRefLeaseToken: uuid("tag_ref_lease_token"),
+    tagRefLeaseUntil: timestamp("tag_ref_lease_until", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    tagRefNextPage: integer("tag_ref_next_page"),
+    tagRefScanStartedAt: timestamp("tag_ref_scan_started_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
   },
   (table) => [
     check(
@@ -223,6 +294,18 @@ export const githubAccountCheckpoints = pgTable(
       "github_account_checkpoints_gap_details",
       sql`(${table.gapState} = 'detected' AND ${table.gapDetectedAt} IS NOT NULL) OR (${table.gapState} = 'clear' AND ${table.gapDetectedAt} IS NULL AND ${table.gapExpectedEventId} IS NULL AND ${table.gapOldestAvailableEventId} IS NULL)`
     ),
+    check(
+      "github_account_checkpoints_ref_cursor_shape",
+      sql`(${table.headRefCursorRepositoryId} IS NULL OR ${table.headRefCursorRepositoryId} ~ '^[0-9]{1,32}$') AND (${table.tagRefCursorRepositoryId} IS NULL OR ${table.tagRefCursorRepositoryId} ~ '^[0-9]{1,32}$')`
+    ),
+    check(
+      "github_account_checkpoints_ref_leases",
+      sql`(${table.headRefLeaseToken} IS NULL) = (${table.headRefLeaseUntil} IS NULL) AND (${table.tagRefLeaseToken} IS NULL) = (${table.tagRefLeaseUntil} IS NULL)`
+    ),
+    check(
+      "github_account_checkpoints_ref_scans",
+      sql`(${table.headRefNextPage} IS NULL AND ${table.headRefScanStartedAt} IS NULL OR ${table.headRefNextPage} >= 2 AND ${table.headRefScanStartedAt} IS NOT NULL) AND (${table.tagRefNextPage} IS NULL AND ${table.tagRefScanStartedAt} IS NULL OR ${table.tagRefNextPage} >= 2 AND ${table.tagRefScanStartedAt} IS NOT NULL)`
+    ),
   ]
 ).enableRLS();
 
@@ -239,6 +322,10 @@ export const githubRepositories = pgTable(
       .notNull(),
     fullName: varchar("full_name", { length: 200 }).notNull(),
     homepageUrl: text("homepage_url"),
+    headsLastReconciledAt: timestamp("heads_last_reconciled_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
     htmlUrl: text("html_url"),
     id: varchar("id", { length: 32 }).primaryKey(),
     lastObservedAt: timestamp("last_observed_at", {
@@ -252,6 +339,10 @@ export const githubRepositories = pgTable(
     ownerLogin: varchar("owner_login", { length: 39 }),
     ownerType: varchar("owner_type", { length: 12 }),
     topics: jsonb("topics").$type<readonly string[]>(),
+    tagsLastReconciledAt: timestamp("tags_last_reconciled_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
     visibility: varchar("visibility", { length: 12 }),
   },
   (table) => [
@@ -371,6 +462,7 @@ export const githubPushObservations = pgTable(
   "github_push_observations",
   {
     account: varchar("account", { length: 39 }).notNull(),
+    attemptCount: integer("attempt_count").default(0).notNull(),
     afterSha: varchar("after_sha", { length: 40 }).notNull(),
     beforeSha: varchar("before_sha", { length: 40 }).notNull(),
     completedAt: timestamp("completed_at", {
@@ -448,7 +540,7 @@ export const githubPushObservations = pgTable(
     ),
     check(
       "github_push_observations_nonnegative_count",
-      sql`${table.expectedCommitCount} IS NULL OR ${table.expectedCommitCount} >= 0`
+      sql`${table.attemptCount} >= 0 AND (${table.expectedCommitCount} IS NULL OR ${table.expectedCommitCount} >= 0)`
     ),
     check(
       "github_push_observations_history_bounds",
@@ -540,6 +632,10 @@ export const githubPullRequests = pgTable(
       withTimezone: true,
     }),
     mergeSha: varchar("merge_sha", { length: 40 }),
+    mergeShaVerifiedAt: timestamp("merge_sha_verified_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
     nextReconcileAt: timestamp("next_reconcile_at", {
       mode: "date",
       withTimezone: true,
@@ -553,6 +649,8 @@ export const githubPullRequests = pgTable(
       mode: "date",
       withTimezone: true,
     }).notNull(),
+    reconcileAttempts: integer("reconcile_attempts").default(0).notNull(),
+    reconcileError: varchar("reconcile_error", { length: 80 }),
     repositoryId: varchar("repository_id", { length: 32 })
       .notNull()
       .references(() => githubRepositories.id),
@@ -600,10 +698,90 @@ export const githubPullRequests = pgTable(
       "github_pull_requests_sha_shapes",
       sql`(${table.baseSha} IS NULL OR ${table.baseSha} ~ '^[a-f0-9]{40}$') AND (${table.headSha} IS NULL OR ${table.headSha} ~ '^[a-f0-9]{40}$') AND (${table.mergeSha} IS NULL OR ${table.mergeSha} ~ '^[a-f0-9]{40}$')`
     ),
+    check(
+      "github_pull_requests_verified_merge_sha",
+      sql`(${table.mergeSha} IS NULL AND ${table.mergeShaVerifiedAt} IS NULL) OR (${table.state} = 'merged' AND ${table.mergeShaVerifiedAt} IS NOT NULL)`
+    ),
     check("github_pull_requests_positive_number", sql`${table.number} > 0`),
     check(
       "github_pull_requests_nonnegative_counts",
       sql`(${table.changedFiles} IS NULL OR ${table.changedFiles} >= 0) AND (${table.additions} IS NULL OR ${table.additions} >= 0) AND (${table.deletions} IS NULL OR ${table.deletions} >= 0) AND (${table.commitCount} IS NULL OR ${table.commitCount} >= 0)`
+    ),
+    check(
+      "github_pull_requests_nonnegative_attempts",
+      sql`${table.reconcileAttempts} >= 0`
+    ),
+  ]
+).enableRLS();
+
+export const githubPullRequestSignals = pgTable(
+  "github_pull_request_signals",
+  {
+    account: varchar("account", { length: 39 }).notNull(),
+    action: varchar("action", { length: 40 }).notNull(),
+    attemptCount: integer("attempt_count").default(0).notNull(),
+    completedAt: timestamp("completed_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    errorCode: varchar("error_code", { length: 80 }),
+    eventId: varchar("event_id", { length: 64 }).notNull(),
+    id: uuid("id").defaultRandom().primaryKey(),
+    leaseToken: uuid("lease_token"),
+    leaseUntil: timestamp("lease_until", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    number: integer("number").notNull(),
+    observedAt: timestamp("observed_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+    occurredAt: timestamp("occurred_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    repositoryId: varchar("repository_id", { length: 32 }).notNull(),
+    repositoryNameSnapshot: varchar("repository_name_snapshot", {
+      length: 200,
+    }).notNull(),
+    state: varchar("state", { length: 16 }).default("pending").notNull(),
+  },
+  (table) => [
+    uniqueIndex("github_pull_request_signals_event_unique").on(
+      table.account,
+      table.eventId
+    ),
+    index("github_pull_request_signals_pending_idx").on(
+      table.state,
+      table.leaseUntil,
+      table.observedAt
+    ),
+    check(
+      "github_pull_request_signals_account",
+      sql`${table.account} IN ('f0rr0', 'yuppiestechdev')`
+    ),
+    check(
+      "github_pull_request_signals_event_id",
+      sql`${table.eventId} ~ '^[0-9]{1,64}$'`
+    ),
+    check(
+      "github_pull_request_signals_repository_id",
+      sql`${table.repositoryId} ~ '^[0-9]{1,32}$'`
+    ),
+    check(
+      "github_pull_request_signals_state",
+      sql`${table.state} IN ('pending', 'processing', 'complete', 'unavailable')`
+    ),
+    check(
+      "github_pull_request_signals_lease",
+      sql`(${table.state} = 'processing') = (${table.leaseToken} IS NOT NULL) AND (${table.state} <> 'processing' OR ${table.leaseUntil} IS NOT NULL)`
+    ),
+    check(
+      "github_pull_request_signals_values",
+      sql`${table.number} > 0 AND ${table.attemptCount} >= 0`
     ),
   ]
 ).enableRLS();
@@ -808,6 +986,7 @@ export const githubSummaryAttempts = pgTable(
   "github_summary_attempts",
   {
     activityPublicId: uuid("activity_public_id").notNull(),
+    attemptCount: integer("attempt_count").default(0).notNull(),
     attemptedAt: timestamp("attempted_at", {
       mode: "date",
       withTimezone: true,
@@ -856,7 +1035,7 @@ export const githubSummaryAttempts = pgTable(
     ),
     check(
       "github_summary_attempts_positive_revision",
-      sql`${table.revision} > 0`
+      sql`${table.revision} > 0 AND ${table.attemptCount} >= 0`
     ),
     check(
       "github_summary_attempts_input_hash_shape",

@@ -3,6 +3,7 @@ import { revalidateTag } from "next/cache";
 import { env } from "@/env";
 import { runGitHubActivityWorker } from "@/lib/github-activity-worker";
 import { workerBatchSizeFrom } from "@/lib/github-activity-worker-core";
+import { ensureGitHubEvidenceIntegrity } from "@/lib/github-activity-worker-store";
 import { reportOperationalError } from "@/lib/operational-error";
 import { hasBearerSecret } from "@/lib/request-auth";
 
@@ -22,6 +23,23 @@ export async function POST(request: Request) {
     return Response.json({ ok: false }, { status: 400 });
   }
 
+  let evidenceRecovery: Awaited<
+    ReturnType<typeof ensureGitHubEvidenceIntegrity>
+  >;
+  try {
+    evidenceRecovery = await ensureGitHubEvidenceIntegrity();
+  } catch (error) {
+    const errorName = reportOperationalError("github_evidence_recovery", error);
+    return Response.json(
+      {
+        error: errorName,
+        evidenceRecovery: "failed",
+        ok: false,
+      },
+      { status: 503 }
+    );
+  }
+
   try {
     const activity = await runGitHubActivityWorker(
       batchSize === undefined
@@ -30,17 +48,24 @@ export async function POST(request: Request) {
             commitLimit: batchSize,
             observationLimit: batchSize,
             pullRequestDiscoveryLimit: batchSize,
+            pullRequestLimit: batchSize,
+            pullRequestSignalLimit: batchSize,
             summaryLimit: batchSize,
           }
     );
     if (
+      evidenceRecovery.status === "applied" ||
       activity.summaries.completed > 0 ||
       activity.pullRequests.completed > 0 ||
       activity.aliases > 0
     ) {
       revalidateTag("github-activity", "max");
     }
-    return Response.json({ activity, ok: true });
+    return Response.json({
+      activity,
+      evidenceRecovery: evidenceRecovery.status,
+      ok: true,
+    });
   } catch (error) {
     const errorName = reportOperationalError("github_worker", error);
     return Response.json(

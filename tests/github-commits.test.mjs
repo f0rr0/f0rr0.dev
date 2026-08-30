@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { setTimeout as delay } from "node:timers/promises";
 
 import {
   fetchGitHub,
+  GitHubRequestDeadlineError,
   GitHubResponseError,
   githubApiUrl,
 } from "../src/lib/github-api.ts";
@@ -21,7 +23,10 @@ import {
   repositoryFrom,
 } from "../src/lib/github-commits-core.ts";
 import { isGitHubAccountPaused } from "../src/lib/github-commits-store.ts";
-import { collectGitHubEvents } from "../src/lib/github-commits.ts";
+import {
+  assertGitHubTokenIdentity,
+  collectGitHubEvents,
+} from "../src/lib/github-commits.ts";
 
 const originalFetch = globalThis.fetch;
 const accountEvent = (id) => ({
@@ -30,6 +35,8 @@ const accountEvent = (id) => ({
   id,
   type: "WatchEvent",
 });
+const githubEventResponse = (events) =>
+  Response.json(events, { headers: { "X-Poll-Interval": "60" } });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -161,6 +168,22 @@ describe("GitHub commit normalization", () => {
       sha,
       url: apiCommit.html_url,
     });
+  });
+
+  test("uses committer time for activity ordering", () => {
+    const normalizedRepository = repositoryFrom(repository);
+    expect(normalizedRepository).not.toBeNull();
+    const commit = commitFromGitHub(
+      {
+        ...apiCommit,
+        commit: {
+          ...apiCommit.commit,
+          committer: { date: "2026-08-27T09:30:00Z" },
+        },
+      },
+      normalizedRepository
+    );
+    expect(commit?.committedAt).toBe("2026-08-27T09:30:00.000Z");
   });
 
   test("accepts Git's valid empty commit message", () => {
@@ -644,6 +667,63 @@ describe("pull request observation normalization", () => {
     });
   });
 
+  test("accepts the REST 2026 merged PR shape with merge_commit_sha absent", () => {
+    const normalizedRepository = repositoryFrom(repository);
+    expect(normalizedRepository).not.toBeNull();
+    const {
+      merge_commit_sha: _removedLegacyMergeSha,
+      ...rest2026MergedPullRequest
+    } = {
+      ...pullRequest,
+      closed_at: "2026-08-26T13:00:00Z",
+      merged: true,
+      merged_at: "2026-08-26T13:00:00Z",
+      state: "closed",
+      updated_at: "2026-08-26T13:00:00Z",
+    };
+    expect(Object.hasOwn(rest2026MergedPullRequest, "merge_commit_sha")).toBe(
+      false
+    );
+
+    const normalized = pullRequestFromGitHub(
+      rest2026MergedPullRequest,
+      normalizedRepository
+    );
+    expect(normalized).not.toBeNull();
+    expect(normalized?.merged).toBe(true);
+    expect(normalized?.mergeCommitSha).toBeUndefined();
+  });
+
+  test("discards the synthetic REST test merge SHA while a PR is open", () => {
+    const normalizedRepository = repositoryFrom(repository);
+    expect(normalizedRepository).not.toBeNull();
+    expect(
+      pullRequestFromGitHub(
+        { ...pullRequest, merge_commit_sha: "c".repeat(40) },
+        normalizedRepository
+      )
+    ).toMatchObject({ mergeCommitSha: null, merged: false, state: "open" });
+  });
+
+  test("rejects a malformed merge SHA when a PR is merged", () => {
+    const normalizedRepository = repositoryFrom(repository);
+    expect(normalizedRepository).not.toBeNull();
+    expect(
+      pullRequestFromGitHub(
+        {
+          ...pullRequest,
+          closed_at: "2026-08-26T13:00:00Z",
+          merge_commit_sha: "not-a-sha",
+          merged: true,
+          merged_at: "2026-08-26T13:00:00Z",
+          state: "closed",
+          updated_at: "2026-08-26T13:00:00Z",
+        },
+        normalizedRepository
+      )
+    ).toBeNull();
+  });
+
   test("uses PR authorship rather than webhook sender identity", () => {
     expect(
       pullRequestFromWebhook({
@@ -878,6 +958,28 @@ describe("token identity", () => {
     );
     expect(authenticatedGitHubAccountFrom({ login: "someone" })).toBeNull();
   });
+
+  test("verifies the authenticated account before an inventory scan", async () => {
+    globalThis.fetch = async (input, init) => {
+      expect(new Request(input).url).toBe("https://api.github.com/user");
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer token"
+      );
+      return Response.json({ login: "F0RR0" });
+    };
+
+    await expect(
+      assertGitHubTokenIdentity("f0rr0", "token")
+    ).resolves.toBeUndefined();
+  });
+
+  test("rejects a token authenticated as the wrong account", async () => {
+    globalThis.fetch = async () => Response.json({ login: "someone-else" });
+
+    await expect(assertGitHubTokenIdentity("f0rr0", "token")).rejects.toThrow(
+      "GITHUB_F0RR0_TOKEN is not authenticated as f0rr0"
+    );
+  });
 });
 
 describe("account pause state", () => {
@@ -893,9 +995,39 @@ describe("account pause state", () => {
 });
 
 describe("bounded event collection", () => {
+  test("uses the saved feed validator and treats 304 as a healthy no-op", async () => {
+    globalThis.fetch = async (_input, init) => {
+      expect(new Headers(init?.headers).get("if-none-match")).toBe(
+        'W/"events"'
+      );
+      return new Response(null, {
+        headers: { etag: 'W/"events"', "X-Poll-Interval": "60" },
+        status: 304,
+      });
+    };
+
+    const startedAt = Date.now();
+    const collected = await collectGitHubEvents(
+      "f0rr0",
+      "token",
+      "12",
+      'W/"events"'
+    );
+    expect(collected).toMatchObject({
+      etag: 'W/"events"',
+      events: [],
+      gap: null,
+      latestEventId: "12",
+      notModified: true,
+    });
+    expect(collected.nextPollAt.getTime()).toBeGreaterThanOrEqual(
+      startedAt + 59_000
+    );
+  });
+
   test("collects a real sparse pull request event without poisoning its page", async () => {
     globalThis.fetch = async () =>
-      Response.json([
+      githubEventResponse([
         {
           actor: { login: "f0rr0" },
           created_at: "2026-08-26T12:03:00Z",
@@ -926,7 +1058,7 @@ describe("bounded event collection", () => {
 
   test("stops at the saved checkpoint without replaying it", async () => {
     globalThis.fetch = async () =>
-      Response.json([
+      githubEventResponse([
         accountEvent("12"),
         accountEvent("11"),
         accountEvent("10"),
@@ -940,7 +1072,7 @@ describe("bounded event collection", () => {
 
   test("records the bounded feed discontinuity and keeps available events", async () => {
     globalThis.fetch = async () =>
-      Response.json([
+      githubEventResponse([
         accountEvent("12"),
         accountEvent("11"),
         accountEvent("9"),
@@ -953,9 +1085,66 @@ describe("bounded event collection", () => {
     });
     expect(collected.latestEventId).toBe("12");
   });
+
+  test("rejects a missing or malformed provider poll interval", async () => {
+    globalThis.fetch = async () => Response.json([accountEvent("12")]);
+    expect(collectGitHubEvents("f0rr0", "token", null)).rejects.toBeInstanceOf(
+      TypeError
+    );
+  });
+
+  test("applies the cron deadline to every Events page", async () => {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      return githubEventResponse([]);
+    };
+
+    await expect(
+      collectGitHubEvents("f0rr0", "token", null, null, {
+        deadlineAt: Date.now() - 1,
+      })
+    ).rejects.toBeInstanceOf(GitHubRequestDeadlineError);
+    expect(calls).toBe(0);
+  });
 });
 
 describe("GitHub request deferral", () => {
+  test("fails before a provider call when its absolute deadline has passed", async () => {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      return Response.json({});
+    };
+
+    await expect(
+      fetchGitHub(githubApiUrl("/user"), {
+        deadlineAt: Date.now() - 1,
+        token: "token",
+      })
+    ).rejects.toBeInstanceOf(GitHubRequestDeadlineError);
+    expect(calls).toBe(0);
+  });
+
+  test("aborts an in-flight provider call at its absolute deadline", async () => {
+    let calls = 0;
+    globalThis.fetch = async (_input, init) => {
+      calls += 1;
+      await delay(60_000, undefined, { signal: init.signal });
+      return Response.json({});
+    };
+
+    const startedAt = Date.now();
+    await expect(
+      fetchGitHub(githubApiUrl("/user"), {
+        deadlineAt: startedAt + 50,
+        token: "token",
+      })
+    ).rejects.toBeInstanceOf(GitHubRequestDeadlineError);
+    expect(calls).toBe(1);
+    expect(Date.now() - startedAt).toBeLessThan(1000);
+  });
+
   test("does not immediately retry a rate-limited request", async () => {
     let calls = 0;
     globalThis.fetch = async () => {
@@ -997,6 +1186,85 @@ describe("GitHub request deferral", () => {
     expect(caught).toBeInstanceOf(GitHubResponseError);
     expect(caught).toMatchObject({ retryable: true, status: 403 });
     expect(caught.retryAt.toISOString()).toBe("2033-05-18T03:33:20.000Z");
+  });
+
+  test("defers a headerless secondary-limit response for at least one minute", async () => {
+    globalThis.fetch = async () =>
+      Response.json(
+        {
+          documentation_url:
+            "https://docs.github.com/rest/using-the-rest-api/rate-limits-for-the-rest-api#about-secondary-rate-limits",
+          message: "You have exceeded a secondary rate limit.",
+        },
+        { status: 403 }
+      );
+    const startedAt = Date.now();
+    let caught;
+    try {
+      await fetchGitHub(githubApiUrl("/user"), { token: "token" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(GitHubResponseError);
+    expect(caught).toMatchObject({ retryable: true, status: 403 });
+    expect(caught.retryAt.getTime()).toBeGreaterThanOrEqual(startedAt + 59_000);
+  });
+
+  test("keeps a real permission 403 terminal", async () => {
+    globalThis.fetch = async () =>
+      Response.json(
+        {
+          documentation_url:
+            "https://docs.github.com/rest/repos/repos#get-a-repository",
+          message: "Resource not accessible by personal access token",
+        },
+        { status: 403 }
+      );
+    let caught;
+    try {
+      await fetchGitHub(githubApiUrl("/user"), { token: "token" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(GitHubResponseError);
+    expect(caught).toMatchObject({
+      retryAt: null,
+      retryable: false,
+      status: 403,
+    });
+  });
+
+  test("fails closed when a 403 error body exceeds the inspection bound", async () => {
+    globalThis.fetch = async () =>
+      Response.json(
+        { message: `${"x".repeat(17_000)} secondary rate limit` },
+        { status: 403 }
+      );
+    let caught;
+    try {
+      await fetchGitHub(githubApiUrl("/user"), { token: "token" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({
+      retryAt: null,
+      retryable: false,
+      status: 403,
+    });
+  });
+
+  test("gives a headerless 429 a usable retry time", async () => {
+    globalThis.fetch = async () =>
+      Response.json({ message: "Too many requests" }, { status: 429 });
+    const startedAt = Date.now();
+    let caught;
+    try {
+      await fetchGitHub(githubApiUrl("/user"), { token: "token" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({ retryable: true, status: 429 });
+    expect(caught.retryAt.getTime()).toBeGreaterThanOrEqual(startedAt + 59_000);
   });
 
   test("allows authenticated GraphQL query POSTs", async () => {

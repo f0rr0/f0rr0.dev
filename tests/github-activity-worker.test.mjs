@@ -4,6 +4,7 @@ import {
   boundedWorkerLimit,
   DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE,
   exactGitHubDiffDigest,
+  githubActivityRetryAt,
   githubCommitActivityOccurredAt,
   githubPullRequestSnapshotDisposition,
   githubPrReconciliationCutoff,
@@ -134,11 +135,11 @@ describe("GitHub exact diff digest", () => {
 describe("GitHub activity worker bounds", () => {
   test("accepts only deliberately small batches", () => {
     expect(DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE).toBe(4);
-    expect(MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE).toBe(16);
+    expect(MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE).toBe(8);
     expect(boundedWorkerLimit()).toBe(4);
-    expect(boundedWorkerLimit(16)).toBe(16);
+    expect(boundedWorkerLimit(8)).toBe(8);
     expect(() => boundedWorkerLimit(0)).toThrow("batch size");
-    expect(() => boundedWorkerLimit(17)).toThrow("batch size");
+    expect(() => boundedWorkerLimit(9)).toThrow("batch size");
     expect(workerBatchSizeFrom(null)).toBeUndefined();
     expect(workerBatchSizeFrom("8")).toBe(8);
     expect(workerBatchSizeFrom("9")).toBeNull();
@@ -166,15 +167,44 @@ describe("GitHub activity worker bounds", () => {
     ).toBe("2026-08-28T15:00:00.000Z");
   });
 
-  test("applies the bounded PR reconciliation horizon", () => {
-    expect(GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS).toBe(30);
+  test("keeps open PR reconciliation unbounded with age-aware cadence", () => {
+    expect(GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS).toBe(Infinity);
     const now = new Date("2026-08-28T12:00:00.000Z");
-    expect(githubPrReconciliationCutoff(30, now)?.toISOString()).toBe(
-      "2026-07-29T12:00:00.000Z"
-    );
+    expect(githubPrReconciliationCutoff(Infinity, now)).toBeNull();
     expect(
       githubPrReconciliationCutoff(Number.MAX_SAFE_INTEGER, now)
     ).toBeNull();
+    expect(
+      nextGitHubPullRequestReconciliationAt(
+        "open",
+        now,
+        new Date("2026-06-01T00:00:00.000Z")
+      )?.toISOString()
+    ).toBe("2026-08-29T12:00:00.000Z");
+    expect(
+      nextGitHubPullRequestReconciliationAt(
+        "open",
+        now,
+        new Date("2025-01-01T00:00:00.000Z")
+      )?.toISOString()
+    ).toBe("2026-09-04T12:00:00.000Z");
+  });
+
+  test("backs off repeated transient work with a provider-aware cap", () => {
+    const now = new Date("2026-08-28T12:00:00.000Z");
+    expect(githubActivityRetryAt(1, now).toISOString()).toBe(
+      "2026-08-28T12:15:00.000Z"
+    );
+    expect(githubActivityRetryAt(20, now).toISOString()).toBe(
+      "2026-08-29T12:00:00.000Z"
+    );
+    expect(
+      githubActivityRetryAt(
+        1,
+        now,
+        new Date("2026-08-28T14:00:00.000Z")
+      ).toISOString()
+    ).toBe("2026-08-28T14:00:00.000Z");
   });
 
   test("keeps a one-shot summary unpublished while canonicalization is dirty", () => {

@@ -4,19 +4,79 @@ import {
   trackedGitHubAccountFrom,
 } from "@/lib/github-commits-core";
 import type { TrackedGitHubAccount } from "@/lib/github-commits-core";
-import type { GitHubBackfillWindow } from "@/lib/github-commits-store";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const MAXIMUM_BACKFILL_DAYS = 366;
-const WINDOW_DAYS = 31;
 const MINIMUM_GITHUB_DATE = Date.UTC(1970, 0, 1);
-const MAXIMUM_GITHUB_DATE = Date.UTC(2099, 11, 13);
+const MAXIMUM_GITHUB_DATE = Date.UTC(2099, 11, 31);
+
+export const GITHUB_BACKFILL_WORKER_BATCH_SIZE = 8;
+
+interface GitHubBackfillWorkerStageCounts {
+  claimed: number;
+  completed: number;
+  deferred: number;
+  failed: number;
+  unavailable: number;
+}
+
+interface GitHubBackfillWorkerPassCounts {
+  aliases: number;
+  commits: GitHubBackfillWorkerStageCounts;
+  observations: GitHubBackfillWorkerStageCounts;
+  pullRequestDiscovery: GitHubBackfillWorkerStageCounts;
+  pullRequests: GitHubBackfillWorkerStageCounts;
+  pullRequestSignals: GitHubBackfillWorkerStageCounts;
+  summaries: GitHubBackfillWorkerStageCounts;
+}
+
+export interface GitHubBackfillProcessingCounts {
+  aliases: number;
+  claimed: number;
+  deferred: number;
+  failed: number;
+  processed: number;
+  unavailable: number;
+}
 
 type JsonObject = Record<string, unknown>;
 
 const isObject = (value: unknown): value is JsonObject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+export const githubBackfillProcessingCountsFrom = (
+  result: GitHubBackfillWorkerPassCounts
+): GitHubBackfillProcessingCounts => {
+  const counts: GitHubBackfillProcessingCounts = {
+    aliases: result.aliases,
+    claimed: 0,
+    deferred: 0,
+    failed: 0,
+    processed: 0,
+    unavailable: 0,
+  };
+  const stages = [
+    result.observations,
+    result.commits,
+    result.pullRequestDiscovery,
+    result.pullRequestSignals,
+    result.pullRequests,
+    result.summaries,
+  ];
+  for (const stage of stages) {
+    counts.claimed += stage.claimed;
+    counts.deferred += stage.deferred;
+    counts.processed += stage.completed;
+    counts.unavailable += stage.unavailable;
+    // Worker stages include deferred and unavailable items in `failed`.
+    // Report those outcomes once so the final counts remain disjoint.
+    counts.failed += Math.max(
+      0,
+      stage.failed - stage.deferred - stage.unavailable
+    );
+  }
+  return counts;
+};
 
 const utcDayFrom = (value: unknown) => {
   if (typeof value !== "string" || !DATE_PATTERN.test(value)) {
@@ -33,8 +93,9 @@ export interface GitHubBackfillRequest {
   accounts: readonly TrackedGitHubAccount[];
   endDate: string;
   repositoryId: string | null;
+  sinceAt: Date;
   startDate: string;
-  windows: readonly GitHubBackfillWindow[];
+  untilAt: Date;
 }
 
 interface NormalizedGitHubBackfillInput {
@@ -84,36 +145,16 @@ const normalizedGitHubBackfillInputFrom = (
 };
 
 const githubBackfillRequestFor = (
-  input: Pick<NormalizedGitHubBackfillInput, "accounts" | "repositoryId"> & {
-    endDay: Date;
-    startAt: Date;
-  }
+  input: NormalizedGitHubBackfillInput
 ): GitHubBackfillRequest => {
   const { accounts, endDay, repositoryId, startAt } = input;
-
-  const windows: GitHubBackfillWindow[] = [];
-  const rangeEndExclusive = endDay.getTime() + DAY_MS;
-  for (
-    let cursor = startAt.getTime();
-    cursor < rangeEndExclusive;
-    cursor += WINDOW_DAYS * DAY_MS
-  ) {
-    const windowEndExclusive = Math.min(
-      cursor + WINDOW_DAYS * DAY_MS,
-      rangeEndExclusive
-    );
-    windows.push({
-      sinceAt: new Date(cursor),
-      untilAt: new Date(windowEndExclusive - 1),
-    });
-  }
-
   return {
     accounts,
     endDate: endDay.toISOString().slice(0, 10),
     repositoryId,
+    sinceAt: startAt,
     startDate: startAt.toISOString().slice(0, 10),
-    windows,
+    untilAt: new Date(endDay.getTime() + DAY_MS - 1),
   };
 };
 
@@ -125,68 +166,5 @@ export const githubBackfillRequestFrom = (
   if (input === null) {
     return null;
   }
-  const dayCount =
-    (input.endDay.getTime() - input.startAt.getTime()) / DAY_MS + 1;
-  return dayCount > MAXIMUM_BACKFILL_DAYS
-    ? null
-    : githubBackfillRequestFor(input);
-};
-
-export const githubBackfillRequestSeriesFrom = (
-  value: unknown,
-  now = new Date()
-): readonly GitHubBackfillRequest[] | null => {
-  const input = normalizedGitHubBackfillInputFrom(value, now);
-  if (input === null) {
-    return null;
-  }
-  const requests: GitHubBackfillRequest[] = [];
-  const finalEnd = input.endDay.getTime();
-  for (
-    let start = input.startAt.getTime();
-    start <= finalEnd;
-    start += MAXIMUM_BACKFILL_DAYS * DAY_MS
-  ) {
-    requests.push(
-      githubBackfillRequestFor({
-        accounts: input.accounts,
-        endDay: new Date(
-          Math.min(start + (MAXIMUM_BACKFILL_DAYS - 1) * DAY_MS, finalEnd)
-        ),
-        repositoryId: input.repositoryId,
-        startAt: new Date(start),
-      })
-    );
-  }
-  return requests;
-};
-
-export const splitGitHubBackfillRequest = (
-  request: GitHubBackfillRequest
-): readonly [GitHubBackfillRequest, GitHubBackfillRequest] | null => {
-  const startAt = utcDayFrom(request.startDate);
-  const endDay = utcDayFrom(request.endDate);
-  if (startAt === null || endDay === null) {
-    return null;
-  }
-  const dayCount = (endDay.getTime() - startAt.getTime()) / DAY_MS + 1;
-  if (!Number.isSafeInteger(dayCount) || dayCount <= 1) {
-    return null;
-  }
-  const leftDayCount = Math.floor(dayCount / 2);
-  const rightStartAt = new Date(startAt.getTime() + leftDayCount * DAY_MS);
-  return [
-    githubBackfillRequestFor({
-      accounts: request.accounts,
-      endDay: new Date(rightStartAt.getTime() - DAY_MS),
-      repositoryId: request.repositoryId,
-      startAt,
-    }),
-    githubBackfillRequestFor({
-      accounts: request.accounts,
-      endDay,
-      repositoryId: request.repositoryId,
-      startAt: rightStartAt,
-    }),
-  ];
+  return githubBackfillRequestFor(input);
 };

@@ -4,8 +4,11 @@ import type { PublicCommitEvidence } from "@/lib/github-activity-public-summary"
 
 export const GITHUB_EXACT_DIFF_DIGEST_RECIPE = "github-exact-diff-v2";
 export const DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE = 4;
-export const MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE = 16;
-export const GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS = 30;
+export const MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE = 8;
+export const GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS = Number.POSITIVE_INFINITY;
+
+const DEFAULT_RETRY_DELAY_MS = 15 * 60 * 1000;
+const MAXIMUM_RETRY_DELAY_MS = 24 * 60 * 60 * 1000;
 
 export interface GitHubExactDiffDigest {
   complete: boolean;
@@ -148,6 +151,23 @@ export const boundedWorkerLimit = (
   return selected;
 };
 
+export const githubActivityRetryAt = (
+  attemptCount: number,
+  now: Date,
+  requested: Date | null = null
+) => {
+  if (!Number.isSafeInteger(attemptCount) || attemptCount < 1) {
+    throw new RangeError("The GitHub activity attempt count is invalid.");
+  }
+  const exponent = Math.min(attemptCount - 1, 16);
+  const delay = Math.min(
+    DEFAULT_RETRY_DELAY_MS * 2 ** exponent,
+    MAXIMUM_RETRY_DELAY_MS
+  );
+  const fallback = new Date(now.getTime() + delay);
+  return requested !== null && requested > fallback ? requested : fallback;
+};
+
 export const workerBatchSizeFrom = (
   value: string | null
 ): number | null | undefined => {
@@ -208,12 +228,25 @@ export const githubCommitActivityOccurredAt = (source: {
 export const nextGitHubPullRequestReconciliationAt = (
   state: "closed" | "merged" | "open",
   now: Date,
-  intervalMs = 3 * 60 * 60 * 1000
+  createdAt = now
 ) => {
-  if (!Number.isSafeInteger(intervalMs) || intervalMs < 1) {
-    throw new RangeError("The GitHub PR reconciliation interval is invalid.");
+  if (Number.isNaN(now.getTime()) || Number.isNaN(createdAt.getTime())) {
+    throw new TypeError("The GitHub PR reconciliation time is invalid.");
   }
-  return state === "open" ? new Date(now.getTime() + intervalMs) : null;
+  if (state !== "open") {
+    return null;
+  }
+  const ageDays = Math.max(
+    0,
+    (now.getTime() - createdAt.getTime()) / (24 * 60 * 60 * 1000)
+  );
+  const intervalMs =
+    ageDays <= 30
+      ? 3 * 60 * 60 * 1000
+      : ageDays <= 180
+        ? 24 * 60 * 60 * 1000
+        : 7 * 24 * 60 * 60 * 1000;
+  return new Date(now.getTime() + intervalMs);
 };
 
 export const githubSummaryCanPublish = (input: {

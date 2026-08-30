@@ -1,4 +1,3 @@
-import { env } from "@/env";
 import {
   ActivityProcessingError,
   fetchGitHubActivityCommitSource,
@@ -7,9 +6,8 @@ import {
   fetchGitHubPullRequestSnapshot,
   fetchGitHubPushObservationSource,
   generateValidatedGitHubActivitySummary,
-  GITHUB_ACTIVITY_SUMMARY_MODEL,
+  GitHubGraphQlResponseError,
 } from "@/lib/github-activity-processor";
-import { PUBLIC_COMMIT_SUMMARY_RECIPE } from "@/lib/github-activity-public-summary";
 import {
   boundedWorkerLimit,
   exactGitHubDiffDigest,
@@ -21,29 +19,41 @@ import {
   claimDueGitHubPullRequests,
   claimGitHubCommitsForEnrichment,
   claimGitHubCommitsForPullRequestDiscovery,
+  claimGitHubPullRequestSignals,
   claimGitHubPushObservations,
   claimGitHubSummaryAttempts,
   completeGitHubCommitEnrichment,
   completeGitHubPullRequestDiscovery,
   completeGitHubPullRequestReconciliation,
+  completeGitHubPullRequestSignal,
   completeGitHubPushObservation,
   completeGitHubSummaryAttempt,
   deferGitHubCommitEnrichment,
   deferGitHubPullRequestDiscovery,
   deferGitHubPullRequestReconciliation,
+  deferGitHubPullRequestSignal,
   deferGitHubPushObservation,
   ensureMissingGitHubSummaryAttempts,
-  failGitHubSummaryAttempt,
+  deferGitHubSummaryAttempt,
   markGitHubCommitUnavailable,
   markGitHubPullRequestDiscoveryUnavailable,
+  markGitHubPullRequestSignalUnavailable,
   markGitHubPushObservationUnavailable,
   persistGitHubPullRequestMembership,
   persistGitHubPullRequestSnapshot,
+  releaseGitHubCommitEnrichment,
+  releaseGitHubPullRequestDiscovery,
+  releaseGitHubPullRequestReconciliation,
+  releaseGitHubPullRequestSignal,
+  releaseGitHubPushObservation,
   releaseGitHubSummaryAttempt,
   stopGitHubPullRequestReconciliation,
 } from "@/lib/github-activity-worker-store";
 import type { DueGitHubPullRequest } from "@/lib/github-activity-worker-store";
-import { GitHubResponseError } from "@/lib/github-api";
+import {
+  GitHubRequestDeadlineError,
+  GitHubResponseError,
+} from "@/lib/github-api";
 import { TRACKED_GITHUB_ACCOUNTS } from "@/lib/github-commits-core";
 import type { TrackedGitHubAccount } from "@/lib/github-commits-core";
 import {
@@ -52,7 +62,10 @@ import {
 } from "@/lib/github-commits-store";
 
 const DEFAULT_WORKER_MAXIMUM_DURATION_MS = 90_000;
-const PERMANENT_GITHUB_STATUSES = new Set([404, 410, 422]);
+// A 404 is visibility-dependent on GitHub and must remain recoverable after a
+// token or repository-permission change.
+const PERMANENT_GITHUB_STATUSES = new Set([410, 422]);
+const MINIMUM_TERMINAL_GITHUB_ATTEMPTS = 8;
 
 interface StageResult {
   claimed: number;
@@ -77,6 +90,7 @@ export interface GitHubActivityWorkerResult {
   observations: StageResult;
   pullRequests: StageResult;
   pullRequestDiscovery: StageResult;
+  pullRequestSignals: StageResult;
   summaries: StageResult;
 }
 
@@ -85,10 +99,15 @@ export interface GitHubActivityWorkerOptions {
   maximumDurationMs?: number;
   observationLimit?: number;
   pullRequestDiscoveryLimit?: number;
+  pullRequestLimit?: number;
+  pullRequestSignalLimit?: number;
   summaryLimit?: number;
 }
 
 const errorCode = (error: unknown) => {
+  if (error instanceof GitHubRequestDeadlineError) {
+    return "worker_deadline";
+  }
   if (error instanceof ActivityProcessingError) {
     return error.code;
   }
@@ -99,13 +118,18 @@ const errorCode = (error: unknown) => {
 };
 
 const retryAtFrom = (error: unknown) =>
-  error instanceof GitHubResponseError ? error.retryAt : null;
+  error instanceof GitHubResponseError ||
+  error instanceof GitHubGraphQlResponseError
+    ? error.retryAt
+    : null;
 
-const permanentlyUnavailable = (error: unknown) =>
-  (error instanceof GitHubResponseError &&
-    PERMANENT_GITHUB_STATUSES.has(error.status)) ||
+const permanentlyUnavailable = (error: unknown, attemptCount: number) =>
   (error instanceof ActivityProcessingError &&
-    ["provenance_changed", "source_invalid"].includes(error.code));
+    error.code === "provenance_changed") ||
+  (error instanceof GitHubResponseError &&
+    !error.retryable &&
+    PERMANENT_GITHUB_STATUSES.has(error.status) &&
+    attemptCount >= MINIMUM_TERMINAL_GITHUB_ATTEMPTS);
 
 const activeTrackedAccounts = async () => {
   const accounts: TrackedGitHubAccount[] = [];
@@ -127,6 +151,7 @@ type CommitSource = Awaited<ReturnType<typeof fetchGitHubActivityCommitSource>>;
 
 interface WorkerContext {
   activeAccounts: readonly TrackedGitHubAccount[];
+  deadlineAt: number;
   deadlineReached: () => boolean;
   sourceCache: Map<string, CommitSource>;
 }
@@ -146,21 +171,22 @@ const processObservations = async (
   result.claimed = claimed.length;
   for (const observation of claimed) {
     if (context.deadlineReached()) {
-      await deferGitHubPushObservation(
-        observation,
-        "worker_deadline",
-        new Date()
-      );
+      await releaseGitHubPushObservation(observation);
       result.deferred += 1;
       continue;
     }
     try {
-      const source = await fetchGitHubPushObservationSource(observation);
+      const source = await fetchGitHubPushObservationSource(observation, {
+        deadlineAt: context.deadlineAt,
+      });
       await completeGitHubPushObservation(observation, source);
       result.completed += 1;
     } catch (error) {
       const code = errorCode(error);
-      if (permanentlyUnavailable(error)) {
+      if (error instanceof GitHubRequestDeadlineError) {
+        await releaseGitHubPushObservation(observation);
+        result.deferred += 1;
+      } else if (permanentlyUnavailable(error, observation.attemptCount)) {
         await markGitHubPushObservationUnavailable(observation, code);
         result.unavailable += 1;
       } else {
@@ -187,12 +213,14 @@ const processCommits = async (
   result.claimed = claimed.length;
   for (const commit of claimed) {
     if (context.deadlineReached()) {
-      await deferGitHubCommitEnrichment(commit, "worker_deadline", new Date());
+      await releaseGitHubCommitEnrichment(commit);
       result.deferred += 1;
       continue;
     }
     try {
-      const source = await fetchGitHubActivityCommitSource(commit);
+      const source = await fetchGitHubActivityCommitSource(commit, {
+        deadlineAt: context.deadlineAt,
+      });
       const hydrated = await completeGitHubCommitEnrichment(
         commit,
         source,
@@ -206,7 +234,10 @@ const processCommits = async (
       }
     } catch (error) {
       const code = errorCode(error);
-      if (permanentlyUnavailable(error)) {
+      if (error instanceof GitHubRequestDeadlineError) {
+        await releaseGitHubCommitEnrichment(commit);
+        result.deferred += 1;
+      } else if (permanentlyUnavailable(error, commit.attemptCount)) {
         await markGitHubCommitUnavailable(commit, code);
         result.unavailable += 1;
       } else {
@@ -233,16 +264,14 @@ const processPullRequestDiscovery = async (
   result.claimed = claimed.length;
   for (const commit of claimed) {
     if (context.deadlineReached()) {
-      await deferGitHubPullRequestDiscovery(
-        commit,
-        "worker_deadline",
-        new Date()
-      );
+      await releaseGitHubPullRequestDiscovery(commit);
       result.deferred += 1;
       continue;
     }
     try {
-      const pullRequests = await fetchGitHubAssociatedPullRequests(commit);
+      const pullRequests = await fetchGitHubAssociatedPullRequests(commit, {
+        deadlineAt: context.deadlineAt,
+      });
       if (await completeGitHubPullRequestDiscovery(commit, pullRequests)) {
         result.completed += 1;
       } else {
@@ -250,7 +279,10 @@ const processPullRequestDiscovery = async (
       }
     } catch (error) {
       const code = errorCode(error);
-      if (permanentlyUnavailable(error)) {
+      if (error instanceof GitHubRequestDeadlineError) {
+        await releaseGitHubPullRequestDiscovery(commit);
+        result.deferred += 1;
+      } else if (permanentlyUnavailable(error, commit.attemptCount)) {
         await markGitHubPullRequestDiscoveryUnavailable(commit, code);
         result.unavailable += 1;
       } else {
@@ -260,6 +292,53 @@ const processPullRequestDiscovery = async (
     }
   }
   result.failed += result.deferred + result.unavailable;
+};
+
+const processPullRequestSignals = async (
+  context: WorkerContext,
+  limit: number,
+  result: StageResult
+) => {
+  if (context.deadlineReached()) {
+    return;
+  }
+  const claimed = await claimGitHubPullRequestSignals(
+    limit,
+    context.activeAccounts
+  );
+  result.claimed = claimed.length;
+  for (const signal of claimed) {
+    if (context.deadlineReached()) {
+      await releaseGitHubPullRequestSignal(signal);
+      result.deferred += 1;
+      continue;
+    }
+    try {
+      const snapshot = await fetchGitHubPullRequestSnapshot(signal, {
+        deadlineAt: context.deadlineAt,
+      });
+      await persistGitHubPullRequestSnapshot(
+        signal.account,
+        snapshot.pullRequest,
+        { refreshMembership: true }
+      );
+      await completeGitHubPullRequestSignal(signal);
+      result.completed += 1;
+    } catch (error) {
+      const code = errorCode(error);
+      if (error instanceof GitHubRequestDeadlineError) {
+        await releaseGitHubPullRequestSignal(signal);
+        result.deferred += 1;
+      } else if (permanentlyUnavailable(error, signal.attemptCount)) {
+        await markGitHubPullRequestSignalUnavailable(signal, code);
+        result.unavailable += 1;
+      } else {
+        await deferGitHubPullRequestSignal(signal, code, retryAtFrom(error));
+        result.deferred += 1;
+      }
+    }
+  }
+  result.failed = result.deferred + result.unavailable;
 };
 
 const reconcilePullRequest = async (
@@ -272,11 +351,16 @@ const reconcilePullRequest = async (
     repository: due.repository,
     repositoryId: due.repositoryId,
   };
-  const snapshot = await fetchGitHubPullRequestSnapshot(reference);
+  const snapshot = await fetchGitHubPullRequestSnapshot(reference, {
+    deadlineAt: context.deadlineAt,
+  });
   const stored = await persistGitHubPullRequestSnapshot(
     due.account,
     snapshot.pullRequest,
-    { refreshMembership: observedSinceLastReconciliation(due) }
+    {
+      reconciliationLeaseUntil: due.leaseUntil,
+      refreshMembership: observedSinceLastReconciliation(due),
+    }
   );
   if (stored === null) {
     throw new ActivityProcessingError(
@@ -284,10 +368,22 @@ const reconcilePullRequest = async (
       "A newer GitHub pull request observation is already stored."
     );
   }
+  if (stored.retryLifecycleReset) {
+    due.attemptCount = 1;
+    due.priorAttemptCount = 0;
+    due.priorErrorCode = null;
+  }
   if (stored.membershipRefreshRequired) {
     const membership = await fetchGitHubPullRequestMembership(
       reference,
-      snapshot.expectedCommitCount
+      snapshot.expectedCommitCount,
+      {
+        commitRepository:
+          snapshot.pullRequest.headRepository ??
+          snapshot.pullRequest.baseRepository,
+        deadlineAt: context.deadlineAt,
+        expectedHeadSha: snapshot.pullRequest.headSha,
+      }
     );
     const complete = await persistGitHubPullRequestMembership(
       stored,
@@ -302,40 +398,69 @@ const reconcilePullRequest = async (
       );
     }
   }
-  await completeGitHubPullRequestReconciliation(due, snapshot.pullRequest);
+  if (
+    !(await completeGitHubPullRequestReconciliation(due, snapshot.pullRequest))
+  ) {
+    throw new ActivityProcessingError(
+      "claim_stale",
+      "The GitHub pull request reconciliation claim is no longer current."
+    );
+  }
 };
 
 const processPullRequests = async (
   context: WorkerContext,
+  limit: number,
   result: StageResult
 ) => {
-  for (const account of context.activeAccounts) {
-    if (context.deadlineReached()) {
-      break;
-    }
-    const duePullRequests = await claimDueGitHubPullRequests(
-      account,
-      GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS,
-      25
-    );
-    result.claimed += duePullRequests.length;
-    for (const due of duePullRequests) {
-      if (context.deadlineReached()) {
-        await deferGitHubPullRequestReconciliation(due, new Date());
-        result.deferred += 1;
-        continue;
+  const duePullRequests: DueGitHubPullRequest[] = [];
+  let claimedInRound = true;
+  while (
+    duePullRequests.length < limit &&
+    claimedInRound &&
+    !context.deadlineReached()
+  ) {
+    claimedInRound = false;
+    for (const account of context.activeAccounts) {
+      if (duePullRequests.length >= limit || context.deadlineReached()) {
+        break;
       }
-      try {
-        await reconcilePullRequest(context, due);
-        result.completed += 1;
-      } catch (error) {
-        if (permanentlyUnavailable(error)) {
-          await stopGitHubPullRequestReconciliation(due);
-          result.unavailable += 1;
-        } else {
-          await deferGitHubPullRequestReconciliation(due, retryAtFrom(error));
-          result.deferred += 1;
-        }
+      const [due] = await claimDueGitHubPullRequests(
+        account,
+        GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS,
+        1
+      );
+      if (due !== undefined) {
+        duePullRequests.push(due);
+        claimedInRound = true;
+      }
+    }
+  }
+  result.claimed = duePullRequests.length;
+  for (const due of duePullRequests) {
+    if (context.deadlineReached()) {
+      await releaseGitHubPullRequestReconciliation(due);
+      result.deferred += 1;
+      continue;
+    }
+    try {
+      await reconcilePullRequest(context, due);
+      result.completed += 1;
+    } catch (error) {
+      const code = errorCode(error);
+      if (error instanceof GitHubRequestDeadlineError) {
+        await releaseGitHubPullRequestReconciliation(due);
+        result.deferred += 1;
+      } else if (permanentlyUnavailable(error, due.attemptCount)) {
+        await stopGitHubPullRequestReconciliation(due, code);
+        result.unavailable += 1;
+      } else {
+        await deferGitHubPullRequestReconciliation(
+          due,
+          code,
+          retryAtFrom(error)
+        );
+        result.deferred += 1;
       }
     }
   }
@@ -347,10 +472,7 @@ const processSummaries = async (
   limit: number,
   result: StageResult
 ) => {
-  if (
-    context.deadlineReached() ||
-    (env.OPENAI_API_KEY?.trim().length ?? 0) === 0
-  ) {
+  if (context.deadlineReached()) {
     return;
   }
   const claimed = await claimGitHubSummaryAttempts(
@@ -368,18 +490,22 @@ const processSummaries = async (
       const cacheKey = `${attempt.repositoryId}:${attempt.sha}`;
       const source =
         context.sourceCache.get(cacheKey) ??
-        (await fetchGitHubActivityCommitSource(attempt));
+        (await fetchGitHubActivityCommitSource(attempt, {
+          deadlineAt: context.deadlineAt,
+        }));
       if (context.deadlineReached()) {
         await releaseGitHubSummaryAttempt(attempt);
         result.deferred += 1;
         continue;
       }
-      const generated = await generateValidatedGitHubActivitySummary(source);
+      const generated = await generateValidatedGitHubActivitySummary(source, {
+        deadlineAt: context.deadlineAt,
+      });
       const completed = await completeGitHubSummaryAttempt(attempt, {
         headline: generated.summary.headline,
         inputHash: generated.inputHash,
-        model: GITHUB_ACTIVITY_SUMMARY_MODEL,
-        recipe: PUBLIC_COMMIT_SUMMARY_RECIPE,
+        model: generated.model,
+        recipe: generated.recipe,
         short: generated.summary.short,
       });
       if (completed) {
@@ -388,11 +514,17 @@ const processSummaries = async (
         result.failed += 1;
       }
     } catch (error) {
-      await failGitHubSummaryAttempt(attempt, errorCode(error));
-      result.failed += 1;
+      await (error instanceof GitHubRequestDeadlineError
+        ? releaseGitHubSummaryAttempt(attempt)
+        : deferGitHubSummaryAttempt(
+            attempt,
+            errorCode(error),
+            retryAtFrom(error)
+          ));
+      result.deferred += 1;
     }
   }
-  result.failed += result.deferred;
+  result.failed = result.deferred + result.unavailable;
 };
 
 export const runGitHubActivityWorker = async (
@@ -402,6 +534,10 @@ export const runGitHubActivityWorker = async (
   const observationLimit = boundedWorkerLimit(options.observationLimit);
   const pullRequestDiscoveryLimit = boundedWorkerLimit(
     options.pullRequestDiscoveryLimit
+  );
+  const pullRequestLimit = boundedWorkerLimit(options.pullRequestLimit);
+  const pullRequestSignalLimit = boundedWorkerLimit(
+    options.pullRequestSignalLimit
   );
   const summaryLimit = boundedWorkerLimit(options.summaryLimit);
   const maximumDurationMs =
@@ -421,21 +557,28 @@ export const runGitHubActivityWorker = async (
   const commits = emptyStageResult();
   const pullRequests = emptyStageResult();
   const pullRequestDiscovery = emptyStageResult();
+  const pullRequestSignals = emptyStageResult();
   const summaries = emptyStageResult();
   const context: WorkerContext = {
     activeAccounts: await activeTrackedAccounts(),
+    deadlineAt: startedAt + maximumDurationMs,
     deadlineReached,
     sourceCache: new Map(),
   };
 
   await processObservations(context, observationLimit, observations);
   await processCommits(context, commitLimit, commits);
+  await processPullRequestSignals(
+    context,
+    pullRequestSignalLimit,
+    pullRequestSignals
+  );
   await processPullRequestDiscovery(
     context,
     pullRequestDiscoveryLimit,
     pullRequestDiscovery
   );
-  await processPullRequests(context, pullRequests);
+  await processPullRequests(context, pullRequestLimit, pullRequests);
   const aliases = context.deadlineReached()
     ? 0
     : await canonicalizePendingGitHubActivities(8);
@@ -451,6 +594,7 @@ export const runGitHubActivityWorker = async (
     observations,
     pullRequests,
     pullRequestDiscovery,
+    pullRequestSignals,
     summaries,
   };
 };

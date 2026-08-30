@@ -10,6 +10,7 @@ import {
   githubPublicActivities,
   githubPullRequestMemberships,
   githubPullRequests,
+  githubPullRequestSignals,
   githubPullRequestVersions,
   githubPushObservationCommits,
   githubPushObservations,
@@ -57,7 +58,29 @@ describe("GitHub activity persistence schema", () => {
     expect(githubAccountCheckpoints.gapState.default).toBe("clear");
     expect(githubAccountCheckpoints.refBackfillSinceAt.hasDefault).toBe(true);
     expect(githubAccountCheckpoints.refBackfillSinceAt.notNull).toBe(true);
+    expect(githubAccountCheckpoints.eventsEtag.name).toBe("events_etag");
+    expect(githubAccountCheckpoints.eventsNextPollAt.name).toBe(
+      "events_next_poll_at"
+    );
+    expect(githubAccountCheckpoints.headRefNextPage.name).toBe(
+      "head_ref_next_page"
+    );
+    expect(githubAccountCheckpoints.tagRefNextPage.name).toBe(
+      "tag_ref_next_page"
+    );
+    expect(checkNames(githubAccountCheckpoints)).toEqual(
+      expect.arrayContaining([
+        "github_account_checkpoints_ref_leases",
+        "github_account_checkpoints_ref_scans",
+      ])
+    );
     expect(getTableName(githubRepositories)).toBe("github_repositories");
+    expect(githubRepositories.headsLastReconciledAt.name).toBe(
+      "heads_last_reconciled_at"
+    );
+    expect(githubRepositories.tagsLastReconciledAt.name).toBe(
+      "tags_last_reconciled_at"
+    );
     expect(getTableName(githubPushObservations)).toBe(
       "github_push_observations"
     );
@@ -119,9 +142,18 @@ describe("GitHub activity persistence schema", () => {
     );
     expect(githubPullRequests.lastReconciledAt.name).toBe("last_reconciled_at");
     expect(githubPullRequests.nextReconcileAt.name).toBe("next_reconcile_at");
+    expect(githubPullRequests.mergeShaVerifiedAt.name).toBe(
+      "merge_sha_verified_at"
+    );
     expect(githubPullRequests.reconcileUntil).toBeUndefined();
     expect(indexNames(githubPullRequests)).toContain(
       "github_pull_requests_reconciliation_idx"
+    );
+    expect(checkNames(githubPullRequests)).toEqual(
+      expect.arrayContaining([
+        "github_pull_requests_nonnegative_attempts",
+        "github_pull_requests_verified_merge_sha",
+      ])
     );
   });
 
@@ -187,6 +219,7 @@ describe("GitHub activity persistence schema", () => {
       githubPushObservations,
       githubPushObservationCommits,
       githubPullRequests,
+      githubPullRequestSignals,
       githubPullRequestVersions,
       githubPullRequestMemberships,
       githubIssues,

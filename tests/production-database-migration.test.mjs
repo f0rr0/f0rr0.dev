@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  shouldConfigureSupabaseCronForProduction,
+  supabaseCronSiteUrlFrom,
+  supabaseCronUrlsFrom,
+} from "../scripts/configure-supabase-cron.ts";
+import {
   ProductionMigrationConfigurationError,
   productionMigrationDatabaseUrl,
   shouldApplyProductionMigrations,
@@ -21,6 +26,42 @@ describe("production migration environment", () => {
         VERCEL_ENV: "preview",
       })
     ).toBe(false);
+    expect(
+      shouldConfigureSupabaseCronForProduction({
+        VERCEL: "1",
+        VERCEL_ENV: "production",
+      })
+    ).toBe(true);
+    expect(
+      shouldConfigureSupabaseCronForProduction({
+        VERCEL: "1",
+        VERCEL_ENV: "preview",
+      })
+    ).toBe(false);
+  });
+});
+
+describe("production Supabase cron URLs", () => {
+  test("uses Vercel's production hostname without a managed site URL", () => {
+    expect(
+      supabaseCronSiteUrlFrom({
+        VERCEL_PROJECT_PRODUCTION_URL: "f0rr0.dev",
+      })
+    ).toBe("https://f0rr0.dev");
+    expect(supabaseCronSiteUrlFrom({})).toBe("https://f0rr0.dev");
+  });
+
+  test("builds every bounded production endpoint from the site URL", () => {
+    expect(supabaseCronUrlsFrom("https://f0rr0.dev")).toEqual({
+      events: "https://f0rr0.dev/api/cron/github-sync",
+      headRefs:
+        "https://f0rr0.dev/api/cron/github-refs?kind=head&repositories=8",
+      tagRefs: "https://f0rr0.dev/api/cron/github-refs?kind=tag&repositories=8",
+      worker: "https://f0rr0.dev/api/cron/github-worker",
+    });
+    expect(() => supabaseCronUrlsFrom("http://localhost:3000")).toThrow(
+      "HTTPS"
+    );
   });
 });
 

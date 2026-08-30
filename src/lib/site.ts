@@ -1,7 +1,7 @@
 import { resumeData } from "@/content/resume";
 import { env } from "@/env";
+import { CANONICAL_SITE_URL } from "@/lib/site-url";
 
-const CANONICAL_SITE_URL = "https://f0rr0.dev";
 const [currentExperience] = resumeData.experience;
 const [currentRole] = currentExperience?.roles ?? [];
 const foundedExperience = resumeData.experience.find((experience) =>
@@ -31,10 +31,6 @@ const withProtocol = (value: string) => {
 };
 
 const resolveSiteUrl = () => {
-  if (env.SITE_URL !== undefined && env.SITE_URL !== "") {
-    return withProtocol(env.SITE_URL);
-  }
-
   if (env.NODE_ENV === "development") {
     const devPort = env.PORT ?? env.NEXT_PUBLIC_PORT ?? "3000";
     return `http://localhost:${devPort}`;

@@ -3,7 +3,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   collectAccessibleGitHubRepositories,
   collectGitHubRepositoryRefs,
-  hydrateSparseGitHubPullRequestEvents,
 } from "../src/lib/github-reconciliation.ts";
 
 const originalFetch = globalThis.fetch;
@@ -69,35 +68,29 @@ describe("GitHub repository reconciliation", () => {
     ]);
   });
 
-  test("enumerates heads and peels annotated tags to commit SHAs", async () => {
+  test("uses branch and repository-tag commit targets without tag peeling", async () => {
     const headSha = "a".repeat(40);
-    const tagSha = "b".repeat(40);
     const taggedCommitSha = "c".repeat(40);
     const paths = [];
     globalThis.fetch = async (input) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
-      paths.push(url.pathname);
-      if (url.pathname.endsWith("/git/matching-refs/heads/")) {
+      paths.push(`${url.pathname}?${url.searchParams.toString()}`);
+      if (url.pathname.endsWith("/branches")) {
         return Response.json([
           {
-            object: { sha: headSha, type: "commit" },
-            ref: "refs/heads/main",
+            commit: { sha: headSha },
+            name: "main",
           },
         ]);
       }
-      if (url.pathname.endsWith("/git/matching-refs/tags/")) {
+      if (url.pathname.endsWith("/tags")) {
         return Response.json([
           {
-            object: { sha: tagSha, type: "tag" },
-            ref: "refs/tags/v1.0.0",
+            commit: { sha: taggedCommitSha },
+            name: "v1.0.0",
           },
         ]);
-      }
-      if (url.pathname.endsWith(`/git/tags/${tagSha}`)) {
-        return Response.json({
-          object: { sha: taggedCommitSha, type: "commit" },
-        });
       }
       throw new Error(`Unexpected GitHub path: ${url.pathname}`);
     };
@@ -113,75 +106,45 @@ describe("GitHub repository reconciliation", () => {
       ]
     );
     expect(paths).toEqual([
-      "/repos/example-org/example-repo/git/matching-refs/heads/",
-      "/repos/example-org/example-repo/git/matching-refs/tags/",
-      `/repos/example-org/example-repo/git/tags/${tagSha}`,
+      "/repos/example-org/example-repo/branches?per_page=100&page=1",
+      "/repos/example-org/example-repo/tags?per_page=100&page=1",
     ]);
   });
-});
 
-describe("sparse PullRequestEvent hydration", () => {
-  const event = {
-    id: "123456789",
-    issue: null,
-    occurredAt: "2026-08-29T10:00:00.000Z",
-    pullRequest: null,
-    pullRequestSignal: {
-      action: "opened",
-      number: 7,
-      repository: {
-        fullName: repositoryFacts.fullName,
-        id: repositoryFacts.id,
-      },
-    },
-    push: null,
-  };
-
-  test("hydrates an unknown sparse event before its checkpoint advances", async () => {
-    const headSha = "d".repeat(40);
-    const baseSha = "e".repeat(40);
+  test("follows every branch page without imposing a completeness cap", async () => {
+    const firstSha = "d".repeat(40);
+    const secondSha = "e".repeat(40);
+    const pages = [];
     globalThis.fetch = async (input) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
-      expect(url.pathname).toBe("/repos/example-org/example-repo/pulls/7");
-      return Response.json({
-        base: { ref: "main", repo: repository, sha: baseSha },
-        body: "Adds credit billing.",
-        closed_at: null,
-        created_at: "2026-08-29T09:00:00Z",
-        draft: false,
-        head: { ref: "credit-billing", repo: repository, sha: headSha },
-        html_url: "https://github.com/example-org/example-repo/pull/7",
-        id: 789,
-        merge_commit_sha: null,
-        merged: false,
-        merged_at: null,
-        node_id: "PR_example",
-        number: 7,
-        state: "open",
-        title: "Add credit billing",
-        updated_at: "2026-08-29T10:00:00Z",
-        user: { id: 101, login: "f0rr0" },
-      });
+      pages.push(`${url.pathname}:${url.searchParams.get("page")}`);
+      if (
+        url.pathname.endsWith("/branches") &&
+        url.searchParams.get("page") === "1"
+      ) {
+        return Response.json([{ commit: { sha: firstSha }, name: "first" }], {
+          headers: {
+            link: `<https://api.github.com/repos/example-org/example-repo/branches?per_page=100&page=2>; rel="next"`,
+          },
+        });
+      }
+      if (url.pathname.endsWith("/branches")) {
+        return Response.json([{ commit: { sha: secondSha }, name: "second" }]);
+      }
+      return Response.json([]);
     };
 
-    const [hydrated] = await hydrateSparseGitHubPullRequestEvents(
-      [event],
-      "token"
+    expect(await collectGitHubRepositoryRefs(repositoryFacts, "token")).toEqual(
+      [
+        { headSha: firstSha, kind: "head", refName: "refs/heads/first" },
+        { headSha: secondSha, kind: "head", refName: "refs/heads/second" },
+      ]
     );
-    expect(hydrated.pullRequest).toMatchObject({
-      authorAccount: "f0rr0",
-      nodeId: "PR_example",
-      number: 7,
-      title: "Add credit billing",
-    });
-    expect(hydrated.pullRequestSignal).toBeUndefined();
-  });
-
-  test("retains an inaccessible signal so known-PR reconciliation can still run", async () => {
-    globalThis.fetch = async () => new Response(null, { status: 404 });
-    expect(
-      await hydrateSparseGitHubPullRequestEvents([event], "token")
-    ).toEqual([event]);
+    expect(pages).toEqual([
+      "/repos/example-org/example-repo/branches:1",
+      "/repos/example-org/example-repo/branches:2",
+      "/repos/example-org/example-repo/tags:1",
+    ]);
   });
 });
