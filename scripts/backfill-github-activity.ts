@@ -42,6 +42,13 @@ interface BackfillArguments {
   startDate: string;
 }
 
+interface BackfillEnvironment {
+  CRON_SECRET?: string;
+  DATABASE_URL?: string;
+  GITHUB_F0RR0_TOKEN?: string;
+  GITHUB_YUPPIESTECHDEV_TOKEN?: string;
+}
+
 const argumentValues = (arguments_: readonly string[]) => {
   const allowed = new Set([
     "account",
@@ -106,18 +113,27 @@ export const backfillArgumentsFrom = (
   };
 };
 
-const requireEnvironment = (input: BackfillArguments) => {
-  if (env.DATABASE_URL === undefined) {
+export const requireBackfillEnvironment = (
+  input: BackfillArguments,
+  environment: BackfillEnvironment = env
+) => {
+  if (environment.DATABASE_URL === undefined) {
     throw new Error("DATABASE_URL is not configured.");
+  }
+  if ((environment.CRON_SECRET?.trim().length ?? 0) < 32) {
+    throw new Error("CRON_SECRET must contain at least 32 characters.");
   }
   const accounts =
     input.account === "all" ? ["f0rr0", "yuppiestechdev"] : [input.account];
-  if (accounts.includes("f0rr0") && env.GITHUB_F0RR0_TOKEN === undefined) {
+  if (
+    accounts.includes("f0rr0") &&
+    environment.GITHUB_F0RR0_TOKEN === undefined
+  ) {
     throw new Error("GITHUB_F0RR0_TOKEN is not configured.");
   }
   if (
     accounts.includes("yuppiestechdev") &&
-    env.GITHUB_YUPPIESTECHDEV_TOKEN === undefined
+    environment.GITHUB_YUPPIESTECHDEV_TOKEN === undefined
   ) {
     throw new Error("GITHUB_YUPPIESTECHDEV_TOKEN is not configured.");
   }
@@ -344,7 +360,7 @@ const runScopedAudits = async (
 
 const main = async () => {
   const input = backfillArgumentsFrom(process.argv.slice(2));
-  requireEnvironment(input);
+  requireBackfillEnvironment(input);
   const request = githubBackfillRequestFrom(requestValue(input));
   if (request === null) {
     throw new TypeError(

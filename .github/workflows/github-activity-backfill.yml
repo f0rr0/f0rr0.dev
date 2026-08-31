@@ -55,6 +55,7 @@ jobs:
       - name: Discover history and process work
         env:
           ACCOUNT: ${{ inputs.account }}
+          CRON_SECRET: ${{ secrets.ACTIVITY_CRON_SECRET }}
           DATABASE_URL: ${{ secrets.ACTIVITY_DATABASE_URL }}
           END_DATE: ${{ inputs.end_date }}
           GITHUB_F0RR0_TOKEN: ${{ secrets.ACTIVITY_F0RR0_TOKEN }}
