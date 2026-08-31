@@ -1446,6 +1446,15 @@ const pushObservationSourceWithToken = async (
     if (!sourceBecameIncomplete || !hasCompleteDurablePushEvidence(row)) {
       throw error;
     }
+    if (
+      row.knownShas.length > MAXIMUM_DURABLE_PUSH_COMMIT_FALLBACK &&
+      (error instanceof GitHubGraphQlResponseError ||
+        (error instanceof GitHubResponseError && error.status === 404))
+    ) {
+      // Preserve provider error typing so another configured token can still
+      // read a private comparison and retryable GraphQL metadata is not lost.
+      throw error;
+    }
     const values = await durablePushCommitValuesWithToken(row, token, options);
     return sourceFromValues(values);
   }

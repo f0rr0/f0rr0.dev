@@ -696,11 +696,119 @@ describe("GitHub activity commit acquisition", () => {
         repository: "example-org/example-repo",
         repositoryId: "123",
       })
-    ).rejects.toMatchObject({ code: "source_incomplete" });
+    ).rejects.toMatchObject({ status: 404 });
 
     expect(paths).toEqual([
       `/repos/example-org/example-repo/compare/${beforeSha}...${afterSha}`,
     ]);
+  });
+
+  test("lets another token settle an over-cap exact comparison", async () => {
+    const beforeSha = "f".repeat(40);
+    const knownShas = Array.from({ length: 101 }, (_, index) =>
+      (index + 1).toString(16).padStart(40, "0")
+    );
+    const afterSha = knownShas.at(-1);
+    let calls = 0;
+    env.GITHUB_F0RR0_TOKEN = "first-token";
+    env.GITHUB_YUPPIESTECHDEV_TOKEN = "second-token";
+    globalThis.fetch = async () => {
+      calls += 1;
+      if (calls === 1) {
+        return new Response(null, { status: 404 });
+      }
+      return Response.json({
+        ahead_by: knownShas.length,
+        commits: knownShas.map((sha) => pushCommitValue(sha, "f0rr0", 100)),
+        total_commits: knownShas.length,
+      });
+    };
+
+    const source = await fetchGitHubPushObservationSource({
+      account: "f0rr0",
+      afterSha,
+      beforeSha,
+      expectedCommitCount: knownShas.length,
+      historySinceAt: new Date("2026-08-18T00:00:00.000Z"),
+      knownShas,
+      observedAt: new Date("2026-08-28T12:34:00.000Z"),
+      refName: "refs/heads/main",
+      repository: "example-org/example-repo",
+      repositoryId: "123",
+    });
+
+    expect(calls).toBe(2);
+    expect(source.commitShas).toEqual(knownShas);
+  });
+
+  test("turns an over-cap comparison conflict into a bounded evidence gap", async () => {
+    const knownShas = Array.from({ length: 101 }, (_, index) =>
+      (index + 1).toString(16).padStart(40, "0")
+    );
+    const afterSha = knownShas.at(-1);
+    let calls = 0;
+    env.GITHUB_F0RR0_TOKEN = "test-token";
+    globalThis.fetch = async () => {
+      calls += 1;
+      return new Response(null, { status: 409 });
+    };
+
+    await expect(
+      fetchGitHubPushObservationSource({
+        account: "f0rr0",
+        afterSha,
+        beforeSha: "f".repeat(40),
+        expectedCommitCount: knownShas.length,
+        historySinceAt: new Date("2026-08-18T00:00:00.000Z"),
+        knownShas,
+        observedAt: new Date("2026-08-28T12:34:00.000Z"),
+        refName: "refs/heads/main",
+        repository: "example-org/example-repo",
+        repositoryId: "123",
+      })
+    ).rejects.toMatchObject({ code: "source_incomplete" });
+
+    expect(calls).toBe(1);
+  });
+
+  test("preserves retryable GraphQL metadata for an over-cap exact new branch", async () => {
+    const knownShas = Array.from({ length: 101 }, (_, index) =>
+      (index + 1).toString(16).padStart(40, "0")
+    );
+    const afterSha = knownShas.at(-1);
+    env.GITHUB_F0RR0_TOKEN = "test-token";
+    globalThis.fetch = async () =>
+      Response.json(
+        {
+          errors: [
+            {
+              extensions: { code: "RATE_LIMITED" },
+              message: "rate limited",
+            },
+          ],
+        },
+        { headers: { "retry-after": "120" } }
+      );
+
+    await expect(
+      fetchGitHubPushObservationSource({
+        account: "f0rr0",
+        afterSha,
+        beforeSha: "0".repeat(40),
+        expectedCommitCount: knownShas.length,
+        historySinceAt: new Date("2026-08-18T00:00:00.000Z"),
+        knownShas,
+        observedAt: new Date("2026-08-28T12:34:00.000Z"),
+        refName: "refs/heads/main",
+        repository: "example-org/example-repo",
+        repositoryId: "123",
+      })
+    ).rejects.toMatchObject({
+      code: "source_incomplete",
+      kind: "rate_limited",
+      retryable: true,
+      retryAt: expect.any(Date),
+    });
   });
 
   test("bounds a new branch by the observed count without slicing history", async () => {
