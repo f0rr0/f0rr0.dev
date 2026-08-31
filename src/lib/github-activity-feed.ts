@@ -16,12 +16,12 @@ const emptyPage = (): PublicGitHubActivityPage => ({
 });
 
 const readCachedActivity = unstable_cache(
-  async (cursor: GitHubActivityCursor | null) =>
+  async (cursor: GitHubActivityCursor) =>
     await readPublicGitHubActivityPage(
       cursor,
       PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
     ),
-  ["public-github-activity-v12"],
+  ["public-github-activity-v13"],
   { revalidate: 900, tags: ["github-activity"] }
 );
 
@@ -29,7 +29,10 @@ export const getInitialGitHubActivity = async () => {
   if (!isDatabaseConfigured()) {
     return emptyPage();
   }
-  return await readCachedActivity(null);
+  return await readPublicGitHubActivityPage(
+    null,
+    PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
+  );
 };
 
 export const getGitHubActivityPage = async (cursor: GitHubActivityCursor) => {

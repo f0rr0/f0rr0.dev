@@ -1,3 +1,4 @@
+import type { GitHubActivityAuditStatus } from "@/lib/github-activity-audit";
 import {
   repositoryIdFrom,
   TRACKED_GITHUB_ACCOUNTS,
@@ -7,10 +8,67 @@ import type { TrackedGitHubAccount } from "@/lib/github-commits-core";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const MAXIMUM_BACKFILL_DAYS = 31;
+const MAXIMUM_BROAD_BACKFILL_LOOKBACK_DAYS = 62;
 const MINIMUM_GITHUB_DATE = Date.UTC(1970, 0, 1);
 const MAXIMUM_GITHUB_DATE = Date.UTC(2099, 11, 31);
 
 export const GITHUB_BACKFILL_WORKER_BATCH_SIZE = 8;
+
+export interface GitHubBackfillCompletion {
+  complete: boolean;
+  pipelineSettled: boolean;
+}
+
+export type GitHubBackfillOutcome =
+  | "complete"
+  | "completed_with_gaps"
+  | "incomplete";
+
+export const githubBackfillDiscoveryCompleteFrom = (
+  inventories: readonly {
+    direct: { complete: boolean } | null;
+    pullRequests: { complete: boolean };
+  }[]
+) =>
+  inventories.length > 0 &&
+  inventories.every(
+    ({ direct, pullRequests }) =>
+      direct?.complete === true && pullRequests.complete
+  );
+
+export const githubBackfillCompletionFrom = (input: {
+  auditStatuses: readonly GitHubActivityAuditStatus[];
+  boundedDiscoveryComplete: boolean;
+}): GitHubBackfillCompletion => {
+  const pipelineSettled =
+    input.auditStatuses.length > 0 &&
+    input.auditStatuses.every(
+      (status) => status === "stored_projection_verified"
+    );
+  return {
+    complete: input.boundedDiscoveryComplete && pipelineSettled,
+    pipelineSettled,
+  };
+};
+
+export const githubBackfillExitCodeFrom = (
+  completion: GitHubBackfillCompletion
+) => (completion.complete ? 0 : 1);
+
+export const githubBackfillOutcomeFrom = (
+  completion: GitHubBackfillCompletion,
+  coverageGaps: number
+): GitHubBackfillOutcome => {
+  if (!Number.isSafeInteger(coverageGaps) || coverageGaps < 0) {
+    throw new RangeError("The GitHub backfill coverage gap count is invalid.");
+  }
+  return completion.complete
+    ? coverageGaps === 0
+      ? "complete"
+      : "completed_with_gaps"
+    : "incomplete";
+};
 
 interface GitHubBackfillWorkerStageCounts {
   claimed: number;
@@ -38,6 +96,10 @@ export interface GitHubBackfillProcessingCounts {
   processed: number;
   unavailable: number;
 }
+
+export const githubBackfillProcessingMadeProgress = (
+  counts: Pick<GitHubBackfillProcessingCounts, "aliases" | "claimed">
+) => counts.claimed > 0 || counts.aliases > 0;
 
 type JsonObject = Record<string, unknown>;
 
@@ -126,6 +188,10 @@ const normalizedGitHubBackfillInputFrom = (
   ) {
     return null;
   }
+  const dayCount = (endDay.getTime() - startAt.getTime()) / DAY_MS + 1;
+  if (dayCount > MAXIMUM_BACKFILL_DAYS) {
+    return null;
+  }
   const account =
     value.account === "all" ? "all" : trackedGitHubAccountFrom(value.account);
   if (account === null) {
@@ -138,6 +204,13 @@ const normalizedGitHubBackfillInputFrom = (
   const repositoryId =
     rawRepositoryId.length === 0 ? null : repositoryIdFrom(rawRepositoryId);
   if (rawRepositoryId.length > 0 && repositoryId === null) {
+    return null;
+  }
+  const lookbackDays = (today.getTime() - startAt.getTime()) / DAY_MS + 1;
+  if (
+    repositoryId === null &&
+    lookbackDays > MAXIMUM_BROAD_BACKFILL_LOOKBACK_DAYS
+  ) {
     return null;
   }
 

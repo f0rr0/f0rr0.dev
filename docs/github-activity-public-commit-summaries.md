@@ -175,17 +175,20 @@ revision.
 Completed rows appear in pages of complete UTC days: five days by default, with
 a server maximum of 14. The opaque cursor carries the prior page's UTC-day
 boundary and original snapshot timestamp, so an older page cannot include work
-published after the first page. Pagination never splits one day across pages.
+published after the first page. Each page is read in one read-only repeatable-
+read transaction; later canonicalization can still remove or regroup work
+between cursor requests because historical projection versions are not stored.
+Pagination never splits one day across pages.
 
 Canonical commits with the same primary GitHub PR and UTC day render as one PR
 slice containing their individual headlines/disclosures. A PR spanning several
 days produces one slice per day. Each repository appears under one header per
 day, ordered by its newest visible activity, with its standalone commits, PR
 slices, and issues nested beneath it. Stored multi-parent merge commits are
-omitted from summary generation and the timeline. PR merge outcomes contribute
-to the daily totals without producing separate timeline entries. Daily totals
-include repositories, additions, deletions, merged PRs, and opened issues;
-proven aliases and omitted merge commits do not add duplicate churn.
+omitted from summary generation and the timeline. A PR merge is association and
+deduplication evidence, not a second unit of public work. Daily totals include
+repositories, additions, deletions, and opened issues; proven aliases and
+omitted merge commits do not add duplicate churn.
 
 Language logos use version-pinned Simple Icons SVGs from the npm distribution.
 Repository owner avatars and durable repository/PR display facts come from the

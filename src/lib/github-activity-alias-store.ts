@@ -4,6 +4,8 @@ import type { getDatabase } from "@/db/client";
 import {
   githubCommits,
   githubPublicActivities,
+  githubPullRequestMemberships,
+  githubPullRequestVersions,
   githubSummaryAttempts,
 } from "@/db/schema";
 
@@ -18,20 +20,8 @@ type DatabaseTransaction = Parameters<
  */
 export const invalidateGitHubPullRequestDerivedAliases = async (
   transaction: DatabaseTransaction,
-  pullRequestNodeId: string,
-  repositoryIds: readonly (string | null | undefined)[]
+  pullRequestNodeId: string
 ) => {
-  const affectedRepositoryIds = [
-    ...new Set(
-      repositoryIds.filter(
-        (repositoryId): repositoryId is string =>
-          repositoryId !== null && repositoryId !== undefined
-      )
-    ),
-  ];
-  if (affectedRepositoryIds.length === 0) {
-    return 0;
-  }
   const resetActivities = await transaction
     .update(githubPublicActivities)
     .set({
@@ -44,7 +34,6 @@ export const invalidateGitHubPullRequestDerivedAliases = async (
     .where(
       and(
         eq(githubPublicActivities.kind, "commit"),
-        inArray(githubPublicActivities.repositoryId, affectedRepositoryIds),
         isNotNull(githubPublicActivities.canonicalPublicId),
         sql`${githubPublicActivities.aliasEvidence} ->> 'pullRequestNodeId' = ${pullRequestNodeId}`
       )
@@ -77,9 +66,27 @@ export const invalidateGitHubPullRequestDerivedAliases = async (
         )
       );
   }
-  await transaction
-    .update(githubCommits)
-    .set({ canonicalizedAt: null })
-    .where(inArray(githubCommits.repositoryId, affectedRepositoryIds));
+  if (resetActivities.length > 0) {
+    await transaction
+      .update(githubCommits)
+      .set({ canonicalizedAt: null })
+      .where(
+        inArray(
+          githubCommits.activityPublicId,
+          resetActivities.map(({ publicId }) => publicId)
+        )
+      );
+  }
+  await transaction.update(githubCommits).set({ canonicalizedAt: null })
+    .where(sql<boolean>`EXISTS (
+      SELECT 1
+      FROM ${githubPullRequestMemberships}
+      INNER JOIN ${githubPullRequestVersions}
+        ON ${githubPullRequestVersions.id} = ${githubPullRequestMemberships.versionId}
+      WHERE ${githubPullRequestVersions.pullRequestNodeId} = ${pullRequestNodeId}
+        AND ${githubPullRequestVersions.membershipComplete} = true
+        AND ${githubPullRequestMemberships.commitRepositoryId} = ${githubCommits.repositoryId}
+        AND ${githubPullRequestMemberships.commitSha} = ${githubCommits.sha}
+    )`);
   return resetActivities.length;
 };

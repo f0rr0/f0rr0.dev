@@ -477,16 +477,6 @@ function DayTotals({ day }: Readonly<{ day: PublicGitHubActivityDay }>) {
           value={`−${countFormatter.format(totals.deletions)}`}
         />
       )}
-      {totals.pullRequestsMerged === 0 ? null : (
-        <DayTotal
-          label={
-            totals.pullRequestsMerged === 1
-              ? "pull request merged"
-              : "pull requests merged"
-          }
-          value={countFormatter.format(totals.pullRequestsMerged)}
-        />
-      )}
       {totals.issuesOpened === 0 ? null : (
         <DayTotal
           label={totals.issuesOpened === 1 ? "issue opened" : "issues opened"}

@@ -27,6 +27,7 @@ const DEADLINE_MARGIN_MS = 30_000;
 const GITHUB_PAGE_SIZE = 100;
 const PERSISTENCE_BATCH_SIZE = 1000;
 const RATE_LIMIT_RESET_PADDING_MS = 1000;
+const PERMANENT_RESOURCE_STATUSES = new Set([403, 404, 410, 422]);
 
 type JsonObject = Record<string, unknown>;
 
@@ -43,6 +44,11 @@ const repositoryApiPath = (repository: string, suffix: string) => {
 
 const deadlineReached = (deadlineAt: number) =>
   Date.now() + DEADLINE_MARGIN_MS >= deadlineAt;
+
+const permanentlyUnavailableResource = (error: unknown) =>
+  error instanceof GitHubResponseError &&
+  !error.retryable &&
+  PERMANENT_RESOURCE_STATUSES.has(error.status);
 
 const withRateLimitWait = async <Value>(
   operation: () => Promise<Value>,
@@ -250,6 +256,7 @@ export interface GitHubDirectBackfillResult {
   repositories: number;
   retryAt: Date | null;
   stopReason: GitHubDirectBackfillStopReason;
+  unavailableRepositories: number;
   uniqueCommits: number;
 }
 
@@ -264,6 +271,7 @@ const emptyResult = (): GitHubDirectBackfillResult => ({
   repositories: 0,
   retryAt: null,
   stopReason: "complete",
+  unavailableRepositories: 0,
   uniqueCommits: 0,
 });
 
@@ -323,7 +331,7 @@ export const backfillGitHubCommitsFromCurrentRefs = async (input: {
         await collectAccessibleGitHubRepositories(
           input.token,
           input.repositoryId,
-          { deadlineAt: input.deadlineAt }
+          { deadlineAt: input.deadlineAt, pushedSinceAt: input.sinceAt }
         ),
       input
     );
@@ -331,33 +339,51 @@ export const backfillGitHubCommitsFromCurrentRefs = async (input: {
       if (deadlineReached(input.deadlineAt)) {
         throw new GitHubRequestDeadlineError();
       }
-      const refs = await withRateLimitWait(
-        async () =>
-          await collectGitHubRepositoryRefs(repository, input.token, {
-            deadlineAt: input.deadlineAt,
-          }),
-        input
-      );
+      let refs: readonly GitHubRepositoryRefSnapshot[] | null;
+      try {
+        refs = await withRateLimitWait(
+          async () =>
+            await collectGitHubRepositoryRefs(repository, input.token, {
+              deadlineAt: input.deadlineAt,
+            }),
+          input
+        );
+      } catch (error) {
+        if (permanentlyUnavailableResource(error)) {
+          result.unavailableRepositories += 1;
+          continue;
+        }
+        throw error;
+      }
       if (refs === null) {
-        await flush();
-        return {
-          ...result,
-          complete: false,
-          stopReason: "provider_retry",
-        };
+        result.unavailableRepositories += 1;
+        continue;
       }
       result.repositories += 1;
       result.refs += refs.length;
       const distinctHeads = distinctGitHubCurrentRefHeads(refs);
+      let repositoryHasUnavailableHead = false;
       for (const { headSha } of distinctHeads) {
         if (deadlineReached(input.deadlineAt)) {
           throw new GitHubRequestDeadlineError();
         }
-        const page = await collectGitHubCommitsFromHead({
-          ...input,
-          headSha,
-          repository,
-        });
+        let page: Awaited<ReturnType<typeof collectGitHubCommitsFromHead>>;
+        try {
+          page = await collectGitHubCommitsFromHead({
+            ...input,
+            headSha,
+            repository,
+          });
+        } catch (error) {
+          if (permanentlyUnavailableResource(error)) {
+            if (!repositoryHasUnavailableHead) {
+              repositoryHasUnavailableHead = true;
+              result.unavailableRepositories += 1;
+            }
+            continue;
+          }
+          throw error;
+        }
         result.heads += 1;
         result.pages += page.pages;
         for (const commit of page.commits) {

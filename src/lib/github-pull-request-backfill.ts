@@ -43,6 +43,7 @@ const PULL_REQUEST_PROCESSING_BATCH_SIZE = 10;
 const DEADLINE_MARGIN_MS = 30_000;
 const RATE_LIMIT_RESET_PADDING_MS = 1000;
 const AUTHORED_PULL_REQUEST_PAGE_SIZE = 100;
+const PERMANENT_RESOURCE_STATUSES = new Set([403, 404, 410, 422]);
 
 const AUTHORED_PULL_REQUESTS_QUERY = `query AuthoredPullRequests($login: String!, $cursor: String, $pageSize: Int!) {
   user(login: $login) {
@@ -50,7 +51,7 @@ const AUTHORED_PULL_REQUESTS_QUERY = `query AuthoredPullRequests($login: String!
     pullRequests(
       first: $pageSize
       after: $cursor
-      orderBy: { field: CREATED_AT, direction: DESC }
+      orderBy: { field: UPDATED_AT, direction: DESC }
     ) {
       totalCount
       nodes {
@@ -235,7 +236,8 @@ export const mergeGitHubPullRequestBackfillCandidates = (
  * Independently enumerates PRs authored by the tracked account. Unlike
  * `/user/repos`, this connection includes PRs whose base is an unrelated
  * public repository. The cursor is intentionally unbounded; total and unique
- * progress checks make a mutable or incomplete connection fail closed.
+ * progress checks make a mutable or incomplete connection fail closed. The
+ * updated-time ordering lets a bounded history run stop at its lower bound.
  */
 // oxlint-disable eslint/complexity -- Every page, identity, count, progress, and cursor invariant fails closed independently.
 export const collectGitHubAuthoredPullRequestBackfillCandidates =
@@ -243,13 +245,20 @@ export const collectGitHubAuthoredPullRequestBackfillCandidates =
     account: TrackedGitHubAccount;
     deadlineAt: number;
     token: string;
+    updatedSinceAt: Date;
   }): Promise<GitHubAuthoredPullRequestBackfillCandidateCollection> => {
+    if (Number.isNaN(input.updatedSinceAt.getTime())) {
+      throw new RangeError(
+        "The GitHub authored pull request activity cutoff is invalid."
+      );
+    }
     const candidates = new Map<string, GitHubPullRequestBackfillCandidate>();
     const visitedCursors = new Set<string>();
     let cursor: string | null = null;
     let expectedTotal: number | null = null;
     let pages = 0;
     let observedNodes = 0;
+    let previousUpdatedAt = Number.POSITIVE_INFINITY;
 
     while (true) {
       if (deadlineReached(input.deadlineAt)) {
@@ -297,9 +306,31 @@ export const collectGitHubAuthoredPullRequestBackfillCandidates =
       const pageCandidates = nodes.map((node) =>
         authoredPullRequestCandidateFrom(node, input.account)
       );
-      mergeGitHubPullRequestBackfillCandidates(candidates, pageCandidates);
+      let reachedCutoff = false;
+      for (const candidate of pageCandidates) {
+        const updatedAt = new Date(candidate.providerUpdatedAt).getTime();
+        if (updatedAt > previousUpdatedAt) {
+          throw new TypeError(
+            "GitHub returned authored pull requests outside descending updated order."
+          );
+        }
+        previousUpdatedAt = updatedAt;
+        if (updatedAt < input.updatedSinceAt.getTime()) {
+          reachedCutoff = true;
+          continue;
+        }
+        mergeGitHubPullRequestBackfillCandidates(candidates, [candidate]);
+      }
       observedNodes += nodes.length;
       pages += 1;
+
+      if (reachedCutoff) {
+        return {
+          pages,
+          pullRequests: [...candidates.values()],
+          totalCount: expectedTotal,
+        };
+      }
 
       if (!pageInfo.hasNextPage) {
         if (
@@ -397,10 +428,10 @@ const validateNextPullRequestPage = (
   const numericPath = `/repositories/${encodeURIComponent(repository.id)}/pulls`;
   if (
     (next.pathname !== namedPath && next.pathname !== numericPath) ||
-    next.searchParams.get("direction") !== "asc" ||
+    next.searchParams.get("direction") !== "desc" ||
     next.searchParams.get("page") !== String(currentPage + 1) ||
     next.searchParams.get("per_page") !== String(GITHUB_PAGE_SIZE) ||
-    next.searchParams.get("sort") !== "created" ||
+    next.searchParams.get("sort") !== "updated" ||
     next.searchParams.get("state") !== "all" ||
     next.searchParams.size !== 5
   ) {
@@ -408,25 +439,29 @@ const validateNextPullRequestPage = (
   }
 };
 
-/** Enumerates every PR because Git commit timestamps can be arbitrary. */
+/** Enumerates PRs changed since the requested history window began. */
 export const collectGitHubPullRequestBackfillCandidates = async (input: {
   account: TrackedGitHubAccount;
   deadlineAt: number;
   onRateLimitWait?: (retryAt: Date) => void;
   repository: GitHubRepositoryFacts;
   token: string;
+  updatedSinceAt: Date;
 }): Promise<GitHubPullRequestBackfillCandidateCollection> => {
+  if (Number.isNaN(input.updatedSinceAt.getTime())) {
+    throw new RangeError("The GitHub pull request activity cutoff is invalid.");
+  }
   let url: URL | null = githubApiUrl(
     repositoryApiPath(input.repository.fullName, "/pulls")
   );
-  url.searchParams.set("direction", "asc");
+  url.searchParams.set("direction", "desc");
   url.searchParams.set("page", "1");
   url.searchParams.set("per_page", String(GITHUB_PAGE_SIZE));
-  url.searchParams.set("sort", "created");
+  url.searchParams.set("sort", "updated");
   url.searchParams.set("state", "all");
   const pullRequests = new Map<string, GitHubPullRequestBackfillCandidate>();
   const visited = new Set<string>();
-  let previousCreatedAt = Number.NEGATIVE_INFINITY;
+  let previousUpdatedAt = Number.POSITIVE_INFINITY;
   let page = 1;
 
   while (url !== null) {
@@ -451,18 +486,23 @@ export const collectGitHubPullRequestBackfillCandidates = async (input: {
       throw new TypeError("GitHub returned an invalid pull request page.");
     }
 
+    let reachedCutoff = false;
     for (const value of payload) {
       const parsed = pullRequestCandidateFromListValue(value, input);
       if (parsed === null) {
         throw new TypeError("GitHub returned an invalid pull request page.");
       }
-      const createdAt = new Date(parsed.createdAt).getTime();
-      if (createdAt < previousCreatedAt) {
+      const updatedAt = new Date(parsed.candidate.providerUpdatedAt).getTime();
+      if (updatedAt > previousUpdatedAt) {
         throw new TypeError(
-          "GitHub returned pull requests outside ascending created order."
+          "GitHub returned pull requests outside descending updated order."
         );
       }
-      previousCreatedAt = createdAt;
+      previousUpdatedAt = updatedAt;
+      if (updatedAt < input.updatedSinceAt.getTime()) {
+        reachedCutoff = true;
+        continue;
+      }
       const { candidate } = parsed;
       const existing = pullRequests.get(candidate.nodeId);
       if (
@@ -473,6 +513,9 @@ export const collectGitHubPullRequestBackfillCandidates = async (input: {
         throw new TypeError("GitHub returned conflicting pull requests.");
       }
       pullRequests.set(candidate.nodeId, candidate);
+    }
+    if (reachedCutoff) {
+      return { complete: true, pullRequests: [...pullRequests.values()] };
     }
     const next = nextGitHubPage(response);
     if (next !== null) {
@@ -491,7 +534,7 @@ export type GitHubPullRequestBackfillStopReason =
 
 export interface GitHubPullRequestBackfillResult {
   authoredPullRequestPages: number;
-  authoredPullRequests: number;
+  authoredPullRequestsLifetime: number;
   commits: number;
   complete: boolean;
   duplicateCommits: number;
@@ -500,8 +543,11 @@ export interface GitHubPullRequestBackfillResult {
   repositories: number;
   retryAt: Date | null;
   scannedPullRequests: number;
+  selectedAuthoredPullRequests: number;
   skippedPullRequests: number;
   stopReason: GitHubPullRequestBackfillStopReason;
+  unavailablePullRequests: number;
+  unavailableRepositories: number;
 }
 
 interface PreparedPullRequest {
@@ -512,7 +558,7 @@ interface PreparedPullRequest {
 
 const emptyResult = (): GitHubPullRequestBackfillResult => ({
   authoredPullRequestPages: 0,
-  authoredPullRequests: 0,
+  authoredPullRequestsLifetime: 0,
   commits: 0,
   complete: true,
   duplicateCommits: 0,
@@ -521,12 +567,33 @@ const emptyResult = (): GitHubPullRequestBackfillResult => ({
   repositories: 0,
   retryAt: null,
   scannedPullRequests: 0,
+  selectedAuthoredPullRequests: 0,
   skippedPullRequests: 0,
   stopReason: "complete",
+  unavailablePullRequests: 0,
+  unavailableRepositories: 0,
 });
 
 const isDeadlineError = (error: unknown) =>
   error instanceof GitHubRequestDeadlineError;
+
+const permanentlyUnavailableResource = (error: unknown) =>
+  error instanceof GitHubResponseError &&
+  !error.retryable &&
+  PERMANENT_RESOURCE_STATUSES.has(error.status);
+
+const pullRequestEvidenceIsUnavailable = (error: unknown) => {
+  if (permanentlyUnavailableResource(error)) {
+    return true;
+  }
+  if (error instanceof GitHubGraphQlResponseError) {
+    return !error.retryable || error.kind === "unresolved_merge_commit";
+  }
+  return (
+    error instanceof ActivityProcessingError &&
+    (error.code === "source_incomplete" || error.code === "source_invalid")
+  );
+};
 
 const withinInclusiveWindow = (
   commit: GitHubCommit,
@@ -543,23 +610,12 @@ export const githubPullRequestBelongsInBackfillWindow = (input: {
   pullRequest: Pick<GitHubPullRequest, "authorAccount" | "mergedAt">;
   sinceAt: Date;
   untilAt: Date;
-}) => {
-  const mergedAt =
-    input.pullRequest.mergedAt === null
-      ? null
-      : new Date(input.pullRequest.mergedAt);
-  return (
-    input.commits.some(
-      (commit) =>
-        commit.author === input.account &&
-        withinInclusiveWindow(commit, input.sinceAt, input.untilAt)
-    ) ||
-    (input.pullRequest.authorAccount === input.account &&
-      mergedAt !== null &&
-      mergedAt >= input.sinceAt &&
-      mergedAt <= input.untilAt)
+}) =>
+  input.commits.some(
+    (commit) =>
+      commit.author === input.account &&
+      withinInclusiveWindow(commit, input.sinceAt, input.untilAt)
   );
-};
 
 const withResolvedMergeCommits = async (
   prepared: readonly PreparedPullRequest[],
@@ -655,6 +711,24 @@ const persistPreparedPullRequests = async (
       result.memberships += 1;
     }
     result.pullRequests += 1;
+  }
+};
+
+const persistPreparedPullRequestsWithGaps = async (
+  prepared: readonly PreparedPullRequest[],
+  account: TrackedGitHubAccount,
+  result: GitHubPullRequestBackfillResult
+) => {
+  for (const item of prepared) {
+    try {
+      await persistPreparedPullRequests([item], account, result);
+    } catch (error) {
+      if (pullRequestEvidenceIsUnavailable(error)) {
+        result.unavailablePullRequests += 1;
+        continue;
+      }
+      throw error;
+    }
   }
 };
 
@@ -788,6 +862,10 @@ const processPullRequestCandidates = async (
           interrupted = { reason: "deadline", retryAt: null };
           break;
         }
+        if (pullRequestEvidenceIsUnavailable(error)) {
+          result.unavailablePullRequests += 1;
+          continue;
+        }
         const retry = providerRetryFrom(error);
         if (retry !== null) {
           interrupted = {
@@ -803,13 +881,13 @@ const processPullRequestCandidates = async (
     const unmerged = prepared.filter(
       ({ snapshot }) => !snapshot.pullRequest.merged
     );
-    await persistPreparedPullRequests(unmerged, input.account, result);
+    await persistPreparedPullRequestsWithGaps(unmerged, input.account, result);
     const merged = prepared.filter(
       ({ snapshot }) => snapshot.pullRequest.merged
     );
     if (merged.length > 0) {
       try {
-        await persistPreparedPullRequests(
+        await persistPreparedPullRequestsWithGaps(
           await withProviderRetryWait(
             async () =>
               await withResolvedMergeCommits(
@@ -826,11 +904,47 @@ const processPullRequestCandidates = async (
         if (isDeadlineError(error)) {
           return { reason: "deadline", retryAt: null };
         }
-        const retry = providerRetryFrom(error);
-        if (retry !== null) {
-          return { reason: "provider_retry", retryAt: retry.retryAt };
+        if (pullRequestEvidenceIsUnavailable(error)) {
+          for (const item of merged) {
+            try {
+              await persistPreparedPullRequestsWithGaps(
+                await withProviderRetryWait(
+                  async () =>
+                    await withResolvedMergeCommits(
+                      [item],
+                      input.token,
+                      input.deadlineAt
+                    ),
+                  input
+                ),
+                input.account,
+                result
+              );
+            } catch (candidateError) {
+              if (isDeadlineError(candidateError)) {
+                return { reason: "deadline", retryAt: null };
+              }
+              if (pullRequestEvidenceIsUnavailable(candidateError)) {
+                result.unavailablePullRequests += 1;
+                continue;
+              }
+              const candidateRetry = providerRetryFrom(candidateError);
+              if (candidateRetry !== null) {
+                return {
+                  reason: "provider_retry",
+                  retryAt: candidateRetry.retryAt,
+                };
+              }
+              throw candidateError;
+            }
+          }
+        } else {
+          const retry = providerRetryFrom(error);
+          if (retry !== null) {
+            return { reason: "provider_retry", retryAt: retry.retryAt };
+          }
+          throw error;
         }
-        throw error;
       }
     }
     if (interrupted !== null) {
@@ -865,7 +979,7 @@ export const backfillGitHubPullRequests = async (input: {
         await collectAccessibleGitHubRepositories(
           input.token,
           input.repositoryId,
-          { deadlineAt: input.deadlineAt }
+          { deadlineAt: input.deadlineAt, pushedSinceAt: input.sinceAt }
         ),
       input
     );
@@ -892,11 +1006,13 @@ export const backfillGitHubPullRequests = async (input: {
             account: input.account,
             deadlineAt: input.deadlineAt,
             token: input.token,
+            updatedSinceAt: input.sinceAt,
           }),
         input
       );
       result.authoredPullRequestPages = authored.pages;
-      result.authoredPullRequests = authored.totalCount;
+      result.authoredPullRequestsLifetime = authored.totalCount;
+      result.selectedAuthoredPullRequests = authored.pullRequests.length;
       mergeGitHubPullRequestBackfillCandidates(
         authoredCandidates,
         authored.pullRequests
@@ -953,12 +1069,31 @@ export const backfillGitHubPullRequests = async (input: {
             onRateLimitWait: input.onRateLimitWait,
             repository,
             token: input.token,
+            updatedSinceAt: input.sinceAt,
           }),
         input
       );
     } catch (error) {
       if (isDeadlineError(error)) {
         return stop(result, "deadline");
+      }
+      if (permanentlyUnavailableResource(error)) {
+        result.unavailableRepositories += 1;
+        const authoredRepositoryCandidates = [...authoredCandidates.values()]
+          .filter((candidate) => candidate.repositoryId === repository.id)
+          .toSorted(comparePullRequestCandidates);
+        for (const candidate of authoredRepositoryCandidates) {
+          authoredCandidates.delete(candidate.nodeId);
+        }
+        const interrupted = await processPullRequestCandidates(
+          authoredRepositoryCandidates,
+          input,
+          result
+        );
+        if (interrupted !== null) {
+          return stop(result, interrupted.reason, interrupted.retryAt);
+        }
+        continue;
       }
       const retry = providerRetryFrom(error);
       if (retry !== null) {

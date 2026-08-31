@@ -64,8 +64,14 @@ const fetchPaginatedArray = async (
 export const collectAccessibleGitHubRepositories = async (
   token: string,
   repositoryId: string | null = null,
-  options: { deadlineAt?: number } = {}
+  options: { deadlineAt?: number; pushedSinceAt?: Date } = {}
 ) => {
+  if (
+    options.pushedSinceAt !== undefined &&
+    Number.isNaN(options.pushedSinceAt.getTime())
+  ) {
+    throw new RangeError("The GitHub repository activity cutoff is invalid.");
+  }
   if (repositoryId !== null) {
     const { payload } = await fetchJson(
       githubApiUrl(`/repositories/${encodeURIComponent(repositoryId)}`),
@@ -87,6 +93,22 @@ export const collectAccessibleGitHubRepositories = async (
   const values = await fetchPaginatedArray(url, token, options);
   const repositories = new Map<string, GitHubRepositoryFacts>();
   for (const value of values) {
+    if (options.pushedSinceAt !== undefined) {
+      const pushedAt = isObject(value) ? value.pushed_at : undefined;
+      if (pushedAt === null) {
+        continue;
+      }
+      const pushedDate =
+        typeof pushedAt === "string"
+          ? new Date(pushedAt)
+          : new Date(Number.NaN);
+      if (Number.isNaN(pushedDate.getTime())) {
+        throw new TypeError("GitHub returned an invalid repository push date.");
+      }
+      if (pushedDate < options.pushedSinceAt) {
+        continue;
+      }
+    }
     const repository = repositoryFactsFrom(value);
     if (repository === null) {
       throw new TypeError("GitHub returned an invalid repository response.");

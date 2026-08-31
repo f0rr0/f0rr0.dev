@@ -39,6 +39,7 @@ import {
   markGitHubPullRequestDiscoveryUnavailable,
   markGitHubPullRequestSignalUnavailable,
   markGitHubPushObservationUnavailable,
+  markGitHubSummaryAttemptIndeterminate,
   persistGitHubPullRequestMembership,
   persistGitHubPullRequestSnapshot,
   releaseGitHubCommitEnrichment,
@@ -49,23 +50,37 @@ import {
   releaseGitHubSummaryAttempt,
   stopGitHubPullRequestReconciliation,
 } from "@/lib/github-activity-worker-store";
-import type { DueGitHubPullRequest } from "@/lib/github-activity-worker-store";
+import type {
+  DueGitHubPullRequest,
+  GitHubActivityWorkerScope,
+} from "@/lib/github-activity-worker-store";
 import {
   GitHubRequestDeadlineError,
   GitHubResponseError,
 } from "@/lib/github-api";
-import { TRACKED_GITHUB_ACCOUNTS } from "@/lib/github-commits-core";
+import {
+  repositoryIdFrom,
+  TRACKED_GITHUB_ACCOUNTS,
+} from "@/lib/github-commits-core";
 import type { TrackedGitHubAccount } from "@/lib/github-commits-core";
 import {
   isGitHubAccountPaused,
+  persistGitHubCommitReferences,
   readGitHubAccountCheckpoint,
 } from "@/lib/github-commits-store";
 
 const DEFAULT_WORKER_MAXIMUM_DURATION_MS = 90_000;
-// A 404 is visibility-dependent on GitHub and must remain recoverable after a
-// token or repository-permission change.
-const PERMANENT_GITHUB_STATUSES = new Set([410, 422]);
-const MINIMUM_TERMINAL_GITHUB_ATTEMPTS = 8;
+const TERMINAL_GITHUB_STATUSES = new Set([403, 404, 410, 422]);
+const TERMINAL_ACTIVITY_PROCESSING_CODES = new Set([
+  "membership_incomplete",
+  "source_auth_missing",
+  "source_incomplete",
+  "source_invalid",
+  "source_unavailable",
+]);
+// Three independent worker claims tolerate short propagation/permission races
+// without letting deterministic provider failures restart a backfill forever.
+export const GITHUB_ACTIVITY_TERMINAL_ATTEMPTS = 3;
 
 interface StageResult {
   claimed: number;
@@ -95,6 +110,7 @@ export interface GitHubActivityWorkerResult {
 }
 
 export interface GitHubActivityWorkerOptions {
+  accounts?: readonly TrackedGitHubAccount[];
   commitLimit?: number;
   maximumDurationMs?: number;
   observationLimit?: number;
@@ -102,6 +118,7 @@ export interface GitHubActivityWorkerOptions {
   pullRequestLimit?: number;
   pullRequestSignalLimit?: number;
   summaryLimit?: number;
+  scope?: GitHubActivityWorkerScope;
 }
 
 const errorCode = (error: unknown) => {
@@ -123,17 +140,36 @@ const retryAtFrom = (error: unknown) =>
     ? error.retryAt
     : null;
 
-const permanentlyUnavailable = (error: unknown, attemptCount: number) =>
-  (error instanceof ActivityProcessingError &&
-    error.code === "provenance_changed") ||
-  (error instanceof GitHubResponseError &&
-    !error.retryable &&
-    PERMANENT_GITHUB_STATUSES.has(error.status) &&
-    attemptCount >= MINIMUM_TERMINAL_GITHUB_ATTEMPTS);
+export const githubActivityFailureIsTerminal = (
+  error: unknown,
+  attemptCount: number
+) => {
+  if (
+    error instanceof ActivityProcessingError &&
+    error.code === "provenance_changed"
+  ) {
+    return true;
+  }
+  if (attemptCount < GITHUB_ACTIVITY_TERMINAL_ATTEMPTS) {
+    return false;
+  }
+  if (error instanceof GitHubGraphQlResponseError) {
+    return !error.retryable;
+  }
+  if (error instanceof GitHubResponseError) {
+    return !error.retryable && TERMINAL_GITHUB_STATUSES.has(error.status);
+  }
+  return (
+    error instanceof ActivityProcessingError &&
+    TERMINAL_ACTIVITY_PROCESSING_CODES.has(error.code)
+  );
+};
 
-const activeTrackedAccounts = async () => {
+const activeTrackedAccounts = async (
+  requestedAccounts: readonly TrackedGitHubAccount[] = TRACKED_GITHUB_ACCOUNTS
+) => {
   const accounts: TrackedGitHubAccount[] = [];
-  for (const account of TRACKED_GITHUB_ACCOUNTS) {
+  for (const account of requestedAccounts) {
     const checkpoint = await readGitHubAccountCheckpoint(account);
     if (!isGitHubAccountPaused(checkpoint)) {
       accounts.push(account);
@@ -153,6 +189,7 @@ interface WorkerContext {
   activeAccounts: readonly TrackedGitHubAccount[];
   deadlineAt: number;
   deadlineReached: () => boolean;
+  scope?: GitHubActivityWorkerScope;
   sourceCache: Map<string, CommitSource>;
 }
 
@@ -166,7 +203,9 @@ const processObservations = async (
   }
   const claimed = await claimGitHubPushObservations(
     limit,
-    context.activeAccounts
+    context.activeAccounts,
+    new Date(),
+    context.scope
   );
   result.claimed = claimed.length;
   for (const observation of claimed) {
@@ -186,7 +225,9 @@ const processObservations = async (
       if (error instanceof GitHubRequestDeadlineError) {
         await releaseGitHubPushObservation(observation);
         result.deferred += 1;
-      } else if (permanentlyUnavailable(error, observation.attemptCount)) {
+      } else if (
+        githubActivityFailureIsTerminal(error, observation.attemptCount)
+      ) {
         await markGitHubPushObservationUnavailable(observation, code);
         result.unavailable += 1;
       } else {
@@ -208,7 +249,9 @@ const processCommits = async (
   }
   const claimed = await claimGitHubCommitsForEnrichment(
     limit,
-    context.activeAccounts
+    context.activeAccounts,
+    new Date(),
+    context.scope
   );
   result.claimed = claimed.length;
   for (const commit of claimed) {
@@ -237,7 +280,7 @@ const processCommits = async (
       if (error instanceof GitHubRequestDeadlineError) {
         await releaseGitHubCommitEnrichment(commit);
         result.deferred += 1;
-      } else if (permanentlyUnavailable(error, commit.attemptCount)) {
+      } else if (githubActivityFailureIsTerminal(error, commit.attemptCount)) {
         await markGitHubCommitUnavailable(commit, code);
         result.unavailable += 1;
       } else {
@@ -259,7 +302,9 @@ const processPullRequestDiscovery = async (
   }
   const claimed = await claimGitHubCommitsForPullRequestDiscovery(
     limit,
-    context.activeAccounts
+    context.activeAccounts,
+    new Date(),
+    context.scope
   );
   result.claimed = claimed.length;
   for (const commit of claimed) {
@@ -282,7 +327,7 @@ const processPullRequestDiscovery = async (
       if (error instanceof GitHubRequestDeadlineError) {
         await releaseGitHubPullRequestDiscovery(commit);
         result.deferred += 1;
-      } else if (permanentlyUnavailable(error, commit.attemptCount)) {
+      } else if (githubActivityFailureIsTerminal(error, commit.attemptCount)) {
         await markGitHubPullRequestDiscoveryUnavailable(commit, code);
         result.unavailable += 1;
       } else {
@@ -304,7 +349,9 @@ const processPullRequestSignals = async (
   }
   const claimed = await claimGitHubPullRequestSignals(
     limit,
-    context.activeAccounts
+    context.activeAccounts,
+    new Date(),
+    context.scope
   );
   result.claimed = claimed.length;
   for (const signal of claimed) {
@@ -329,7 +376,7 @@ const processPullRequestSignals = async (
       if (error instanceof GitHubRequestDeadlineError) {
         await releaseGitHubPullRequestSignal(signal);
         result.deferred += 1;
-      } else if (permanentlyUnavailable(error, signal.attemptCount)) {
+      } else if (githubActivityFailureIsTerminal(error, signal.attemptCount)) {
         await markGitHubPullRequestSignalUnavailable(signal, code);
         result.unavailable += 1;
       } else {
@@ -386,6 +433,7 @@ const reconcilePullRequest = async (
         expectedHeadSha: snapshot.pullRequest.headSha,
       }
     );
+    await persistGitHubCommitReferences({ commits: membership.commits });
     const complete = await persistGitHubPullRequestMembership(
       stored,
       snapshot.pullRequest.headSha,
@@ -429,7 +477,9 @@ const processPullRequests = async (
       const [due] = await claimDueGitHubPullRequests(
         account,
         GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS,
-        1
+        1,
+        new Date(),
+        context.scope
       );
       if (due !== undefined) {
         duePullRequests.push(due);
@@ -452,7 +502,7 @@ const processPullRequests = async (
       if (error instanceof GitHubRequestDeadlineError) {
         await releaseGitHubPullRequestReconciliation(due);
         result.deferred += 1;
-      } else if (permanentlyUnavailable(error, due.attemptCount)) {
+      } else if (githubActivityFailureIsTerminal(error, due.attemptCount)) {
         await stopGitHubPullRequestReconciliation(due, code);
         result.unavailable += 1;
       } else {
@@ -478,7 +528,9 @@ const processSummaries = async (
   }
   const claimed = await claimGitHubSummaryAttempts(
     limit,
-    context.activeAccounts
+    context.activeAccounts,
+    new Date(),
+    context.scope
   );
   result.claimed = claimed.length;
   for (const attempt of claimed) {
@@ -515,17 +567,58 @@ const processSummaries = async (
         result.failed += 1;
       }
     } catch (error) {
-      await (error instanceof GitHubRequestDeadlineError
-        ? releaseGitHubSummaryAttempt(attempt)
-        : deferGitHubSummaryAttempt(
-            attempt,
-            errorCode(error),
-            retryAtFrom(error)
-          ));
-      result.deferred += 1;
+      const code = errorCode(error);
+      if (error instanceof GitHubRequestDeadlineError) {
+        await releaseGitHubSummaryAttempt(attempt);
+        result.deferred += 1;
+      } else if (githubActivityFailureIsTerminal(error, attempt.attemptCount)) {
+        await markGitHubSummaryAttemptIndeterminate(attempt, code);
+        result.unavailable += 1;
+      } else {
+        await deferGitHubSummaryAttempt(attempt, code, retryAtFrom(error));
+        result.deferred += 1;
+      }
     }
   }
   result.failed = result.deferred + result.unavailable;
+};
+
+const checkedWorkerAccounts = (
+  accounts: readonly TrackedGitHubAccount[] | undefined
+) => {
+  const requested = accounts ?? TRACKED_GITHUB_ACCOUNTS;
+  if (
+    requested.length === 0 ||
+    new Set(requested).size !== requested.length ||
+    requested.some((account) => !TRACKED_GITHUB_ACCOUNTS.includes(account))
+  ) {
+    throw new RangeError(
+      "The GitHub activity worker account scope is invalid."
+    );
+  }
+  return requested;
+};
+
+const checkedWorkerScope = (
+  scope: GitHubActivityWorkerScope | undefined
+): GitHubActivityWorkerScope | undefined => {
+  if (scope === undefined) {
+    return undefined;
+  }
+  if (
+    Number.isNaN(scope.sinceAt.getTime()) ||
+    Number.isNaN(scope.untilAt.getTime()) ||
+    scope.sinceAt > scope.untilAt ||
+    (scope.repositoryId !== null &&
+      repositoryIdFrom(scope.repositoryId) === null)
+  ) {
+    throw new RangeError("The GitHub activity worker scope is invalid.");
+  }
+  return {
+    repositoryId: scope.repositoryId,
+    sinceAt: new Date(scope.sinceAt),
+    untilAt: new Date(scope.untilAt),
+  };
 };
 
 export const runGitHubActivityWorker = async (
@@ -543,6 +636,8 @@ export const runGitHubActivityWorker = async (
   const summaryLimit = boundedWorkerLimit(options.summaryLimit);
   const maximumDurationMs =
     options.maximumDurationMs ?? DEFAULT_WORKER_MAXIMUM_DURATION_MS;
+  const requestedAccounts = checkedWorkerAccounts(options.accounts);
+  const scope = checkedWorkerScope(options.scope);
   if (
     !Number.isSafeInteger(maximumDurationMs) ||
     maximumDurationMs < 1 ||
@@ -560,10 +655,12 @@ export const runGitHubActivityWorker = async (
   const pullRequestDiscovery = emptyStageResult();
   const pullRequestSignals = emptyStageResult();
   const summaries = emptyStageResult();
+  const activeAccounts = await activeTrackedAccounts(requestedAccounts);
   const context: WorkerContext = {
-    activeAccounts: await activeTrackedAccounts(),
+    activeAccounts,
     deadlineAt: startedAt + maximumDurationMs,
     deadlineReached,
+    scope,
     sourceCache: new Map(),
   };
 
@@ -582,9 +679,19 @@ export const runGitHubActivityWorker = async (
   await processPullRequests(context, pullRequestLimit, pullRequests);
   const aliases = context.deadlineReached()
     ? 0
-    : await canonicalizePendingGitHubActivities(8);
+    : await canonicalizePendingGitHubActivities(
+        8,
+        new Date(),
+        activeAccounts,
+        scope
+      );
   if (!context.deadlineReached()) {
-    await ensureMissingGitHubSummaryAttempts();
+    await ensureMissingGitHubSummaryAttempts(
+      50,
+      new Date(),
+      activeAccounts,
+      scope
+    );
   }
   await processSummaries(context, summaryLimit, summaries);
 

@@ -1,13 +1,34 @@
 import { describe, expect, test } from "bun:test";
+import { setTimeout as delay } from "node:timers/promises";
 
-import { backfillArgumentsFrom } from "../scripts/backfill-github-activity.ts";
+import {
+  backfillArgumentsFrom,
+  backfillRetryWaitMillisecondsFrom,
+  runBeforeDeadline,
+} from "../scripts/backfill-github-activity.ts";
 import {
   GITHUB_BACKFILL_WORKER_BATCH_SIZE,
+  githubBackfillCompletionFrom,
+  githubBackfillDiscoveryCompleteFrom,
+  githubBackfillExitCodeFrom,
+  githubBackfillOutcomeFrom,
+  githubBackfillProcessingMadeProgress,
   githubBackfillProcessingCountsFrom,
   githubBackfillRequestFrom,
 } from "../src/lib/github-backfill-core.ts";
 
 const now = new Date("2026-08-29T15:00:00.000Z");
+
+const discoveryInventory = (overrides = {}) => ({
+  direct: { complete: true, unavailableRepositories: 0 },
+  pullRequests: { complete: true, unavailablePullRequests: 0 },
+  ...overrides,
+});
+
+const auditResult = (status, earliestRetryAt) => ({
+  pipeline: { earliestRetryAt },
+  status,
+});
 
 describe("GitHub history backfill requests", () => {
   test("rejects duplicate and unknown command arguments", () => {
@@ -21,6 +42,86 @@ describe("GitHub history backfill requests", () => {
 
   test("uses the maximum batch size accepted by every configurable worker stage", () => {
     expect(GITHUB_BACKFILL_WORKER_BATCH_SIZE).toBe(8);
+  });
+
+  test("exits successfully only after discovery and every scoped audit settle", () => {
+    const complete = githubBackfillCompletionFrom({
+      auditStatuses: [
+        "stored_projection_verified",
+        "stored_projection_verified",
+      ],
+      boundedDiscoveryComplete: true,
+    });
+    expect(complete).toEqual({ complete: true, pipelineSettled: true });
+    expect(githubBackfillExitCodeFrom(complete)).toBe(0);
+
+    for (const incomplete of [
+      githubBackfillCompletionFrom({
+        auditStatuses: ["stored_projection_verified"],
+        boundedDiscoveryComplete: false,
+      }),
+      ...["pipeline_incomplete", "mismatch", "inconclusive"].map((status) =>
+        githubBackfillCompletionFrom({
+          auditStatuses: ["stored_projection_verified", status],
+          boundedDiscoveryComplete: true,
+        })
+      ),
+      githubBackfillCompletionFrom({
+        auditStatuses: [],
+        boundedDiscoveryComplete: true,
+      }),
+    ]) {
+      expect(incomplete.complete).toBe(false);
+      expect(githubBackfillExitCodeFrom(incomplete)).toBe(1);
+    }
+  });
+
+  test("distinguishes a finished traversal with explicit coverage gaps", () => {
+    const complete = { complete: true, pipelineSettled: true };
+    expect(githubBackfillOutcomeFrom(complete, 0)).toBe("complete");
+    expect(githubBackfillOutcomeFrom(complete, 2)).toBe("completed_with_gaps");
+    expect(
+      githubBackfillOutcomeFrom({ complete: false, pipelineSettled: false }, 2)
+    ).toBe("incomplete");
+    expect(() => githubBackfillOutcomeFrom(complete, -1)).toThrow(
+      "coverage gap count"
+    );
+  });
+
+  test("reports traversal completion separately from explicit coverage gaps", () => {
+    expect(githubBackfillDiscoveryCompleteFrom([discoveryInventory()])).toBe(
+      true
+    );
+    expect(githubBackfillDiscoveryCompleteFrom([])).toBe(false);
+    expect(
+      githubBackfillDiscoveryCompleteFrom([
+        discoveryInventory({ direct: null }),
+      ])
+    ).toBe(false);
+    expect(
+      githubBackfillDiscoveryCompleteFrom([
+        discoveryInventory({
+          direct: { complete: true, unavailableRepositories: 1 },
+        }),
+      ])
+    ).toBe(true);
+    expect(
+      githubBackfillDiscoveryCompleteFrom([
+        discoveryInventory({
+          pullRequests: { complete: true, unavailablePullRequests: 1 },
+        }),
+      ])
+    ).toBe(true);
+    expect(
+      githubBackfillDiscoveryCompleteFrom([
+        discoveryInventory({ direct: { complete: false } }),
+      ])
+    ).toBe(false);
+    expect(
+      githubBackfillDiscoveryCompleteFrom([
+        discoveryInventory({ pullRequests: { complete: false } }),
+      ])
+    ).toBe(false);
   });
 
   test("reports disjoint outcomes across every stage including PR reconciliation", () => {
@@ -80,13 +181,65 @@ describe("GitHub history backfill requests", () => {
     });
   });
 
-  test("normalizes one arbitrary inclusive UTC range", () => {
+  test("keeps draining when canonicalization progresses without queue claims", () => {
+    expect(
+      githubBackfillProcessingMadeProgress({ aliases: 1, claimed: 0 })
+    ).toBe(true);
+    expect(
+      githubBackfillProcessingMadeProgress({ aliases: 0, claimed: 1 })
+    ).toBe(true);
+    expect(
+      githubBackfillProcessingMadeProgress({ aliases: 0, claimed: 0 })
+    ).toBe(false);
+  });
+
+  test("waits for a scoped retry only when it fits inside the hard budget", () => {
+    const nowAt = Date.parse("2026-08-30T00:00:00.000Z");
+    expect(
+      backfillRetryWaitMillisecondsFrom(
+        [auditResult("pipeline_incomplete", "2026-08-30T00:15:00.000Z")],
+        nowAt + 60 * 60 * 1000,
+        nowAt
+      )
+    ).toBe(15 * 60 * 1000);
+    expect(
+      backfillRetryWaitMillisecondsFrom(
+        [auditResult("pipeline_incomplete", "2026-08-29T23:59:00.000Z")],
+        nowAt + 60 * 60 * 1000,
+        nowAt
+      )
+    ).toBe(1000);
+    expect(
+      backfillRetryWaitMillisecondsFrom(
+        [auditResult("pipeline_incomplete", "2026-08-30T00:59:45.000Z")],
+        nowAt + 60 * 60 * 1000,
+        nowAt
+      )
+    ).toBeNull();
+    expect(
+      backfillRetryWaitMillisecondsFrom(
+        [auditResult("mismatch", "2026-08-30T00:15:00.000Z")],
+        nowAt + 60 * 60 * 1000,
+        nowAt
+      )
+    ).toBeNull();
+  });
+
+  test("ends an in-flight stage at the selected wall-clock deadline", async () => {
+    const startedAt = Date.now();
+    await expect(
+      runBeforeDeadline(delay(1000), startedAt + 25)
+    ).rejects.toThrow("deadline");
+    expect(Date.now() - startedAt).toBeLessThan(500);
+  });
+
+  test("normalizes one bounded inclusive UTC range", () => {
     const request = githubBackfillRequestFrom(
       {
         account: "all",
         endDate: "2026-08-29",
         repositoryId: "123456789",
-        startDate: "2026-07-01",
+        startDate: "2026-08-01",
       },
       now
     );
@@ -95,9 +248,9 @@ describe("GitHub history backfill requests", () => {
       accounts: ["f0rr0", "yuppiestechdev"],
       endDate: "2026-08-29",
       repositoryId: "123456789",
-      startDate: "2026-07-01",
+      startDate: "2026-08-01",
     });
-    expect(request?.sinceAt).toEqual(new Date("2026-07-01T00:00:00.000Z"));
+    expect(request?.sinceAt).toEqual(new Date("2026-08-01T00:00:00.000Z"));
     expect(request?.untilAt).toEqual(new Date("2026-08-29T23:59:59.999Z"));
   });
 
@@ -115,21 +268,55 @@ describe("GitHub history backfill requests", () => {
     ).toMatchObject({ accounts: ["f0rr0"], repositoryId: null });
   });
 
-  test("accepts a range longer than 366 days without splitting it", () => {
-    const request = githubBackfillRequestFrom(
-      {
-        account: "f0rr0",
-        endDate: "2026-08-29",
-        repositoryId: "",
-        startDate: "2024-01-01",
-      },
-      now
-    );
+  test("accepts at most 31 commit days per invocation", () => {
+    expect(
+      githubBackfillRequestFrom(
+        {
+          account: "f0rr0",
+          endDate: "2026-08-31",
+          repositoryId: "",
+          startDate: "2026-08-01",
+        },
+        new Date("2026-08-31T15:00:00.000Z")
+      )
+    ).not.toBeNull();
+    expect(
+      githubBackfillRequestFrom(
+        {
+          account: "f0rr0",
+          endDate: "2026-08-29",
+          repositoryId: "",
+          startDate: "2024-01-01",
+        },
+        now
+      )
+    ).toBeNull();
+  });
 
-    expect(request).toMatchObject({
-      endDate: "2026-08-29",
-      startDate: "2024-01-01",
-    });
+  test("bounds broad provider discovery while allowing older repository recovery", () => {
+    const oldScope = {
+      account: "f0rr0",
+      endDate: "2026-07-28",
+      startDate: "2026-06-28",
+    };
+
+    expect(
+      githubBackfillRequestFrom({ ...oldScope, repositoryId: "" }, now)
+    ).toBeNull();
+    expect(
+      githubBackfillRequestFrom({ ...oldScope, repositoryId: "123456789" }, now)
+    ).toMatchObject({ repositoryId: "123456789" });
+    expect(
+      githubBackfillRequestFrom(
+        {
+          account: "f0rr0",
+          endDate: "2026-07-29",
+          repositoryId: "",
+          startDate: "2026-06-29",
+        },
+        now
+      )
+    ).not.toBeNull();
   });
 
   test("accepts GitHub's documented final timestamp day", () => {

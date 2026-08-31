@@ -208,13 +208,6 @@ interface PullRequestAssociation {
   url: string;
 }
 
-interface PullRequestProjection {
-  mergedAt: Date | null;
-  nodeId: string;
-  repositoryId: string;
-  state: string;
-}
-
 interface IssueProjection {
   nodeId: string;
   repositoryId: string;
@@ -240,8 +233,6 @@ interface DayAccumulator {
   issuesOpened: number;
   items: PublicGitHubActivityItem[];
   pullRequestGroups: Map<string, PullRequestGroup>;
-  pullRequestsMerged: number;
-  repositories: Set<string>;
 }
 
 const emptyDay = (): DayAccumulator => ({
@@ -250,8 +241,6 @@ const emptyDay = (): DayAccumulator => ({
   issuesOpened: 0,
   items: [],
   pullRequestGroups: new Map(),
-  pullRequestsMerged: 0,
-  repositories: new Set(),
 });
 
 const orderedItems = (items: readonly PublicGitHubActivityItem[]) =>
@@ -260,10 +249,10 @@ const orderedItems = (items: readonly PublicGitHubActivityItem[]) =>
     return byTime === 0 ? right.id.localeCompare(left.id) : byTime;
   });
 
-type PublicActivityKind = "commit" | "issue" | "pull_request";
+type PublicActivityKind = "commit" | "issue";
 
 const isPublicActivityKind = (value: unknown): value is PublicActivityKind =>
-  value === "commit" || value === "issue" || value === "pull_request";
+  value === "commit" || value === "issue";
 
 interface CheckedActivityRow {
   kind: PublicActivityKind;
@@ -274,7 +263,9 @@ interface CheckedActivityRow {
   sourceNodeId: string;
 }
 
-type GitHubActivityDatabase = ReturnType<typeof getDatabase>;
+type GitHubActivityDatabase = Parameters<
+  Parameters<ReturnType<typeof getDatabase>["transaction"]>[0]
+>[0];
 
 const readCheckedActivityRows = async (
   database: GitHubActivityDatabase,
@@ -327,7 +318,6 @@ interface ActivityProjectionSources {
   commits: ReadonlyMap<string, CommitProjection>;
   issues: ReadonlyMap<string, IssueProjection>;
   primaryAssociations: ReadonlyMap<string, PullRequestAssociation>;
-  pullRequests: ReadonlyMap<string, PullRequestProjection>;
   repositories: ReadonlyMap<string, RepositoryProjection>;
   summaries: ReadonlyMap<string, CommitSummaryProjection>;
 }
@@ -353,7 +343,6 @@ const addCommitActivity = (
   );
   const association = sources.primaryAssociations.get(key);
   if (association === undefined) {
-    accumulator.repositories.add(activity.repositoryId);
     accumulator.items.push({
       commit: projected,
       id: activity.publicId,
@@ -366,7 +355,6 @@ const addCommitActivity = (
     });
     return;
   }
-  accumulator.repositories.add(association.repositoryId);
   const existing = accumulator.pullRequestGroups.get(association.nodeId);
   if (existing === undefined) {
     accumulator.pullRequestGroups.set(association.nodeId, {
@@ -388,23 +376,6 @@ const addCommitActivity = (
   }
 };
 
-const addPullRequestTotal = (
-  accumulator: DayAccumulator,
-  activity: CheckedActivityRow,
-  sources: ActivityProjectionSources
-) => {
-  const pullRequest = sources.pullRequests.get(activity.sourceNodeId);
-  if (
-    pullRequest === undefined ||
-    pullRequest.state !== "merged" ||
-    pullRequest.mergedAt === null
-  ) {
-    throw new Error("A published pull-request milestone is incomplete.");
-  }
-  accumulator.pullRequestsMerged += 1;
-  accumulator.repositories.add(pullRequest.repositoryId);
-};
-
 const addIssueActivity = (
   accumulator: DayAccumulator,
   activity: CheckedActivityRow,
@@ -415,7 +386,6 @@ const addIssueActivity = (
     throw new Error("A published issue milestone is incomplete.");
   }
   accumulator.issuesOpened += 1;
-  accumulator.repositories.add(issue.repositoryId);
   accumulator.items.push({
     id: activity.publicId,
     kind: "issue-opened",
@@ -443,8 +413,6 @@ const buildPublicActivityDays = (
     }
     if (activity.kind === "commit") {
       addCommitActivity(accumulator, activity, sources);
-    } else if (activity.kind === "pull_request") {
-      addPullRequestTotal(accumulator, activity, sources);
     } else {
       addIssueActivity(accumulator, activity, sources);
     }
@@ -476,15 +444,15 @@ const buildPublicActivityDays = (
         title: group.title,
       });
     }
+    const items = orderedItems(accumulator.items);
     return {
       day,
-      items: orderedItems(accumulator.items),
+      items,
       totals: {
         additions: accumulator.additions,
         deletions: accumulator.deletions,
         issuesOpened: accumulator.issuesOpened,
-        pullRequestsMerged: accumulator.pullRequestsMerged,
-        repositories: accumulator.repositories.size,
+        repositories: new Set(items.map((item) => item.repository.key)).size,
       },
     };
   });
@@ -493,7 +461,6 @@ const buildPublicActivityDays = (
 interface ActivitySourceIds {
   commitActivityPublicIds: readonly string[];
   issueNodeIds: readonly string[];
-  pullRequestNodeIds: readonly string[];
 }
 
 const readActivitySourceRows = async (
@@ -538,17 +505,6 @@ const readActivitySourceRows = async (
               ids.commitActivityPublicIds
             )
           ),
-    ids.pullRequestNodeIds.length === 0
-      ? Promise.resolve([])
-      : database
-          .select({
-            mergedAt: githubPullRequests.mergedAt,
-            nodeId: githubPullRequests.nodeId,
-            repositoryId: githubPullRequests.repositoryId,
-            state: githubPullRequests.state,
-          })
-          .from(githubPullRequests)
-          .where(inArray(githubPullRequests.nodeId, ids.pullRequestNodeIds)),
     ids.issueNodeIds.length === 0
       ? Promise.resolve([])
       : database
@@ -586,16 +542,17 @@ const readActivitySourceRows = async (
   ]);
 
 // oxlint-disable-next-line complexity -- Projection validation keeps every activity kind fail-closed.
-export const readPublicGitHubActivityPage = async (
+const readPublicGitHubActivityPageInTransaction = async (
+  database: GitHubActivityDatabase,
   cursor: GitHubActivityCursor | null,
-  limit = PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
+  pageSize: number
 ): Promise<PublicGitHubActivityPage> => {
-  const pageSize = checkedPageSize(limit);
   const snapshotAt = cursor?.snapshotAt ?? new Date().toISOString();
   const snapshotDate = new Date(snapshotAt);
   const beforeDate =
     cursor === null ? null : new Date(`${cursor.beforeDay}T00:00:00.000Z`);
   const stableActivity = and(
+    inArray(githubPublicActivities.kind, ["commit", "issue"]),
     isNotNull(githubPublicActivities.publishedAt),
     lte(githubPublicActivities.publishedAt, snapshotDate),
     isNull(githubPublicActivities.hiddenAt),
@@ -608,6 +565,8 @@ export const readPublicGitHubActivityPage = async (
         WHERE ${githubCommits.activityPublicId} = ${githubPublicActivities.publicId}
           AND ${githubCommits.repositoryId} = ${githubPublicActivities.repositoryId}
           AND ${githubCommits.sha} = ${githubPublicActivities.sourceNodeId}
+          AND ${githubCommits.canonicalizedAt} IS NOT NULL
+          AND ${githubCommits.canonicalizedAt} <= ${snapshotAt}
           AND ${githubCommits.parentShas} IS NOT NULL
           AND jsonb_array_length(${githubCommits.parentShas}) <= 1
       )
@@ -616,7 +575,6 @@ export const readPublicGitHubActivityPage = async (
       ? undefined
       : lt(githubPublicActivities.occurredAt, beforeDate)
   );
-  const database = getDatabase();
   const availableDays = await database
     .selectDistinct({ day: activityDay })
     .from(githubPublicActivities)
@@ -639,34 +597,26 @@ export const readPublicGitHubActivityPage = async (
   const commitActivityRows = activityRows.filter(
     (row) => row.kind === "commit"
   );
-  const pullRequestActivityRows = activityRows.filter(
-    (row) => row.kind === "pull_request"
-  );
   const issueActivityRows = activityRows.filter((row) => row.kind === "issue");
 
-  const pullRequestNodeIds = [
-    ...new Set(pullRequestActivityRows.map((row) => row.sourceNodeId)),
-  ];
   const issueNodeIds = [
     ...new Set(issueActivityRows.map((row) => row.sourceNodeId)),
   ];
   const commitActivityPublicIds = commitActivityRows.map((row) => row.publicId);
 
-  const [commitRows, pullRequestRows, issueRows, summaryRows] =
-    await readActivitySourceRows(database, {
+  const [commitRows, issueRows, summaryRows] = await readActivitySourceRows(
+    database,
+    {
       commitActivityPublicIds,
       issueNodeIds,
-      pullRequestNodeIds,
-    });
+    }
+  );
 
   const commits = new Map(
     commitRows.map((commit) => [
       commitKey(commit.repositoryId, commit.sha),
       commit,
     ])
-  );
-  const pullRequests = new Map(
-    pullRequestRows.map((pullRequest) => [pullRequest.nodeId, pullRequest])
   );
   const issues = new Map(issueRows.map((issue) => [issue.nodeId, issue]));
   const publishedRevisions = new Map(
@@ -820,7 +770,6 @@ export const readPublicGitHubActivityPage = async (
     commits,
     issues,
     primaryAssociations,
-    pullRequests,
     repositories,
     summaries,
   });
@@ -834,4 +783,20 @@ export const readPublicGitHubActivityPage = async (
         })
       : null;
   return { days, nextCursor, snapshotAt };
+};
+
+export const readPublicGitHubActivityPage = async (
+  cursor: GitHubActivityCursor | null,
+  limit = PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
+): Promise<PublicGitHubActivityPage> => {
+  const pageSize = checkedPageSize(limit);
+  return await getDatabase().transaction(
+    async (transaction) =>
+      await readPublicGitHubActivityPageInTransaction(
+        transaction,
+        cursor,
+        pageSize
+      ),
+    { accessMode: "read only", isolationLevel: "repeatable read" }
+  );
 };

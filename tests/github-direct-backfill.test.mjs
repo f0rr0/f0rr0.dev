@@ -34,6 +34,7 @@ const rawRepository = {
     type: repository.ownerType,
   },
   private: true,
+  pushed_at: "2026-08-20T00:00:00Z",
   visibility: repository.visibility,
 };
 
@@ -158,14 +159,103 @@ describe("direct GitHub ref backfill", () => {
     ).rejects.toThrow("invalid commit pagination");
   });
 
-  test("fails incomplete when a listed repository becomes inaccessible", async () => {
+  test("given listed repositories disappear or deny access, records gaps and continues", async () => {
+    const requestedPaths = [];
+    const forbiddenRepository = {
+      ...rawRepository,
+      full_name: "forbidden-org/forbidden-repo",
+      html_url: "https://github.com/forbidden-org/forbidden-repo",
+      id: 125,
+      owner: {
+        ...rawRepository.owner,
+        id: 458,
+        login: "forbidden-org",
+      },
+    };
+    const laterRepository = {
+      ...rawRepository,
+      full_name: "later-org/later-repo",
+      html_url: "https://github.com/later-org/later-repo",
+      id: 124,
+      owner: {
+        ...rawRepository.owner,
+        id: 457,
+        login: "later-org",
+      },
+    };
+    globalThis.fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/user/repos") {
+        return Response.json([
+          laterRepository,
+          rawRepository,
+          forbiddenRepository,
+        ]);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/branches") {
+        return Response.json({ message: "Not Found" }, { status: 404 });
+      }
+      if (url.pathname === "/repos/forbidden-org/forbidden-repo/branches") {
+        return Response.json({ message: "Forbidden" }, { status: 403 });
+      }
+      if (
+        url.pathname === "/repos/later-org/later-repo/branches" ||
+        url.pathname === "/repos/later-org/later-repo/tags"
+      ) {
+        return Response.json([]);
+      }
+      throw new Error(`Unexpected GitHub request: ${url.href}`);
+    };
+
+    const result = await backfillGitHubCommitsFromCurrentRefs({
+      account: "f0rr0",
+      deadlineAt: Date.now() + 120_000,
+      repositoryId: null,
+      sinceAt: new Date("2026-08-01T00:00:00.000Z"),
+      token: "test-token",
+      untilAt: new Date("2026-08-31T23:59:59.999Z"),
+    });
+
+    expect(result).toMatchObject({
+      complete: true,
+      repositories: 1,
+      stopReason: "complete",
+      unavailableRepositories: 2,
+    });
+    expect(requestedPaths).toEqual([
+      "/user/repos",
+      "/repos/example-org/example-repo/branches",
+      "/repos/forbidden-org/forbidden-repo/branches",
+      "/repos/later-org/later-repo/branches",
+      "/repos/later-org/later-repo/tags",
+    ]);
+  });
+
+  test("given one current head disappears, records the repository gap and scans the next head", async () => {
+    const unavailableHeadSha = "1".repeat(40);
+    const laterHeadSha = "2".repeat(40);
+    const requestedHeads = [];
     globalThis.fetch = async (input) => {
       const url = new URL(input instanceof Request ? input.url : input);
       if (url.pathname === "/user/repos") {
         return Response.json([rawRepository]);
       }
       if (url.pathname === "/repos/example-org/example-repo/branches") {
-        return Response.json({ message: "Not Found" }, { status: 404 });
+        return Response.json([
+          { commit: { sha: unavailableHeadSha }, name: "first" },
+          { commit: { sha: laterHeadSha }, name: "later" },
+        ]);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/tags") {
+        return Response.json([]);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/commits") {
+        const headSha = url.searchParams.get("sha");
+        requestedHeads.push(headSha);
+        return headSha === unavailableHeadSha
+          ? Response.json({ message: "Gone" }, { status: 410 })
+          : Response.json([]);
       }
       throw new Error(`Unexpected GitHub request: ${url.href}`);
     };
@@ -179,6 +269,94 @@ describe("direct GitHub ref backfill", () => {
         token: "test-token",
         untilAt: new Date("2026-08-31T23:59:59.999Z"),
       })
-    ).toMatchObject({ complete: false, stopReason: "provider_retry" });
+    ).toMatchObject({
+      complete: true,
+      heads: 1,
+      repositories: 1,
+      stopReason: "complete",
+      unavailableRepositories: 1,
+    });
+    expect(requestedHeads).toEqual([unavailableHeadSha, laterHeadSha]);
+  });
+
+  test("given current-head hydration is rate limited, leaves traversal incomplete without a gap", async () => {
+    const headSha = "3".repeat(40);
+    globalThis.fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname === "/user/repos") {
+        return Response.json([rawRepository]);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/branches") {
+        return Response.json([{ commit: { sha: headSha }, name: "main" }]);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/tags") {
+        return Response.json([]);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/commits") {
+        return Response.json(
+          { message: "rate limited" },
+          { headers: { "retry-after": "120" }, status: 429 }
+        );
+      }
+      throw new Error(`Unexpected GitHub request: ${url.href}`);
+    };
+
+    expect(
+      await backfillGitHubCommitsFromCurrentRefs({
+        account: "f0rr0",
+        deadlineAt: Date.now() + 60_000,
+        repositoryId: null,
+        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
+        token: "test-token",
+        untilAt: new Date("2026-08-31T23:59:59.999Z"),
+      })
+    ).toMatchObject({
+      complete: false,
+      stopReason: "provider_retry",
+      unavailableRepositories: 0,
+    });
+  });
+
+  test("keeps retryable provider failures and deadlines incomplete", async () => {
+    globalThis.fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname === "/user/repos") {
+        return Response.json([rawRepository]);
+      }
+      return Response.json(
+        { message: "rate limited" },
+        { headers: { "retry-after": "120" }, status: 429 }
+      );
+    };
+
+    expect(
+      await backfillGitHubCommitsFromCurrentRefs({
+        account: "f0rr0",
+        deadlineAt: Date.now() + 60_000,
+        repositoryId: null,
+        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
+        token: "test-token",
+        untilAt: new Date("2026-08-31T23:59:59.999Z"),
+      })
+    ).toMatchObject({
+      complete: false,
+      stopReason: "provider_retry",
+      unavailableRepositories: 0,
+    });
+
+    expect(
+      await backfillGitHubCommitsFromCurrentRefs({
+        account: "f0rr0",
+        deadlineAt: Date.now() + 1,
+        repositoryId: null,
+        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
+        token: "test-token",
+        untilAt: new Date("2026-08-31T23:59:59.999Z"),
+      })
+    ).toMatchObject({
+      complete: false,
+      stopReason: "deadline",
+      unavailableRepositories: 0,
+    });
   });
 });

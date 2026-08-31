@@ -22,6 +22,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "github:sync": "bun scripts/sync-github-commits.ts",
+    "github:audit": "bun scripts/audit-github-activity.ts",
     "supabase:cron": "bun scripts/configure-supabase-cron.ts"
   },
   "dependencies": {
