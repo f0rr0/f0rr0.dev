@@ -298,7 +298,12 @@ export interface GitHubActivityAuditEvidence {
   legacyPullRequestMilestones: number;
   pipelineEvidence?: GitHubActivityAuditPipelineEvidence;
   projectionDays: readonly PublicGitHubActivityDay[];
-  projectionError: string | null;
+  projectionError: GitHubActivityAuditProjectionError | null;
+}
+
+export interface GitHubActivityAuditProjectionError {
+  code: string | null;
+  name: string;
 }
 
 export interface GitHubActivityAuditPipelineEvidence {
@@ -435,6 +440,9 @@ export interface GitHubActivityAuditReport {
     };
     providerCompleteness: "not_assessed";
     statement: string;
+  };
+  diagnostics: {
+    projectionError: GitHubActivityAuditProjectionError | null;
   };
   inventory: {
     commitsObserved: number;
@@ -643,6 +651,7 @@ export const buildGitHubActivityAuditReport = (
           ? "Provider completeness is not assessed. The projection comparison is global while pipeline inventory is scoped to the requested account. This audit only verifies evidence already stored in PostgreSQL; deleted or rewritten refs and events never observed by this system can be absent."
           : "Provider completeness is not assessed. Projection and pipeline evidence are scoped to the requested account, repository, and window. This audit only verifies evidence already stored in PostgreSQL; deleted or rewritten refs and events never observed by this system can be absent.",
     },
+    diagnostics: { projectionError: evidence.projectionError },
     inventory: {
       commitsObserved: evidence.commits.length,
       issuesObserved: evidence.issues.length,
@@ -1310,11 +1319,27 @@ export const runGitHubActivityAudit = async (
         request.repositoryId === null ? null : scopedProjectionSourceIds(before)
       );
     } catch (error) {
+      const rawCode =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        typeof error.code === "string"
+          ? error.code
+          : null;
       return buildGitHubActivityAuditReport(request, {
         ...before,
         projectionDays: [],
-        projectionError:
-          error instanceof Error ? error.name : "UnknownProjectionError",
+        projectionError: {
+          code:
+            rawCode !== null && /^[A-Za-z0-9_-]{1,64}$/.test(rawCode)
+              ? rawCode
+              : null,
+          name:
+            error instanceof Error &&
+            /^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(error.name)
+              ? error.name
+              : "UnknownProjectionError",
+        },
       });
     }
     const after = await readStoredEvidence(request);
@@ -1333,6 +1358,9 @@ export const runGitHubActivityAudit = async (
   return buildGitHubActivityAuditReport(request, {
     ...lastStored,
     projectionDays: lastProjectionDays,
-    projectionError: "ConcurrentStoredEvidenceChange",
+    projectionError: {
+      code: null,
+      name: "ConcurrentStoredEvidenceChange",
+    },
   });
 };

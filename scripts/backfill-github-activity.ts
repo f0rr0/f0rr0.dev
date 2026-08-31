@@ -30,8 +30,7 @@ import { backfillGitHubCommitsFromCurrentRefs } from "../src/lib/github-direct-b
 import { backfillGitHubPullRequests } from "../src/lib/github-pull-request-backfill";
 
 const MAXIMUM_ACTION_MINUTES = 330;
-const MAXIMUM_INCONCLUSIVE_AUDIT_RETRIES = 2;
-const INCONCLUSIVE_AUDIT_RETRY_MS = 1000;
+const INCONCLUSIVE_AUDIT_RETRY_DELAYS_MS = [2000, 5000, 10_000] as const;
 const WORKER_CLEANUP_MARGIN_MS = 30_000;
 const WORKER_PASS_DURATION_MS = 240_000;
 
@@ -272,9 +271,10 @@ export const backfillRetryWaitMillisecondsFrom = (
     return null;
   }
   if (audits.some(({ status }) => status === "inconclusive")) {
-    return inconclusiveRetries < MAXIMUM_INCONCLUSIVE_AUDIT_RETRIES &&
-      now + INCONCLUSIVE_AUDIT_RETRY_MS + WORKER_CLEANUP_MARGIN_MS < deadlineAt
-      ? INCONCLUSIVE_AUDIT_RETRY_MS
+    const retryDelay = INCONCLUSIVE_AUDIT_RETRY_DELAYS_MS[inconclusiveRetries];
+    return retryDelay !== undefined &&
+      now + retryDelay + WORKER_CLEANUP_MARGIN_MS < deadlineAt
+      ? retryDelay
       : null;
   }
   const retryTimes = audits.flatMap(({ pipeline, status }) => {
@@ -315,6 +315,10 @@ const runScopedAudits = async (
   request: GitHubBackfillRequest,
   deadlineAt: number
 ) => {
+  // Provider discovery can keep this process alive for minutes. Give each
+  // strict projection audit a fresh connection instead of reusing a client
+  // that may have crossed a pooler/network idle boundary.
+  await closeDatabase();
   const auditNow = new Date();
   return await runBeforeDeadline(
     Promise.all(
