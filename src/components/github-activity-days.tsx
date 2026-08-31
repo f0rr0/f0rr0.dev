@@ -225,13 +225,18 @@ function CommitDisclosure({
   commit,
   headingLevel,
   occurredAt,
+  title,
+  url,
 }: Readonly<{
   commit: PublicGitHubActivityCommit;
   headingLevel: "h4" | "h5";
   occurredAt?: string;
+  title?: string;
+  url?: string | null;
 }>) {
   const Heading = headingLevel;
   const nested = headingLevel === "h5";
+  const visibleTitle = title ?? commit.headline;
   return (
     <details className="group/disclosure">
       <summary
@@ -243,7 +248,19 @@ function CommitDisclosure({
         )}
       >
         <Heading className="min-w-0 max-w-[50rem] overflow-hidden text-ellipsis whitespace-nowrap wrap-anywhere font-sans text-base font-normal leading-[1.625] tracking-normal text-foreground">
-          <InlineSummary>{commit.headline}</InlineSummary>
+          {url === undefined || url === null ? (
+            <InlineSummary>{visibleTitle}</InlineSummary>
+          ) : (
+            <a
+              className="rounded-[0.125rem] text-inherit transition-[color] duration-[160ms] ease-[ease] hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-[0.2rem] focus-visible:outline-ring motion-reduce:transition-none"
+              href={url}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              <InlineSummary>{visibleTitle}</InlineSummary>
+              <span className="sr-only"> (opens on GitHub in a new tab)</span>
+            </a>
+          )}
         </Heading>
         <CommitLoc commit={commit} />
         {occurredAt === undefined ? null : (
@@ -383,6 +400,20 @@ function RepositoryActivityItem({
   }
 
   if (item.kind === "pull-request-commits") {
+    const [onlyCommit] = item.commits;
+    if (item.commits.length === 1 && onlyCommit !== undefined) {
+      return (
+        <li className="py-[0.45rem]">
+          <CommitDisclosure
+            commit={onlyCommit}
+            headingLevel="h4"
+            occurredAt={item.occurredAt}
+            title={item.title}
+            url={item.repository.url}
+          />
+        </li>
+      );
+    }
     return (
       <li className="py-[0.45rem]">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">

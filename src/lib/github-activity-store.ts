@@ -201,11 +201,14 @@ const publicCommit = (
 };
 
 interface PullRequestAssociation {
+  isCurrent: boolean;
   nodeId: string;
   position: number;
   repositoryId: string;
   title: string;
   url: string;
+  versionId: string;
+  versionObservedAt: Date;
 }
 
 interface IssueProjection {
@@ -219,6 +222,8 @@ interface PullRequestGroup {
   commits: {
     commit: PublicGitHubActivityCommit;
     position: number;
+    versionId: string;
+    versionObservedAt: Date;
   }[];
   nodeId: string;
   occurredAt: string;
@@ -358,7 +363,14 @@ const addCommitActivity = (
   const existing = accumulator.pullRequestGroups.get(association.nodeId);
   if (existing === undefined) {
     accumulator.pullRequestGroups.set(association.nodeId, {
-      commits: [{ commit: projected, position: association.position }],
+      commits: [
+        {
+          commit: projected,
+          position: association.position,
+          versionId: association.versionId,
+          versionObservedAt: association.versionObservedAt,
+        },
+      ],
       nodeId: association.nodeId,
       occurredAt: activity.occurredAt.toISOString(),
       repositoryId: association.repositoryId,
@@ -370,6 +382,8 @@ const addCommitActivity = (
   existing.commits.push({
     commit: projected,
     position: association.position,
+    versionId: association.versionId,
+    versionObservedAt: association.versionObservedAt,
   });
   if (activity.occurredAt.toISOString() > existing.occurredAt) {
     existing.occurredAt = activity.occurredAt.toISOString();
@@ -426,9 +440,25 @@ const buildPublicActivityDays = (
     for (const group of accumulator.pullRequestGroups.values()) {
       const commits = group.commits
         .toSorted((left, right) => {
+          if (left.versionId === right.versionId) {
+            const byPosition = left.position - right.position;
+            return byPosition === 0
+              ? left.commit.id.localeCompare(right.commit.id)
+              : byPosition;
+          }
+          const byVersion =
+            left.versionObservedAt.getTime() -
+            right.versionObservedAt.getTime();
+          if (byVersion !== 0) {
+            return byVersion;
+          }
+          const byVersionId = left.versionId.localeCompare(right.versionId);
+          if (byVersionId !== 0) {
+            return byVersionId;
+          }
           const byPosition = left.position - right.position;
           return byPosition === 0
-            ? left.commit.committedAt.localeCompare(right.commit.committedAt)
+            ? left.commit.id.localeCompare(right.commit.id)
             : byPosition;
         })
         .map(({ commit }) => commit);
@@ -650,22 +680,24 @@ const readPublicGitHubActivityPageInTransaction = async (
     const associationSelection = {
       activityPublicId: githubPublicActivities.publicId,
       createdAt: githubPullRequests.createdAt,
+      isCurrent: githubPullRequestVersions.isCurrent,
       nodeId: githubPullRequests.nodeId,
       position: githubPullRequestMemberships.position,
       repositoryId: githubPullRequests.repositoryId,
       title: githubPullRequests.title,
       url: githubPullRequests.url,
+      versionId: githubPullRequestVersions.id,
+      versionObservedAt: githubPullRequestVersions.observedAt,
     };
-    const currentCompleteMembership = and(
+    const completeMembership = and(
       eq(githubPullRequestMemberships.versionId, githubPullRequestVersions.id),
-      eq(githubPullRequestVersions.isCurrent, true),
       eq(githubPullRequestVersions.membershipComplete, true)
     );
     const [directAssociations, aliasAssociations] = await Promise.all([
       database
         .select(associationSelection)
         .from(githubPullRequestMemberships)
-        .innerJoin(githubPullRequestVersions, currentCompleteMembership)
+        .innerJoin(githubPullRequestVersions, completeMembership)
         .innerJoin(
           githubPullRequests,
           eq(
@@ -696,7 +728,7 @@ const readPublicGitHubActivityPageInTransaction = async (
           activityPublicId: githubPublicActivities.canonicalPublicId,
         })
         .from(githubPullRequestMemberships)
-        .innerJoin(githubPullRequestVersions, currentCompleteMembership)
+        .innerJoin(githubPullRequestVersions, completeMembership)
         .innerJoin(
           githubPullRequests,
           eq(
@@ -729,12 +761,24 @@ const readPublicGitHubActivityPageInTransaction = async (
       ...directAssociations,
       ...aliasAssociations,
     ].toSorted((left, right) => {
+      if (left.isCurrent !== right.isCurrent) {
+        return left.isCurrent ? -1 : 1;
+      }
       const byCreatedAt = left.createdAt.getTime() - right.createdAt.getTime();
       if (byCreatedAt !== 0) {
         return byCreatedAt;
       }
       const byNodeId = left.nodeId.localeCompare(right.nodeId);
-      return byNodeId === 0 ? left.position - right.position : byNodeId;
+      if (byNodeId !== 0) {
+        return byNodeId;
+      }
+      const byObservedAt =
+        right.versionObservedAt.getTime() - left.versionObservedAt.getTime();
+      if (byObservedAt !== 0) {
+        return byObservedAt;
+      }
+      const byVersionId = left.versionId.localeCompare(right.versionId);
+      return byVersionId === 0 ? left.position - right.position : byVersionId;
     });
     for (const association of associationRows) {
       if (association.activityPublicId === null) {

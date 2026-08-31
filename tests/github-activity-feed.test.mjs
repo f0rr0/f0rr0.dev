@@ -151,7 +151,9 @@ describe("public GitHub activity projection", () => {
     );
 
     expect(html).toContain("Build daily GitHub activity");
-    expect(html).toContain("Add the daily projection");
+    expect(html.match(/Build daily GitHub activity/gu)).toHaveLength(1);
+    expect(html).not.toContain("Add the daily projection");
+    expect(html).toContain("Builds complete UTC-day activity pages.");
     expect(html).toContain("Polish repository activity rows");
     expect(html).toContain("Document the worker contract");
     expect(html).toContain("Issue opened");
@@ -180,7 +182,6 @@ describe("public GitHub activity projection", () => {
     for (const work of [
       "Track daily activity",
       "Build daily GitHub activity",
-      "Add the daily projection",
       "Polish repository activity rows",
     ]) {
       expect(html.indexOf(work)).toBeGreaterThan(portfolioGroupIndex);
@@ -198,6 +199,70 @@ describe("public GitHub activity projection", () => {
     ]) {
       expect(html).toContain(occurredAt);
     }
+  });
+
+  test("uses the PR title once for a singleton but keeps commit titles in a multi-commit PR", () => {
+    const pullRequestRepository = {
+      avatarUrl: null,
+      key: "public:portfolio",
+      label: "f0rr0/portfolio",
+      url: "https://github.com/f0rr0/portfolio/pull/12",
+    };
+    const html = renderToStaticMarkup(
+      createElement(GitHubActivityDays, {
+        days: [
+          {
+            day: "2026-08-28",
+            items: [
+              {
+                commits: [
+                  {
+                    additions: 4,
+                    changedFiles: 1,
+                    committedAt: "2026-08-28T08:00:00.000Z",
+                    deletions: 1,
+                    headline: "Add deterministic projection",
+                    id: "first-commit-public-id",
+                    languages: [],
+                    providerFileCapReached: false,
+                    summary: "Adds the projection contract.",
+                  },
+                  {
+                    additions: 2,
+                    changedFiles: 1,
+                    committedAt: "2026-08-28T09:00:00.000Z",
+                    deletions: 0,
+                    headline: "Test historical PR revisions",
+                    id: "second-commit-public-id",
+                    languages: [],
+                    providerFileCapReached: false,
+                    summary: "Covers old and current PR versions.",
+                  },
+                ],
+                id: "pr-slice-public-id",
+                kind: "pull-request-commits",
+                occurredAt: "2026-08-28T09:00:00.000Z",
+                repository: pullRequestRepository,
+                title: "Make GitHub work deterministic",
+              },
+            ],
+            totals: {
+              additions: 6,
+              deletions: 1,
+              issuesOpened: 0,
+              repositories: 1,
+            },
+          },
+        ],
+      })
+    );
+
+    expect(html.match(/Make GitHub work deterministic/gu)).toHaveLength(1);
+    expect(html).toContain("Add deterministic projection");
+    expect(html).toContain("Test historical PR revisions");
+    expect(html.indexOf("Add deterministic projection")).toBeLessThan(
+      html.indexOf("Test historical PR revisions")
+    );
   });
 
   test("shows public owners while concealing private names and owners", () => {
