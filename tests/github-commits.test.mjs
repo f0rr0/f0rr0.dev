@@ -995,13 +995,16 @@ describe("account pause state", () => {
 });
 
 describe("bounded event collection", () => {
-  test("uses the saved feed validator and treats 304 as a healthy no-op", async () => {
+  test("uses cache freshness when a 304 omits the poll interval", async () => {
     globalThis.fetch = async (_input, init) => {
       expect(new Headers(init?.headers).get("if-none-match")).toBe(
         'W/"events"'
       );
       return new Response(null, {
-        headers: { etag: 'W/"events"', "X-Poll-Interval": "60" },
+        headers: {
+          "Cache-Control": "private, max-age=300, s-maxage=300",
+          etag: 'W/"events"',
+        },
         status: 304,
       });
     };
@@ -1021,7 +1024,10 @@ describe("bounded event collection", () => {
       notModified: true,
     });
     expect(collected.nextPollAt.getTime()).toBeGreaterThanOrEqual(
-      startedAt + 59_000
+      startedAt + 299_000
+    );
+    expect(collected.nextPollAt.getTime()).toBeLessThanOrEqual(
+      startedAt + 301_000
     );
   });
 
@@ -1086,8 +1092,21 @@ describe("bounded event collection", () => {
     expect(collected.latestEventId).toBe("12");
   });
 
-  test("rejects a missing or malformed provider poll interval", async () => {
+  test("rejects a missing provider poll interval", async () => {
     globalThis.fetch = async () => Response.json([accountEvent("12")]);
+    expect(collectGitHubEvents("f0rr0", "token", null)).rejects.toBeInstanceOf(
+      TypeError
+    );
+  });
+
+  test("does not replace a malformed poll interval with cache freshness", async () => {
+    globalThis.fetch = async () =>
+      Response.json([accountEvent("12")], {
+        headers: {
+          "Cache-Control": "private, max-age=300",
+          "X-Poll-Interval": "later",
+        },
+      });
     expect(collectGitHubEvents("f0rr0", "token", null)).rejects.toBeInstanceOf(
       TypeError
     );
