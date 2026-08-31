@@ -4,6 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import {
   backfillArgumentsFrom,
   backfillRetryWaitMillisecondsFrom,
+  requireBackfillEnvironment,
   runBeforeDeadline,
 } from "../scripts/backfill-github-activity.ts";
 import {
@@ -31,6 +32,41 @@ const auditResult = (status, earliestRetryAt) => ({
 });
 
 describe("GitHub history backfill requests", () => {
+  test("fails before discovery when cursor signing is not configured", () => {
+    const input = backfillArgumentsFrom([
+      "--account",
+      "f0rr0",
+      "--start-date",
+      "2026-08-01",
+      "--end-date",
+      "2026-08-29",
+      "--repository-id",
+      "",
+      "--maximum-minutes",
+      "60",
+    ]);
+    const configured = {
+      CRON_SECRET: "c".repeat(32),
+      DATABASE_URL: "postgresql://activity.example/database",
+      GITHUB_F0RR0_TOKEN: "token",
+    };
+    expect(() => {
+      requireBackfillEnvironment(input, configured);
+    }).not.toThrow();
+    expect(() => {
+      requireBackfillEnvironment(input, {
+        ...configured,
+        CRON_SECRET: undefined,
+      });
+    }).toThrow("CRON_SECRET must contain at least 32 characters");
+    expect(() => {
+      requireBackfillEnvironment(input, {
+        ...configured,
+        CRON_SECRET: `  ${"c".repeat(31)}  `,
+      });
+    }).toThrow("CRON_SECRET must contain at least 32 characters");
+  });
+
   test("rejects duplicate and unknown command arguments", () => {
     expect(() =>
       backfillArgumentsFrom(["--account", "f0rr0", "--account", "f0rr0"])
