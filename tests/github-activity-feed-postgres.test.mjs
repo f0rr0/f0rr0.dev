@@ -501,6 +501,14 @@ describe.skipIf(!dockerAvailable)(
           new Date("2026-08-30T10:00:00.000Z")
         );
         expect(storedVersionOne).not.toBeNull();
+        expect(
+          await persistGitHubPullRequestMembership(
+            storedVersionOne,
+            oldSha,
+            [],
+            true
+          )
+        ).toBe(false);
         await admin`
           insert into github_public_activities (
             public_id, kind, occurred_at, repository_id, revision,
@@ -549,6 +557,54 @@ describe.skipIf(!dockerAvailable)(
             true
           )
         ).toBe(true);
+        await admin`
+          delete from github_pull_request_memberships
+          where version_id = ${storedVersionOne.versionId}::uuid
+        `;
+        const corruptVersion = await persistGitHubPullRequestSnapshot(
+          "f0rr0",
+          versionOne,
+          { refreshMembership: true },
+          new Date("2026-08-30T10:44:00.000Z")
+        );
+        expect(corruptVersion).toMatchObject({
+          membershipRefreshRequired: true,
+          versionId: storedVersionOne.versionId,
+        });
+        expect(
+          await admin`
+            select membership_complete
+            from github_pull_request_versions
+            where id = ${storedVersionOne.versionId}::uuid
+          `
+        ).toEqual([{ membership_complete: false }]);
+        expect(
+          await persistGitHubPullRequestMembership(
+            storedVersionOne,
+            oldSha,
+            [oldSha],
+            true
+          )
+        ).toBe(true);
+        const unchangedVersion = await persistGitHubPullRequestSnapshot(
+          "f0rr0",
+          versionOne,
+          { refreshMembership: true },
+          new Date("2026-08-30T10:45:00.000Z")
+        );
+        expect(unchangedVersion).toMatchObject({
+          membershipRefreshRequired: false,
+          retryLifecycleReset: false,
+          versionId: storedVersionOne.versionId,
+        });
+        const [unchangedVersionObservation] = await admin`
+          select observed_at
+          from github_pull_request_versions
+          where id = ${storedVersionOne.versionId}::uuid
+        `;
+        expect(
+          new Date(unchangedVersionObservation.observed_at).toISOString()
+        ).toBe("2026-08-30T10:00:00.000Z");
         expect(
           await canonicalizeGitHubCommitActivity(
             repositoryId,
@@ -560,6 +616,22 @@ describe.skipIf(!dockerAvailable)(
           aliases: 0,
           publicId: oldActivityId,
         });
+        expect(
+          await canonicalizeGitHubCommitActivity(
+            repositoryId,
+            oldSha,
+            new Date("2026-08-30T10:31:00.000Z"),
+            { onlyIfPending: true }
+          )
+        ).toEqual({ aliased: false, aliases: 0, publicId: null });
+        const [stableCanonicalWatermark] = await admin`
+          select canonicalized_at
+          from github_commits
+          where repository_id = ${repositoryId} and sha = ${oldSha}
+        `;
+        expect(
+          new Date(stableCanonicalWatermark.canonicalized_at).toISOString()
+        ).toBe("2026-08-30T10:30:00.000Z");
 
         const storedVersionTwo = await persistGitHubPullRequestSnapshot(
           "f0rr0",
@@ -648,6 +720,55 @@ describe.skipIf(!dockerAvailable)(
             public_id: newActivityId,
           },
         ]);
+
+        const corruptVersionTwo = await persistGitHubPullRequestSnapshot(
+          "f0rr0",
+          {
+            ...versionOne,
+            commitCount: 2,
+            headSha: newSha,
+            providerUpdatedAt: "2026-08-30T11:00:00.000Z",
+          },
+          { refreshMembership: true },
+          new Date("2026-08-30T11:04:00.000Z")
+        );
+        expect(corruptVersionTwo).toMatchObject({
+          membershipRefreshRequired: true,
+          versionId: storedVersionTwo.versionId,
+        });
+        expect(
+          await admin`
+            select
+              c.canonicalized_at,
+              p.alias_reason,
+              p.canonical_public_id,
+              p.hidden_at,
+              p.published_at,
+              p.public_id
+            from github_commits c
+            inner join github_public_activities p
+              on p.public_id = c.activity_public_id
+            where c.repository_id = ${repositoryId}
+            order by p.public_id
+          `
+        ).toEqual([
+          {
+            alias_reason: null,
+            canonical_public_id: null,
+            canonicalized_at: null,
+            hidden_at: null,
+            public_id: oldActivityId,
+            published_at: null,
+          },
+          {
+            alias_reason: null,
+            canonical_public_id: null,
+            canonicalized_at: null,
+            hidden_at: null,
+            public_id: newActivityId,
+            published_at: null,
+          },
+        ]);
       } finally {
         await admin`
           delete from github_pull_requests
@@ -664,6 +785,98 @@ describe.skipIf(!dockerAvailable)(
         await admin`
           delete from github_commits
           where repository_id = ${repositoryId}
+        `;
+        await admin`
+          delete from github_repositories
+          where id = ${repositoryId}
+        `;
+      }
+    });
+
+    test("accepts an empty membership when the provider reports zero commits", async () => {
+      const repositoryId = "604";
+      const repository = "f0rr0/zero-commit-membership";
+      const pullRequestNodeId = "PR_zero_commit_membership";
+      const headSha = "6".repeat(40);
+      const repositoryFacts = {
+        fullName: repository,
+        htmlUrl: `https://github.com/${repository}`,
+        id: repositoryId,
+        ownerAvatarUrl: null,
+        ownerId: "101",
+        ownerLogin: "f0rr0",
+        ownerType: "User",
+        visibility: "public",
+      };
+      const snapshot = {
+        action: "opened",
+        additions: null,
+        author: "f0rr0",
+        authorAccount: "f0rr0",
+        authorUserId: "101",
+        baseRef: "main",
+        baseRepository: repositoryFacts,
+        baseSha: "5".repeat(40),
+        body: null,
+        changedFiles: null,
+        closedAt: null,
+        commitCount: 0,
+        createdAt: "2026-08-30T12:00:00.000Z",
+        deletions: null,
+        draft: false,
+        headRef: "empty-feature",
+        headRepository: repositoryFacts,
+        headSha,
+        id: "604",
+        mergeCommitSha: null,
+        merged: false,
+        mergedAt: null,
+        nodeId: pullRequestNodeId,
+        number: 604,
+        providerUpdatedAt: "2026-08-30T12:00:00.000Z",
+        repository: repositoryFacts,
+        state: "open",
+        title: "Represent an empty pull request",
+        url: `https://github.com/${repository}/pull/604`,
+      };
+
+      try {
+        const stored = await persistGitHubPullRequestSnapshot(
+          "f0rr0",
+          snapshot,
+          { refreshMembership: true },
+          new Date("2026-08-30T12:00:00.000Z")
+        );
+        expect(stored).not.toBeNull();
+        expect(
+          await persistGitHubPullRequestMembership(stored, headSha, [], true)
+        ).toBe(true);
+        expect(
+          await persistGitHubPullRequestSnapshot(
+            "f0rr0",
+            snapshot,
+            { refreshMembership: true },
+            new Date("2026-08-30T12:01:00.000Z")
+          )
+        ).toMatchObject({
+          membershipRefreshRequired: false,
+          versionId: stored.versionId,
+        });
+        expect(
+          await admin`
+            select
+              v.membership_complete,
+              count(m.*)::integer as membership_count
+            from github_pull_request_versions v
+            left join github_pull_request_memberships m on m.version_id = v.id
+            where v.id = ${stored.versionId}::uuid
+            group by v.id
+          `
+        ).toEqual([{ membership_complete: true, membership_count: 0 }]);
+      } finally {
+        await admin`
+          delete from github_pull_requests
+          where node_id = ${pullRequestNodeId}
         `;
         await admin`
           delete from github_repositories
@@ -1376,9 +1589,10 @@ describe.skipIf(!dockerAvailable)(
       const claimedAt = new Date("2026-08-30T12:00:00.000Z");
 
       await admin`
-        insert into github_account_checkpoints (account)
-        values ('f0rr0')
-        on conflict (account) do nothing
+        insert into github_account_checkpoints (account, ref_backfill_since_at)
+        values ('f0rr0', '2018-01-01T00:00:00.000Z')
+        on conflict (account) do update
+        set ref_backfill_since_at = excluded.ref_backfill_since_at
       `;
       await admin`
         insert into github_repositories (
@@ -1394,7 +1608,7 @@ describe.skipIf(!dockerAvailable)(
           lease_until, observed_at, ref_name, repository_id,
           repository_name_snapshot, source, source_id, state
         ) values (
-          'f0rr0', ${"4".repeat(40)}, 7, ${"3".repeat(40)},
+          'f0rr0', ${"4".repeat(40)}, 7, ${"0".repeat(40)},
           'observation_retry', ${priorRetryAt.toISOString()}, '2018-01-01T00:00:00.000Z',
           'refs/heads/deadline-release', ${repositoryId},
           'f0rr0/deadline-release', 'refs', 'deadline-release-observation',
@@ -1464,6 +1678,10 @@ describe.skipIf(!dockerAvailable)(
         claimedAt
       );
       expect(observation.repositoryId).toBe(repositoryId);
+      expect(observation.historySinceAt).toBeInstanceOf(Date);
+      expect(observation.historySinceAt.toISOString()).toBe(
+        "2018-01-01T00:00:00.000Z"
+      );
       expect(enrichment.repositoryId).toBe(repositoryId);
       expect(signal.repositoryId).toBe(repositoryId);
       expect(pullRequest.nodeId).toBe("PR_deadline_release");

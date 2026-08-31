@@ -30,6 +30,8 @@ import { backfillGitHubCommitsFromCurrentRefs } from "../src/lib/github-direct-b
 import { backfillGitHubPullRequests } from "../src/lib/github-pull-request-backfill";
 
 const MAXIMUM_ACTION_MINUTES = 330;
+const MAXIMUM_INCONCLUSIVE_AUDIT_RETRIES = 2;
+const INCONCLUSIVE_AUDIT_RETRY_MS = 1000;
 const WORKER_CLEANUP_MARGIN_MS = 30_000;
 const WORKER_PASS_DURATION_MS = 240_000;
 
@@ -141,6 +143,8 @@ interface BackfillProcessingTotals extends GitHubBackfillProcessingCounts {
 
 const emptyProcessingCounts = (): GitHubBackfillProcessingCounts => ({
   aliases: 0,
+  canonicalizationAttempts: 0,
+  canonicalized: 0,
   claimed: 0,
   deferred: 0,
   failed: 0,
@@ -153,6 +157,8 @@ const addProcessingCounts = (
   counts: GitHubBackfillProcessingCounts
 ) => {
   totals.aliases += counts.aliases;
+  totals.canonicalizationAttempts += counts.canonicalizationAttempts;
+  totals.canonicalized += counts.canonicalized;
   totals.claimed += counts.claimed;
   totals.deferred += counts.deferred;
   totals.failed += counts.failed;
@@ -225,7 +231,7 @@ const processQueue = async (
     passes += 1;
     addProcessingCounts(totals, counts);
     process.stdout.write(
-      `Worker pass ${String(completedPasses + passes)}: claimed ${String(counts.claimed)}, processed ${String(counts.processed)}, deferred ${String(counts.deferred)}, unavailable ${String(counts.unavailable)}, failed ${String(counts.failed)}, aliases ${String(counts.aliases)}.\n`
+      `Worker pass ${String(completedPasses + passes)}: claimed ${String(counts.claimed)}, processed ${String(counts.processed)}, deferred ${String(counts.deferred)}, unavailable ${String(counts.unavailable)}, failed ${String(counts.failed)}, canonicalized ${String(counts.canonicalized)}/${String(counts.canonicalizationAttempts)}, aliases ${String(counts.aliases)}.\n`
     );
     if (!githubBackfillProcessingMadeProgress(counts)) {
       return {
@@ -251,17 +257,25 @@ const combineProcessingTotals = (
 export const backfillRetryWaitMillisecondsFrom = (
   audits: readonly Pick<GitHubActivityAuditReport, "pipeline" | "status">[],
   deadlineAt: number,
-  now = Date.now()
+  now = Date.now(),
+  inconclusiveRetries = 0
 ) => {
   if (
     audits.length === 0 ||
     audits.some(
       ({ status }) =>
+        status !== "inconclusive" &&
         status !== "pipeline_incomplete" &&
         status !== "stored_projection_verified"
     )
   ) {
     return null;
+  }
+  if (audits.some(({ status }) => status === "inconclusive")) {
+    return inconclusiveRetries < MAXIMUM_INCONCLUSIVE_AUDIT_RETRIES &&
+      now + INCONCLUSIVE_AUDIT_RETRY_MS + WORKER_CLEANUP_MARGIN_MS < deadlineAt
+      ? INCONCLUSIVE_AUDIT_RETRY_MS
+      : null;
   }
   const retryTimes = audits.flatMap(({ pipeline, status }) => {
     if (status !== "pipeline_incomplete" || pipeline.earliestRetryAt === null) {
@@ -402,6 +416,7 @@ const main = async () => {
       stopReason: "no_immediately_claimable_work",
     };
     let audits: readonly GitHubActivityAuditReport[] = [];
+    let inconclusiveAuditRetries = 0;
     let completion = githubBackfillCompletionFrom({
       auditStatuses: [],
       boundedDiscoveryComplete,
@@ -421,7 +436,15 @@ const main = async () => {
         worker.stopReason = "time_budget";
         break;
       }
-      const retryWait = backfillRetryWaitMillisecondsFrom(audits, deadlineAt);
+      const hasInconclusiveAudit = audits.some(
+        ({ status }) => status === "inconclusive"
+      );
+      const retryWait = backfillRetryWaitMillisecondsFrom(
+        audits,
+        deadlineAt,
+        Date.now(),
+        inconclusiveAuditRetries
+      );
       if (retryWait === null) {
         if (
           audits.some(
@@ -438,6 +461,9 @@ const main = async () => {
         }
         break;
       }
+      inconclusiveAuditRetries = hasInconclusiveAudit
+        ? inconclusiveAuditRetries + 1
+        : 0;
       process.stdout.write(
         `No scoped work is claimable; waiting ${String(Math.ceil(retryWait / 1000))} seconds for the next durable retry within the Action budget.\n`
       );

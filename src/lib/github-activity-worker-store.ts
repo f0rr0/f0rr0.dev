@@ -577,7 +577,10 @@ export const claimGitHubPushObservations = async (
         beforeSha: githubPushObservations.beforeSha,
         errorCode: githubPushObservations.errorCode,
         expectedCommitCount: githubPushObservations.expectedCommitCount,
-        historySinceAt: sql<Date>`coalesce(${githubPushObservations.historySinceAt}, ${githubAccountCheckpoints.refBackfillSinceAt})`,
+        historySinceAt:
+          sql`coalesce(${githubPushObservations.historySinceAt}, ${githubAccountCheckpoints.refBackfillSinceAt})`.mapWith(
+            githubAccountCheckpoints.refBackfillSinceAt
+          ),
         historyUntilAt: githubPushObservations.historyUntilAt,
         id: githubPushObservations.id,
         leaseUntil: githubPushObservations.leaseUntil,
@@ -1738,6 +1741,18 @@ const persistPullRequestSnapshotInTransaction = async (
       id: githubPullRequestVersions.id,
       isCurrent: githubPullRequestVersions.isCurrent,
       membershipComplete: githubPullRequestVersions.membershipComplete,
+      membershipCount: sql<number>`(
+        SELECT count(*)::integer
+        FROM ${githubPullRequestMemberships}
+        WHERE ${githubPullRequestMemberships.versionId} = ${githubPullRequestVersions.id}
+      )`,
+      membershipHeadSha: sql<string | null>`(
+        SELECT ${githubPullRequestMemberships.commitSha}
+        FROM ${githubPullRequestMemberships}
+        WHERE ${githubPullRequestMemberships.versionId} = ${githubPullRequestVersions.id}
+        ORDER BY ${githubPullRequestMemberships.position} DESC
+        LIMIT 1
+      )`,
       providerUpdatedAt: githubPullRequestVersions.providerUpdatedAt,
     })
     .from(githubPullRequestVersions)
@@ -1805,7 +1820,10 @@ const persistPullRequestSnapshotInTransaction = async (
           pullRequest.headRepository?.id ?? version.headRepositoryId,
         isCurrent: true,
         mergeSnapshot: pullRequest.merged,
-        observedAt: now,
+        ...(providerUpdatedAt > version.providerUpdatedAt ||
+        canonicalEvidenceChanged
+          ? { observedAt: now }
+          : {}),
         providerUpdatedAt,
       })
       .where(eq(githubPullRequestVersions.id, version.id));
@@ -1813,8 +1831,32 @@ const persistPullRequestSnapshotInTransaction = async (
   if (versionId === undefined) {
     throw new Error("The GitHub pull request version is unavailable.");
   }
+  const expectedMembershipCount =
+    pullRequest.commitCount ?? version?.commitCount ?? null;
+  const storedMembershipCompleteFlag = version?.membershipComplete ?? false;
+  const storedMembershipComplete =
+    storedMembershipCompleteFlag &&
+    expectedMembershipCount !== null &&
+    version.membershipCount === expectedMembershipCount &&
+    (expectedMembershipCount === 0
+      ? version.membershipHeadSha === null
+      : version.membershipHeadSha === pullRequest.headSha);
+  const storedMembershipInvalid =
+    storedMembershipCompleteFlag && !storedMembershipComplete;
+  if (storedMembershipInvalid) {
+    await invalidateGitHubPullRequestDerivedAliases(
+      transaction,
+      pullRequest.nodeId
+    );
+    await transaction
+      .update(githubPullRequestVersions)
+      .set({ membershipComplete: false })
+      .where(eq(githubPullRequestVersions.id, versionId));
+  }
   const membershipRefreshRequired =
-    version === undefined || (refreshMembership && !version.membershipComplete);
+    version === undefined ||
+    storedMembershipInvalid ||
+    (refreshMembership && !storedMembershipComplete);
   if (membershipRefreshRequired && existing !== undefined) {
     await transaction
       .update(githubPullRequests)
@@ -2048,14 +2090,29 @@ export const persistGitHubPullRequestMembership = async (
 ) =>
   await getDatabase().transaction(async (transaction) => {
     const [version] = await transaction
-      .select({ id: githubPullRequestVersions.id })
+      .select({
+        commitCount: githubPullRequestVersions.commitCount,
+        headSha: githubPullRequestVersions.headSha,
+        id: githubPullRequestVersions.id,
+      })
       .from(githubPullRequestVersions)
       .where(eq(githubPullRequestVersions.id, stored.versionId))
       .for("update");
     if (version === undefined) {
       return false;
     }
-    if (!membershipComplete) {
+    const completeMembershipIsValid =
+      membershipComplete &&
+      version.commitCount !== null &&
+      commitShas.length === version.commitCount &&
+      new Set(commitShas).size === commitShas.length &&
+      headSha === version.headSha &&
+      (version.commitCount === 0 || commitShas.at(-1) === version.headSha);
+    if (!completeMembershipIsValid) {
+      await invalidateGitHubPullRequestDerivedAliases(
+        transaction,
+        stored.pullRequestNodeId
+      );
       await transaction
         .update(githubPullRequestVersions)
         .set({ membershipComplete: false })
@@ -2398,7 +2455,8 @@ const markGitHubCommitCanonicalized = async (
 export const canonicalizeGitHubCommitActivity = async (
   repositoryId: string,
   sha: string,
-  now = new Date()
+  now = new Date(),
+  options: { onlyIfPending?: boolean } = {}
 ) =>
   // oxlint-disable-next-line complexity -- Evidence classes deliberately fail open independently.
   await getDatabase().transaction(async (transaction) => {
@@ -2426,6 +2484,9 @@ export const canonicalizeGitHubCommitActivity = async (
             "complete",
             "unavailable",
           ]),
+          options.onlyIfPending === true
+            ? isNull(githubCommits.canonicalizedAt)
+            : undefined,
           isNull(githubPublicActivities.canonicalPublicId),
           isNull(githubPublicActivities.hiddenAt)
         )
@@ -2641,7 +2702,7 @@ export const canonicalizePendingGitHubActivities = async (
   scope?: GitHubActivityWorkerScope
 ) => {
   if (activeAccounts.length === 0) {
-    return 0;
+    return { aliases: 0, canonicalizationAttempts: 0, canonicalized: 0 };
   }
   const candidates = await getDatabase()
     .select({
@@ -2667,15 +2728,22 @@ export const canonicalizePendingGitHubActivities = async (
     .orderBy(asc(githubCommits.firstObservedAt), asc(githubCommits.sha))
     .limit(limit);
   let aliased = 0;
+  let canonicalized = 0;
   for (const candidate of candidates) {
     const result = await canonicalizeGitHubCommitActivity(
       candidate.repositoryId,
       candidate.sha,
-      now
+      now,
+      { onlyIfPending: true }
     );
     aliased += result.aliases;
+    canonicalized += result.publicId === null ? 0 : 1;
   }
-  return aliased;
+  return {
+    aliases: aliased,
+    canonicalizationAttempts: candidates.length,
+    canonicalized,
+  };
 };
 
 export const ensureGitHubSummaryAttempt = async (

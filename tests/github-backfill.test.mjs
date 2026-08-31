@@ -128,6 +128,8 @@ describe("GitHub history backfill requests", () => {
     expect(
       githubBackfillProcessingCountsFrom({
         aliases: 7,
+        canonicalizationAttempts: 9,
+        canonicalized: 8,
         commits: {
           claimed: 4,
           completed: 1,
@@ -173,6 +175,8 @@ describe("GitHub history backfill requests", () => {
       })
     ).toEqual({
       aliases: 7,
+      canonicalizationAttempts: 9,
+      canonicalized: 8,
       claimed: 20,
       deferred: 5,
       failed: 3,
@@ -183,13 +187,22 @@ describe("GitHub history backfill requests", () => {
 
   test("keeps draining when canonicalization progresses without queue claims", () => {
     expect(
-      githubBackfillProcessingMadeProgress({ aliases: 1, claimed: 0 })
+      githubBackfillProcessingMadeProgress({
+        canonicalizationAttempts: 1,
+        claimed: 0,
+      })
     ).toBe(true);
     expect(
-      githubBackfillProcessingMadeProgress({ aliases: 0, claimed: 1 })
+      githubBackfillProcessingMadeProgress({
+        canonicalizationAttempts: 0,
+        claimed: 1,
+      })
     ).toBe(true);
     expect(
-      githubBackfillProcessingMadeProgress({ aliases: 0, claimed: 0 })
+      githubBackfillProcessingMadeProgress({
+        canonicalizationAttempts: 0,
+        claimed: 0,
+      })
     ).toBe(false);
   });
 
@@ -222,6 +235,20 @@ describe("GitHub history backfill requests", () => {
         nowAt + 60 * 60 * 1000,
         nowAt
       )
+    ).toBeNull();
+  });
+
+  test("retries an inconclusive projection read only twice", () => {
+    const nowAt = Date.parse("2026-08-30T00:00:00.000Z");
+    const audits = [auditResult("inconclusive", null)];
+    expect(
+      backfillRetryWaitMillisecondsFrom(audits, nowAt + 60_000, nowAt, 0)
+    ).toBe(1000);
+    expect(
+      backfillRetryWaitMillisecondsFrom(audits, nowAt + 60_000, nowAt, 1)
+    ).toBe(1000);
+    expect(
+      backfillRetryWaitMillisecondsFrom(audits, nowAt + 60_000, nowAt, 2)
     ).toBeNull();
   });
 

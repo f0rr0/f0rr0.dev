@@ -100,6 +100,8 @@ const emptyStageResult = (): StageResult => ({
 
 export interface GitHubActivityWorkerResult {
   aliases: number;
+  canonicalizationAttempts: number;
+  canonicalized: number;
   commits: StageResult;
   deadlineReached: boolean;
   observations: StageResult;
@@ -677,8 +679,8 @@ export const runGitHubActivityWorker = async (
     pullRequestDiscovery
   );
   await processPullRequests(context, pullRequestLimit, pullRequests);
-  const aliases = context.deadlineReached()
-    ? 0
+  const canonicalization = context.deadlineReached()
+    ? { aliases: 0, canonicalizationAttempts: 0, canonicalized: 0 }
     : await canonicalizePendingGitHubActivities(
         8,
         new Date(),
@@ -696,7 +698,9 @@ export const runGitHubActivityWorker = async (
   await processSummaries(context, summaryLimit, summaries);
 
   return {
-    aliases,
+    aliases: canonicalization.aliases,
+    canonicalizationAttempts: canonicalization.canonicalizationAttempts,
+    canonicalized: canonicalization.canonicalized,
     commits,
     deadlineReached: context.deadlineReached(),
     observations,
