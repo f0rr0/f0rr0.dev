@@ -310,7 +310,99 @@ describe("GitHub activity commit acquisition", () => {
     expect(source.commits[0]?.author).toBe("f0rr0");
   });
 
-  test("rejects surplus compare commits instead of truncating away the head", async () => {
+  test("recovers an exact durable push when the current compare has surplus commits", async () => {
+    const beforeSha = "1".repeat(40);
+    const firstSha = "2".repeat(40);
+    const surplusSha = "3".repeat(40);
+    const afterSha = "4".repeat(40);
+    const paths = [];
+    env.GITHUB_F0RR0_TOKEN = "test-token";
+    globalThis.fetch = async (input) => {
+      const url =
+        input instanceof Request ? new URL(input.url) : new URL(input);
+      paths.push(url.pathname);
+      if (url.pathname.includes("/compare/")) {
+        return Response.json({
+          ahead_by: 3,
+          total_commits: 3,
+          commits: [
+            pushCommitValue(surplusSha, "octocat", 200),
+            pushCommitValue(firstSha, "f0rr0", 100),
+            pushCommitValue(afterSha, "f0rr0", 100),
+          ],
+        });
+      }
+      const sha = url.pathname.split("/").at(-1);
+      return Response.json(pushCommitValue(sha, "f0rr0", 100));
+    };
+
+    const source = await fetchGitHubPushObservationSource({
+      account: "f0rr0",
+      afterSha,
+      beforeSha,
+      expectedCommitCount: 2,
+      knownShas: [firstSha, afterSha],
+      observedAt: new Date("2026-08-28T12:00:00.000Z"),
+      refName: "refs/heads/main",
+      repository: "example-org/example-repo",
+      repositoryId: "123",
+    });
+
+    expect(paths).toEqual([
+      `/repos/example-org/example-repo/compare/${beforeSha}...${afterSha}`,
+      `/repos/example-org/example-repo/commits/${firstSha}`,
+      `/repos/example-org/example-repo/commits/${afterSha}`,
+    ]);
+    expect(source.commitShas).toEqual([firstSha, afterSha]);
+    expect(source.commits.map(({ sha }) => sha)).toEqual([firstSha, afterSha]);
+  });
+
+  test("recovers durable members when the current compare has the same count and head", async () => {
+    const beforeSha = "1".repeat(40);
+    const firstSha = "2".repeat(40);
+    const otherSha = "3".repeat(40);
+    const afterSha = "4".repeat(40);
+    const paths = [];
+    env.GITHUB_F0RR0_TOKEN = "test-token";
+    globalThis.fetch = async (input) => {
+      const url =
+        input instanceof Request ? new URL(input.url) : new URL(input);
+      paths.push(url.pathname);
+      if (url.pathname.includes("/compare/")) {
+        return Response.json({
+          ahead_by: 2,
+          total_commits: 2,
+          commits: [
+            pushCommitValue(otherSha, "octocat", 200),
+            pushCommitValue(afterSha, "f0rr0", 100),
+          ],
+        });
+      }
+      const sha = url.pathname.split("/").at(-1);
+      return Response.json(pushCommitValue(sha, "f0rr0", 100));
+    };
+
+    const source = await fetchGitHubPushObservationSource({
+      account: "f0rr0",
+      afterSha,
+      beforeSha,
+      expectedCommitCount: 2,
+      knownShas: [firstSha, afterSha],
+      observedAt: new Date("2026-08-28T12:00:00.000Z"),
+      refName: "refs/heads/main",
+      repository: "example-org/example-repo",
+      repositoryId: "123",
+    });
+
+    expect(paths).toEqual([
+      `/repos/example-org/example-repo/compare/${beforeSha}...${afterSha}`,
+      `/repos/example-org/example-repo/commits/${firstSha}`,
+      `/repos/example-org/example-repo/commits/${afterSha}`,
+    ]);
+    expect(source.commitShas).toEqual([firstSha, afterSha]);
+  });
+
+  test("rejects surplus compare commits without complete durable evidence", async () => {
     const beforeSha = "1".repeat(40);
     const firstSha = "2".repeat(40);
     const surplusSha = "3".repeat(40);
@@ -333,7 +425,7 @@ describe("GitHub activity commit acquisition", () => {
         afterSha,
         beforeSha,
         expectedCommitCount: 2,
-        knownShas: [firstSha, afterSha],
+        knownShas: [afterSha],
         observedAt: new Date("2026-08-28T12:00:00.000Z"),
         refName: "refs/heads/main",
         repository: "example-org/example-repo",
@@ -535,6 +627,85 @@ describe("GitHub activity commit acquisition", () => {
     expect(source.commitShas).toEqual([olderSha, afterSha]);
     expect(source.commits.map(({ sha }) => sha)).toEqual([afterSha]);
     expect(source.commits[0]?.committedAt).toBe("2026-08-28T12:01:00.000Z");
+  });
+
+  test("recovers durable members when force-push history has unrelated ancestors", async () => {
+    const beforeSha = "1".repeat(40);
+    const olderSha = "2".repeat(40);
+    const firstSha = "3".repeat(40);
+    const afterSha = "4".repeat(40);
+    const paths = [];
+    env.GITHUB_F0RR0_TOKEN = "test-token";
+    globalThis.fetch = async (input) => {
+      const url =
+        input instanceof Request ? new URL(input.url) : new URL(input);
+      paths.push(url.pathname);
+      if (url.pathname.includes("/compare/")) {
+        return new Response(null, { status: 404 });
+      }
+      if (url.pathname === "/graphql") {
+        return Response.json({
+          data: {
+            repository: {
+              object: {
+                history: {
+                  nodes: [
+                    {
+                      author: { user: { login: "f0rr0" } },
+                      authoredDate: "2026-08-28T12:00:00Z",
+                      committedDate: "2026-08-28T12:01:00Z",
+                      message: "head",
+                      oid: afterSha,
+                      url: `https://github.com/example-org/example-repo/commit/${afterSha}`,
+                    },
+                    {
+                      author: { user: { login: "f0rr0" } },
+                      authoredDate: "2026-08-28T11:00:00Z",
+                      committedDate: "2026-08-28T11:01:00Z",
+                      message: "first",
+                      oid: firstSha,
+                      url: `https://github.com/example-org/example-repo/commit/${firstSha}`,
+                    },
+                    {
+                      author: { user: { login: "octocat" } },
+                      authoredDate: "2026-08-28T10:00:00Z",
+                      committedDate: "2026-08-28T10:01:00Z",
+                      message: "older",
+                      oid: olderSha,
+                      url: `https://github.com/example-org/example-repo/commit/${olderSha}`,
+                    },
+                  ],
+                  pageInfo: { endCursor: null, hasNextPage: false },
+                },
+              },
+            },
+          },
+        });
+      }
+      const sha = url.pathname.split("/").at(-1);
+      return Response.json(pushCommitValue(sha, "f0rr0", 100));
+    };
+
+    const source = await fetchGitHubPushObservationSource({
+      account: "f0rr0",
+      afterSha,
+      beforeSha,
+      expectedCommitCount: 2,
+      historySinceAt: new Date("2026-08-18T00:00:00.000Z"),
+      knownShas: [firstSha, afterSha],
+      observedAt: new Date("2026-08-28T12:34:00.000Z"),
+      refName: "refs/heads/main",
+      repository: "example-org/example-repo",
+      repositoryId: "123",
+    });
+
+    expect(paths).toEqual([
+      `/repos/example-org/example-repo/compare/${beforeSha}...${afterSha}`,
+      "/graphql",
+      `/repos/example-org/example-repo/commits/${firstSha}`,
+      `/repos/example-org/example-repo/commits/${afterSha}`,
+    ]);
+    expect(source.commitShas).toEqual([firstSha, afterSha]);
   });
 
   test("bounds a new branch by the observed count without slicing history", async () => {
