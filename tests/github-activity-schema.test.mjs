@@ -41,6 +41,9 @@ describe("GitHub activity persistence schema", () => {
       "github_commits_canonicalization_pending_idx"
     );
     expect(indexNames(githubCommits)).toContain(
+      "github_commits_exact_authored_change_idx"
+    );
+    expect(indexNames(githubCommits)).toContain(
       "github_commits_pr_discovery_pending_idx"
     );
     expect(checkNames(githubCommits)).toEqual(

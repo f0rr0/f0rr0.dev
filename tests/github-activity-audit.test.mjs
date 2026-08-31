@@ -394,6 +394,15 @@ describe("GitHub activity audit", () => {
         globalProjectionSourceIds: [commit.id],
       })
     ).not.toBe(githubActivityAuditEvidenceFingerprint(forward));
+    expect(
+      githubActivityAuditEvidenceFingerprint({
+        ...forward,
+        commits: [
+          healthyCommitEvidence,
+          { ...secondCommit, hasExactDuplicateRoot: true },
+        ],
+      })
+    ).not.toBe(githubActivityAuditEvidenceFingerprint(forward));
   });
 
   test("reports a mismatch when an uncanonicalized commit reaches the projection", () => {
@@ -413,6 +422,24 @@ describe("GitHub activity audit", () => {
         { id: "exact_stored_activity_sources", ok: false, violations: 1 },
       ])
     );
+  });
+
+  test("rejects a complete authored fingerprint duplicated by a root outside the audit window", () => {
+    const report = buildGitHubActivityAuditReport(request, {
+      commits: [{ ...healthyCommitEvidence, hasExactDuplicateRoot: true }],
+      globalProjectionSourceIds: [commit.id],
+      issues: [],
+      legacyPullRequestMilestones: 0,
+      projectionDays: [healthyDay],
+      projectionError: null,
+    });
+
+    expect(report.status).toBe("mismatch");
+    expect(report.checks).toContainEqual({
+      id: "unique_complete_change_fingerprints",
+      ok: false,
+      violations: 1,
+    });
   });
 
   test("fails readiness when stored work is still waiting for the pipeline", () => {

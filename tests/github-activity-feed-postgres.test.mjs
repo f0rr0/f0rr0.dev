@@ -88,6 +88,7 @@ describe.skipIf(!dockerAvailable)(
     let ensureGitHubEvidenceIntegrity;
     let ensureMissingGitHubSummaryAttempts;
     let getDatabase;
+    let githubActivityAuditRequestFrom;
     let inspectGitHubEvidenceRecovery;
     let originalCronSecret;
     let originalDatabaseUrl;
@@ -111,6 +112,7 @@ describe.skipIf(!dockerAvailable)(
     let releaseGitHubSummaryAttempt;
     let repairLegacyGitHubEvidence;
     let runGitHubActivityWorker;
+    let runGitHubActivityAudit;
 
     beforeAll(async () => {
       originalCronSecret = env.CRON_SECRET;
@@ -183,6 +185,8 @@ describe.skipIf(!dockerAvailable)(
         await import("../src/lib/github-commits-core.ts"));
       ({ readPublicGitHubActivityPage } =
         await import("../src/lib/github-activity-store.ts"));
+      ({ githubActivityAuditRequestFrom, runGitHubActivityAudit } =
+        await import("../src/lib/github-activity-audit.ts"));
       ({
         canonicalizeGitHubCommitActivity,
         claimDueGitHubPullRequests,
@@ -263,6 +267,576 @@ describe.skipIf(!dockerAvailable)(
         accessMode: "read only",
         isolationLevel: "repeatable read",
       });
+    });
+
+    test("groups complete historical and current PR memberships without changing work totals", async () => {
+      const repositoryId = "606";
+      const repository = "f0rr0/historical-pr-projection";
+      const pullRequestNodeId = "PR_historical_projection_606";
+      const activityIds = [
+        "00000000-0000-4000-8000-000000000606",
+        "00000000-0000-4000-8000-000000000607",
+        "00000000-0000-4000-8000-000000000608",
+      ];
+      const commitShas = [
+        `${"a".repeat(39)}6`,
+        `${"b".repeat(39)}6`,
+        `${"c".repeat(39)}6`,
+      ];
+      const historicalVersionId = "10000000-0000-4000-8000-000000000606";
+      const currentVersionId = "10000000-0000-4000-8000-000000000608";
+
+      try {
+        await admin`
+          insert into github_repositories (
+            id, full_name, html_url, owner_id, owner_login, owner_type,
+            visibility
+          ) values (
+            ${repositoryId}, ${repository},
+            ${`https://github.com/${repository}`}, '101', 'f0rr0', 'User',
+            'public'
+          )
+        `;
+        await admin`
+          insert into github_public_activities (
+            public_id, kind, occurred_at, published_at, repository_id,
+            revision, source_node_id
+          ) values
+            (
+              ${activityIds[0]}, 'commit', '2026-08-24T08:00:00.000Z',
+              '2026-08-24T11:01:00.000Z', ${repositoryId}, 1,
+              ${commitShas[0]}
+            ),
+            (
+              ${activityIds[1]}, 'commit', '2026-08-24T09:00:00.000Z',
+              '2026-08-24T11:01:00.000Z', ${repositoryId}, 1,
+              ${commitShas[1]}
+            ),
+            (
+              ${activityIds[2]}, 'commit', '2026-08-24T10:00:00.000Z',
+              '2026-08-24T11:01:00.000Z', ${repositoryId}, 1,
+              ${commitShas[2]}
+            )
+        `;
+        await admin`
+          insert into github_commits (
+            activity_public_id, additions, author_login, authored_at,
+            author_user_id, canonicalized_at, changed_files, committed_at,
+            committer_at, deletions, enrichment_state, fingerprint_complete,
+            first_observed_at, full_message, languages, message, parent_shas,
+            pr_discovery_state, repository, repository_id, sha, substantive_loc
+          ) values
+            (
+              ${activityIds[0]}, 10, 'f0rr0', '2026-08-24T07:00:00.000Z',
+              '101', '2026-08-24T11:00:00.000Z', 1,
+              '2026-08-24T08:00:00.000Z', '2026-08-24T08:00:00.000Z', 1,
+              'complete', false, '2026-08-24T08:00:00.000Z',
+              'Start the historical version', '[]'::jsonb,
+              'Start the historical version', ${JSON.stringify([
+                "1".repeat(40),
+              ])}::jsonb, 'complete', ${repository}, ${repositoryId},
+              ${commitShas[0]}, 11
+            ),
+            (
+              ${activityIds[1]}, 20, 'f0rr0', '2026-08-24T07:30:00.000Z',
+              '101', '2026-08-24T11:00:00.000Z', 2,
+              '2026-08-24T09:00:00.000Z', '2026-08-24T09:00:00.000Z', 2,
+              'complete', false, '2026-08-24T09:00:00.000Z',
+              'Finish the historical version', '[]'::jsonb,
+              'Finish the historical version', ${JSON.stringify([
+                commitShas[0],
+              ])}::jsonb, 'complete', ${repository}, ${repositoryId},
+              ${commitShas[1]}, 22
+            ),
+            (
+              ${activityIds[2]}, 30, 'f0rr0', '2026-08-24T08:00:00.000Z',
+              '101', '2026-08-24T11:00:00.000Z', 3,
+              '2026-08-24T10:00:00.000Z', '2026-08-24T10:00:00.000Z', 3,
+              'complete', false, '2026-08-24T10:00:00.000Z',
+              'Replace the PR head', '[]'::jsonb, 'Replace the PR head',
+              ${JSON.stringify(["2".repeat(40)])}::jsonb, 'complete',
+              ${repository}, ${repositoryId}, ${commitShas[2]}, 33
+            )
+        `;
+        await admin`
+          insert into github_summary_attempts (
+            activity_public_id, completed_at, revision, state,
+            summary_headline, summary_short
+          ) values
+            (
+              ${activityIds[0]}, '2026-08-24T11:01:00.000Z', 1, 'complete',
+              'Old version, first commit', 'Starts the historical version.'
+            ),
+            (
+              ${activityIds[1]}, '2026-08-24T11:01:00.000Z', 1, 'complete',
+              'Old version, second commit', 'Finishes the historical version.'
+            ),
+            (
+              ${activityIds[2]}, '2026-08-24T11:01:00.000Z', 1, 'complete',
+              'Current version commit', 'Replaces the pull request head.'
+            )
+        `;
+        await admin`
+          insert into github_pull_requests (
+            account, author_login, author_user_id, created_at, node_id, number,
+            provider_updated_at, repository_id, state, title, title_snapshot,
+            url
+          ) values (
+            'f0rr0', 'f0rr0', '101', '2026-08-24T06:00:00.000Z',
+            ${pullRequestNodeId}, 606, '2026-08-24T10:30:00.000Z',
+            ${repositoryId}, 'open', 'Preserve all meaningful PR work',
+            'Preserve all meaningful PR work',
+            ${`https://github.com/${repository}/pull/606`}
+          )
+        `;
+        await admin`
+          insert into github_pull_request_versions (
+            base_sha, head_sha, id, is_current, membership_complete,
+            merge_snapshot, observed_at, provider_updated_at,
+            pull_request_node_id
+          ) values
+            (
+              ${"1".repeat(40)}, ${commitShas[1]}, ${historicalVersionId},
+              false, true, false, '2026-08-24T09:30:00.000Z',
+              '2026-08-24T09:30:00.000Z', ${pullRequestNodeId}
+            ),
+            (
+              ${"1".repeat(40)}, ${commitShas[2]}, ${currentVersionId},
+              true, true, false, '2026-08-24T10:30:00.000Z',
+              '2026-08-24T10:30:00.000Z', ${pullRequestNodeId}
+            )
+        `;
+        await admin`
+          insert into github_pull_request_memberships (
+            commit_repository_id, commit_sha, is_head, position, version_id
+          ) values
+            (${repositoryId}, ${commitShas[0]}, false, 0, ${historicalVersionId}),
+            (${repositoryId}, ${commitShas[1]}, true, 1, ${historicalVersionId}),
+            (${repositoryId}, ${commitShas[2]}, true, 0, ${currentVersionId})
+        `;
+
+        const page = await readPublicGitHubActivityPage(
+          {
+            beforeDay: "2026-08-25",
+            snapshotAt: "2026-08-30T12:00:00.000Z",
+            version: 1,
+          },
+          1
+        );
+
+        expect(page.days).toHaveLength(1);
+        expect(page.days[0]).toMatchObject({
+          day: "2026-08-24",
+          items: [
+            {
+              commits: [
+                { headline: "Old version, first commit" },
+                { headline: "Old version, second commit" },
+                { headline: "Current version commit" },
+              ],
+              kind: "pull-request-commits",
+              title: "Preserve all meaningful PR work",
+            },
+          ],
+          totals: {
+            additions: 60,
+            deletions: 6,
+            issuesOpened: 0,
+            repositories: 1,
+          },
+        });
+      } finally {
+        await admin`
+          delete from github_pull_requests
+          where node_id = ${pullRequestNodeId}
+        `;
+        await admin`
+          delete from github_public_activities
+          where repository_id = ${repositoryId}
+        `;
+        await admin`
+          delete from github_commits
+          where repository_id = ${repositoryId}
+        `;
+        await admin`
+          delete from github_repositories
+          where id = ${repositoryId}
+        `;
+      }
+    });
+
+    test("audits exact authored roots against peers outside the requested day", async () => {
+      const repositoryId = "607";
+      const repository = "f0rr0/audit-boundary";
+      const activityIds = [
+        "00000000-0000-4000-8000-000000000671",
+        "00000000-0000-4000-8000-000000000672",
+      ];
+      const commitShas = [`${"d".repeat(39)}7`, `${"e".repeat(39)}7`];
+
+      try {
+        await admin`
+          insert into github_repositories (
+            id, full_name, html_url, owner_id, owner_login, owner_type,
+            visibility
+          ) values (
+            ${repositoryId}, ${repository},
+            ${`https://github.com/${repository}`}, '101', 'f0rr0', 'User',
+            'public'
+          )
+        `;
+        await admin`
+          insert into github_public_activities (
+            public_id, kind, occurred_at, published_at, repository_id,
+            revision, source_node_id
+          ) values
+            (
+              ${activityIds[0]}, 'commit', '2026-08-22T10:00:00.000Z',
+              '2026-08-22T11:00:00.000Z', ${repositoryId}, 1,
+              ${commitShas[0]}
+            ),
+            (
+              ${activityIds[1]}, 'commit', '2026-08-23T10:00:00.000Z',
+              '2026-08-23T11:00:00.000Z', ${repositoryId}, 1,
+              ${commitShas[1]}
+            )
+        `;
+        await admin`
+          insert into github_commits (
+            activity_public_id, additions, author_login, author_user_id,
+            canonicalized_at, changed_files, change_fingerprint, committed_at,
+            committer_at, deletions, enrichment_state, fingerprint_complete,
+            first_observed_at, full_message, languages, message, parent_shas,
+            pr_discovery_state, repository, repository_id, sha, substantive_loc
+          ) values
+            (
+              ${activityIds[0]}, 8, 'f0rr0', '101',
+              '2026-08-22T10:30:00.000Z', 1, ${"7".repeat(64)},
+              '2026-08-22T10:00:00.000Z', '2026-08-22T10:00:00.000Z', 2,
+              'complete', true, '2026-08-22T10:00:00.000Z',
+              'Original exact change', '[]'::jsonb, 'Original exact change',
+              ${JSON.stringify(["1".repeat(40)])}::jsonb, 'complete',
+              ${repository}, ${repositoryId}, ${commitShas[0]}, 10
+            ),
+            (
+              ${activityIds[1]}, 8, 'f0rr0', '101',
+              '2026-08-23T10:30:00.000Z', 1, ${"7".repeat(64)},
+              '2026-08-23T10:00:00.000Z', '2026-08-23T10:00:00.000Z', 2,
+              'complete', true, '2026-08-23T10:00:00.000Z',
+              'Rebased exact change', '[]'::jsonb, 'Rebased exact change',
+              ${JSON.stringify(["2".repeat(40)])}::jsonb, 'complete',
+              ${repository}, ${repositoryId}, ${commitShas[1]}, 10
+            )
+        `;
+        await admin`
+          insert into github_summary_attempts (
+            activity_public_id, completed_at, revision, state,
+            summary_headline, summary_short
+          ) values
+            (
+              ${activityIds[0]}, '2026-08-22T11:00:00.000Z', 1, 'complete',
+              'Original exact change', 'Implements the exact change.'
+            ),
+            (
+              ${activityIds[1]}, '2026-08-23T11:00:00.000Z', 1, 'complete',
+              'Rebased exact change', 'Reimplements the exact change.'
+            )
+        `;
+        await admin`
+          insert into github_summary_attempts (
+            activity_public_id, revision, state
+          ) values (${activityIds[1]}, 2, 'pending')
+        `;
+
+        const request = githubActivityAuditRequestFrom(
+          {
+            account: "f0rr0",
+            endDate: "2026-08-23",
+            startDate: "2026-08-23",
+          },
+          new Date("2026-08-24T12:00:00.000Z")
+        );
+        expect(request).not.toBeNull();
+        const report = await runGitHubActivityAudit(request);
+
+        expect(report.status).toBe("mismatch");
+        expect(report.projection).toMatchObject({
+          expectedActivitySources: 1,
+          renderedActivitySources: 1,
+        });
+        expect(report.checks.filter((check) => check.ok === false)).toEqual([
+          {
+            id: "unique_complete_change_fingerprints",
+            ok: false,
+            violations: 1,
+          },
+        ]);
+
+        const migrationSql = await Bun.file(
+          new URL("../drizzle/0012_empty_wendell_vaughn.sql", import.meta.url)
+        ).text();
+        await admin.unsafe(migrationSql);
+        expect(
+          await admin`
+            select alias_reason, canonical_public_id, public_id
+            from github_public_activities
+            where repository_id = ${repositoryId}
+            order by public_id
+          `
+        ).toEqual([
+          {
+            alias_reason: null,
+            canonical_public_id: null,
+            public_id: activityIds[0],
+          },
+          {
+            alias_reason: "same_authored_exact_copy",
+            canonical_public_id: activityIds[0],
+            public_id: activityIds[1],
+          },
+        ]);
+        expect(
+          await admin`
+            select error_code, lease_token, lease_until, state
+            from github_summary_attempts
+            where activity_public_id = ${activityIds[1]}
+              and revision = 2
+          `
+        ).toEqual([
+          {
+            error_code: "canonical_alias",
+            lease_token: null,
+            lease_until: null,
+            state: "indeterminate",
+          },
+        ]);
+
+        const repairedReport = await runGitHubActivityAudit(request);
+        expect(repairedReport.status).toBe("stored_projection_verified");
+        expect(repairedReport.projection).toMatchObject({
+          expectedActivitySources: 0,
+          renderedActivitySources: 0,
+        });
+
+        await admin.unsafe(migrationSql);
+        const [repairedAlias] = await admin`
+          select alias_reason, canonical_public_id
+          from github_public_activities
+          where public_id = ${activityIds[1]}
+        `;
+        expect(repairedAlias).toEqual({
+          alias_reason: "same_authored_exact_copy",
+          canonical_public_id: activityIds[0],
+        });
+      } finally {
+        await admin`
+          delete from github_public_activities
+          where repository_id = ${repositoryId}
+        `;
+        await admin`
+          delete from github_commits
+          where repository_id = ${repositoryId}
+        `;
+        await admin`
+          delete from github_repositories
+          where id = ${repositoryId}
+        `;
+      }
+    });
+
+    test("keeps published work visible when an earlier historical copy settles later", async () => {
+      const repositoryId = "608";
+      const repository = "f0rr0/readiness-aware-canonicalization";
+      const historicalActivityId = "00000000-0000-4000-8000-000000000681";
+      const publishedActivityId = "00000000-0000-4000-8000-000000000682";
+      const historicalSha = `${"a".repeat(39)}8`;
+      const publishedSha = `${"b".repeat(39)}8`;
+      const fingerprint = "8".repeat(64);
+
+      try {
+        await admin`
+          insert into github_repositories (
+            id, full_name, html_url, owner_id, owner_login, owner_type,
+            visibility
+          ) values (
+            ${repositoryId}, ${repository},
+            ${`https://github.com/${repository}`}, '101', 'f0rr0', 'User',
+            'public'
+          )
+        `;
+        await admin`
+          insert into github_public_activities (
+            public_id, kind, occurred_at, published_at, repository_id,
+            revision, source_node_id
+          ) values
+            (
+              ${historicalActivityId}, 'commit',
+              '2026-08-20T08:00:00.000Z', null, ${repositoryId}, 1,
+              ${historicalSha}
+            ),
+            (
+              ${publishedActivityId}, 'commit',
+              '2026-08-23T08:00:00.000Z',
+              '2026-08-23T09:00:00.000Z', ${repositoryId}, 1,
+              ${publishedSha}
+            )
+        `;
+        await admin`
+          insert into github_commits (
+            activity_public_id, additions, author_login, author_user_id,
+            canonicalized_at, changed_files, change_fingerprint, committed_at,
+            committer_at, deletions, enrichment_state, fingerprint_complete,
+            first_observed_at, full_message, languages, message, parent_shas,
+            pr_discovery_state, repository, repository_id, sha, substantive_loc
+          ) values
+            (
+              ${historicalActivityId}, 12, 'f0rr0', '101', null, 2,
+              ${fingerprint}, '2026-08-20T08:00:00.000Z',
+              '2026-08-20T08:00:00.000Z', 3, 'complete', true,
+              '2026-08-24T10:00:00.000Z', 'Historical exact copy',
+              '[]'::jsonb, 'Historical exact copy',
+              ${JSON.stringify(["1".repeat(40)])}::jsonb, 'pending',
+              ${repository}, ${repositoryId}, ${historicalSha}, 15
+            ),
+            (
+              ${publishedActivityId}, 12, 'f0rr0', '101', null, 2,
+              ${fingerprint}, '2026-08-23T08:00:00.000Z',
+              '2026-08-23T08:00:00.000Z', 3, 'complete', true,
+              '2026-08-23T08:30:00.000Z', 'Published exact change',
+              '[]'::jsonb, 'Published exact change',
+              ${JSON.stringify(["2".repeat(40)])}::jsonb, 'complete',
+              ${repository}, ${repositoryId}, ${publishedSha}, 15
+            )
+        `;
+        await admin`
+          insert into github_summary_attempts (
+            activity_public_id, completed_at, revision, state,
+            summary_headline, summary_short
+          ) values (
+            ${publishedActivityId}, '2026-08-23T09:00:00.000Z', 1,
+            'complete', 'Published exact change',
+            'Keeps the already published exact change visible.'
+          )
+        `;
+
+        expect(
+          await canonicalizeGitHubCommitActivity(
+            repositoryId,
+            publishedSha,
+            new Date("2026-08-24T10:05:00.000Z")
+          )
+        ).toEqual({
+          aliased: false,
+          aliases: 0,
+          publicId: publishedActivityId,
+        });
+        expect(
+          await admin`
+            select canonical_public_id, hidden_at, public_id
+            from github_public_activities
+            where repository_id = ${repositoryId}
+            order by public_id
+          `
+        ).toEqual([
+          {
+            canonical_public_id: null,
+            hidden_at: null,
+            public_id: historicalActivityId,
+          },
+          {
+            canonical_public_id: null,
+            hidden_at: null,
+            public_id: publishedActivityId,
+          },
+        ]);
+
+        await admin`
+          update github_commits
+          set pr_discovery_state = 'unavailable'
+          where repository_id = ${repositoryId} and sha = ${historicalSha}
+        `;
+        await admin`
+          insert into github_summary_attempts (
+            activity_public_id, completed_at, error_code, revision, state
+          ) values (
+            ${historicalActivityId}, '2026-08-24T10:06:00.000Z',
+            'provider_unavailable', 1, 'indeterminate'
+          )
+        `;
+        expect(
+          await canonicalizeGitHubCommitActivity(
+            repositoryId,
+            historicalSha,
+            new Date("2026-08-24T10:07:00.000Z")
+          )
+        ).toEqual({
+          aliased: true,
+          aliases: 1,
+          publicId: historicalActivityId,
+        });
+
+        const page = await readPublicGitHubActivityPage(
+          {
+            beforeDay: "2026-08-24",
+            snapshotAt: "2026-08-24T10:08:00.000Z",
+            version: 1,
+          },
+          1
+        );
+        expect(page.days).toHaveLength(1);
+        expect(page.days[0]).toMatchObject({
+          day: "2026-08-23",
+          items: [
+            {
+              commit: {
+                additions: 12,
+                deletions: 3,
+                headline: "Published exact change",
+                id: publishedActivityId,
+              },
+              kind: "commit",
+            },
+          ],
+          totals: {
+            additions: 12,
+            deletions: 3,
+            issuesOpened: 0,
+            repositories: 1,
+          },
+        });
+        expect(
+          await admin`
+            select alias_reason, canonical_public_id, public_id
+            from github_public_activities
+            where repository_id = ${repositoryId}
+            order by public_id
+          `
+        ).toEqual([
+          {
+            alias_reason: "same_authored_exact_copy",
+            canonical_public_id: publishedActivityId,
+            public_id: historicalActivityId,
+          },
+          {
+            alias_reason: null,
+            canonical_public_id: null,
+            public_id: publishedActivityId,
+          },
+        ]);
+      } finally {
+        await admin`
+          delete from github_public_activities
+          where repository_id = ${repositoryId}
+        `;
+        await admin`
+          delete from github_commits
+          where repository_id = ${repositoryId}
+        `;
+        await admin`
+          delete from github_repositories
+          where id = ${repositoryId}
+        `;
+      }
     });
 
     test("persists tracked PR member commits before completing live reconciliation", async () => {
@@ -441,7 +1015,7 @@ describe.skipIf(!dockerAvailable)(
       }
     });
 
-    test("re-invalidates prior-version members when delayed PR membership arrives", async () => {
+    test("re-invalidates prior-version members without discarding exact-copy evidence", async () => {
       const repositoryId = "602";
       const repository = "f0rr0/versioned-membership-invalidation";
       const pullRequestNodeId = "PR_versioned_membership_invalidation";
@@ -612,8 +1186,8 @@ describe.skipIf(!dockerAvailable)(
             new Date("2026-08-30T10:30:00.000Z")
           )
         ).toEqual({
-          aliased: false,
-          aliases: 0,
+          aliased: true,
+          aliases: 1,
           publicId: oldActivityId,
         });
         expect(
@@ -647,7 +1221,9 @@ describe.skipIf(!dockerAvailable)(
         expect(storedVersionTwo.versionId).not.toBe(storedVersionOne.versionId);
 
         // A retry can canonicalize the V1 member before V2's member list has
-        // arrived. Persisting V2 membership must invalidate that stale result.
+        // arrived. The complete fingerprint already hid the exact copy, so
+        // the retry is a no-op; persisting V2 membership must still invalidate
+        // that stale result.
         expect(
           await canonicalizeGitHubCommitActivity(
             repositoryId,
@@ -657,7 +1233,7 @@ describe.skipIf(!dockerAvailable)(
         ).toEqual({
           aliased: false,
           aliases: 0,
-          publicId: oldActivityId,
+          publicId: null,
         });
         expect(
           await persistGitHubPullRequestMembership(
@@ -686,9 +1262,9 @@ describe.skipIf(!dockerAvailable)(
             new Date("2026-08-30T11:02:00.000Z")
           )
         ).toEqual({
-          aliased: true,
-          aliases: 1,
-          publicId: oldActivityId,
+          aliased: false,
+          aliases: 0,
+          publicId: null,
         });
         expect(
           await canonicalizeGitHubCommitActivity(
@@ -710,7 +1286,7 @@ describe.skipIf(!dockerAvailable)(
           `
         ).toEqual([
           {
-            alias_reason: "pr_history_exact_copy",
+            alias_reason: "same_authored_exact_copy",
             canonical_public_id: newActivityId,
             public_id: oldActivityId,
           },
@@ -753,10 +1329,10 @@ describe.skipIf(!dockerAvailable)(
           `
         ).toEqual([
           {
-            alias_reason: null,
-            canonical_public_id: null,
+            alias_reason: "same_authored_exact_copy",
+            canonical_public_id: newActivityId,
             canonicalized_at: null,
-            hidden_at: null,
+            hidden_at: "2026-08-30 10:30:00+00",
             public_id: oldActivityId,
             published_at: null,
           },
@@ -3355,11 +3931,14 @@ describe.skipIf(!dockerAvailable)(
       const exactCopyIds = {
         controlCandidate: "00000000-0000-4000-8000-000000000014",
         controlSource: "00000000-0000-4000-8000-000000000013",
+        headlineAlias: "00000000-0000-4000-8000-000000000029",
+        headlineAliasAncestor: "00000000-0000-4000-8000-000000000030",
         headlineCandidate: "00000000-0000-4000-8000-000000000017",
         headlineSource: "00000000-0000-4000-8000-000000000016",
         merge: "00000000-0000-4000-8000-000000000012",
         mergeParent: "00000000-0000-4000-8000-000000000011",
         mergeRoot: "00000000-0000-4000-8000-000000000015",
+        otherAuthor: "00000000-0000-4000-8000-000000000028",
         rebased: "00000000-0000-4000-8000-000000000010",
         rebasedAlias: "00000000-0000-4000-8000-000000000021",
         rebasedAliasAncestor: "00000000-0000-4000-8000-000000000022",
@@ -3373,6 +3952,7 @@ describe.skipIf(!dockerAvailable)(
         merge: `${"4".repeat(39)}a`,
         mergeParent: `${"3".repeat(39)}a`,
         mergeRoot: `${"7".repeat(39)}a`,
+        otherAuthor: `${"4".repeat(39)}c`,
         rebased: `${"2".repeat(39)}a`,
         // Intentionally sorts after the rebased SHA: committer time, not SHA,
         // must select the original when both were observed at the same time.
@@ -3444,6 +4024,21 @@ describe.skipIf(!dockerAvailable)(
             ${exactCopyIds.headlineCandidate}, 'commit',
             '2026-08-28T10:30:00.000Z', '303', 1,
             ${exactCopyShas.headlineCandidate}
+          ),
+          (
+            ${exactCopyIds.otherAuthor}, 'commit',
+            '2026-08-28T11:30:00.000Z', '303', 1,
+            ${exactCopyShas.otherAuthor}
+          ),
+          (
+            ${exactCopyIds.headlineAlias}, 'commit',
+            '2026-08-28T11:45:00.000Z', '303', 1,
+            ${`${"5".repeat(39)}c`}
+          ),
+          (
+            ${exactCopyIds.headlineAliasAncestor}, 'commit',
+            '2026-08-28T12:15:00.000Z', '303', 1,
+            ${`${"6".repeat(39)}c`}
           )
       `;
       await admin`
@@ -3537,6 +4132,15 @@ describe.skipIf(!dockerAvailable)(
             'Ship the squash-safe feature', 'Ship the squash-safe feature',
             ${JSON.stringify(["2".repeat(40)])}::jsonb, 'complete',
             'f0rr0/exact-copies', '303', ${exactCopyShas.headlineCandidate}
+          ),
+          (
+            ${exactCopyIds.otherAuthor}, 'f0rr0',
+            '2026-08-28T07:30:00.000Z', '202', ${"d".repeat(64)},
+            '2026-08-28T11:30:00.000Z', '2026-08-28T11:30:00.000Z',
+            'complete', true, '2026-08-28T15:30:00.000Z',
+            'Ship the squash-safe feature', 'Ship the squash-safe feature',
+            ${JSON.stringify(["3".repeat(40)])}::jsonb, 'complete',
+            'f0rr0/exact-copies', '303', ${exactCopyShas.otherAuthor}
           )
       `;
       await admin`
@@ -3563,6 +4167,24 @@ describe.skipIf(!dockerAvailable)(
           canonical_public_id = ${exactCopyIds.rebasedAlias},
           hidden_at = '2026-08-28T15:42:00.000Z'
         where public_id = ${exactCopyIds.rebasedAliasAncestor}
+      `;
+      await admin`
+        update github_public_activities
+        set
+          alias_evidence = '{"preexistingHeadlineAlias":true}'::jsonb,
+          alias_reason = 'same_authored_exact_copy',
+          canonical_public_id = ${exactCopyIds.headlineCandidate},
+          hidden_at = '2026-08-28T15:43:00.000Z'
+        where public_id = ${exactCopyIds.headlineAlias}
+      `;
+      await admin`
+        update github_public_activities
+        set
+          alias_evidence = '{"preexistingHeadlineAncestor":true}'::jsonb,
+          alias_reason = 'same_authored_exact_copy',
+          canonical_public_id = ${exactCopyIds.headlineAlias},
+          hidden_at = '2026-08-28T15:44:00.000Z'
+        where public_id = ${exactCopyIds.headlineAliasAncestor}
       `;
       await admin`
         insert into github_summary_attempts (
@@ -3608,8 +4230,8 @@ describe.skipIf(!dockerAvailable)(
           new Date("2026-08-28T16:01:30.000Z")
         )
       ).toEqual({
-        aliased: false,
-        aliases: 0,
+        aliased: true,
+        aliases: 1,
         publicId: exactCopyIds.headlineCandidate,
       });
       expect(
@@ -3619,9 +4241,20 @@ describe.skipIf(!dockerAvailable)(
           new Date("2026-08-28T16:02:00.000Z")
         )
       ).toEqual({
+        aliased: true,
+        aliases: 1,
+        publicId: exactCopyIds.controlCandidate,
+      });
+      expect(
+        await canonicalizeGitHubCommitActivity(
+          "303",
+          exactCopyShas.otherAuthor,
+          new Date("2026-08-28T16:02:30.000Z")
+        )
+      ).toEqual({
         aliased: false,
         aliases: 0,
-        publicId: exactCopyIds.controlCandidate,
+        publicId: exactCopyIds.otherAuthor,
       });
 
       const exactCopyAliases = await admin`
@@ -3630,7 +4263,8 @@ describe.skipIf(!dockerAvailable)(
         where public_id in (
           ${exactCopyIds.rebasedSource}, ${exactCopyIds.rebased},
           ${exactCopyIds.merge},
-          ${exactCopyIds.controlCandidate}, ${exactCopyIds.headlineCandidate}
+          ${exactCopyIds.controlCandidate}, ${exactCopyIds.headlineCandidate},
+          ${exactCopyIds.otherAuthor}
         )
         order by public_id
       `;
@@ -3649,27 +4283,45 @@ describe.skipIf(!dockerAvailable)(
         },
         {
           alias_evidence: {
-            directMergeParent: true,
+            directMergeParent: false,
             fingerprint: "b".repeat(64),
             fingerprintComplete: true,
             pullRequestNodeId: null,
-            sourceSha: exactCopyShas.mergeParent,
+            sourceSha: exactCopyShas.mergeRoot,
           },
-          alias_reason: "direct_parent_merge",
+          alias_reason: "same_authored_exact_copy",
           canonical_public_id: exactCopyIds.mergeRoot,
           public_id: exactCopyIds.merge,
         },
         {
-          alias_evidence: null,
-          alias_reason: null,
-          canonical_public_id: null,
+          alias_evidence: {
+            directMergeParent: false,
+            fingerprint: "c".repeat(64),
+            fingerprintComplete: true,
+            pullRequestNodeId: null,
+            sourceSha: exactCopyShas.controlSource,
+          },
+          alias_reason: "same_authored_exact_copy",
+          canonical_public_id: exactCopyIds.controlSource,
           public_id: exactCopyIds.controlCandidate,
+        },
+        {
+          alias_evidence: {
+            directMergeParent: false,
+            fingerprint: "d".repeat(64),
+            fingerprintComplete: true,
+            pullRequestNodeId: null,
+            sourceSha: exactCopyShas.headlineSource,
+          },
+          alias_reason: "same_authored_exact_copy",
+          canonical_public_id: exactCopyIds.headlineSource,
+          public_id: exactCopyIds.headlineCandidate,
         },
         {
           alias_evidence: null,
           alias_reason: null,
           canonical_public_id: null,
-          public_id: exactCopyIds.headlineCandidate,
+          public_id: exactCopyIds.otherAuthor,
         },
       ]);
 
@@ -3678,7 +4330,9 @@ describe.skipIf(!dockerAvailable)(
         from github_public_activities
         where public_id in (
           ${exactCopyIds.rebasedAlias},
-          ${exactCopyIds.rebasedAliasAncestor}
+          ${exactCopyIds.rebasedAliasAncestor},
+          ${exactCopyIds.headlineAlias},
+          ${exactCopyIds.headlineAliasAncestor}
         )
         order by public_id
       `;
@@ -3692,6 +4346,16 @@ describe.skipIf(!dockerAvailable)(
           alias_evidence: { preexistingAlias: true },
           canonical_public_id: exactCopyIds.rebasedAlias,
           public_id: exactCopyIds.rebasedAliasAncestor,
+        },
+        {
+          alias_evidence: { preexistingHeadlineAlias: true },
+          canonical_public_id: exactCopyIds.headlineSource,
+          public_id: exactCopyIds.headlineAlias,
+        },
+        {
+          alias_evidence: { preexistingHeadlineAncestor: true },
+          canonical_public_id: exactCopyIds.headlineSource,
+          public_id: exactCopyIds.headlineAliasAncestor,
         },
       ]);
       const [supersededSummaryAttempt] = await admin`
@@ -3724,6 +4388,12 @@ describe.skipIf(!dockerAvailable)(
         set canonicalized_at = null, full_message = 'First intentional edit',
           message = 'First intentional edit'
         where activity_public_id = ${exactCopyIds.controlCandidate}
+      `;
+      await admin`
+        update github_public_activities
+        set alias_evidence = null, alias_reason = null,
+          canonical_public_id = null, hidden_at = null
+        where public_id = ${exactCopyIds.controlCandidate}
       `;
       expect(
         await canonicalizeGitHubCommitActivity(

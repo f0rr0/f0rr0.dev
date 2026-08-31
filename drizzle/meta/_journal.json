@@ -85,6 +85,13 @@
       "when": 1788087185472,
       "tag": "0011_vengeful_reavers",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788178833117,
+      "tag": "0012_empty_wendell_vaughn",
+      "breakpoints": true
     }
   ]
 }

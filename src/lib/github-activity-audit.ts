@@ -267,17 +267,22 @@ export const auditPublicGitHubActivityDays = (
 interface StoredCommitAuditRow {
   activityPublicId: string | null;
   additions: number | null;
+  authorUserId?: string | null;
   canonicalPublicId: string | null;
   canonicalizedAt: Date | null;
   changedFiles: number | null;
+  changeFingerprint?: string | null;
   deletions: number | null;
   enrichmentState: string;
   enrichmentRetryAt?: Date | null;
+  fingerprintComplete?: boolean;
+  hasExactDuplicateRoot?: boolean;
   hiddenAt: Date | null;
   parentShas: readonly string[] | null;
   publishedAt: Date | null;
   pullRequestDiscoveryState: string;
   pullRequestDiscoveryRetryAt?: Date | null;
+  repositoryId?: string;
   substantiveLoc: number | null;
   summaryAttemptExists?: boolean;
   summaryComplete: boolean;
@@ -290,6 +295,12 @@ interface StoredIssueAuditRow {
   hiddenAt: Date | null;
   publishedAt: Date | null;
 }
+
+const exactAuthoredChangeKey = (
+  repositoryId: string,
+  changeFingerprint: string,
+  authorUserId: string
+) => JSON.stringify([repositoryId, changeFingerprint, authorUserId]);
 
 export interface GitHubActivityAuditEvidence {
   commits: readonly StoredCommitAuditRow[];
@@ -519,6 +530,9 @@ export const buildGitHubActivityAuditReport = (
       commit.parentShas !== null &&
       commit.parentShas.length > 1
   ).length;
+  const exactFingerprintViolations = stableCommits.filter(
+    (commit) => commit.hasExactDuplicateRoot === true
+  ).length;
   const checks = [
     {
       id: "public_projection_readable",
@@ -540,6 +554,11 @@ export const buildGitHubActivityAuditReport = (
       id: "no_integration_commits",
       ok: integrationCommitViolations === 0,
       violations: integrationCommitViolations,
+    },
+    {
+      id: "unique_complete_change_fingerprints",
+      ok: exactFingerprintViolations === 0,
+      violations: exactFingerprintViolations,
     },
     {
       id: "complete_published_commit_sources",
@@ -983,23 +1002,28 @@ const readStoredEvidence = async (
     pullRequestSignalRows,
     pullRequestRows,
     summaryAttemptRows,
+    duplicateFingerprintCohorts,
   ] = await Promise.all([
     database
       .select({
         activityPublicId: githubPublicActivities.publicId,
         additions: githubCommits.additions,
+        authorUserId: githubCommits.authorUserId,
         canonicalPublicId: githubPublicActivities.canonicalPublicId,
         canonicalizedAt: githubCommits.canonicalizedAt,
         changedFiles: githubCommits.changedFiles,
+        changeFingerprint: githubCommits.changeFingerprint,
         deletions: githubCommits.deletions,
         enrichmentState: githubCommits.enrichmentState,
         enrichmentRetryAt: githubCommits.enrichmentLeaseUntil,
+        fingerprintComplete: githubCommits.fingerprintComplete,
         hiddenAt: githubPublicActivities.hiddenAt,
         parentShas: githubCommits.parentShas,
         publishedAt: githubPublicActivities.publishedAt,
         pullRequestDiscoveryState: githubCommits.pullRequestDiscoveryState,
         pullRequestDiscoveryRetryAt:
           githubCommits.pullRequestDiscoveryLeaseUntil,
+        repositoryId: githubCommits.repositoryId,
         substantiveLoc: githubCommits.substantiveLoc,
         summaryAttemptExists,
         summaryComplete,
@@ -1173,9 +1197,73 @@ const readStoredEvidence = async (
               AND jsonb_array_length(${githubCommits.parentShas}) <= 1`
         )
       ),
+    database
+      .select({
+        authorUserId: githubCommits.authorUserId,
+        changeFingerprint: githubCommits.changeFingerprint,
+        repositoryId: githubCommits.repositoryId,
+      })
+      .from(githubCommits)
+      .innerJoin(githubPublicActivities, commitActivityIdentity)
+      .where(
+        and(
+          eq(githubCommits.author, request.account),
+          request.repositoryId === null
+            ? undefined
+            : eq(githubCommits.repositoryId, request.repositoryId),
+          eq(githubCommits.fingerprintComplete, true),
+          isNotNull(githubCommits.changeFingerprint),
+          isNotNull(githubCommits.authorUserId),
+          eq(githubCommits.enrichmentState, "complete"),
+          isNotNull(githubCommits.canonicalizedAt),
+          lte(githubCommits.canonicalizedAt, request.snapshotAt),
+          sql<boolean>`${githubCommits.parentShas} IS NOT NULL
+              AND jsonb_array_length(${githubCommits.parentShas}) <= 1`,
+          isNotNull(githubPublicActivities.publishedAt),
+          lte(githubPublicActivities.publishedAt, request.snapshotAt),
+          isNull(githubPublicActivities.hiddenAt),
+          isNull(githubPublicActivities.canonicalPublicId)
+        )
+      )
+      .groupBy(
+        githubCommits.repositoryId,
+        githubCommits.changeFingerprint,
+        githubCommits.authorUserId
+      )
+      .having(sql`count(*) > 1`),
   ]);
+  const duplicateFingerprintKeys = new Set(
+    duplicateFingerprintCohorts.flatMap((cohort) =>
+      cohort.changeFingerprint === null || cohort.authorUserId === null
+        ? []
+        : [
+            exactAuthoredChangeKey(
+              cohort.repositoryId,
+              cohort.changeFingerprint,
+              cohort.authorUserId
+            ),
+          ]
+    )
+  );
+  const auditedCommits = commits.map((commit) => ({
+    ...commit,
+    hasExactDuplicateRoot:
+      commit.fingerprintComplete &&
+      commit.repositoryId !== undefined &&
+      commit.changeFingerprint !== undefined &&
+      commit.changeFingerprint !== null &&
+      commit.authorUserId !== undefined &&
+      commit.authorUserId !== null &&
+      duplicateFingerprintKeys.has(
+        exactAuthoredChangeKey(
+          commit.repositoryId,
+          commit.changeFingerprint,
+          commit.authorUserId
+        )
+      ),
+  }));
   const scopedProjectionSourceIds = [
-    ...commits
+    ...auditedCommits
       .filter((commit) => commitPassesCanonicalGate(commit, request.snapshotAt))
       .map((commit) => commit.activityPublicId),
     ...issues
@@ -1183,7 +1271,7 @@ const readStoredEvidence = async (
       .map((issue) => issue.activityPublicId),
   ].filter((publicId): publicId is string => publicId !== null);
   const pipelineEvidence = pipelineEvidenceFrom(
-    commits,
+    auditedCommits,
     pushObservationRows,
     pullRequestSignalRows,
     pullRequestRows,
@@ -1191,7 +1279,7 @@ const readStoredEvidence = async (
     request.snapshotAt
   );
   return {
-    commits,
+    commits: auditedCommits,
     globalProjectionSourceIds:
       request.repositoryId === null
         ? globalProjectionRows.map(({ publicId }) => publicId)
@@ -1272,6 +1360,7 @@ export const githubActivityAuditEvidenceFingerprint = (
           deletions: commit.deletions,
           enrichmentState: commit.enrichmentState,
           enrichmentRetryAt: serializedDate(commit.enrichmentRetryAt ?? null),
+          hasExactDuplicateRoot: commit.hasExactDuplicateRoot ?? false,
           hiddenAt: serializedDate(commit.hiddenAt),
           parentShas: commit.parentShas,
           publishedAt: serializedDate(commit.publishedAt),

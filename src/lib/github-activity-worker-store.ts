@@ -1045,6 +1045,7 @@ export const completeGitHubCommitEnrichment = async (
           and(
             eq(githubCommits.repositoryId, commit.repositoryId),
             eq(githubCommits.changeFingerprint, fingerprint.digest),
+            eq(githubCommits.authorUserId, source.authorUserId),
             eq(githubCommits.fingerprintComplete, true),
             eq(githubCommits.enrichmentState, "complete")
           )
@@ -2371,6 +2372,24 @@ const setCanonicalAlias = async (
   if (updated === undefined) {
     return false;
   }
+  await transaction.execute(sql`
+    WITH RECURSIVE alias_descendants(public_id) AS (
+      SELECT ${githubPublicActivities.publicId}
+      FROM ${githubPublicActivities}
+      WHERE ${githubPublicActivities.canonicalPublicId} = ${candidatePublicId}
+      UNION
+      SELECT descendant.public_id
+      FROM ${githubPublicActivities} AS descendant
+      INNER JOIN alias_descendants AS parent
+        ON descendant.canonical_public_id = parent.public_id
+    )
+    UPDATE ${githubPublicActivities}
+    SET canonical_public_id = ${canonicalPublicId}
+    WHERE ${githubPublicActivities.publicId} IN (
+      SELECT public_id FROM alias_descendants
+    )
+      AND ${githubPublicActivities.publicId} <> ${canonicalPublicId}
+  `);
   await transaction
     .update(githubSummaryAttempts)
     .set({
@@ -2465,11 +2484,9 @@ export const canonicalizeGitHubCommitActivity = async (
     );
     const [candidate] = await transaction
       .select({
+        authorUserId: githubCommits.authorUserId,
         changeFingerprint: githubCommits.changeFingerprint,
-        committerAt: githubCommits.committerAt,
         fingerprintComplete: githubCommits.fingerprintComplete,
-        firstObservedAt: githubCommits.firstObservedAt,
-        fullMessage: githubCommits.fullMessage,
         parentShas: githubCommits.parentShas,
         publicId: githubPublicActivities.publicId,
       })
@@ -2558,17 +2575,17 @@ export const canonicalizeGitHubCommitActivity = async (
     }
 
     if (
+      candidate.authorUserId === null ||
       !candidate.fingerprintComplete ||
-      candidate.changeFingerprint === null
+      candidate.changeFingerprint === null ||
+      candidate.parentShas === null
     ) {
       await markGitHubCommitCanonicalized(transaction, repositoryId, sha, now);
       return { aliased: false, aliases: 0, publicId: candidate.publicId };
     }
     const copies = await transaction
       .select({
-        canonicalPublicId: githubPublicActivities.canonicalPublicId,
-        committerAt: githubCommits.committerAt,
-        firstObservedAt: githubCommits.firstObservedAt,
+        fullMessage: githubCommits.fullMessage,
         publicId: githubPublicActivities.publicId,
         sha: githubCommits.sha,
       })
@@ -2578,121 +2595,126 @@ export const canonicalizeGitHubCommitActivity = async (
         and(
           eq(githubCommits.repositoryId, repositoryId),
           eq(githubCommits.changeFingerprint, candidate.changeFingerprint),
+          eq(githubCommits.authorUserId, candidate.authorUserId),
           eq(githubCommits.fingerprintComplete, true),
           eq(githubCommits.enrichmentState, "complete"),
+          inArray(githubCommits.pullRequestDiscoveryState, [
+            "complete",
+            "unavailable",
+          ]),
           isNonMergeCommit,
-          or(
-            isNull(githubPublicActivities.hiddenAt),
-            isNotNull(githubPublicActivities.canonicalPublicId)
-          ),
-          or(
-            isNull(githubPublicActivities.canonicalPublicId),
-            sql<boolean>`EXISTS (
-              SELECT 1
-              FROM ${githubPublicActivities} AS canonical_activity
-              INNER JOIN ${githubCommits} AS canonical_commit
-                ON canonical_commit.activity_public_id = canonical_activity.public_id
-                AND canonical_commit.repository_id = canonical_activity.repository_id
-                AND canonical_commit.sha = canonical_activity.source_node_id
-              WHERE canonical_activity.public_id = ${githubPublicActivities.canonicalPublicId}
-                AND canonical_activity.kind = 'commit'
-                AND canonical_activity.canonical_public_id IS NULL
-                AND canonical_activity.hidden_at IS NULL
-                AND canonical_commit.parent_shas IS NOT NULL
-                AND jsonb_array_length(canonical_commit.parent_shas) <= 1
-            )`
-          )
+          isNull(githubPublicActivities.canonicalPublicId),
+          isNull(githubPublicActivities.hiddenAt)
         )
       )
-      .orderBy(asc(githubCommits.firstObservedAt), asc(githubCommits.sha));
-    const cherryPickSource =
-      /^\(cherry picked from commit ([a-f0-9]{40})\)\r?$/imu.exec(
-        candidate.fullMessage ?? ""
-      )?.[1];
-    const candidatePullRequests = await pullRequestMembershipsForCommit(
+      .orderBy(
+        asc(sql`${githubPublicActivities.publishedAt} IS NULL`),
+        asc(
+          sql`coalesce(${githubCommits.committerAt}, ${githubCommits.firstObservedAt})`
+        ),
+        asc(githubCommits.firstObservedAt),
+        asc(githubCommits.sha)
+      );
+    const [winner] = copies;
+    if (winner === undefined) {
+      await markGitHubCommitCanonicalized(transaction, repositoryId, sha, now);
+      return { aliased: false, aliases: 0, publicId: candidate.publicId };
+    }
+
+    const winnerPullRequests = await pullRequestMembershipsForCommit(
       transaction,
       repositoryId,
-      sha
+      winner.sha
     );
+    let candidateAliased = false;
+    let aliases = 0;
     for (const copy of copies) {
-      if (copy.sha === sha) {
+      if (copy.publicId === winner.publicId) {
         continue;
       }
-      const canonicalPublicId = copy.canonicalPublicId ?? copy.publicId;
-      if (canonicalPublicId === candidate.publicId) {
-        continue;
-      }
-      const explicitCherryPick = copy.sha === cherryPickSource;
-      const directMergeParent =
-        (candidate.parentShas?.length ?? 0) > 1 &&
-        candidate.parentShas?.includes(copy.sha) === true;
-      const candidateOrder =
-        candidate.committerAt?.getTime() ?? candidate.firstObservedAt.getTime();
-      const copyOrder =
-        copy.committerAt?.getTime() ?? copy.firstObservedAt.getTime();
-      if (
-        !explicitCherryPick &&
-        !directMergeParent &&
-        (copyOrder > candidateOrder ||
-          (copyOrder === candidateOrder &&
-            (copy.firstObservedAt > candidate.firstObservedAt ||
-              (copy.firstObservedAt.getTime() ===
-                candidate.firstObservedAt.getTime() &&
-                copy.sha > sha))))
-      ) {
-        continue;
-      }
+      const cherryPickSource =
+        /^\(cherry picked from commit ([a-f0-9]{40})\)\r?$/imu.exec(
+          copy.fullMessage ?? ""
+        )?.[1];
+      const explicitCherryPick = cherryPickSource === winner.sha;
       const copyPullRequests = await pullRequestMembershipsForCommit(
         transaction,
         repositoryId,
         copy.sha
       );
-      const sharedPullRequest = [...candidatePullRequests].find(
-        ([nodeId, candidateVersions]) => {
-          const copyVersions = copyPullRequests.get(nodeId);
+      const sharedPullRequest = [...copyPullRequests].find(
+        ([nodeId, copyVersions]) => {
+          const winnerVersions = winnerPullRequests.get(nodeId);
           return (
-            copyVersions !== undefined &&
-            [...candidateVersions].every(
-              (versionId) => !copyVersions.has(versionId)
+            winnerVersions !== undefined &&
+            [...copyVersions].every(
+              (versionId) => !winnerVersions.has(versionId)
             )
           );
         }
       )?.[0];
-      if (
-        !explicitCherryPick &&
-        !directMergeParent &&
-        sharedPullRequest === undefined
-      ) {
-        continue;
-      }
-      const reason = directMergeParent
-        ? "direct_parent_merge"
-        : explicitCherryPick
-          ? "cherry_pick"
+      const reason = explicitCherryPick
+        ? "cherry_pick"
+        : sharedPullRequest === undefined
+          ? "same_authored_exact_copy"
           : "pr_history_exact_copy";
       const aliased = await setCanonicalAlias(
         transaction,
-        candidate.publicId,
-        canonicalPublicId,
+        copy.publicId,
+        winner.publicId,
         reason,
         {
           fingerprint: candidate.changeFingerprint,
           fingerprintComplete: true,
-          directMergeParent,
+          directMergeParent: false,
           pullRequestNodeId: sharedPullRequest ?? null,
-          sourceSha: copy.sha,
+          sourceSha: winner.sha,
         },
         now
       );
-      await markGitHubCommitCanonicalized(transaction, repositoryId, sha, now);
-      return {
-        aliased,
-        aliases: aliased ? 1 : 0,
-        publicId: candidate.publicId,
-      };
+      aliases += aliased ? 1 : 0;
+      candidateAliased ||= aliased && copy.publicId === candidate.publicId;
+      await markGitHubCommitCanonicalized(
+        transaction,
+        repositoryId,
+        copy.sha,
+        now
+      );
     }
-    await markGitHubCommitCanonicalized(transaction, repositoryId, sha, now);
-    return { aliased: false, aliases: 0, publicId: candidate.publicId };
+    await markGitHubCommitCanonicalized(
+      transaction,
+      repositoryId,
+      winner.sha,
+      now
+    );
+
+    if (candidate.parentShas.length > 1) {
+      const aliased = await setCanonicalAlias(
+        transaction,
+        candidate.publicId,
+        winner.publicId,
+        candidate.parentShas.includes(winner.sha)
+          ? "direct_parent_merge"
+          : "same_authored_exact_copy",
+        {
+          fingerprint: candidate.changeFingerprint,
+          fingerprintComplete: true,
+          directMergeParent: candidate.parentShas.includes(winner.sha),
+          pullRequestNodeId: null,
+          sourceSha: winner.sha,
+        },
+        now
+      );
+      aliases += aliased ? 1 : 0;
+      candidateAliased ||= aliased;
+      await markGitHubCommitCanonicalized(transaction, repositoryId, sha, now);
+    }
+
+    return {
+      aliased: candidateAliased,
+      aliases,
+      publicId: candidate.publicId,
+    };
   });
 
 export const canonicalizePendingGitHubActivities = async (

@@ -132,6 +132,11 @@ export const githubCommits = pgTable(
       table.pullRequestDiscoveryLeaseUntil,
       table.firstObservedAt
     ),
+    index("github_commits_exact_authored_change_idx")
+      .on(table.repositoryId, table.changeFingerprint, table.authorUserId)
+      .where(
+        sql`${table.fingerprintComplete} AND ${table.changeFingerprint} IS NOT NULL AND ${table.authorUserId} IS NOT NULL`
+      ),
     check("github_commits_sha_shape", sql`${table.sha} ~ '^[a-f0-9]{40}$'`),
     check(
       "github_commits_tree_sha_shape",
