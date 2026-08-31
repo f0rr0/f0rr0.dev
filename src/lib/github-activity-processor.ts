@@ -1207,7 +1207,7 @@ const newBranchCommitValuesWithToken = async (
   return values.toReversed();
 };
 
-const pushCommitValuesWithToken = async (
+const reachablePushCommitValuesWithToken = async (
   row: GitHubActivityPushObservationReference,
   token: string,
   options: GitHubProviderRequestOptions = {}
@@ -1235,6 +1235,41 @@ const pushCommitValuesWithToken = async (
       throw error;
     }
   }
+};
+
+// An exact webhook/Event payload remains authoritative when later ref changes
+// make GitHub's current compare or reachable history disagree with that push.
+const hasCompleteDurablePushEvidence = (
+  row: GitHubActivityPushObservationReference
+) =>
+  row.expectedCommitCount !== null &&
+  row.expectedCommitCount > 0 &&
+  row.knownShas.length === row.expectedCommitCount &&
+  row.knownShas.at(-1) === row.afterSha &&
+  new Set(row.knownShas).size === row.knownShas.length &&
+  row.knownShas.every((sha) => commitShaFrom(sha) !== null);
+
+const durablePushCommitValuesWithToken = async (
+  row: GitHubActivityPushObservationReference,
+  token: string,
+  options: GitHubProviderRequestOptions = {}
+) => {
+  const values: unknown[] = [];
+  for (const sha of row.knownShas) {
+    const value = await fetchJson(
+      repositoryApiPath(row.repository, `/commits/${encodeURIComponent(sha)}`),
+      token,
+      options
+    );
+    if (!isObject(value) || commitShaFrom(value.sha) !== sha) {
+      throw new ActivityProcessingError(
+        "source_invalid",
+        "GitHub returned a commit that contradicted durable push evidence."
+      );
+    }
+    values.push(value);
+  }
+  return values;
 };
 
 export const validateGitHubPushObservationCommitShas = (
@@ -1357,30 +1392,51 @@ const pushObservationSourceWithToken = async (
   options: GitHubProviderRequestOptions = {}
 ): Promise<GitHubActivityPushObservationSource> => {
   const repository = repositoryReferenceFrom(row);
-  const values = await pushCommitValuesWithToken(row, token, options);
-  const commitShas: string[] = [];
-  const commits: GitHubCommit[] = [];
-  const seen = new Set<string>();
-  for (const value of values) {
-    const sha = isObject(value) ? commitShaFrom(value.sha) : null;
-    if (sha === null) {
-      throw new ActivityProcessingError(
-        "source_invalid",
-        "GitHub returned an invalid pushed commit."
-      );
+  const sourceFromValues = (values: readonly unknown[]) => {
+    const commitShas: string[] = [];
+    const commits: GitHubCommit[] = [];
+    const seen = new Set<string>();
+    for (const value of values) {
+      const sha = isObject(value) ? commitShaFrom(value.sha) : null;
+      if (sha === null) {
+        throw new ActivityProcessingError(
+          "source_invalid",
+          "GitHub returned an invalid pushed commit."
+        );
+      }
+      if (seen.has(sha)) {
+        continue;
+      }
+      seen.add(sha);
+      commitShas.push(sha);
+      const commit = trackedCommitFromPushValue(value, sha, repository);
+      if (commit !== null) {
+        commits.push(commit);
+      }
     }
-    if (seen.has(sha)) {
-      continue;
+    validateGitHubPushObservationCommitShas(row, commitShas);
+    return { commitShas, commits };
+  };
+
+  try {
+    const values = await reachablePushCommitValuesWithToken(
+      row,
+      token,
+      options
+    );
+    return sourceFromValues(values);
+  } catch (error) {
+    const sourceBecameIncomplete =
+      (error instanceof ActivityProcessingError &&
+        error.code === "source_incomplete") ||
+      (error instanceof GitHubResponseError &&
+        [404, 409].includes(error.status));
+    if (!sourceBecameIncomplete || !hasCompleteDurablePushEvidence(row)) {
+      throw error;
     }
-    seen.add(sha);
-    commitShas.push(sha);
-    const commit = trackedCommitFromPushValue(value, sha, repository);
-    if (commit !== null) {
-      commits.push(commit);
-    }
+    const values = await durablePushCommitValuesWithToken(row, token, options);
+    return sourceFromValues(values);
   }
-  validateGitHubPushObservationCommitShas(row, commitShas);
-  return { commitShas, commits };
 };
 
 export const fetchGitHubPushObservationSource = async (
