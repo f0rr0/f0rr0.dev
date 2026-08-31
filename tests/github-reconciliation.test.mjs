@@ -22,6 +22,7 @@ const repository = {
     type: "Organization",
   },
   private: true,
+  pushed_at: "2026-08-20T00:00:00Z",
   visibility: "private",
 };
 
@@ -55,7 +56,7 @@ describe("GitHub repository reconciliation", () => {
     ]);
   });
 
-  test("fetches one opaque repository ID without enumerating affiliations", async () => {
+  test("fetches one opaque repository ID even when its push predates the global cutoff", async () => {
     globalThis.fetch = async (input) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
@@ -63,9 +64,38 @@ describe("GitHub repository reconciliation", () => {
       return Response.json(repository);
     };
 
-    expect(await collectAccessibleGitHubRepositories("token", "123")).toEqual([
-      repositoryFacts,
-    ]);
+    expect(
+      await collectAccessibleGitHubRepositories("token", "123", {
+        pushedSinceAt: new Date("2026-09-01T00:00:00.000Z"),
+      })
+    ).toEqual([repositoryFacts]);
+  });
+
+  test("bounds a historical inventory to repositories pushed since the window began", async () => {
+    globalThis.fetch = async () =>
+      Response.json([
+        repository,
+        {
+          ...repository,
+          full_name: "example-org/stale-repo",
+          html_url: "https://github.com/example-org/stale-repo",
+          id: 124,
+          pushed_at: "2026-07-31T23:59:59Z",
+        },
+        {
+          ...repository,
+          full_name: "example-org/empty-repo",
+          html_url: "https://github.com/example-org/empty-repo",
+          id: 125,
+          pushed_at: null,
+        },
+      ]);
+
+    expect(
+      await collectAccessibleGitHubRepositories("token", null, {
+        pushedSinceAt: new Date("2026-08-01T00:00:00.000Z"),
+      })
+    ).toEqual([repositoryFacts]);
   });
 
   test("uses branch and repository-tag commit targets without tag peeling", async () => {

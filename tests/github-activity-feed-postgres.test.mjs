@@ -38,6 +38,7 @@ const activityIds = {
   previousDay: "00000000-0000-4000-8000-000000000006",
   postSnapshot: "00000000-0000-4000-8000-000000000007",
   summaryEligible: "00000000-0000-4000-8000-000000000020",
+  uncanonicalized: "00000000-0000-4000-8000-000000000040",
 };
 
 const shas = {
@@ -49,6 +50,7 @@ const shas = {
   previousDay: "d".repeat(40),
   postSnapshot: "e".repeat(40),
   summaryEligible: `${"0".repeat(39)}2`,
+  uncanonicalized: `${"0".repeat(39)}3`,
 };
 
 const versionIds = {
@@ -85,6 +87,7 @@ describe.skipIf(!dockerAvailable)(
     let ensureGitHubSummaryAttempt;
     let ensureGitHubEvidenceIntegrity;
     let ensureMissingGitHubSummaryAttempts;
+    let getDatabase;
     let inspectGitHubEvidenceRecovery;
     let originalCronSecret;
     let originalDatabaseUrl;
@@ -92,10 +95,12 @@ describe.skipIf(!dockerAvailable)(
     let beginGitHubEventPoll;
     let finishGitHubRefReconciliationLease;
     let persistAccountIntake;
+    let persistGitHubPullRequestMembership;
     let persistGitHubPullRequestSnapshot;
     let persistGitHubRepositoryRefPage;
     let persistGitHubWebhookPullRequest;
     let persistGitHubWebhookPush;
+    let pullRequestFromGitHub;
     let readGitHubAccountCheckpoint;
     let readPublicGitHubActivityPage;
     let releaseGitHubCommitEnrichment;
@@ -105,6 +110,7 @@ describe.skipIf(!dockerAvailable)(
     let releaseGitHubPushObservation;
     let releaseGitHubSummaryAttempt;
     let repairLegacyGitHubEvidence;
+    let runGitHubActivityWorker;
 
     beforeAll(async () => {
       originalCronSecret = env.CRON_SECRET;
@@ -170,7 +176,11 @@ describe.skipIf(!dockerAvailable)(
 
       env.CRON_SECRET = "github-activity-cursor-test-secret";
       env.DATABASE_URL = databaseUrl;
-      ({ closeDatabase } = await import("../src/db/client.ts"));
+      ({ closeDatabase, getDatabase } = await import("../src/db/client.ts"));
+      ({ runGitHubActivityWorker } =
+        await import("../src/lib/github-activity-worker.ts"));
+      ({ pullRequestFromGitHub } =
+        await import("../src/lib/github-commits-core.ts"));
       ({ readPublicGitHubActivityPage } =
         await import("../src/lib/github-activity-store.ts"));
       ({
@@ -187,6 +197,7 @@ describe.skipIf(!dockerAvailable)(
         ensureGitHubSummaryAttempt,
         ensureMissingGitHubSummaryAttempts,
         inspectGitHubEvidenceRecovery,
+        persistGitHubPullRequestMembership,
         persistGitHubPullRequestSnapshot,
         releaseGitHubCommitEnrichment,
         releaseGitHubPullRequestDiscovery,
@@ -226,6 +237,438 @@ describe.skipIf(!dockerAvailable)(
           stderr: "ignore",
           stdout: "ignore",
         });
+      }
+    });
+
+    test("reads each public page in one repeatable-read transaction", async () => {
+      const database = getDatabase();
+      const originalTransaction = database.transaction;
+      let observedConfiguration = null;
+      database.transaction = async function transaction(
+        operation,
+        configuration
+      ) {
+        observedConfiguration = configuration;
+        return await originalTransaction.call(this, operation, configuration);
+      };
+
+      try {
+        const page = await readPublicGitHubActivityPage(null, 1);
+        expect(page.days).toEqual([]);
+      } finally {
+        database.transaction = originalTransaction;
+      }
+
+      expect(observedConfiguration).toEqual({
+        accessMode: "read only",
+        isolationLevel: "repeatable read",
+      });
+    });
+
+    test("persists tracked PR member commits before completing live reconciliation", async () => {
+      const originalFetch = globalThis.fetch;
+      const originalF0rr0Token = env.GITHUB_F0RR0_TOKEN;
+      const repositoryId = "601";
+      const repository = "f0rr0/live-pr-membership";
+      const pullRequestNodeId = "PR_live_membership_160";
+      const baseSha = "5".repeat(40);
+      const headSha = "6".repeat(40);
+      const mergeSha = "7".repeat(40);
+      const restRepository = {
+        full_name: repository,
+        html_url: `https://github.com/${repository}`,
+        id: Number(repositoryId),
+        owner: { id: 101, login: "f0rr0", type: "User" },
+        private: true,
+        visibility: "private",
+      };
+      const restPullRequest = {
+        base: { ref: "main", repo: restRepository, sha: baseSha },
+        body: null,
+        closed_at: "2026-08-30T20:01:00.000Z",
+        commits: 1,
+        created_at: "2026-08-30T19:00:00.000Z",
+        draft: false,
+        head: {
+          ref: "fix/live-membership",
+          repo: restRepository,
+          sha: headSha,
+        },
+        html_url: `https://github.com/${repository}/pull/160`,
+        id: 60_160,
+        merge_commit_sha: mergeSha,
+        merged: true,
+        merged_at: "2026-08-30T20:01:00.000Z",
+        node_id: pullRequestNodeId,
+        number: 160,
+        state: "closed",
+        title: "Keep a just-merged head visible",
+        updated_at: "2026-08-30T20:01:00.000Z",
+        user: { id: 101, login: "f0rr0" },
+      };
+
+      try {
+        const pullRequest = pullRequestFromGitHub(
+          restPullRequest,
+          { fullName: repository, id: repositoryId },
+          "closed"
+        );
+        expect(pullRequest).not.toBeNull();
+        await persistGitHubPullRequestSnapshot(
+          "f0rr0",
+          pullRequest,
+          { refreshMembership: true },
+          new Date(Date.now() - 60_000)
+        );
+        await admin`
+          alter table github_pull_request_memberships
+          add constraint test_live_membership_commit_fk
+          foreign key (commit_repository_id, commit_sha)
+          references github_commits (repository_id, sha)
+        `;
+
+        env.GITHUB_F0RR0_TOKEN = "worker-live-membership-test-token";
+        globalThis.fetch = async (input) => {
+          const url = new URL(input instanceof Request ? input.url : input);
+          if (url.pathname === "/graphql") {
+            return Response.json({
+              data: {
+                nodes: [
+                  {
+                    __typename: "PullRequest",
+                    id: pullRequestNodeId,
+                    mergeCommit: { oid: mergeSha },
+                    merged: true,
+                  },
+                ],
+              },
+            });
+          }
+          if (url.pathname === "/repos/f0rr0/live-pr-membership/pulls/160") {
+            return Response.json(restPullRequest);
+          }
+          if (
+            url.pathname === "/repos/f0rr0/live-pr-membership/pulls/160/commits"
+          ) {
+            return Response.json([
+              {
+                author: { id: 101, login: "f0rr0" },
+                commit: {
+                  committer: { date: "2026-08-30T20:00:00.000Z" },
+                  message: "fix: keep live work visible",
+                },
+                sha: headSha,
+              },
+            ]);
+          }
+          return Response.json({ message: "not found" }, { status: 404 });
+        };
+
+        const result = await runGitHubActivityWorker({
+          commitLimit: 1,
+          maximumDurationMs: 10_000,
+          observationLimit: 1,
+          pullRequestDiscoveryLimit: 1,
+          pullRequestLimit: 1,
+          pullRequestSignalLimit: 1,
+          summaryLimit: 1,
+        });
+
+        expect(result.pullRequests).toEqual({
+          claimed: 1,
+          completed: 1,
+          deferred: 0,
+          failed: 0,
+          unavailable: 0,
+        });
+        const [storedHead] = await admin`
+          select author_login, message
+          from github_commits
+          where repository_id = ${repositoryId} and sha = ${headSha}
+        `;
+        expect(storedHead).toEqual({
+          author_login: "f0rr0",
+          message: "fix: keep live work visible",
+        });
+        const [membership] = await admin`
+          select m.commit_repository_id, m.commit_sha, m.is_head,
+                 v.membership_complete
+          from github_pull_request_memberships m
+          join github_pull_request_versions v on v.id = m.version_id
+          where v.pull_request_node_id = ${pullRequestNodeId}
+        `;
+        expect(membership).toEqual({
+          commit_repository_id: repositoryId,
+          commit_sha: headSha,
+          is_head: true,
+          membership_complete: true,
+        });
+      } finally {
+        globalThis.fetch = originalFetch;
+        if (originalF0rr0Token === undefined) {
+          delete env.GITHUB_F0RR0_TOKEN;
+        } else {
+          env.GITHUB_F0RR0_TOKEN = originalF0rr0Token;
+        }
+        await admin`
+          alter table github_pull_request_memberships
+          drop constraint if exists test_live_membership_commit_fk
+        `;
+        await admin`
+          delete from github_pull_requests
+          where node_id = ${pullRequestNodeId}
+        `;
+        await admin`
+          delete from github_public_activities
+          where repository_id = ${repositoryId}
+        `;
+        await admin`
+          delete from github_commits
+          where repository_id = ${repositoryId}
+        `;
+        await admin`
+          delete from github_repositories
+          where id = ${repositoryId}
+        `;
+        expect(
+          await admin`
+            select
+              (select count(*)::integer from github_commits) as commits,
+              (select count(*)::integer from github_public_activities) as public,
+              (select count(*)::integer from github_summary_attempts) as summaries
+          `
+        ).toEqual([{ commits: 0, public: 0, summaries: 0 }]);
+      }
+    });
+
+    test("re-invalidates prior-version members when delayed PR membership arrives", async () => {
+      const repositoryId = "602";
+      const repository = "f0rr0/versioned-membership-invalidation";
+      const pullRequestNodeId = "PR_versioned_membership_invalidation";
+      const baseSha = "1".repeat(40);
+      const oldSha = `${"a".repeat(39)}1`;
+      const newSha = `${"b".repeat(39)}1`;
+      const oldActivityId = "00000000-0000-4000-8000-000000000602";
+      const newActivityId = "00000000-0000-4000-8000-000000000603";
+      const changeFingerprint = "c".repeat(64);
+      const repositoryFacts = {
+        fullName: repository,
+        htmlUrl: `https://github.com/${repository}`,
+        id: repositoryId,
+        ownerAvatarUrl: null,
+        ownerId: "101",
+        ownerLogin: "f0rr0",
+        ownerType: "User",
+        visibility: "public",
+      };
+      const versionOne = {
+        action: "synchronize",
+        additions: null,
+        author: "f0rr0",
+        authorAccount: "f0rr0",
+        authorUserId: "101",
+        baseRef: "main",
+        baseRepository: repositoryFacts,
+        baseSha,
+        body: null,
+        changedFiles: null,
+        closedAt: null,
+        commitCount: 1,
+        createdAt: "2026-08-30T08:00:00.000Z",
+        deletions: null,
+        draft: false,
+        headRef: "feature",
+        headRepository: repositoryFacts,
+        headSha: oldSha,
+        id: "602",
+        mergeCommitSha: null,
+        merged: false,
+        mergedAt: null,
+        nodeId: pullRequestNodeId,
+        number: 602,
+        providerUpdatedAt: "2026-08-30T10:00:00.000Z",
+        repository: repositoryFacts,
+        state: "open",
+        title: "Preserve aliases across force-push membership refreshes",
+        url: `https://github.com/${repository}/pull/602`,
+      };
+
+      try {
+        const storedVersionOne = await persistGitHubPullRequestSnapshot(
+          "f0rr0",
+          versionOne,
+          { refreshMembership: true },
+          new Date("2026-08-30T10:00:00.000Z")
+        );
+        expect(storedVersionOne).not.toBeNull();
+        await admin`
+          insert into github_public_activities (
+            public_id, kind, occurred_at, repository_id, revision,
+            source_node_id
+          ) values
+            (
+              ${oldActivityId}, 'commit', '2026-08-30T10:00:00.000Z',
+              ${repositoryId}, 1, ${oldSha}
+            ),
+            (
+              ${newActivityId}, 'commit', '2026-08-30T11:00:00.000Z',
+              ${repositoryId}, 1, ${newSha}
+            )
+        `;
+        await admin`
+          insert into github_commits (
+            activity_public_id, author_login, authored_at, author_user_id,
+            change_fingerprint, committed_at, committer_at, enrichment_state,
+            fingerprint_complete, first_observed_at, full_message, message,
+            parent_shas, pr_discovery_state, repository, repository_id, sha
+          ) values
+            (
+              ${oldActivityId}, 'f0rr0', '2026-08-30T09:30:00.000Z', '101',
+              ${changeFingerprint}, '2026-08-30T10:00:00.000Z',
+              '2026-08-30T10:00:00.000Z', 'complete', true,
+              '2026-08-30T10:00:00.000Z', 'Implement the durable change',
+              'Implement the durable change', ${JSON.stringify([
+                "2".repeat(40),
+              ])}::jsonb, 'complete', ${repository}, ${repositoryId}, ${oldSha}
+            ),
+            (
+              ${newActivityId}, 'f0rr0', '2026-08-30T09:30:00.000Z', '101',
+              ${changeFingerprint}, '2026-08-30T09:00:00.000Z',
+              '2026-08-30T09:00:00.000Z', 'complete', true,
+              '2026-08-30T11:00:00.000Z', 'Implement the durable change',
+              'Implement the durable change', ${JSON.stringify([
+                "3".repeat(40),
+              ])}::jsonb, 'complete', ${repository}, ${repositoryId}, ${newSha}
+            )
+        `;
+        expect(
+          await persistGitHubPullRequestMembership(
+            storedVersionOne,
+            oldSha,
+            [oldSha],
+            true
+          )
+        ).toBe(true);
+        expect(
+          await canonicalizeGitHubCommitActivity(
+            repositoryId,
+            oldSha,
+            new Date("2026-08-30T10:30:00.000Z")
+          )
+        ).toEqual({
+          aliased: false,
+          aliases: 0,
+          publicId: oldActivityId,
+        });
+
+        const storedVersionTwo = await persistGitHubPullRequestSnapshot(
+          "f0rr0",
+          {
+            ...versionOne,
+            headSha: newSha,
+            providerUpdatedAt: "2026-08-30T11:00:00.000Z",
+          },
+          { refreshMembership: true },
+          new Date("2026-08-30T11:00:00.000Z")
+        );
+        expect(storedVersionTwo).not.toBeNull();
+        expect(storedVersionTwo.versionId).not.toBe(storedVersionOne.versionId);
+
+        // A retry can canonicalize the V1 member before V2's member list has
+        // arrived. Persisting V2 membership must invalidate that stale result.
+        expect(
+          await canonicalizeGitHubCommitActivity(
+            repositoryId,
+            oldSha,
+            new Date("2026-08-30T11:01:00.000Z")
+          )
+        ).toEqual({
+          aliased: false,
+          aliases: 0,
+          publicId: oldActivityId,
+        });
+        expect(
+          await persistGitHubPullRequestMembership(
+            storedVersionTwo,
+            newSha,
+            [newSha],
+            true
+          )
+        ).toBe(true);
+        expect(
+          await admin`
+            select canonicalized_at, sha
+            from github_commits
+            where repository_id = ${repositoryId}
+            order by sha
+          `
+        ).toEqual([
+          { canonicalized_at: null, sha: oldSha },
+          { canonicalized_at: null, sha: newSha },
+        ]);
+
+        expect(
+          await canonicalizeGitHubCommitActivity(
+            repositoryId,
+            oldSha,
+            new Date("2026-08-30T11:02:00.000Z")
+          )
+        ).toEqual({
+          aliased: true,
+          aliases: 1,
+          publicId: oldActivityId,
+        });
+        expect(
+          await canonicalizeGitHubCommitActivity(
+            repositoryId,
+            newSha,
+            new Date("2026-08-30T11:03:00.000Z")
+          )
+        ).toEqual({
+          aliased: false,
+          aliases: 0,
+          publicId: newActivityId,
+        });
+        expect(
+          await admin`
+            select alias_reason, canonical_public_id, public_id
+            from github_public_activities
+            where repository_id = ${repositoryId}
+            order by public_id
+          `
+        ).toEqual([
+          {
+            alias_reason: "pr_history_exact_copy",
+            canonical_public_id: newActivityId,
+            public_id: oldActivityId,
+          },
+          {
+            alias_reason: null,
+            canonical_public_id: null,
+            public_id: newActivityId,
+          },
+        ]);
+      } finally {
+        await admin`
+          delete from github_pull_requests
+          where node_id = ${pullRequestNodeId}
+        `;
+        await admin`
+          delete from github_public_activities
+          where public_id = ${oldActivityId}
+        `;
+        await admin`
+          delete from github_public_activities
+          where public_id = ${newActivityId}
+        `;
+        await admin`
+          delete from github_commits
+          where repository_id = ${repositoryId}
+        `;
+        await admin`
+          delete from github_repositories
+          where id = ${repositoryId}
+        `;
       }
     });
 
@@ -652,6 +1095,276 @@ describe.skipIf(!dockerAvailable)(
       await admin`
         delete from github_account_checkpoints where account = 'f0rr0'
       `;
+    });
+
+    test("scopes every manual worker stage to the account, window, and target PR members", async () => {
+      const targetRepositoryId = "8801";
+      const memberRepositoryId = "8802";
+      const unrelatedRepositoryId = "8803";
+      const versionId = "88000000-0000-4000-8000-000000000001";
+      const directSha = "1".repeat(40);
+      const memberSha = "2".repeat(40);
+      const unrelatedSha = "3".repeat(40);
+      const otherAccountSha = "4".repeat(40);
+      const outsideWindowSha = "5".repeat(40);
+      const now = new Date("2026-08-30T12:00:00.000Z");
+      const scope = {
+        repositoryId: targetRepositoryId,
+        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
+        untilAt: new Date("2026-08-31T23:59:59.999Z"),
+      };
+
+      try {
+        await admin`
+          insert into github_account_checkpoints (account) values ('f0rr0')
+          on conflict (account) do nothing
+        `;
+        await admin`
+          insert into github_repositories (
+            first_observed_at, full_name, id, last_observed_at
+          ) values
+            ('2026-08-01T00:00:00.000Z', 'f0rr0/manual-scope-target', ${targetRepositoryId}, '2026-08-30T00:00:00.000Z'),
+            ('2026-08-01T00:00:00.000Z', 'fork/manual-scope-member', ${memberRepositoryId}, '2026-08-30T00:00:00.000Z'),
+            ('2026-08-01T00:00:00.000Z', 'f0rr0/manual-scope-unrelated', ${unrelatedRepositoryId}, '2026-08-30T00:00:00.000Z')
+        `;
+        await admin`
+          insert into github_commits (
+            author_login, committed_at, first_observed_at, message,
+            repository, repository_id, sha
+          ) values
+            ('f0rr0', '2026-08-10T10:00:00.000Z', '2026-08-10T10:00:00.000Z', 'feat: direct target', 'f0rr0/manual-scope-target', ${targetRepositoryId}, ${directSha}),
+            ('f0rr0', '2026-08-11T10:00:00.000Z', '2026-08-11T10:00:00.000Z', 'feat: PR member', 'fork/manual-scope-member', ${memberRepositoryId}, ${memberSha}),
+            ('f0rr0', '2026-08-09T10:00:00.000Z', '2026-08-09T10:00:00.000Z', 'feat: unrelated repo', 'f0rr0/manual-scope-unrelated', ${unrelatedRepositoryId}, ${unrelatedSha}),
+            ('yuppiestechdev', '2026-08-08T10:00:00.000Z', '2026-08-08T10:00:00.000Z', 'feat: other account', 'f0rr0/manual-scope-target', ${targetRepositoryId}, ${otherAccountSha}),
+            ('f0rr0', '2026-07-31T10:00:00.000Z', '2026-07-31T10:00:00.000Z', 'feat: outside window', 'f0rr0/manual-scope-target', ${targetRepositoryId}, ${outsideWindowSha})
+        `;
+        await admin`
+          insert into github_pull_requests (
+            account, author_login, author_user_id, created_at, node_id, number,
+            provider_updated_at, repository_id, state, title, title_snapshot, url
+          ) values
+            (
+              'f0rr0', 'f0rr0', '101', '2026-08-01T00:00:00.000Z',
+              'PR_manual_worker_scope', 8801, '2026-08-11T10:00:00.000Z',
+              ${targetRepositoryId}, 'open', 'Manual worker scope',
+              'Manual worker scope',
+              'https://github.com/f0rr0/manual-scope-target/pull/8801'
+            ),
+            (
+              'f0rr0', 'f0rr0', '101', '2026-07-01T00:00:00.000Z',
+              'PR_manual_worker_scope_old', 8800, '2026-07-31T10:00:00.000Z',
+              ${targetRepositoryId}, 'open', 'Old manual worker backlog',
+              'Old manual worker backlog',
+              'https://github.com/f0rr0/manual-scope-target/pull/8800'
+            )
+        `;
+        await admin`
+          update github_pull_requests
+          set next_reconcile_at = '2026-08-01T00:00:00.000Z'
+          where node_id = 'PR_manual_worker_scope_old'
+        `;
+        await admin`
+          insert into github_pull_request_versions (
+            base_repository_id, base_sha, commit_count, head_repository_id,
+            head_sha, id, is_current, membership_complete, merge_snapshot,
+            provider_updated_at, pull_request_node_id
+          ) values (
+            ${targetRepositoryId}, ${"a".repeat(40)}, 1, ${memberRepositoryId},
+            ${memberSha}, ${versionId}, true, true, false,
+            '2026-08-11T10:00:00.000Z', 'PR_manual_worker_scope'
+          )
+        `;
+        await admin`
+          insert into github_pull_request_memberships (
+            commit_repository_id, commit_sha, is_head, position, version_id
+          ) values (${memberRepositoryId}, ${memberSha}, true, 0, ${versionId})
+        `;
+        await admin`
+          insert into github_push_observations (
+            account, after_sha, before_sha, observed_at, ref_name,
+            repository_id, repository_name_snapshot, source, source_id, state
+          ) values (
+            'f0rr0', ${"6".repeat(40)}, ${"0".repeat(40)},
+            '2026-07-31T10:00:00.000Z', 'refs/heads/old-backlog',
+            ${targetRepositoryId}, 'f0rr0/manual-scope-target', 'events',
+            'manual-scope-old-observation', 'pending'
+          )
+        `;
+        await admin`
+          insert into github_push_observations (
+            account, after_sha, before_sha, observed_at, ref_name,
+            repository_id, repository_name_snapshot, source, source_id, state
+          ) values (
+            'f0rr0', ${"7".repeat(40)}, ${"0".repeat(40)},
+            '2026-09-02T10:00:00.000Z', 'refs/heads/future-backlog',
+            ${targetRepositoryId}, 'f0rr0/manual-scope-target', 'events',
+            'manual-scope-future-observation', 'pending'
+          )
+        `;
+        await admin`
+          insert into github_pull_request_signals (
+            account, action, event_id, number, observed_at, occurred_at,
+            repository_id, repository_name_snapshot, state
+          ) values (
+            'f0rr0', 'synchronize', '880000000', 8800,
+            '2026-07-31T10:00:00.000Z', '2026-07-31T10:00:00.000Z',
+            ${targetRepositoryId}, 'f0rr0/manual-scope-target', 'pending'
+          )
+        `;
+        await admin`
+          insert into github_pull_request_signals (
+            account, action, event_id, number, observed_at, occurred_at,
+            repository_id, repository_name_snapshot, state
+          ) values (
+            'f0rr0', 'synchronize', '880000001', 8801,
+            '2026-09-02T10:00:00.000Z', '2026-09-02T10:00:00.000Z',
+            ${targetRepositoryId}, 'f0rr0/manual-scope-target', 'pending'
+          )
+        `;
+
+        const enrichments = await claimGitHubCommitsForEnrichment(
+          8,
+          ["f0rr0"],
+          now,
+          scope
+        );
+        expect(
+          enrichments.map(({ repositoryId, sha }) => `${repositoryId}:${sha}`)
+        ).toEqual([
+          `${targetRepositoryId}:${directSha}`,
+          `${memberRepositoryId}:${memberSha}`,
+        ]);
+        for (const enrichment of enrichments) {
+          await releaseGitHubCommitEnrichment(enrichment);
+        }
+
+        await admin`
+          update github_commits
+          set enrichment_state = 'complete', parent_shas = '[]'::jsonb
+          where repository_id in (${targetRepositoryId}, ${memberRepositoryId}, ${unrelatedRepositoryId})
+        `;
+        const discoveries = await claimGitHubCommitsForPullRequestDiscovery(
+          8,
+          ["f0rr0"],
+          now,
+          scope
+        );
+        expect(
+          discoveries.map(({ repositoryId, sha }) => `${repositoryId}:${sha}`)
+        ).toEqual([
+          `${targetRepositoryId}:${directSha}`,
+          `${memberRepositoryId}:${memberSha}`,
+        ]);
+        for (const discovery of discoveries) {
+          await releaseGitHubPullRequestDiscovery(discovery);
+        }
+        await admin`
+          update github_commits
+          set pr_discovery_state = 'complete'
+          where (repository_id = ${targetRepositoryId} and sha = ${directSha})
+             or (repository_id = ${memberRepositoryId} and sha = ${memberSha})
+        `;
+
+        const drained = await runGitHubActivityWorker({
+          accounts: ["f0rr0"],
+          commitLimit: 8,
+          maximumDurationMs: 5000,
+          observationLimit: 8,
+          pullRequestDiscoveryLimit: 8,
+          pullRequestLimit: 8,
+          pullRequestSignalLimit: 8,
+          scope,
+          summaryLimit: 8,
+        });
+        expect(drained.deadlineReached).toBe(false);
+        expect(
+          [
+            drained.observations,
+            drained.commits,
+            drained.pullRequestDiscovery,
+            drained.pullRequestSignals,
+            drained.pullRequests,
+            drained.summaries,
+          ].reduce((total, stage) => total + stage.claimed, 0)
+        ).toBe(0);
+        expect(
+          await admin`
+            select author_login, committed_at, pr_discovery_state,
+              repository_id, sha
+            from github_commits
+            where (repository_id = ${unrelatedRepositoryId} and sha = ${unrelatedSha})
+               or (repository_id = ${targetRepositoryId} and sha in (${otherAccountSha}, ${outsideWindowSha}))
+            order by sha
+          `
+        ).toEqual([
+          {
+            author_login: "f0rr0",
+            committed_at: "2026-08-09 10:00:00+00",
+            pr_discovery_state: "pending",
+            repository_id: unrelatedRepositoryId,
+            sha: unrelatedSha,
+          },
+          {
+            author_login: "yuppiestechdev",
+            committed_at: "2026-08-08 10:00:00+00",
+            pr_discovery_state: "pending",
+            repository_id: targetRepositoryId,
+            sha: otherAccountSha,
+          },
+          {
+            author_login: "f0rr0",
+            committed_at: "2026-07-31 10:00:00+00",
+            pr_discovery_state: "pending",
+            repository_id: targetRepositoryId,
+            sha: outsideWindowSha,
+          },
+        ]);
+        expect(
+          await admin`
+            select next_reconcile_at, node_id
+            from github_pull_requests
+            where node_id = 'PR_manual_worker_scope_old'
+          `
+        ).toEqual([
+          {
+            next_reconcile_at: "2026-08-01 00:00:00+00",
+            node_id: "PR_manual_worker_scope_old",
+          },
+        ]);
+      } finally {
+        await admin`
+          delete from github_pull_request_signals
+          where event_id in ('880000000', '880000001')
+        `;
+        await admin`
+          delete from github_push_observations
+          where source_id in (
+            'manual-scope-old-observation',
+            'manual-scope-future-observation'
+          )
+        `;
+        await admin`
+          delete from github_pull_request_memberships where version_id = ${versionId}
+        `;
+        await admin`
+          delete from github_pull_request_versions where id = ${versionId}
+        `;
+        await admin`
+          delete from github_pull_requests
+          where node_id in ('PR_manual_worker_scope', 'PR_manual_worker_scope_old')
+        `;
+        await admin`
+          delete from github_commits
+          where repository_id in (${targetRepositoryId}, ${memberRepositoryId}, ${unrelatedRepositoryId})
+        `;
+        await admin`
+          delete from github_repositories
+          where id in (${targetRepositoryId}, ${memberRepositoryId}, ${unrelatedRepositoryId})
+        `;
+        await admin`
+          delete from github_account_checkpoints where account = 'f0rr0'
+        `;
+      }
     });
 
     test("releases deadline claims without spending retry attempts or backoff", async () => {
@@ -1351,7 +2064,10 @@ describe.skipIf(!dockerAvailable)(
       ).toEqual([
         { canonicalized_at: null, repository_id: baseRepository.id },
         { canonicalized_at: null, repository_id: headRepository.id },
-        { canonicalized_at: null, repository_id: headRepository.id },
+        {
+          canonicalized_at: "2026-08-29 10:00:00+00",
+          repository_id: headRepository.id,
+        },
       ]);
       const [storedPullRequest] = await admin`
         select head_repository_id, head_sha, next_reconcile_at,
@@ -1434,11 +2150,28 @@ describe.skipIf(!dockerAvailable)(
       `;
       expect(eventStoredPullRequest.head_sha).toBe(eventHeadSha);
       await admin`
+        delete from github_pull_requests where node_id = ${pullRequestNodeId}
+      `;
+      await admin`
+        delete from github_public_activities
+        where public_id in (
+          ${sourceActivityId}, ${baseAliasActivityId}, ${headAliasActivityId}
+        )
+      `;
+      await admin`
+        delete from github_commits
+        where repository_id in (${baseRepository.id}, ${headRepository.id})
+      `;
+      await admin`
+        delete from github_repositories
+        where id in (${baseRepository.id}, ${headRepository.id})
+      `;
+      await admin`
         delete from github_account_checkpoints where account = 'f0rr0'
       `;
     });
 
-    test("pages complete UTC days and projects only current complete PR membership", async () => {
+    test("given canonical work and legacy merge artifacts, returns only visible authored work", async () => {
       await admin.begin(async (transaction) => {
         await transaction`
         insert into github_repositories (
@@ -1509,6 +2242,13 @@ describe.skipIf(!dockerAvailable)(
             1, 0, 'complete', '[]'::jsonb,
             'Ordinary summary candidate', 'f0rr0/source', '101',
             ${shas.summaryEligible}, 1
+          ),
+          (
+            ${activityIds.uncanonicalized}, 99, 'f0rr0',
+            '2026-08-26T08:15:00.000Z', '2026-08-26T08:15:00.000Z',
+            1, 99, 'complete', '[]'::jsonb,
+            'Published before canonicalization', 'f0rr0/source', '101',
+            ${shas.uncanonicalized}, 198
           )
       `;
 
@@ -1550,6 +2290,11 @@ describe.skipIf(!dockerAvailable)(
         set parent_shas = '[]'::jsonb,
           canonicalized_at = '2026-08-28T08:45:00.000Z'
         where repository_id = '101' and sha = ${shas.summaryEligible}
+      `;
+        await transaction`
+        update github_commits
+        set parent_shas = '[]'::jsonb
+        where repository_id = '101' and sha = ${shas.uncanonicalized}
       `;
 
         await transaction`
@@ -1634,7 +2379,7 @@ describe.skipIf(!dockerAvailable)(
           ),
           (
             ${activityIds.mergedPullRequest}, 'pull_request',
-            '2026-08-28T11:00:00.000Z', '2026-08-28T13:00:00.000Z', '202', 1,
+            '2026-08-29T11:00:00.000Z', '2026-08-28T13:00:00.000Z', '202', 1,
             'PR_current'
           ),
           (
@@ -1659,6 +2404,11 @@ describe.skipIf(!dockerAvailable)(
             ${activityIds.summaryEligible}, 'commit',
             '2026-08-28T08:30:00.000Z', null, '101', 1,
             ${shas.summaryEligible}
+          ),
+          (
+            ${activityIds.uncanonicalized}, 'commit',
+            '2026-08-26T08:15:00.000Z', '2026-08-28T13:00:00.000Z', '101', 1,
+            ${shas.uncanonicalized}
           )
       `;
 
@@ -1695,6 +2445,11 @@ describe.skipIf(!dockerAvailable)(
           (
             ${activityIds.mergeOnlyDay}, '2026-08-28T13:00:00.000Z', 1,
             'complete', 'Octopus merge headline', 'Octopus merge summary'
+          ),
+          (
+            ${activityIds.uncanonicalized}, '2026-08-28T13:00:00.000Z', 1,
+            'complete', 'Uncanonicalized headline',
+            'Uncanonicalized summary'
           )
       `;
       });
@@ -1706,7 +2461,6 @@ describe.skipIf(!dockerAvailable)(
         additions: 12,
         deletions: 3,
         issuesOpened: 1,
-        pullRequestsMerged: 1,
         repositories: 2,
       });
       expect(firstPage.nextCursor).not.toBeNull();
@@ -1855,6 +2609,11 @@ describe.skipIf(!dockerAvailable)(
       const postSnapshotPublishedAtIso = postSnapshotPublishedAt.toISOString();
       await admin.begin(async (transaction) => {
         await transaction`
+        update github_commits
+        set canonicalized_at = ${postSnapshotPublishedAtIso}
+        where activity_public_id = ${activityIds.uncanonicalized}
+      `;
+        await transaction`
         insert into github_commits (
           activity_public_id, additions, author_login, committed_at,
           committer_at, changed_files, deletions, enrichment_state, languages,
@@ -1899,10 +2658,28 @@ describe.skipIf(!dockerAvailable)(
         additions: 3,
         deletions: 1,
         issuesOpened: 0,
-        pullRequestsMerged: 0,
         repositories: 1,
       });
       expect(secondPage.nextCursor).toBeNull();
+
+      const freshPage = await readPublicGitHubActivityPage(
+        {
+          beforeDay: "2026-08-27",
+          snapshotAt: new Date(
+            postSnapshotPublishedAt.getTime() + 1000
+          ).toISOString(),
+          version: 1,
+        },
+        1
+      );
+      expect(freshPage.days[0]?.day).toBe("2026-08-26");
+      expect(
+        freshPage.days[0]?.items.flatMap((item) =>
+          item.kind === "pull-request-commits"
+            ? item.commits.map(({ id }) => id)
+            : [item.id]
+        )
+      ).toContain(activityIds.uncanonicalized);
 
       const milestoneLease = new Date("2026-08-28T16:00:00.000Z");
       await admin`
@@ -2122,6 +2899,13 @@ describe.skipIf(!dockerAvailable)(
         next_reconcile_at: null,
         state: "merged",
       });
+      const newlyPublishedMergeMilestone = await admin`
+        select public_id
+        from github_public_activities
+        where kind = 'pull_request'
+          and source_node_id = 'PR_old_equal_terminal'
+      `;
+      expect(newlyPublishedMergeMilestone).toHaveLength(0);
 
       await admin`
         insert into github_pull_requests (
@@ -2980,7 +3764,6 @@ describe.skipIf(!dockerAvailable)(
         additions: 600,
         deletions: 60,
         issuesOpened: 0,
-        pullRequestsMerged: 0,
         repositories: 1,
       });
       expect(rewritePage.days[0]?.items).toMatchObject([
@@ -3000,6 +3783,23 @@ describe.skipIf(!dockerAvailable)(
           kind: "commit",
         },
       ]);
+    });
+
+    test("bounds the evidence preflight while its advisory lock is held", async () => {
+      await admin.begin(async (transaction) => {
+        await transaction`
+          select pg_advisory_xact_lock(
+            hashtextextended('github-evidence-recovery-v1', 0)
+          )
+        `;
+        const startedAt = Date.now();
+        await expect(
+          ensureGitHubEvidenceIntegrity(new Date(), {
+            deadlineAt: startedAt + 200,
+          })
+        ).rejects.toThrow();
+        expect(Date.now() - startedAt).toBeLessThan(1500);
+      });
     });
 
     test("repairs legacy merge evidence atomically and only once", async () => {

@@ -50,7 +50,11 @@ import {
   nextGitHubPullRequestReconciliationAt,
 } from "@/lib/github-activity-worker-core";
 import type { GitHubExactDiffDigest } from "@/lib/github-activity-worker-core";
-import { trackedGitHubAccountFrom } from "@/lib/github-commits-core";
+import { GitHubRequestDeadlineError } from "@/lib/github-api";
+import {
+  TRACKED_GITHUB_ACCOUNTS,
+  trackedGitHubAccountFrom,
+} from "@/lib/github-commits-core";
 import type {
   GitHubPullRequest,
   GitHubRepositoryFacts,
@@ -235,13 +239,32 @@ export const inspectGitHubEvidenceRecovery = async () =>
  * workers rebuild the canonical/public projection from authoritative evidence.
  */
 export const ensureGitHubEvidenceIntegrity = async (
-  now = new Date()
+  now = new Date(),
+  options: { deadlineAt?: number } = {}
 ): Promise<GitHubEvidenceRecoveryResult> => {
   if (Number.isNaN(now.getTime())) {
     throw new TypeError("The GitHub evidence repair timestamp is invalid.");
   }
+  if (
+    options.deadlineAt !== undefined &&
+    (!Number.isFinite(options.deadlineAt) || options.deadlineAt <= Date.now())
+  ) {
+    throw new GitHubRequestDeadlineError();
+  }
 
   return await getDatabase().transaction(async (transaction) => {
+    if (options.deadlineAt !== undefined) {
+      const remainingMilliseconds = Math.floor(options.deadlineAt - Date.now());
+      if (remainingMilliseconds < 1) {
+        throw new GitHubRequestDeadlineError();
+      }
+      const timeout = `${String(remainingMilliseconds)}ms`;
+      await transaction.execute(sql`
+        SELECT
+          set_config('lock_timeout', ${timeout}, true),
+          set_config('statement_timeout', ${timeout}, true)
+      `);
+    }
     await transaction.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${GITHUB_EVIDENCE_RECOVERY_LOCK}, 0))`
     );
@@ -424,6 +447,109 @@ export interface ClaimedGitHubPullRequestSignal {
   repositoryId: string;
 }
 
+export interface GitHubActivityWorkerScope {
+  repositoryId: string | null;
+  sinceAt: Date;
+  untilAt: Date;
+}
+
+export const githubCommitInWorkerScope = (
+  scope: GitHubActivityWorkerScope | undefined
+) => {
+  if (scope === undefined) {
+    return sql<boolean>`true`;
+  }
+  const occurredAt = sql<Date>`coalesce(
+    ${githubCommits.committerAt},
+    ${githubCommits.committedAt}
+  )`;
+  const repositoryScope =
+    scope.repositoryId === null
+      ? undefined
+      : sql<boolean>`(
+          ${githubCommits.repositoryId} = ${scope.repositoryId}
+          OR EXISTS (
+            SELECT 1
+            FROM ${githubPullRequestMemberships}
+            INNER JOIN ${githubPullRequestVersions}
+              ON ${githubPullRequestVersions.id} = ${githubPullRequestMemberships.versionId}
+            INNER JOIN ${githubPullRequests}
+              ON ${githubPullRequests.nodeId} = ${githubPullRequestVersions.pullRequestNodeId}
+            WHERE ${githubPullRequestVersions.isCurrent} = true
+              AND ${githubPullRequestVersions.membershipComplete} = true
+              AND ${githubPullRequests.repositoryId} = ${scope.repositoryId}
+              AND ${githubPullRequestMemberships.commitRepositoryId} = ${githubCommits.repositoryId}
+              AND ${githubPullRequestMemberships.commitSha} = ${githubCommits.sha}
+          )
+        )`;
+  return and(
+    sql<boolean>`${occurredAt} >= ${scope.sinceAt.toISOString()}::timestamptz`,
+    sql<boolean>`${occurredAt} <= ${scope.untilAt.toISOString()}::timestamptz`,
+    repositoryScope
+  );
+};
+
+// Intake can be stored after the provider event happened. Scope inboxes by the
+// provider timestamp when it exists, falling back to the local observation
+// timestamp, so a historical run neither misses delayed evidence nor drains
+// unrelated later inbox rows.
+export const githubPushObservationInWorkerScope = (
+  scope: GitHubActivityWorkerScope | undefined
+) =>
+  scope === undefined
+    ? undefined
+    : and(
+        sql<boolean>`coalesce(
+          ${githubPushObservations.providerCreatedAt},
+          ${githubPushObservations.observedAt}
+        ) >= ${scope.sinceAt.toISOString()}::timestamptz`,
+        sql<boolean>`coalesce(
+          ${githubPushObservations.providerCreatedAt},
+          ${githubPushObservations.observedAt}
+        ) <= ${scope.untilAt.toISOString()}::timestamptz`,
+        scope.repositoryId === null
+          ? undefined
+          : eq(githubPushObservations.repositoryId, scope.repositoryId)
+      );
+
+export const githubPullRequestSignalInWorkerScope = (
+  scope: GitHubActivityWorkerScope | undefined
+) =>
+  scope === undefined
+    ? undefined
+    : and(
+        gte(githubPullRequestSignals.occurredAt, scope.sinceAt),
+        lte(githubPullRequestSignals.occurredAt, scope.untilAt),
+        scope.repositoryId === null
+          ? undefined
+          : eq(githubPullRequestSignals.repositoryId, scope.repositoryId)
+      );
+
+export const githubPullRequestInWorkerScope = (
+  scope: GitHubActivityWorkerScope | undefined
+) =>
+  scope === undefined
+    ? undefined
+    : and(
+        gte(githubPullRequests.providerUpdatedAt, scope.sinceAt),
+        scope.repositoryId === null
+          ? undefined
+          : sql<boolean>`(
+              ${githubPullRequests.repositoryId} = ${scope.repositoryId}
+              OR ${githubPullRequests.headRepositoryId} = ${scope.repositoryId}
+              OR EXISTS (
+                SELECT 1
+                FROM ${githubPullRequestMemberships}
+                INNER JOIN ${githubPullRequestVersions}
+                  ON ${githubPullRequestVersions.id} = ${githubPullRequestMemberships.versionId}
+                WHERE ${githubPullRequestVersions.pullRequestNodeId} = ${githubPullRequests.nodeId}
+                  AND ${githubPullRequestVersions.isCurrent} = true
+                  AND ${githubPullRequestVersions.membershipComplete} = true
+                  AND ${githubPullRequestMemberships.commitRepositoryId} = ${scope.repositoryId}
+              )
+            )`
+      );
+
 const isActiveAccount = (
   account: string,
   activeAccounts: readonly TrackedGitHubAccount[]
@@ -433,7 +559,8 @@ const isActiveAccount = (
 export const claimGitHubPushObservations = async (
   limit: number,
   activeAccounts: readonly TrackedGitHubAccount[],
-  now = new Date()
+  now = new Date(),
+  scope?: GitHubActivityWorkerScope
 ): Promise<readonly ClaimedGitHubPushObservation[]> => {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 8) {
     throw new RangeError("The GitHub observation claim limit is invalid.");
@@ -468,6 +595,7 @@ export const claimGitHubPushObservations = async (
       .where(
         and(
           inArray(githubPushObservations.account, [...activeAccounts]),
+          githubPushObservationInWorkerScope(scope),
           or(
             and(
               inArray(githubPushObservations.state, ["pending", "deferred"]),
@@ -709,7 +837,8 @@ export const markGitHubPushObservationUnavailable = async (
 export const claimGitHubCommitsForEnrichment = async (
   limit: number,
   activeAccounts: readonly TrackedGitHubAccount[],
-  now = new Date()
+  now = new Date(),
+  scope?: GitHubActivityWorkerScope
 ): Promise<readonly ClaimedGitHubCommit[]> => {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 8) {
     throw new RangeError("The GitHub commit claim limit is invalid.");
@@ -735,6 +864,7 @@ export const claimGitHubCommitsForEnrichment = async (
       .where(
         and(
           inArray(githubCommits.author, [...activeAccounts]),
+          githubCommitInWorkerScope(scope),
           or(
             and(
               eq(githubCommits.enrichmentState, "pending"),
@@ -1018,7 +1148,8 @@ export const markGitHubCommitUnavailable = async (
 export const claimGitHubCommitsForPullRequestDiscovery = async (
   limit: number,
   activeAccounts: readonly TrackedGitHubAccount[],
-  now = new Date()
+  now = new Date(),
+  scope?: GitHubActivityWorkerScope
 ): Promise<readonly ClaimedGitHubPullRequestDiscovery[]> => {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 8) {
     throw new RangeError("The GitHub PR discovery claim limit is invalid.");
@@ -1044,6 +1175,7 @@ export const claimGitHubCommitsForPullRequestDiscovery = async (
       .where(
         and(
           inArray(githubCommits.author, [...activeAccounts]),
+          githubCommitInWorkerScope(scope),
           eq(githubCommits.enrichmentState, "complete"),
           or(
             and(
@@ -1179,7 +1311,8 @@ export const markGitHubPullRequestDiscoveryUnavailable = async (
 export const claimGitHubPullRequestSignals = async (
   limit: number,
   activeAccounts: readonly TrackedGitHubAccount[],
-  now = new Date()
+  now = new Date(),
+  scope?: GitHubActivityWorkerScope
 ): Promise<readonly ClaimedGitHubPullRequestSignal[]> => {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 8) {
     throw new RangeError("The GitHub PR signal claim limit is invalid.");
@@ -1205,6 +1338,7 @@ export const claimGitHubPullRequestSignals = async (
       .where(
         and(
           inArray(githubPullRequestSignals.account, [...activeAccounts]),
+          githubPullRequestSignalInWorkerScope(scope),
           or(
             and(
               eq(githubPullRequestSignals.state, "pending"),
@@ -1490,14 +1624,7 @@ const persistPullRequestSnapshotInTransaction = async (
   if (canonicalEvidenceChanged) {
     await invalidateGitHubPullRequestDerivedAliases(
       transaction,
-      pullRequest.nodeId,
-      [
-        existing.repositoryId,
-        existing.headRepositoryId,
-        pullRequest.repository.id,
-        pullRequest.baseRepository.id,
-        pullRequest.headRepository?.id,
-      ]
+      pullRequest.nodeId
     );
   }
   const mutable = {
@@ -1805,7 +1932,8 @@ export const claimDueGitHubPullRequests = async (
   account: TrackedGitHubAccount,
   maximumAgeDays: number,
   limit = 4,
-  now = new Date()
+  now = new Date(),
+  scope?: GitHubActivityWorkerScope
 ): Promise<readonly DueGitHubPullRequest[]> => {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 8) {
     throw new RangeError("The GitHub pull request claim limit is invalid.");
@@ -1853,6 +1981,7 @@ export const claimDueGitHubPullRequests = async (
       .where(
         and(
           eq(githubPullRequests.account, account),
+          githubPullRequestInWorkerScope(scope),
           isNotNull(githubPullRequests.nextReconcileAt),
           lte(githubPullRequests.nextReconcileAt, now),
           or(
@@ -1935,8 +2064,7 @@ export const persistGitHubPullRequestMembership = async (
     }
     await invalidateGitHubPullRequestDerivedAliases(
       transaction,
-      stored.pullRequestNodeId,
-      [stored.baseRepositoryId, stored.commitRepositoryId]
+      stored.pullRequestNodeId
     );
     await transaction
       .delete(githubPullRequestMemberships)
@@ -2000,28 +2128,6 @@ export const completeGitHubPullRequestReconciliation = async (
       return false;
     }
 
-    if (
-      state === "merged" &&
-      pullRequest.mergedAt !== null &&
-      trackedGitHubAccountFrom(pullRequest.author) !== null
-    ) {
-      await transaction
-        .insert(githubPublicActivities)
-        .values({
-          kind: "pull_request",
-          occurredAt: new Date(pullRequest.mergedAt),
-          publishedAt: now,
-          repositoryId: pullRequest.repository.id,
-          sourceNodeId: pullRequest.nodeId,
-        })
-        .onConflictDoNothing({
-          target: [
-            githubPublicActivities.kind,
-            githubPublicActivities.repositoryId,
-            githubPublicActivities.sourceNodeId,
-          ],
-        });
-    }
     return true;
   });
 
@@ -2530,8 +2636,13 @@ export const canonicalizeGitHubCommitActivity = async (
 
 export const canonicalizePendingGitHubActivities = async (
   limit = 8,
-  now = new Date()
+  now = new Date(),
+  activeAccounts: readonly TrackedGitHubAccount[] = TRACKED_GITHUB_ACCOUNTS,
+  scope?: GitHubActivityWorkerScope
 ) => {
+  if (activeAccounts.length === 0) {
+    return 0;
+  }
   const candidates = await getDatabase()
     .select({
       repositoryId: githubCommits.repositoryId,
@@ -2541,6 +2652,8 @@ export const canonicalizePendingGitHubActivities = async (
     .innerJoin(githubPublicActivities, commitActivityIdentity)
     .where(
       and(
+        inArray(githubCommits.author, [...activeAccounts]),
+        githubCommitInWorkerScope(scope),
         eq(githubCommits.enrichmentState, "complete"),
         inArray(githubCommits.pullRequestDiscoveryState, [
           "complete",
@@ -2609,8 +2722,13 @@ export const ensureGitHubSummaryAttempt = async (
 
 export const ensureMissingGitHubSummaryAttempts = async (
   limit = 50,
-  now = new Date()
+  now = new Date(),
+  activeAccounts: readonly TrackedGitHubAccount[] = TRACKED_GITHUB_ACCOUNTS,
+  scope?: GitHubActivityWorkerScope
 ) => {
+  if (activeAccounts.length === 0) {
+    return 0;
+  }
   const rows = await getDatabase()
     .select({ publicId: githubPublicActivities.publicId })
     .from(githubPublicActivities)
@@ -2628,6 +2746,8 @@ export const ensureMissingGitHubSummaryAttempts = async (
     .where(
       and(
         eq(githubPublicActivities.kind, "commit"),
+        inArray(githubCommits.author, [...activeAccounts]),
+        githubCommitInWorkerScope(scope),
         isNull(githubPublicActivities.canonicalPublicId),
         isNull(githubPublicActivities.hiddenAt),
         isNull(githubSummaryAttempts.activityPublicId),
@@ -2650,7 +2770,8 @@ export const ensureMissingGitHubSummaryAttempts = async (
 export const claimGitHubSummaryAttempts = async (
   limit: number,
   activeAccounts: readonly TrackedGitHubAccount[],
-  now = new Date()
+  now = new Date(),
+  scope?: GitHubActivityWorkerScope
 ): Promise<readonly ClaimedGitHubSummary[]> => {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 8) {
     throw new RangeError("The GitHub summary claim limit is invalid.");
@@ -2711,6 +2832,7 @@ export const claimGitHubSummaryAttempts = async (
           isNull(githubPublicActivities.canonicalPublicId),
           isNull(githubPublicActivities.hiddenAt),
           inArray(githubCommits.author, [...activeAccounts]),
+          githubCommitInWorkerScope(scope),
           eq(githubCommits.enrichmentState, "complete"),
           isNotNull(githubCommits.canonicalizedAt),
           isNonMergeCommit
@@ -2869,6 +2991,28 @@ export const deferGitHubSummaryAttempt = async (
       leaseToken: null,
       leaseUntil: dueAt(attempt.attemptCount, now, retryAt),
       state: "pending",
+    })
+    .where(
+      and(
+        eq(githubSummaryAttempts.activityPublicId, attempt.activityPublicId),
+        eq(githubSummaryAttempts.revision, attempt.revision),
+        eq(githubSummaryAttempts.state, "processing"),
+        eq(githubSummaryAttempts.leaseToken, attempt.leaseToken)
+      )
+    );
+};
+
+export const markGitHubSummaryAttemptIndeterminate = async (
+  attempt: ClaimedGitHubSummary,
+  errorCode: string
+) => {
+  await getDatabase()
+    .update(githubSummaryAttempts)
+    .set({
+      errorCode,
+      leaseToken: null,
+      leaseUntil: null,
+      state: "indeterminate",
     })
     .where(
       and(

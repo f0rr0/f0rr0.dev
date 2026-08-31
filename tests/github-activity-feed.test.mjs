@@ -50,7 +50,7 @@ describe("public GitHub activity projection", () => {
     ).toThrow("cursor is invalid");
   });
 
-  test("groups each repository's daily work under one header", () => {
+  test("given mixed work in one day, shows each repository once without merge milestones", () => {
     const portfolioRepository = {
       avatarUrl: null,
       key: "public:portfolio",
@@ -143,19 +143,7 @@ describe("public GitHub activity projection", () => {
               additions: 22,
               deletions: 6,
               issuesOpened: 1,
-              pullRequestsMerged: 1,
               repositories: 2,
-            },
-          },
-          {
-            day: "2026-08-27",
-            items: [],
-            totals: {
-              additions: 0,
-              deletions: 0,
-              issuesOpened: 0,
-              pullRequestsMerged: 1,
-              repositories: 1,
             },
           },
         ],
@@ -167,11 +155,9 @@ describe("public GitHub activity projection", () => {
     expect(html).toContain("Polish repository activity rows");
     expect(html).toContain("Document the worker contract");
     expect(html).toContain("Issue opened");
-    expect(html).toContain("1 pull request merged");
-    expect(html).not.toContain("Pull request work");
-    expect(html).not.toContain("Pull request merged");
+    expect(html).not.toMatch(/pull requests? (?:work|merged)/iu);
+    expect(html).toContain("Across 2 repositories");
     expect(html).toContain('aria-label="Activity for 2026-08-28"');
-    expect(html).not.toContain('aria-label="Activity for 2026-08-27"');
     expect(html.match(/<header(?:\s[^>]*)?>/gu)).toHaveLength(2);
 
     const portfolioGroup = '<article aria-label="f0rr0/portfolio activity">';

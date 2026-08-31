@@ -58,7 +58,6 @@ export interface PublicGitHubActivityDayTotals {
   additions: number;
   deletions: number;
   issuesOpened: number;
-  pullRequestsMerged: number;
   repositories: number;
 }
 

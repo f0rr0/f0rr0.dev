@@ -39,7 +39,7 @@ Manual GitHub Actions backfill
   -> persist candidates directly and run the same durable worker
 
 Next.js server render / GET /api/github/activity
-  -> snapshot-stable pages of complete UTC days
+  -> atomically read, publication-watermarked pages of complete UTC days
 ```
 
 The webhook is the low-latency path for repositories where the GitHub App is
@@ -178,17 +178,21 @@ reconciliations, and summaries. Canonicalization remains capped at eight, and
 the pass has a 90-second internal deadline. Direct GitHub Actions backfill
 passes raise every provider-backed stage limit to eight and use a four-minute
 per-pass deadline. The Action runner uses its longer job lifetime through
-repeated durable passes rather than one unbounded operation. A pass that reaches
-its deadline releases unfinished claims at their previously eligible retry
-state; an invocation boundary does not spend a retry attempt or add backoff.
+repeated durable passes rather than one unbounded operation. When a scoped audit
+finds only retry-delayed work, the runner waits until its earliest durable retry
+only when that retry still fits inside the selected Action budget. A pass that
+reaches its deadline releases unfinished claims at their previously eligible
+retry state; an invocation boundary does not spend a retry attempt or add
+backoff.
 
 A commit with more than one parent is a regular merge commit. It remains fully
 stored for intake, ancestry, and alias evidence, but it is excluded from summary
 creation, summary claims, the public activity projection, pagination days, and
-daily LOC/repository totals. A merged pull request contributes to its day's
-aggregate total without producing a separate timeline entry. This intentionally
-omits even a merge commit with unique conflict-resolution changes: the public
-surface describes authored work and PR outcomes, not integration mechanics.
+daily LOC/repository totals. A merge event is evidence for associating and
+deduplicating authored commits; it is not public work by itself and contributes
+no timeline entry or aggregate count. This intentionally omits even a merge
+commit with unique conflict-resolution changes: the public surface describes
+authored work, not integration mechanics.
 
 An issue opened by a tracked account needs no enrichment or model call. Intake
 persists its stable node/repository IDs, original title/link snapshots, creation
@@ -197,10 +201,14 @@ an `issues` webhook converge on those same unique identities.
 
 Observation and commit fetches require GitHub's provider timestamp rather than
 substituting the poll time. They use retryable database states and honor GitHub
-rate-limit timing; permanent source failures become `unavailable`. Work is
-owned through conditional leases, so a timed-out Vercel invocation can be
-continued safely by a later worker. The worker stops starting expensive work
-before its internal deadline.
+rate-limit timing. Non-retryable REST `403`, `404`, `410`, and `422`,
+non-retryable GraphQL failures, and repeatedly unusable, incomplete,
+unavailable, or unauthorized source evidence become explicit terminal coverage
+gaps after three independent claims; rate limits and request deadlines never
+do. Terminal summary acquisition becomes `indeterminate`. Work is owned through
+conditional leases, so a timed-out Vercel invocation can be continued safely by
+a later worker. The worker stops starting expensive work before its internal
+deadline.
 
 Commit storage is sufficient to audit and re-fetch the source under the normal
 assumption that repository access and history remain available. It includes
@@ -246,15 +254,15 @@ base-only, title, or body edit does not fetch membership again or create a new
 commit-summary revision.
 
 Each routine worker pass claims at most four due PRs globally across active
-tracked accounts; the Action raises that global cap to eight. Claims rotate one
-account at a time so one account cannot consume the whole pass while another
-has eligible work. A known merged or closed PR receives one successful terminal
-refresh, then clears
+tracked accounts; the Action raises the cap to eight within its manual scope.
+Claims rotate one account at a time so one account cannot consume the whole pass
+while another has eligible work. A known merged or closed PR receives one
+successful terminal refresh, then clears
 `next_reconcile_at` and leaves the queue. Temporary failures use exponential
 backoff from 15 minutes through 24 hours instead of silently dropping that
-refresh. A GitHub `404` remains retryable because repository permissions can
-change; `410` and `422` become unavailable only after eight attempts.
-A proven repository/SHA provenance change remains immediately terminal.
+refresh. A deterministic provider failure is retried across three independent
+claims before becoming a visible coverage gap; a proven repository/SHA
+provenance change remains immediately terminal.
 
 ### Proven-copy canonicalization
 
@@ -328,19 +336,22 @@ Subsequent pages use
 Pagination is by complete UTC day, not by item. A page contains five days by
 default (the server accepts at most 14). Its opaque, versioned cursor contains a
 `beforeDay` boundary and the original `snapshotAt`, so loading older days cannot
-mix in activities published after the first page. A safety limit fails the read
-instead of returning a partial day.
+mix in activities published after the first page. Every page is projected in a
+single read-only repeatable-read transaction. Later canonicalization can still
+remove or regroup work between separate cursor requests; the database does not
+retain historical projection versions. A safety limit fails the read instead of
+returning a partial day.
 
 Each day shows totals for repositories, GitHub-reported additions/deletions,
-PRs merged, and issues opened. Every repository appears once per day, ordered by
-its newest visible activity, with standalone commits, PR slices, and issues
-nested beneath that header. A contracted commit is one line containing its
+and issues opened. Every repository appears once per day, ordered by its newest
+visible activity, with standalone commits, PR slices, and issues nested beneath
+that header. A contracted commit is one line containing its
 truncated headline, line-change count, and chevron; expansion leaves those
 elements in place and adds the muted description, languages, and file count
 below. PR commits are shown under deterministic per-day PR slices without a
-separate type label. PR merge outcomes contribute to the daily totals instead of
-rendering as separate timeline entries. Repository and owner display facts are
-served from persisted snapshots; the page does not refetch GitHub.
+separate type label. A PR merge is association and deduplication evidence, not a
+second unit of public work. Repository and owner display facts are served from
+persisted snapshots; the page does not refetch GitHub.
 Timestamps hydrate to the viewer's local time without a timezone suffix; UTC is
 used only for stable day grouping and pagination.
 
@@ -522,7 +533,12 @@ The `Backfill GitHub activity` workflow is manually dispatched from GitHub
 Actions after its workflow file is present on the default branch. `start_date`
 is the earliest UTC calendar day included and `end_date` is the latest; both
 days are inclusive, the start must not follow the end, and the end cannot be in
-the future. Before inventory starts, the Action runs the same locked evidence
+the future. One invocation spans at most 31 days. A broad all-repository run
+must start within the last 62 inclusive UTC days; older recovery requires an
+explicit numeric `repository_id`, so mutable current `pushed_at`/`updated_at`
+timestamps cannot turn an old month into a near-lifetime scan. Longer history
+must be dispatched as separate repository-scoped month-sized runs. Before
+inventory starts, the Action runs the same locked evidence
 integrity preflight as the scheduled worker, so a backfill cannot process rows
 under the transitional migration invariant. The workflow also accepts one
 tracked account or both, an optional
@@ -539,69 +555,106 @@ ACTIVITY_F0RR0_TOKEN
 ACTIVITY_YUPPIESTECHDEV_TOKEN
 ```
 
-Only the token for each selected account is required. The optional
-`ACTIVITY_OPENAI_API_KEY` enables richer public-repository summaries; omitting
-it selects the deterministic fallback and does not reduce discovery coverage.
+Only the token for each selected account is required. The Action deliberately
+does not receive an OpenAI key; its worker passes use the deterministic summary
+fallback so historical completion is not coupled to a model provider.
 
 For each selected account, the runner first verifies that `/user` matches the
 selected tracked account, then performs two independent discovery passes over
-the requested inclusive UTC interval. There is no arbitrary day-count cap; the
-selected Action time budget is the operational bound. Pull requests run first
+the requested inclusive UTC interval. Pull requests run first
 because the all-repository authored-PR stream cannot be repository-sharded:
 
-1. Enumerate every all-state pull request in each affiliated repository in
-   ascending creation order. Creation order is stable while a mutable
-   `updated_at` ordering can move PRs between pages; no timestamp cutoff is safe
-   because Git commit timestamps are author-controlled. An all-repository run
-   independently walks the tracked user's unbounded GraphQL `pullRequests`
-   connection as well, so an authored PR remains discoverable when its base is
-   an unaffiliated external repository. The author stream validates the
-   returned user and PR author, repository database ID/name, PR identity/link,
-   total count, unique progress, and every cursor before merging by PR node ID
-   with the affiliated inventory.
+1. Enumerate repositories whose current `pushed_at` is on or after the window
+   start. Within them, read all-state PRs in descending `updated_at` order and
+   stop below the same boundary. An all-repository run independently reads the
+   tracked user's GraphQL `pullRequests` connection in descending `UPDATED_AT`
+   order and stops at the boundary, so a recently changed authored PR remains
+   discoverable when its base is an unaffiliated external repository. The
+   author stream validates the returned user and PR author, repository database
+   ID/name, PR identity/link, total count, monotonic ordering, unique progress,
+   and every traversed cursor before merging by PR node ID with the affiliated
+   inventory. Logs report both the lifetime total and the smaller selected
+   window count.
    A repository-targeted run stays scoped to that numeric repository ID and does
    not invoke the author stream. Fetch complete membership, retain a PR when it
-   contains a tracked commit in the interval or is a tracked-authored merge in
-   the interval, and resolve merged PR evidence through GraphQL. A verified null
-   merge commit is retained as the valid result of a rebase merge.
-2. Enumerate every accessible repository and its current branches and tags,
-   order branches before tags, and collapse refs that share a commit target.
-   For each distinct target, paginate GitHub's commit list with that SHA,
-   tracked author, `since`, and `until`, then persist candidates directly using
-   repository ID plus commit SHA as their identity.
+   contains a tracked-authored commit in the interval, and resolve merge
+   evidence through GraphQL only for internal association and deduplication. A
+   PR merge without such a commit is not retained as public work.
+2. Enumerate the same recently pushed repository set and its current branches
+   and tags, order branches before tags, and collapse refs that share a commit
+   target. For each distinct target, paginate GitHub's commit list with that
+   SHA, tracked author, `since`, and `until`, then persist candidates directly
+   using repository ID plus commit SHA as their identity.
 
-The commit and merge date filters remain inclusive at both ends. When `all` is
+The commit date filter remains inclusive at both ends. When `all` is
 selected, the two account inventories run concurrently with a maximum
 concurrency of two; each account still uses its own token and author filter.
 
-Together, the passes deterministically cover tracked-author commits in the date
-range that are reachable from a current ref or retained by an eligible PR when
-the Action runs. They cannot discover a commit that was force-pushed away or
+Together, the passes cover tracked-author commits in the date range that are
+reachable from a current ref or retained by an eligible PR when the Action runs,
+provided repository/PR update timestamps reflect the push that exposed the
+commit. The `pushed_at` and `updated_at` cutoffs are practical provider bounds,
+not a proof for deliberately forged future Git timestamps. The passes cannot
+discover a commit that was force-pushed away or
 whose only branch, tag, and PR were deleted before any webhook, Event, prior
 backfill, or surviving ref exposed its SHA. They also cannot inspect a
 repository the selected token cannot access, and GitHub must associate the
 commit author with the tracked account.
 
 GitHub primary-rate-limit responses are waited out when the reset still fits
-inside the selected budget. A deadline or provider delay that cannot fit marks
-the inventory incomplete and fails the job explicitly. Repeating the same
-inputs is safe: commit, PR, and membership identities deduplicate in the
-database, and a complete current membership is not rewritten or invalidated on
-an unchanged PR version. Provider discovery still restarts from the
-deterministic beginning rather than storing an Action-only cursor. If an
-all-repository scan repeatedly exceeds 330 minutes, dispatch the same range once
-per numeric `repository_id` to shard the affiliated inventory; those scoped runs
-intentionally do not replace the all-repository authored-PR pass.
+inside the selected budget. The workflow defaults to a 60-minute budget, which
+starts before the locked evidence-integrity preflight and covers discovery,
+worker drains, retry waits, and the final audit. The preflight applies matching
+PostgreSQL lock and statement timeouts, provider calls carry the same absolute
+deadline, and worker passes plus the final audit are deadline-raced. A deadline
+or retryable provider delay that cannot fit marks the run incomplete and fails
+it explicitly.
+Repeating the same inputs is safe: commit, PR, and membership identities
+deduplicate in the database, and a complete current membership is not rewritten
+or invalidated on an unchanged PR version. Provider discovery still restarts
+from the deterministic beginning rather than storing an Action-only cursor. If
+an individual recently active repository dominates a run, dispatch the same
+range for its numeric `repository_id`; those scoped runs intentionally do not
+replace the all-repository authored-PR pass.
 
 After discovery, direct worker passes request at most eight items from every
-configurable stage. They process the shared global queue, which can include work
-unrelated to the selected backfill. The final JSON contains per-account
+configurable stage. The manual worker admits only the selected accounts and
+commit timestamps. A repository-targeted run additionally admits direct work in
+that repository and commits retained by its current complete PR memberships;
+scheduled workers remain global. The final JSON contains per-account
 `inventories` with `direct` and `pullRequests` results, the aggregate
-`inventoryComplete` flag, and global `processing` outcomes. A complete inventory
-proves that both discovery passes reached their ends; it does not prove the
-shared worker queue is empty. Likewise, a worker pass that claims zero items
-does not prove retry-delayed work is absent. Normal five-minute Vercel worker
-runs continue durable work after the Action stops.
+`boundedDiscoveryComplete` flag, `discoveryCoverage`, scoped `processing`
+outcomes, per-account scoped `audits`, explicit `coverageGaps`, and separate
+`pipelineSettled`, `complete`, and `outcome` fields. The Action exits
+successfully only when bounded traversal finishes and every scoped audit reports
+`stored_projection_verified`. Its outcome is `complete` with no gaps,
+`completed_with_gaps` when terminal provider or pipeline evidence is enumerated,
+or `incomplete` while retryable work remains. One inaccessible repository or PR
+therefore cannot starve later candidates or make every rerun fail forever, but
+the missing evidence is never silently counted as verified coverage. A
+repository-targeted run audits only that repository plus commits retained by its
+current PR memberships, so unrelated work in the same account and window cannot
+fail the run. The audit covers scoped push observations, PR signals,
+memberships, reconciliation, commit enrichment, PR discovery, summaries, and
+the exact public projection. Inbox scope uses provider event time (falling back
+to local observation time for pushes), so delayed delivery is included without
+a historical week draining unrelated later events.
+`pipeline.earliestRetryAt` drives bounded retry waiting. This completion
+contract does not claim provider completeness or recover Git objects that no
+current ref or retained PR exposes.
+
+Run the read-only projection and pipeline audit against any inclusive window of
+at most 31 days:
+
+```sh
+bun run github:audit --account f0rr0 --start-date 2026-08-01 --end-date 2026-08-30
+```
+
+The command exits zero only when the stored pipeline is settled and every
+eligible stored source agrees exactly with the rendered projection, daily
+totals, and repository grouping. It reports `providerCompleteness` as
+`not_assessed`: current GitHub APIs cannot retrospectively prove commits that
+were deleted or force-pushed away before any durable observation.
 
 Use an opaque numeric ID when targeting one repository so a private repository
 name does not appear in public workflow inputs. Resolve it locally with:

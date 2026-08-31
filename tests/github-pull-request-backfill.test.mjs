@@ -36,6 +36,7 @@ const rawRepository = {
     type: repository.ownerType,
   },
   private: true,
+  pushed_at: "2026-08-20T00:00:00Z",
   visibility: repository.visibility,
 };
 
@@ -65,12 +66,23 @@ const pullRequestValue = (
   user: { id: 900, login: "other-maintainer" },
 });
 
+const trackedPullRequestCommitValue = (sha) => ({
+  author: { login: "f0rr0" },
+  commit: {
+    author: { date: "2026-08-15T12:00:00Z" },
+    committer: { date: "2026-08-15T12:00:00Z" },
+    message: "feat: retain tracked work",
+  },
+  sha,
+});
+
 const authoredPullRequestNode = (
   number,
   {
     nodeId = `PR_authored_${String(number)}`,
     repositoryId = 5000 + number,
     repositoryName = `external-org/repository-${String(number)}`,
+    updatedAt = "2026-08-29T12:00:00Z",
   } = {}
 ) => ({
   author: { login: "f0rr0" },
@@ -80,7 +92,7 @@ const authoredPullRequestNode = (
     databaseId: repositoryId,
     nameWithOwner: repositoryName,
   },
-  updatedAt: "2026-08-29T12:00:00Z",
+  updatedAt,
   url: `https://github.com/${repositoryName}/pull/${String(number)}`,
 });
 
@@ -139,6 +151,7 @@ describe("GitHub pull request historical backfill", () => {
       expect(body.variables.login).toBe("f0rr0");
       expect(body.variables.pageSize).toBe(100);
       expect(body.query).toContain("user(login: $login)");
+      expect(body.query).toContain("field: UPDATED_AT");
       requests += 1;
       return Response.json(
         authoredPullRequestPage({
@@ -157,6 +170,7 @@ describe("GitHub pull request historical backfill", () => {
       account: "f0rr0",
       deadlineAt: Date.now() + 120_000,
       token: "test-token",
+      updatedSinceAt: new Date("2026-08-01T00:00:00.000Z"),
     });
 
     expect(result.pages).toBe(101);
@@ -184,6 +198,7 @@ describe("GitHub pull request historical backfill", () => {
         account: "f0rr0",
         deadlineAt: Date.now() + 120_000,
         token: "test-token",
+        updatedSinceAt: new Date("2026-08-01T00:00:00.000Z"),
       })
     ).rejects.toThrow("invalid authored pull request pagination");
   });
@@ -207,6 +222,7 @@ describe("GitHub pull request historical backfill", () => {
         account: "f0rr0",
         deadlineAt: Date.now() + 120_000,
         token: "test-token",
+        updatedSinceAt: new Date("2026-08-01T00:00:00.000Z"),
       })
     ).rejects.toThrow("invalid authored pull request pagination");
   });
@@ -230,6 +246,7 @@ describe("GitHub pull request historical backfill", () => {
         account: "f0rr0",
         deadlineAt: Date.now() + 120_000,
         token: "test-token",
+        updatedSinceAt: new Date("2026-08-01T00:00:00.000Z"),
       })
     ).rejects.toThrow("invalid authored pull request connection");
   });
@@ -259,6 +276,7 @@ describe("GitHub pull request historical backfill", () => {
         account: "f0rr0",
         deadlineAt: Date.now() + 120_000,
         token: "test-token",
+        updatedSinceAt: new Date("2026-08-01T00:00:00.000Z"),
       })
     ).rejects.toThrow("conflicting pull requests");
   });
@@ -282,6 +300,7 @@ describe("GitHub pull request historical backfill", () => {
       account: "f0rr0",
       deadlineAt: Date.now() + 120_000,
       token: "test-token",
+      updatedSinceAt: new Date("2026-08-01T00:00:00.000Z"),
     });
     expect(result.pullRequests).toEqual([
       expect.objectContaining({
@@ -292,7 +311,55 @@ describe("GitHub pull request historical backfill", () => {
     ]);
   });
 
-  test("processes unshardable external authored PRs before affiliated repositories", async () => {
+  test("stops the authored PR stream once updated work predates the window", async () => {
+    let requests = 0;
+    globalThis.fetch = async () => {
+      requests += 1;
+      if (requests === 1) {
+        return Response.json(
+          authoredPullRequestPage({
+            endCursor: "page-two",
+            hasNextPage: true,
+            nodes: [
+              authoredPullRequestNode(1, {
+                updatedAt: "2026-08-29T12:00:00Z",
+              }),
+              authoredPullRequestNode(2, {
+                updatedAt: "2026-08-01T00:00:00Z",
+              }),
+            ],
+            totalCount: 4,
+          })
+        );
+      }
+      return Response.json(
+        authoredPullRequestPage({
+          endCursor: "unused-page-three",
+          hasNextPage: true,
+          nodes: [
+            authoredPullRequestNode(3, {
+              updatedAt: "2026-07-31T23:59:59Z",
+            }),
+          ],
+          totalCount: 4,
+        })
+      );
+    };
+
+    const result = await collectGitHubAuthoredPullRequestBackfillCandidates({
+      account: "f0rr0",
+      deadlineAt: Date.now() + 120_000,
+      token: "test-token",
+      updatedSinceAt: new Date("2026-08-01T00:00:00.000Z"),
+    });
+
+    expect(requests).toBe(2);
+    expect(result.pages).toBe(2);
+    expect(result.totalCount).toBe(4);
+    expect(result.pullRequests.map(({ number }) => number)).toEqual([1, 2]);
+  });
+
+  test("skips an unavailable external PR and processes the following affiliated PR", async () => {
     const requestedPaths = [];
     globalThis.fetch = async (input) => {
       const url = new URL(input instanceof Request ? input.url : input);
@@ -317,6 +384,18 @@ describe("GitHub pull request historical backfill", () => {
       if (url.pathname === "/repos/unaffiliated/example/pulls/7") {
         return Response.json({ message: "Not Found" }, { status: 404 });
       }
+      if (url.pathname === "/repos/example-org/example-repo/pulls") {
+        return Response.json([pullRequestValue(2, "2026-08-20T00:00:00Z")]);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/pulls/2") {
+        return Response.json({
+          ...pullRequestValue(2, "2026-08-20T00:00:00Z"),
+          commits: 0,
+        });
+      }
+      if (url.pathname === "/repos/example-org/example-repo/pulls/2/commits") {
+        return Response.json([]);
+      }
       throw new Error(`Unexpected GitHub request: ${url.href}`);
     };
 
@@ -330,37 +409,39 @@ describe("GitHub pull request historical backfill", () => {
         untilAt: new Date("2026-08-31T23:59:59.999Z"),
       })
     ).toMatchObject({
-      complete: false,
-      repositories: 1,
-      scannedPullRequests: 1,
-      stopReason: "provider_retry",
+      complete: true,
+      repositories: 2,
+      scannedPullRequests: 2,
+      skippedPullRequests: 1,
+      stopReason: "complete",
+      unavailablePullRequests: 1,
+      unavailableRepositories: 0,
     });
     expect(requestedPaths).toEqual([
       "/user/repos",
       "/graphql",
       "/repos/unaffiliated/example/pulls/7",
+      "/repos/example-org/example-repo/pulls",
+      "/repos/example-org/example-repo/pulls/2",
+      "/repos/example-org/example-repo/pulls/2/commits",
     ]);
   });
 
-  test("walks stable created-order pages and accepts numeric pagination paths", async () => {
+  test("walks recent updated-order pages and accepts numeric pagination paths", async () => {
     const requests = [];
     globalThis.fetch = async (input) => {
       const url = new URL(input instanceof Request ? input.url : input);
       requests.push(url);
       if (url.searchParams.get("page") === "2") {
-        return Response.json([
-          pullRequestValue(3, "2026-07-31T23:59:59Z", "2026-07-03T00:00:00Z"),
-        ]);
+        return Response.json([pullRequestValue(3, "2026-08-01T00:00:00Z")]);
       }
       const next = new URL(url);
       next.pathname = `/repositories/${repository.id}/pulls`;
       next.searchParams.set("page", "2");
       return Response.json(
         [
-          // Updated after the commit window still matters: the PR may have
-          // retained an in-window commit only after that window closed.
-          pullRequestValue(1, "2026-09-10T00:00:00Z", "2026-07-01T00:00:00Z"),
-          pullRequestValue(2, "2026-08-01T00:00:00Z", "2026-07-02T00:00:00Z"),
+          pullRequestValue(1, "2026-09-10T00:00:00Z"),
+          pullRequestValue(2, "2026-08-02T00:00:00Z"),
         ],
         { headers: { link: `<${next.href}>; rel="next"` } }
       );
@@ -371,6 +452,7 @@ describe("GitHub pull request historical backfill", () => {
       deadlineAt: Date.now() + 120_000,
       repository,
       token: "test-token",
+      updatedSinceAt: new Date("2026-08-01T00:00:00.000Z"),
     });
 
     expect(result.complete).toBe(true);
@@ -385,12 +467,12 @@ describe("GitHub pull request historical backfill", () => {
       "/repositories/123/pulls",
     ]);
     for (const url of requests) {
-      expect(url.searchParams.get("direction")).toBe("asc");
+      expect(url.searchParams.get("direction")).toBe("desc");
       expect(url.searchParams.get("page")).toBe(
         String(requests.indexOf(url) + 1)
       );
       expect(url.searchParams.get("per_page")).toBe("100");
-      expect(url.searchParams.get("sort")).toBe("created");
+      expect(url.searchParams.get("sort")).toBe("updated");
       expect(url.searchParams.get("state")).toBe("all");
     }
   });
@@ -412,15 +494,16 @@ describe("GitHub pull request historical backfill", () => {
         deadlineAt: Date.now() + 120_000,
         repository,
         token: "test-token",
+        updatedSinceAt: new Date("2026-08-01T00:00:00.000Z"),
       })
     ).rejects.toThrow("invalid pull request pagination");
   });
 
-  test("rejects pages that violate the documented ascending created order", async () => {
+  test("rejects pages that violate descending updated order", async () => {
     globalThis.fetch = async () =>
       Response.json([
-        pullRequestValue(1, "2026-08-01T00:00:00Z", "2026-07-02T00:00:00Z"),
-        pullRequestValue(2, "2026-08-02T00:00:00Z", "2026-07-01T00:00:00Z"),
+        pullRequestValue(1, "2026-08-01T00:00:00Z"),
+        pullRequestValue(2, "2026-08-02T00:00:00Z"),
       ]);
 
     await expect(
@@ -429,11 +512,43 @@ describe("GitHub pull request historical backfill", () => {
         deadlineAt: Date.now() + 120_000,
         repository,
         token: "test-token",
+        updatedSinceAt: new Date("2026-08-01T00:00:00.000Z"),
       })
-    ).rejects.toThrow("outside ascending created order");
+    ).rejects.toThrow("outside descending updated order");
   });
 
-  test("fails incomplete when a listed pull request becomes inaccessible", async () => {
+  test("stops once repository pull requests are older than the backfill window", async () => {
+    const requests = [];
+    globalThis.fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      requests.push(url);
+      const next = new URL(url);
+      next.searchParams.set("page", "2");
+      return Response.json(
+        [
+          pullRequestValue(1, "2026-08-15T00:00:00Z"),
+          pullRequestValue(2, "2026-07-31T23:59:59Z"),
+        ],
+        { headers: { link: `<${next.href}>; rel="next"` } }
+      );
+    };
+
+    const result = await collectGitHubPullRequestBackfillCandidates({
+      account: "f0rr0",
+      deadlineAt: Date.now() + 120_000,
+      repository,
+      token: "test-token",
+      updatedSinceAt: new Date("2026-08-01T00:00:00.000Z"),
+    });
+
+    expect(result).toEqual({
+      complete: true,
+      pullRequests: [expect.objectContaining({ number: 1 })],
+    });
+    expect(requests).toHaveLength(1);
+  });
+
+  test("skips a listed pull request that becomes inaccessible", async () => {
     globalThis.fetch = async (input) => {
       const url = new URL(input instanceof Request ? input.url : input);
       if (url.pathname === "/user/repos") {
@@ -452,7 +567,7 @@ describe("GitHub pull request historical backfill", () => {
         );
       }
       if (url.pathname === "/repos/example-org/example-repo/pulls/1") {
-        return Response.json({ message: "Not Found" }, { status: 404 });
+        return Response.json({ message: "Forbidden" }, { status: 403 });
       }
       throw new Error(`Unexpected GitHub request: ${url.href}`);
     };
@@ -467,14 +582,301 @@ describe("GitHub pull request historical backfill", () => {
         untilAt: new Date("2026-08-31T23:59:59.999Z"),
       })
     ).toMatchObject({
-      complete: false,
+      complete: true,
       scannedPullRequests: 1,
       skippedPullRequests: 0,
-      stopReason: "provider_retry",
+      stopReason: "complete",
+      unavailablePullRequests: 1,
     });
   });
 
-  test("includes only an in-window tracked commit or merged PR milestone", () => {
+  test("given one repository PR inventory disappears, records a gap and scans the later repository", async () => {
+    const deniedRepository = {
+      ...rawRepository,
+      full_name: "denied-org/denied-repo",
+      html_url: "https://github.com/denied-org/denied-repo",
+      id: 124,
+      owner: {
+        ...rawRepository.owner,
+        id: 457,
+        login: "denied-org",
+      },
+    };
+    const requestedPaths = [];
+    globalThis.fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      requestedPaths.push(url.pathname);
+      if (url.pathname === "/user/repos") {
+        return Response.json([rawRepository, deniedRepository]);
+      }
+      if (url.pathname === "/graphql") {
+        return Response.json(
+          authoredPullRequestPage({
+            hasNextPage: false,
+            nodes: [],
+            totalCount: 0,
+          })
+        );
+      }
+      if (url.pathname === "/repos/denied-org/denied-repo/pulls") {
+        return Response.json({ message: "Not Found" }, { status: 404 });
+      }
+      if (url.pathname === "/repos/example-org/example-repo/pulls") {
+        return Response.json([pullRequestValue(2, "2026-08-20T00:00:00Z")]);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/pulls/2") {
+        return Response.json({
+          ...pullRequestValue(2, "2026-08-20T00:00:00Z"),
+          commits: 0,
+        });
+      }
+      if (url.pathname === "/repos/example-org/example-repo/pulls/2/commits") {
+        return Response.json([]);
+      }
+      throw new Error(`Unexpected GitHub request: ${url.href}`);
+    };
+
+    expect(
+      await backfillGitHubPullRequests({
+        account: "f0rr0",
+        deadlineAt: Date.now() + 120_000,
+        repositoryId: null,
+        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
+        token: "test-token",
+        untilAt: new Date("2026-08-31T23:59:59.999Z"),
+      })
+    ).toMatchObject({
+      complete: true,
+      repositories: 1,
+      scannedPullRequests: 1,
+      skippedPullRequests: 1,
+      stopReason: "complete",
+      unavailablePullRequests: 0,
+      unavailableRepositories: 1,
+    });
+    expect(requestedPaths).toContain("/repos/example-org/example-repo/pulls/2");
+  });
+
+  test("given one PR has deterministic incomplete membership, records a gap and hydrates the next PR", async () => {
+    const hydratedPullRequests = [];
+    globalThis.fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname === "/repositories/123") {
+        return Response.json(rawRepository);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/pulls") {
+        return Response.json([
+          pullRequestValue(1, "2026-08-20T00:00:00Z"),
+          pullRequestValue(2, "2026-08-19T00:00:00Z"),
+        ]);
+      }
+      const snapshot =
+        /^\/repos\/example-org\/example-repo\/pulls\/(\d+)$/u.exec(
+          url.pathname
+        );
+      if (snapshot?.[1] !== undefined) {
+        const number = Number(snapshot[1]);
+        hydratedPullRequests.push(number);
+        return Response.json({
+          ...pullRequestValue(
+            number,
+            number === 1 ? "2026-08-20T00:00:00Z" : "2026-08-19T00:00:00Z"
+          ),
+          commits: number === 1 ? 1 : 0,
+        });
+      }
+      if (url.pathname.endsWith("/pulls/1/commits")) {
+        return Response.json([]);
+      }
+      if (url.pathname.includes("/compare/")) {
+        return Response.json({ ahead_by: 1, commits: [], total_commits: 1 });
+      }
+      if (url.pathname.endsWith("/pulls/2/commits")) {
+        return Response.json([]);
+      }
+      throw new Error(`Unexpected GitHub request: ${url.href}`);
+    };
+
+    expect(
+      await backfillGitHubPullRequests({
+        account: "f0rr0",
+        deadlineAt: Date.now() + 120_000,
+        repositoryId: repository.id,
+        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
+        token: "test-token",
+        untilAt: new Date("2026-08-31T23:59:59.999Z"),
+      })
+    ).toMatchObject({
+      complete: true,
+      scannedPullRequests: 2,
+      skippedPullRequests: 1,
+      stopReason: "complete",
+      unavailablePullRequests: 1,
+    });
+    expect(hydratedPullRequests).toEqual([1, 2]);
+  });
+
+  test("given one merged PR never resolves, records a gap and reaches the next candidate batch", async () => {
+    const candidates = Array.from({ length: 11 }, (_, index) =>
+      pullRequestValue(
+        index + 1,
+        `2026-08-${String(20 - index).padStart(2, "0")}T00:00:00Z`
+      )
+    );
+    let mergeResolutionRequests = 0;
+    const hydratedPullRequests = [];
+    globalThis.fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname === "/repositories/123") {
+        return Response.json(rawRepository);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/pulls") {
+        return Response.json(candidates);
+      }
+      if (url.pathname === "/graphql") {
+        mergeResolutionRequests += 1;
+        return Response.json({ data: { nodes: [null] } });
+      }
+      const snapshot =
+        /^\/repos\/example-org\/example-repo\/pulls\/(\d+)$/u.exec(
+          url.pathname
+        );
+      if (snapshot?.[1] !== undefined) {
+        const number = Number(snapshot[1]);
+        hydratedPullRequests.push(number);
+        const value = pullRequestValue(
+          number,
+          `2026-08-${String(20 - (number - 1)).padStart(2, "0")}T00:00:00Z`
+        );
+        return Response.json(
+          number === 1
+            ? {
+                ...value,
+                closed_at: "2026-08-21T00:00:00Z",
+                commits: 1,
+                merged_at: "2026-08-21T00:00:00Z",
+                state: "closed",
+              }
+            : { ...value, commits: 0 }
+        );
+      }
+      if (url.pathname.endsWith("/pulls/1/commits")) {
+        return Response.json([
+          trackedPullRequestCommitValue(
+            pullRequestValue(1, "2026-08-20T00:00:00Z").head.sha
+          ),
+        ]);
+      }
+      if (/\/pulls\/\d+\/commits$/u.test(url.pathname)) {
+        return Response.json([]);
+      }
+      throw new Error(`Unexpected GitHub request: ${url.href}`);
+    };
+
+    expect(
+      await backfillGitHubPullRequests({
+        account: "f0rr0",
+        deadlineAt: Date.now() + 120_000,
+        repositoryId: repository.id,
+        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
+        token: "test-token",
+        untilAt: new Date("2026-08-31T23:59:59.999Z"),
+      })
+    ).toMatchObject({
+      complete: true,
+      scannedPullRequests: 11,
+      skippedPullRequests: 10,
+      stopReason: "complete",
+      unavailablePullRequests: 1,
+    });
+    expect(mergeResolutionRequests).toBe(2);
+    expect(hydratedPullRequests).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  });
+
+  test("given merge resolution is rate limited, leaves traversal incomplete without a gap", async () => {
+    const value = pullRequestValue(1, "2026-08-20T00:00:00Z");
+    globalThis.fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname === "/repositories/123") {
+        return Response.json(rawRepository);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/pulls") {
+        return Response.json([value]);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/pulls/1") {
+        return Response.json({
+          ...value,
+          closed_at: "2026-08-21T00:00:00Z",
+          commits: 1,
+          merged_at: "2026-08-21T00:00:00Z",
+          state: "closed",
+        });
+      }
+      if (url.pathname === "/repos/example-org/example-repo/pulls/1/commits") {
+        return Response.json([trackedPullRequestCommitValue(value.head.sha)]);
+      }
+      if (url.pathname === "/graphql") {
+        return Response.json(
+          { message: "rate limited" },
+          { headers: { "retry-after": "120" }, status: 429 }
+        );
+      }
+      throw new Error(`Unexpected GitHub request: ${url.href}`);
+    };
+
+    expect(
+      await backfillGitHubPullRequests({
+        account: "f0rr0",
+        deadlineAt: Date.now() + 60_000,
+        repositoryId: repository.id,
+        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
+        token: "test-token",
+        untilAt: new Date("2026-08-31T23:59:59.999Z"),
+      })
+    ).toMatchObject({
+      complete: false,
+      scannedPullRequests: 1,
+      stopReason: "provider_retry",
+      unavailablePullRequests: 0,
+    });
+  });
+
+  test("given candidate hydration is retryable, leaves traversal incomplete without recording a coverage gap", async () => {
+    globalThis.fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname === "/repositories/123") {
+        return Response.json(rawRepository);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/pulls") {
+        return Response.json([pullRequestValue(1, "2026-08-01T00:00:00Z")]);
+      }
+      if (url.pathname === "/repos/example-org/example-repo/pulls/1") {
+        return Response.json(
+          { message: "Service Unavailable" },
+          { headers: { "retry-after": "120" }, status: 503 }
+        );
+      }
+      throw new Error(`Unexpected GitHub request: ${url.href}`);
+    };
+
+    expect(
+      await backfillGitHubPullRequests({
+        account: "f0rr0",
+        deadlineAt: Date.now() + 60_000,
+        repositoryId: repository.id,
+        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
+        token: "test-token",
+        untilAt: new Date("2026-08-31T23:59:59.999Z"),
+      })
+    ).toMatchObject({
+      complete: false,
+      scannedPullRequests: 1,
+      stopReason: "provider_retry",
+      unavailablePullRequests: 0,
+    });
+  });
+
+  test("given a PR, includes it only when it contains tracked-authored work in the window", () => {
     const sinceAt = new Date("2026-08-01T00:00:00.000Z");
     const untilAt = new Date("2026-08-31T23:59:59.999Z");
     const commit = (committedAt) => ({
@@ -514,18 +916,22 @@ describe("GitHub pull request historical backfill", () => {
           mergedAt: "2026-08-15T00:00:00.000Z",
         },
       })
-    ).toBe(true);
+    ).toBe(false);
     expect(
       belongs({
-        pullRequest: {
-          authorAccount: "f0rr0",
-          mergedAt: "2026-09-01T00:00:00.000Z",
-        },
+        commits: [
+          { ...commit("2026-08-15T00:00:00.000Z"), author: "someone-else" },
+        ],
+        pullRequest: { authorAccount: "f0rr0", mergedAt: null },
       })
     ).toBe(false);
     expect(
       belongs({
-        pullRequest: { authorAccount: "f0rr0", mergedAt: null },
+        commits: [commit("2026-09-01T00:00:00.000Z")],
+        pullRequest: {
+          authorAccount: "f0rr0",
+          mergedAt: "2026-08-15T00:00:00.000Z",
+        },
       })
     ).toBe(false);
   });

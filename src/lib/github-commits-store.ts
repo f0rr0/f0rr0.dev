@@ -1223,14 +1223,7 @@ const invalidateChangedPullRequestAliases = async (
   }
   await invalidateGitHubPullRequestDerivedAliases(
     transaction,
-    pullRequest.nodeId,
-    [
-      existing.repositoryId,
-      existing.headRepositoryId,
-      pullRequest.repository.id,
-      pullRequest.baseRepository.id,
-      pullRequest.headRepository?.id,
-    ]
+    pullRequest.nodeId
   );
 };
 
@@ -1478,10 +1471,7 @@ const signalKnownPullRequestReconciliation = async (
     occurredAt > known.providerUpdatedAt ||
     TERMINAL_PULL_REQUEST_EVENT_ACTIONS.has(signal.action);
   if (promoteToProvisionalClosed) {
-    await invalidateGitHubPullRequestDerivedAliases(transaction, known.nodeId, [
-      known.repositoryId,
-      known.headRepositoryId,
-    ]);
+    await invalidateGitHubPullRequestDerivedAliases(transaction, known.nodeId);
   }
   await transaction
     .update(githubPullRequests)

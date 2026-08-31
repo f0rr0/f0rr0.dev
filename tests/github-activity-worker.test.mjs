@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  ActivityProcessingError,
+  GitHubGraphQlResponseError,
+} from "../src/lib/github-activity-processor.ts";
+import {
   boundedWorkerLimit,
   DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE,
   exactGitHubDiffDigest,
@@ -16,6 +20,83 @@ import {
   workerBatchSizeFrom,
   workerDeadlineReached,
 } from "../src/lib/github-activity-worker-core.ts";
+import {
+  GITHUB_ACTIVITY_TERMINAL_ATTEMPTS,
+  githubActivityFailureIsTerminal,
+} from "../src/lib/github-activity-worker.ts";
+import { GitHubResponseError } from "../src/lib/github-api.ts";
+
+describe("GitHub activity terminal gaps", () => {
+  test("given a deterministic REST gap, it becomes unavailable on the third worker claim", () => {
+    for (const status of [403, 404, 410, 422]) {
+      const error = new GitHubResponseError(status, { retryable: false });
+      expect(
+        githubActivityFailureIsTerminal(
+          error,
+          GITHUB_ACTIVITY_TERMINAL_ATTEMPTS - 1
+        )
+      ).toBe(false);
+      expect(
+        githubActivityFailureIsTerminal(
+          error,
+          GITHUB_ACTIVITY_TERMINAL_ATTEMPTS
+        )
+      ).toBe(true);
+    }
+  });
+
+  test("given rate-limit evidence, repeated REST or GraphQL failures stay retryable", () => {
+    expect(
+      githubActivityFailureIsTerminal(
+        new GitHubResponseError(403, { retryable: true }),
+        GITHUB_ACTIVITY_TERMINAL_ATTEMPTS + 10
+      )
+    ).toBe(false);
+    expect(
+      githubActivityFailureIsTerminal(
+        new GitHubGraphQlResponseError("rate_limited", { retryable: true }),
+        GITHUB_ACTIVITY_TERMINAL_ATTEMPTS + 10
+      )
+    ).toBe(false);
+  });
+
+  test("given repeatedly unusable provider evidence, it becomes a terminal coverage gap", () => {
+    expect(
+      githubActivityFailureIsTerminal(
+        new GitHubGraphQlResponseError("request_rejected", {
+          retryable: false,
+        }),
+        GITHUB_ACTIVITY_TERMINAL_ATTEMPTS
+      )
+    ).toBe(true);
+    expect(
+      githubActivityFailureIsTerminal(
+        new ActivityProcessingError("source_invalid", "invalid source"),
+        GITHUB_ACTIVITY_TERMINAL_ATTEMPTS
+      )
+    ).toBe(true);
+    for (const code of [
+      "membership_incomplete",
+      "source_auth_missing",
+      "source_incomplete",
+      "source_invalid",
+      "source_unavailable",
+    ]) {
+      expect(
+        githubActivityFailureIsTerminal(
+          new ActivityProcessingError(code, "unusable source"),
+          GITHUB_ACTIVITY_TERMINAL_ATTEMPTS - 1
+        )
+      ).toBe(false);
+      expect(
+        githubActivityFailureIsTerminal(
+          new ActivityProcessingError(code, "unusable source"),
+          GITHUB_ACTIVITY_TERMINAL_ATTEMPTS
+        )
+      ).toBe(true);
+    }
+  });
+});
 
 const commit = (files, overrides = {}) => {
   const additions = files.reduce((total, file) => total + file.additions, 0);

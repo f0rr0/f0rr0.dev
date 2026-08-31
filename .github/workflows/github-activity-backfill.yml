@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       start_date:
-        description: Start date — earliest UTC day included (YYYY-MM-DD)
+        description: Start UTC day; max 31 days, broad runs within 62 days (YYYY-MM-DD)
         required: true
         type: string
       end_date:
@@ -21,13 +21,13 @@ on:
           - yuppiestechdev
           - all
       repository_id:
-        description: Numeric repository ID to scan; blank scans every accessible repository
+        description: Numeric repository ID; blank scans repositories active in the window
         required: false
         type: string
       maximum_minutes:
-        description: Discovery/processing budget; durable work can continue (1-330 min)
+        description: Hard discovery/processing budget; incomplete work fails visibly (1-330 min)
         required: true
-        default: 300
+        default: 60
         type: number
 
 concurrency:
@@ -52,7 +52,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Discover history and process shared work
+      - name: Discover history and process work
         env:
           ACCOUNT: ${{ inputs.account }}
           DATABASE_URL: ${{ secrets.ACTIVITY_DATABASE_URL }}
@@ -60,7 +60,6 @@ jobs:
           GITHUB_F0RR0_TOKEN: ${{ secrets.ACTIVITY_F0RR0_TOKEN }}
           GITHUB_YUPPIESTECHDEV_TOKEN: ${{ secrets.ACTIVITY_YUPPIESTECHDEV_TOKEN }}
           MAXIMUM_MINUTES: ${{ inputs.maximum_minutes }}
-          OPENAI_API_KEY: ${{ secrets.ACTIVITY_OPENAI_API_KEY }}
           REPOSITORY_ID: ${{ inputs.repository_id }}
           START_DATE: ${{ inputs.start_date }}
         run: >-
