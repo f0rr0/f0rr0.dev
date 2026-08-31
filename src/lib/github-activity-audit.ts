@@ -15,6 +15,7 @@ import {
   githubIssues,
   githubPublicActivities,
   githubPullRequests,
+  githubPullRequestMemberships,
   githubPullRequestSignals,
   githubPullRequestVersions,
   githubPushObservations,
@@ -726,6 +727,9 @@ interface AuditRetryRow {
 interface AuditPullRequestPipelineRow {
   lastReconciledAt: Date | null;
   membershipComplete: boolean | null;
+  membershipCount: number;
+  membershipExpectedCount: number | null;
+  membershipHeadMatches: boolean;
   nextReconcileAt: Date | null;
   reconcileError: string | null;
   versionObservedAt: Date | null;
@@ -798,7 +802,11 @@ const pullRequestPipelineEvidenceFrom = (
   let pullRequestReconciliationsUnavailable = 0;
   const retryDates: Date[] = [];
   for (const pullRequest of rows) {
-    const membershipIncomplete = pullRequest.membershipComplete !== true;
+    const membershipIncomplete =
+      pullRequest.membershipComplete !== true ||
+      pullRequest.membershipExpectedCount === null ||
+      pullRequest.membershipCount !== pullRequest.membershipExpectedCount ||
+      !pullRequest.membershipHeadMatches;
     if (membershipIncomplete) {
       if (pullRequest.nextReconcileAt === null) {
         pullRequestMembershipsUnavailable += 1;
@@ -1083,6 +1091,22 @@ const readStoredEvidence = async (
       .select({
         lastReconciledAt: githubPullRequests.lastReconciledAt,
         membershipComplete: githubPullRequestVersions.membershipComplete,
+        membershipCount: sql<number>`(
+          SELECT count(*)::integer
+          FROM ${githubPullRequestMemberships}
+          WHERE ${githubPullRequestMemberships.versionId} = ${githubPullRequestVersions.id}
+        )`,
+        membershipExpectedCount: githubPullRequestVersions.commitCount,
+        membershipHeadMatches: sql<boolean>`
+          coalesce(${githubPullRequestVersions.commitCount} = 0, false)
+          OR coalesce((
+            SELECT ${githubPullRequestMemberships.commitSha} = ${githubPullRequestVersions.headSha}
+            FROM ${githubPullRequestMemberships}
+            WHERE ${githubPullRequestMemberships.versionId} = ${githubPullRequestVersions.id}
+            ORDER BY ${githubPullRequestMemberships.position} DESC
+            LIMIT 1
+          ), false)
+        `,
         nextReconcileAt: githubPullRequests.nextReconcileAt,
         reconcileError: githubPullRequests.reconcileError,
         versionObservedAt: githubPullRequestVersions.observedAt,

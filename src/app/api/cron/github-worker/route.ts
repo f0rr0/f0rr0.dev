@@ -57,6 +57,7 @@ export async function POST(request: Request) {
       evidenceRecovery.status === "applied" ||
       activity.summaries.completed > 0 ||
       activity.pullRequests.completed > 0 ||
+      activity.canonicalizationAttempts > 0 ||
       activity.aliases > 0
     ) {
       revalidateTag("github-activity", "max");

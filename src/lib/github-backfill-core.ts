@@ -80,6 +80,8 @@ interface GitHubBackfillWorkerStageCounts {
 
 interface GitHubBackfillWorkerPassCounts {
   aliases: number;
+  canonicalizationAttempts: number;
+  canonicalized: number;
   commits: GitHubBackfillWorkerStageCounts;
   observations: GitHubBackfillWorkerStageCounts;
   pullRequestDiscovery: GitHubBackfillWorkerStageCounts;
@@ -90,6 +92,8 @@ interface GitHubBackfillWorkerPassCounts {
 
 export interface GitHubBackfillProcessingCounts {
   aliases: number;
+  canonicalizationAttempts: number;
+  canonicalized: number;
   claimed: number;
   deferred: number;
   failed: number;
@@ -98,8 +102,11 @@ export interface GitHubBackfillProcessingCounts {
 }
 
 export const githubBackfillProcessingMadeProgress = (
-  counts: Pick<GitHubBackfillProcessingCounts, "aliases" | "claimed">
-) => counts.claimed > 0 || counts.aliases > 0;
+  counts: Pick<
+    GitHubBackfillProcessingCounts,
+    "canonicalizationAttempts" | "claimed"
+  >
+) => counts.claimed > 0 || counts.canonicalizationAttempts > 0;
 
 type JsonObject = Record<string, unknown>;
 
@@ -111,6 +118,8 @@ export const githubBackfillProcessingCountsFrom = (
 ): GitHubBackfillProcessingCounts => {
   const counts: GitHubBackfillProcessingCounts = {
     aliases: result.aliases,
+    canonicalizationAttempts: result.canonicalizationAttempts,
+    canonicalized: result.canonicalized,
     claimed: 0,
     deferred: 0,
     failed: 0,
