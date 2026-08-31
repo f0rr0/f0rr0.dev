@@ -184,7 +184,16 @@ export const githubNextPollAtFrom = (
   response: Response,
   receivedAt = Date.now()
 ) => {
-  const value = response.headers.get("x-poll-interval")?.trim();
+  const pollInterval = response.headers.get("x-poll-interval");
+  const cacheMaxAges =
+    pollInterval === null
+      ? (response.headers.get("cache-control")?.split(",") ?? [])
+          .map((directive) => /^max-age\s*=\s*(\d+)$/i.exec(directive.trim()))
+          .filter((match): match is RegExpExecArray => match !== null)
+      : [];
+  const value =
+    pollInterval?.trim() ??
+    (cacheMaxAges.length === 1 ? cacheMaxAges[0]?.[1] : undefined);
   if (
     value === undefined ||
     !/^\d+$/.test(value) ||
