@@ -238,17 +238,20 @@ describe("GitHub history backfill requests", () => {
     ).toBeNull();
   });
 
-  test("retries an inconclusive projection read only twice", () => {
+  test("retries an inconclusive projection read with bounded backoff", () => {
     const nowAt = Date.parse("2026-08-30T00:00:00.000Z");
     const audits = [auditResult("inconclusive", null)];
     expect(
       backfillRetryWaitMillisecondsFrom(audits, nowAt + 60_000, nowAt, 0)
-    ).toBe(1000);
+    ).toBe(2000);
     expect(
       backfillRetryWaitMillisecondsFrom(audits, nowAt + 60_000, nowAt, 1)
-    ).toBe(1000);
+    ).toBe(5000);
     expect(
       backfillRetryWaitMillisecondsFrom(audits, nowAt + 60_000, nowAt, 2)
+    ).toBe(10_000);
+    expect(
+      backfillRetryWaitMillisecondsFrom(audits, nowAt + 60_000, nowAt, 3)
     ).toBeNull();
   });
 

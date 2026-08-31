@@ -43,6 +43,7 @@ const MAXIMUM_GITHUB_FILE_PAGES = 30;
 const GITHUB_PULL_REQUEST_COMMIT_LIMIT = 250;
 const GITHUB_GRAPHQL_NODE_BATCH_SIZE = 100;
 const GITHUB_GRAPHQL_SECONDARY_LIMIT_WAIT_MS = 60_000;
+const MAXIMUM_DURABLE_PUSH_COMMIT_FALLBACK = 100;
 const ZERO_SHA = "0".repeat(40);
 
 type JsonObject = Record<string, unknown>;
@@ -1207,6 +1208,18 @@ const newBranchCommitValuesWithToken = async (
   return values.toReversed();
 };
 
+// An exact webhook/Event payload remains authoritative when later ref changes
+// make GitHub's current compare or reachable history disagree with that push.
+const hasCompleteDurablePushEvidence = (
+  row: GitHubActivityPushObservationReference
+) =>
+  row.expectedCommitCount !== null &&
+  row.expectedCommitCount > 0 &&
+  row.knownShas.length === row.expectedCommitCount &&
+  row.knownShas.at(-1) === row.afterSha &&
+  new Set(row.knownShas).size === row.knownShas.length &&
+  row.knownShas.every((sha) => commitShaFrom(sha) !== null);
+
 const reachablePushCommitValuesWithToken = async (
   row: GitHubActivityPushObservationReference,
   token: string,
@@ -1224,6 +1237,11 @@ const reachablePushCommitValuesWithToken = async (
     ) {
       throw error;
     }
+    if (hasCompleteDurablePushEvidence(row)) {
+      // Let the outer recovery boundary hydrate the exact durable members
+      // without first walking potentially long reachable branch history.
+      throw error;
+    }
     try {
       return await newBranchCommitValuesWithToken(
         { ...row, beforeSha: ZERO_SHA, expectedCommitCount: null },
@@ -1237,23 +1255,17 @@ const reachablePushCommitValuesWithToken = async (
   }
 };
 
-// An exact webhook/Event payload remains authoritative when later ref changes
-// make GitHub's current compare or reachable history disagree with that push.
-const hasCompleteDurablePushEvidence = (
-  row: GitHubActivityPushObservationReference
-) =>
-  row.expectedCommitCount !== null &&
-  row.expectedCommitCount > 0 &&
-  row.knownShas.length === row.expectedCommitCount &&
-  row.knownShas.at(-1) === row.afterSha &&
-  new Set(row.knownShas).size === row.knownShas.length &&
-  row.knownShas.every((sha) => commitShaFrom(sha) !== null);
-
 const durablePushCommitValuesWithToken = async (
   row: GitHubActivityPushObservationReference,
   token: string,
   options: GitHubProviderRequestOptions = {}
 ) => {
+  if (row.knownShas.length > MAXIMUM_DURABLE_PUSH_COMMIT_FALLBACK) {
+    throw new ActivityProcessingError(
+      "source_incomplete",
+      "Exact durable push recovery exceeds the bounded commit hydration limit."
+    );
+  }
   const values: unknown[] = [];
   for (const sha of row.knownShas) {
     const value = await fetchJson(

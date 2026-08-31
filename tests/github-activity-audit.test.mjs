@@ -344,10 +344,14 @@ describe("GitHub activity audit", () => {
       issues: [],
       legacyPullRequestMilestones: 0,
       projectionDays: [],
-      projectionError: "DatabaseError",
+      projectionError: { code: "08006", name: "DatabaseError" },
     });
 
     expect(report.status).toBe("inconclusive");
+    expect(report.diagnostics.projectionError).toEqual({
+      code: "08006",
+      name: "DatabaseError",
+    });
     expect(githubActivityAuditExitCodeFromStatus(report.status)).toBe(2);
     expect(githubActivityAuditExitCodeFromStatus("mismatch")).toBe(1);
     expect(

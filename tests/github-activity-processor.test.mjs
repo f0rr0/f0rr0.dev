@@ -629,9 +629,8 @@ describe("GitHub activity commit acquisition", () => {
     expect(source.commits[0]?.committedAt).toBe("2026-08-28T12:01:00.000Z");
   });
 
-  test("recovers durable members when force-push history has unrelated ancestors", async () => {
+  test("bypasses reachable history when exact durable members survive a force-push", async () => {
     const beforeSha = "1".repeat(40);
-    const olderSha = "2".repeat(40);
     const firstSha = "3".repeat(40);
     const afterSha = "4".repeat(40);
     const paths = [];
@@ -643,45 +642,7 @@ describe("GitHub activity commit acquisition", () => {
       if (url.pathname.includes("/compare/")) {
         return new Response(null, { status: 404 });
       }
-      if (url.pathname === "/graphql") {
-        return Response.json({
-          data: {
-            repository: {
-              object: {
-                history: {
-                  nodes: [
-                    {
-                      author: { user: { login: "f0rr0" } },
-                      authoredDate: "2026-08-28T12:00:00Z",
-                      committedDate: "2026-08-28T12:01:00Z",
-                      message: "head",
-                      oid: afterSha,
-                      url: `https://github.com/example-org/example-repo/commit/${afterSha}`,
-                    },
-                    {
-                      author: { user: { login: "f0rr0" } },
-                      authoredDate: "2026-08-28T11:00:00Z",
-                      committedDate: "2026-08-28T11:01:00Z",
-                      message: "first",
-                      oid: firstSha,
-                      url: `https://github.com/example-org/example-repo/commit/${firstSha}`,
-                    },
-                    {
-                      author: { user: { login: "octocat" } },
-                      authoredDate: "2026-08-28T10:00:00Z",
-                      committedDate: "2026-08-28T10:01:00Z",
-                      message: "older",
-                      oid: olderSha,
-                      url: `https://github.com/example-org/example-repo/commit/${olderSha}`,
-                    },
-                  ],
-                  pageInfo: { endCursor: null, hasNextPage: false },
-                },
-              },
-            },
-          },
-        });
-      }
+      expect(url.pathname).not.toBe("/graphql");
       const sha = url.pathname.split("/").at(-1);
       return Response.json(pushCommitValue(sha, "f0rr0", 100));
     };
@@ -701,11 +662,45 @@ describe("GitHub activity commit acquisition", () => {
 
     expect(paths).toEqual([
       `/repos/example-org/example-repo/compare/${beforeSha}...${afterSha}`,
-      "/graphql",
       `/repos/example-org/example-repo/commits/${firstSha}`,
       `/repos/example-org/example-repo/commits/${afterSha}`,
     ]);
     expect(source.commitShas).toEqual([firstSha, afterSha]);
+  });
+
+  test("rejects an over-cap durable fallback before commit hydration", async () => {
+    const beforeSha = "f".repeat(40);
+    const knownShas = Array.from({ length: 101 }, (_, index) =>
+      (index + 1).toString(16).padStart(40, "0")
+    );
+    const afterSha = knownShas.at(-1);
+    const paths = [];
+    env.GITHUB_F0RR0_TOKEN = "test-token";
+    globalThis.fetch = async (input) => {
+      const url =
+        input instanceof Request ? new URL(input.url) : new URL(input);
+      paths.push(url.pathname);
+      return new Response(null, { status: 404 });
+    };
+
+    await expect(
+      fetchGitHubPushObservationSource({
+        account: "f0rr0",
+        afterSha,
+        beforeSha,
+        expectedCommitCount: knownShas.length,
+        historySinceAt: new Date("2026-08-18T00:00:00.000Z"),
+        knownShas,
+        observedAt: new Date("2026-08-28T12:34:00.000Z"),
+        refName: "refs/heads/main",
+        repository: "example-org/example-repo",
+        repositoryId: "123",
+      })
+    ).rejects.toMatchObject({ code: "source_incomplete" });
+
+    expect(paths).toEqual([
+      `/repos/example-org/example-repo/compare/${beforeSha}...${afterSha}`,
+    ]);
   });
 
   test("bounds a new branch by the observed count without slicing history", async () => {
