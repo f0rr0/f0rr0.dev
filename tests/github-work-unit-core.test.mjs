@@ -214,6 +214,39 @@ describe("deterministic GitHub work ownership", () => {
     ).toBe("PR_tracked_open");
   });
 
+  test("projects complete provider evidence when aggregate and file counters drift", () => {
+    const ledgerFile = file("src/provider-ledger.ts", 3, 4);
+    const work = change("2", {
+      additions: 5,
+      deletions: 7,
+      fileFacts: [ledgerFile],
+    });
+    const key = logicalKeyFrom(work);
+
+    const [unit] = projection({
+      changes: [work],
+      pullRequests: [
+        pullRequest("PR_provider_ledger_drift", [key], {
+          netOutcomeOwnedCompletely: false,
+          snapshotKind: "final",
+          state: "merged",
+        }),
+      ],
+    });
+
+    expect(unit).toMatchObject({
+      attributionMode: "tracked_authored_pr",
+      facts: {
+        additions: 5,
+        deletions: 7,
+        fileCount: 1,
+        memberCount: 1,
+      },
+      identityKey: "pr:PR_provider_ledger_drift",
+      kind: "pull_request",
+    });
+  });
+
   test("fails closed until lower-priority negatives and the canonical branch are complete", () => {
     const work = change("c");
     const key = githubLogicalChangeKey(
