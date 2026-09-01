@@ -74,6 +74,10 @@ export const githubRepositories = pgTable(
   (table) => [
     index("github_repositories_full_name_idx").on(table.fullName),
     check(
+      "github_repositories_full_name",
+      sql`length(btrim(${table.fullName})) > 0`
+    ),
+    check(
       "github_repositories_owner_type",
       sql`${table.ownerType} IS NULL OR ${table.ownerType} IN ('Organization', 'User')`
     ),
@@ -126,6 +130,11 @@ export const githubCommits = pgTable(
       .default("pending")
       .notNull(),
     fileFacts: jsonb("file_facts").$type<readonly GitHubWorkUnitFileFact[]>(),
+    fileFactsDigest: varchar("file_facts_digest", {
+      length: 64,
+    }).generatedAlwaysAs(
+      sql`CASE WHEN "file_facts" IS NULL THEN NULL ELSE encode(sha256(jsonb_send("file_facts")), 'hex') END`
+    ),
     fileFactsComplete: boolean("file_facts_complete").default(false).notNull(),
     firstObservedAt: timestamp("first_observed_at", {
       mode: "date",
@@ -647,9 +656,6 @@ export const githubPullRequests = pgTable(
     }),
     nodeId: varchar("node_id", { length: 128 }).primaryKey(),
     number: integer("number").notNull(),
-    providerFileCapReached: boolean("provider_file_cap_reached")
-      .default(false)
-      .notNull(),
     providerUpdatedAt: timestamp("provider_updated_at", {
       mode: "date",
       withTimezone: true,
@@ -799,6 +805,11 @@ export const githubPullRequestVersions = pgTable(
     baseSha: varchar("base_sha", { length: 40 }).notNull(),
     commitCount: integer("commit_count"),
     fileFacts: jsonb("file_facts").$type<readonly GitHubWorkUnitFileFact[]>(),
+    fileFactsDigest: varchar("file_facts_digest", {
+      length: 64,
+    }).generatedAlwaysAs(
+      sql`CASE WHEN "file_facts" IS NULL THEN NULL ELSE encode(sha256(jsonb_send("file_facts")), 'hex') END`
+    ),
     fileFactsComplete: boolean("file_facts_complete").default(false).notNull(),
     headRefName: text("head_ref_name"),
     headRepositoryId: varchar("head_repository_id", { length: 32 }),
@@ -1189,6 +1200,12 @@ export const githubWorkUnits = pgTable(
     pullRequestNodeId: varchar("pull_request_node_id", { length: 128 }),
     repositoryId: varchar("repository_id", { length: 32 }).notNull(),
     revision: integer("revision").default(1).notNull(),
+    summaryEvaluationDigest: varchar("summary_evaluation_digest", {
+      length: 64,
+    }),
+    summaryEvaluatedDigest: varchar("summary_evaluated_digest", {
+      length: 64,
+    }),
     summaryInputDigest: varchar("summary_input_digest", { length: 64 }),
     visibility: varchar("visibility", { length: 8 }).notNull(),
   },
@@ -1258,7 +1275,7 @@ export const githubWorkUnits = pgTable(
     ),
     check(
       "gh_work_units_digest_shapes",
-      sql`${table.factsDigest} ~ '^[a-f0-9]{64}$' AND ${table.membershipDigest} ~ '^[a-f0-9]{64}$' AND (${table.outcomeDigest} IS NULL OR ${table.outcomeDigest} ~ '^[a-f0-9]{64}$') AND (${table.summaryInputDigest} IS NULL OR ${table.summaryInputDigest} ~ '^[a-f0-9]{64}$')`
+      sql`${table.factsDigest} ~ '^[a-f0-9]{64}$' AND ${table.membershipDigest} ~ '^[a-f0-9]{64}$' AND (${table.outcomeDigest} IS NULL OR ${table.outcomeDigest} ~ '^[a-f0-9]{64}$') AND (${table.summaryEvaluationDigest} IS NULL OR ${table.summaryEvaluationDigest} ~ '^[a-f0-9]{64}$') AND (${table.summaryEvaluatedDigest} IS NULL OR ${table.summaryEvaluatedDigest} ~ '^[a-f0-9]{64}$') AND (${table.summaryInputDigest} IS NULL OR ${table.summaryInputDigest} ~ '^[a-f0-9]{64}$')`
     ),
     check(
       "gh_work_units_languages_array",
@@ -1352,7 +1369,6 @@ export const githubWorkUnitSummaryAttempts = pgTable(
     summaryInputDigest: varchar("summary_input_digest", {
       length: 64,
     }).notNull(),
-    unitRevision: integer("unit_revision").notNull(),
     workUnitId: uuid("work_unit_id").notNull(),
   },
   (table) => [
@@ -1389,7 +1405,7 @@ export const githubWorkUnitSummaryAttempts = pgTable(
     ),
     check(
       "gh_work_unit_summary_revisions",
-      sql`${table.revision} > 0 AND ${table.unitRevision} > 0 AND ${table.startedRequests} BETWEEN 0 AND 2`
+      sql`${table.revision} > 0 AND ${table.startedRequests} BETWEEN 0 AND 2`
     ),
     check(
       "gh_work_unit_summary_lease",
@@ -1405,7 +1421,7 @@ export const githubWorkUnitSummaryAttempts = pgTable(
     ),
     check(
       "gh_work_unit_summary_started",
-      sql`(${table.startedRequests} = 0) = (${table.lastStartedAt} IS NULL) AND (${table.state} <> 'retryable' OR ${table.requestPayload} IS NOT NULL)`
+      sql`(${table.startedRequests} = 0) = (${table.lastStartedAt} IS NULL) AND (${table.state} <> 'pending' OR ${table.requestPayload} IS NOT NULL)`
     ),
     check(
       "gh_work_unit_summary_request_cap",
@@ -1449,6 +1465,8 @@ export const githubPublicFeedHead = pgTable(
     orderingRevision: bigint("ordering_revision", { mode: "number" })
       .default(0)
       .notNull(),
+    projectionRequestToken: uuid("projection_request_token"),
+    summaryPolicyDigest: varchar("summary_policy_digest", { length: 64 }),
     summarizing: boolean("summarizing").default(false).notNull(),
   },
   (table) => [
@@ -1456,6 +1474,10 @@ export const githubPublicFeedHead = pgTable(
     check(
       "gh_public_feed_head_revisions",
       sql`${table.feedRevision} >= 0 AND ${table.headContentRevision} >= 0 AND ${table.orderingRevision} >= 0`
+    ),
+    check(
+      "gh_public_feed_head_summary_policy_digest",
+      sql`${table.summaryPolicyDigest} IS NULL OR ${table.summaryPolicyDigest} ~ '^[a-f0-9]{64}$'`
     ),
   ]
 ).enableRLS();

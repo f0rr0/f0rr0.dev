@@ -152,6 +152,19 @@ export interface GitHubCommit {
   url: string;
 }
 
+export const githubCommitReferenceValuesFrom = (
+  commit: GitHubCommit,
+  firstObservedAt: Date
+) => ({
+  author: commit.author,
+  authorUserId: TRACKED_GITHUB_USER_IDS[commit.author],
+  committedAt: new Date(commit.committedAt),
+  firstObservedAt,
+  message: commit.message,
+  repositoryId: commit.repositoryId,
+  sha: commit.sha,
+});
+
 export interface GitHubPush {
   before: string;
   commitShas: readonly string[];

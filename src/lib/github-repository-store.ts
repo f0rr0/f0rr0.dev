@@ -1,12 +1,13 @@
-import { and, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { inArray, isNull, lte, or, sql } from "drizzle-orm";
 
 import type { getDatabase } from "@/db/client";
-import { githubRepositories, githubWorkUnits } from "@/db/schema";
+import { githubRepositories } from "@/db/schema";
 import type {
   GitHubRepository,
   GitHubRepositoryFacts,
   GitHubRepositoryInventoryFacts,
 } from "@/lib/github-commits-core";
+import { requestGitHubWorkUnitProjection } from "@/lib/github-work-unit-projection-state";
 
 type DatabaseTransaction = Parameters<
   Parameters<ReturnType<typeof getDatabase>["transaction"]>[0]
@@ -81,105 +82,59 @@ const githubRepositoryValuesFrom = (
   ...githubRepositoryInventoryValuesFrom(repository, observedAt),
 });
 
-const normalizedOptionalText = (value: string | null) => {
-  const normalized = value?.trim() ?? "";
-  return normalized.length === 0 ? null : normalized;
-};
-
-const normalizedTopics = (topics: readonly string[] | null) =>
-  JSON.stringify(
-    [
-      ...new Set((topics ?? []).map((topic) => topic.trim()).filter(Boolean)),
-    ].toSorted()
-  );
-
-const summaryContextChanged = (
+const repositoryProjectionInputChanged = (
   existing: {
-    description: string | null;
+    defaultBranch: string | null;
+    factsVerifiedAt: Date | null;
     fullName: string;
-    homepageUrl: string | null;
-    inventoryVerifiedAt: Date | null;
     lastObservedAt: Date;
-    topics: readonly string[] | null;
+    visibility: string | null;
   },
   repository: GitHubRepository,
-  observedAt: Date,
-  includeMetadata: boolean
+  observedAt: Date
 ) => {
   const identityChanged =
     existing.lastObservedAt <= observedAt &&
     existing.fullName !== repository.fullName;
-  const metadataChanged =
-    includeMetadata &&
-    hasInventoryFacts(repository) &&
-    (existing.inventoryVerifiedAt === null ||
-      existing.inventoryVerifiedAt <= observedAt) &&
-    (normalizedOptionalText(existing.description) !==
-      normalizedOptionalText(repository.description) ||
-      normalizedOptionalText(existing.homepageUrl) !==
-        normalizedOptionalText(repository.homepageUrl) ||
-      normalizedTopics(existing.topics) !==
-        normalizedTopics(repository.topics));
-  return identityChanged || metadataChanged;
+  const factsChanged =
+    hasRepositoryFacts(repository) &&
+    repository.visibility !== null &&
+    (existing.factsVerifiedAt === null ||
+      existing.factsVerifiedAt <= observedAt) &&
+    (existing.factsVerifiedAt === null ||
+      existing.visibility !== repository.visibility ||
+      existing.defaultBranch !==
+        (repository.defaultBranch ?? existing.defaultBranch));
+  return identityChanged || factsChanged;
 };
 
-const changedSummaryContextRepositoryIds = async (
+const anyRepositoryProjectionInputChanged = async (
   transaction: DatabaseTransaction,
   repositories: readonly GitHubRepository[],
-  observedAt: Date,
-  includeMetadata: boolean
+  observedAt: Date
 ) => {
   const repositoryIds = [...new Set(repositories.map(({ id }) => id))];
   const existingRows = await transaction
     .select({
-      description: githubRepositories.description,
+      defaultBranch: githubRepositories.defaultBranch,
+      factsVerifiedAt: githubRepositories.factsVerifiedAt,
       fullName: githubRepositories.fullName,
-      homepageUrl: githubRepositories.homepageUrl,
       id: githubRepositories.id,
-      inventoryVerifiedAt: githubRepositories.inventoryVerifiedAt,
       lastObservedAt: githubRepositories.lastObservedAt,
-      topics: githubRepositories.topics,
+      visibility: githubRepositories.visibility,
     })
     .from(githubRepositories)
     .where(inArray(githubRepositories.id, repositoryIds))
     .orderBy(githubRepositories.id)
     .for("update");
   const existingById = new Map(existingRows.map((row) => [row.id, row]));
-  return [
-    ...new Set(
-      repositories.flatMap((repository) => {
-        const existing = existingById.get(repository.id);
-        return existing !== undefined &&
-          summaryContextChanged(
-            existing,
-            repository,
-            observedAt,
-            includeMetadata
-          )
-          ? [repository.id]
-          : [];
-      })
-    ),
-  ];
-};
-
-const invalidateChangedRepositorySummaries = async (
-  transaction: DatabaseTransaction,
-  repositoryIds: readonly string[]
-) => {
-  if (repositoryIds.length === 0) {
-    return;
-  }
-  await transaction
-    .update(githubWorkUnits)
-    .set({ summaryInputDigest: null })
-    .where(
-      and(
-        inArray(githubWorkUnits.repositoryId, repositoryIds),
-        eq(githubWorkUnits.visibility, "public"),
-        isNotNull(githubWorkUnits.summaryInputDigest)
-      )
+  return repositories.some((repository) => {
+    const existing = existingById.get(repository.id);
+    return (
+      existing !== undefined &&
+      repositoryProjectionInputChanged(existing, repository, observedAt)
     );
+  });
 };
 
 const upsertGitHubRepositoryIdentity = async (
@@ -292,11 +247,10 @@ export const upsertGitHubRepositories = async (
   if (repositories.length === 0) {
     return;
   }
-  const changedRepositoryIds = await changedSummaryContextRepositoryIds(
+  const projectionInputChanged = await anyRepositoryProjectionInputChanged(
     transaction,
     repositories,
-    observedAt,
-    false
+    observedAt
   );
   await upsertGitHubRepositoryIdentity(transaction, repositories, observedAt);
   await upsertGitHubRepositoryFacts(
@@ -305,7 +259,9 @@ export const upsertGitHubRepositories = async (
     observedAt,
     false
   );
-  await invalidateChangedRepositorySummaries(transaction, changedRepositoryIds);
+  if (projectionInputChanged) {
+    await requestGitHubWorkUnitProjection(transaction);
+  }
 };
 
 export const upsertGitHubRepositoryInventory = async (
@@ -316,12 +272,6 @@ export const upsertGitHubRepositoryInventory = async (
   if (repositories.length === 0) {
     return;
   }
-  const changedRepositoryIds = await changedSummaryContextRepositoryIds(
-    transaction,
-    repositories,
-    observedAt,
-    true
-  );
   await upsertGitHubRepositoryIdentity(transaction, repositories, observedAt);
   await upsertGitHubRepositoryFacts(
     transaction,
@@ -334,7 +284,6 @@ export const upsertGitHubRepositoryInventory = async (
     repositories,
     observedAt
   );
-  await invalidateChangedRepositorySummaries(transaction, changedRepositoryIds);
 };
 
 export const upsertGitHubRepository = async (

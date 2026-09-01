@@ -12,16 +12,12 @@ const change = ({
   additions = 1,
   character,
   deletions = 0,
+  enrichmentComplete = true,
   mergedPullRequestLanding = false,
   parentCount = 1,
   repositoryId = "1",
-}) => ({
-  additions,
-  authorUserId: trackedUserId,
-  contentObservedAt: activityAt,
-  deletions,
-  enrichmentComplete: true,
-  fileFacts:
+}) => {
+  const fileFacts =
     additions + deletions === 0
       ? []
       : [
@@ -35,19 +31,28 @@ const change = ({
             previousFilename: null,
             status: "modified",
           },
-        ],
-  fileFactsComplete: true,
-  mergedPullRequestLanding,
-  logicalActivityAt: activityAt,
-  logicalRepositoryId: repositoryId,
-  logicalSha: sha(character),
-  parentCount,
-  parentLogicalKeys: [],
-  providerFileCapReached: false,
-  pullRequestCoverageComplete: true,
-  repositoryId,
-  sha: sha(character),
-});
+        ];
+  return {
+    additions,
+    authorUserId: trackedUserId,
+    contentObservedAt: activityAt,
+    deletions,
+    enrichmentComplete,
+    fileFacts,
+    fileFactsComplete: true,
+    mergedPullRequestLanding,
+    logicalActivityAt: activityAt,
+    logicalRepositoryId: repositoryId,
+    logicalSha: sha(character),
+    parentCount,
+    parentLogicalKeys: [],
+    providerFileCapReached: false,
+    pullRequestCoverageComplete: true,
+    repositoryId,
+    sha: sha(character),
+    summaryFileFacts: fileFacts,
+  };
+};
 
 const pullRequest = ({
   authorUserId = trackedUserId,
@@ -129,6 +134,7 @@ const snapshot = () => {
     }),
     change({ character: "d", parentCount: 2, repositoryId: "1" }),
     change({ additions: 0, character: "e", repositoryId: "1" }),
+    change({ character: "5", enrichmentComplete: false, repositoryId: "2" }),
     change({ character: "6", repositoryId: "1" }),
     change({
       character: "7",
@@ -255,8 +261,12 @@ describe("GitHub work-unit crosswalk", () => {
       until: "2026-08-08",
     });
 
-    expect(report.categories.trackedChangeCandidates.count).toBe(9);
+    expect(report.categories.trackedChangeCandidates.count).toBe(10);
     expect(report.categories.eligibleTrackedChanges.count).toBe(7);
+    expect(report.categories.commitEnrichmentBacklog).toEqual({
+      count: 1,
+      ids: [logicalKey("2", "5")],
+    });
     expect(report.categories.integrationMerges).toEqual({
       count: 1,
       ids: [logicalKey("1", "d")],
@@ -310,10 +320,14 @@ describe("GitHub work-unit crosswalk", () => {
       repository_visibility_unknown: 1,
     });
     expect(report.invariants).toEqual({
-      failures: ["projection_coverage_gap", "repository_visibility_gap"],
+      failures: [
+        "commit_enrichment_backlog",
+        "projection_coverage_gap",
+        "repository_visibility_gap",
+      ],
       passed: false,
     });
-    expect(report.version).toBe(2);
+    expect(report.version).toBe(3);
   });
 
   test("treats deterministic policy exclusions as complete coverage", () => {

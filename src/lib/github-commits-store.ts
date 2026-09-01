@@ -28,6 +28,7 @@ import {
   githubWebhookDeliveries,
 } from "@/db/schema";
 import {
+  githubCommitReferenceValuesFrom,
   planGitHubBranchLineages,
   trackedGitHubAccountFrom,
 } from "@/lib/github-commits-core";
@@ -48,6 +49,7 @@ import {
   upsertGitHubRepositories,
   upsertGitHubRepository,
 } from "@/lib/github-repository-store";
+import { requestGitHubWorkUnitProjection } from "@/lib/github-work-unit-projection-state";
 
 export class CheckpointConflictError extends Error {
   constructor() {
@@ -351,14 +353,9 @@ export const persistGitHubCommitReferences = async (input: {
         .values(
           values
             .slice(offset, offset + PUSH_COMMIT_INSERT_BATCH)
-            .map((commit) => ({
-              author: commit.author,
-              committedAt: new Date(commit.committedAt),
-              firstObservedAt: observedAt,
-              message: commit.message,
-              repositoryId: commit.repositoryId,
-              sha: commit.sha,
-            }))
+            .map((commit) =>
+              githubCommitReferenceValuesFrom(commit, observedAt)
+            )
         )
         .onConflictDoNothing({
           target: [githubCommits.repositoryId, githubCommits.sha],
@@ -392,24 +389,11 @@ const insertPushObservations = async (
     }
   }
   const observedAt = inputs[0]?.observedAt ?? new Date();
-  await transaction
-    .insert(githubRepositories)
-    .values(
-      [...repositories.values()].map((repository) => ({
-        firstObservedAt: observedAt,
-        fullName: repository.fullName,
-        id: repository.id,
-        lastObservedAt: observedAt,
-      }))
-    )
-    .onConflictDoUpdate({
-      set: {
-        fullName: sql`excluded.full_name`,
-        lastObservedAt: sql`excluded.last_observed_at`,
-      },
-      setWhere: lte(githubRepositories.lastObservedAt, observedAt),
-      target: githubRepositories.id,
-    });
+  await upsertGitHubRepositories(
+    transaction,
+    [...repositories.values()],
+    observedAt
+  );
 
   const inserted = await transaction
     .insert(githubPushObservations)
@@ -838,6 +822,7 @@ export const persistGitHubRepositoryRefPage = async (input: {
     throw new TypeError("The GitHub reference page contains duplicates.");
   }
 
+  // oxlint-disable-next-line eslint/complexity -- One transaction owns stale-scan rejection, lineage assignment, ref publication, and its checkpoint.
   return await getDatabase().transaction(async (transaction) => {
     await upsertGitHubRepository(
       transaction,
@@ -887,8 +872,10 @@ export const persistGitHubRepositoryRefPage = async (input: {
         : await transaction
             .select({
               active: githubRepositoryRefs.active,
+              branchLineageId: githubRepositoryRefs.branchLineageId,
               headSha: githubRepositoryRefs.headSha,
               lastObservedAt: githubRepositoryRefs.lastObservedAt,
+              projectionRelevant: githubRepositoryRefs.projectionRelevant,
               refName: githubRepositoryRefs.refName,
             })
             .from(githubRepositoryRefs)
@@ -919,6 +906,40 @@ export const persistGitHubRepositoryRefPage = async (input: {
     );
     const isCanonicalIncomingRef =
       incomingCanonicalRefCondition(canonicalRefName);
+    const incomingProjectionInputChanged =
+      input.kind === "head" &&
+      input.refs.some((ref) => {
+        const previous = existingByName.get(ref.refName);
+        if (
+          previous !== undefined &&
+          previous.lastObservedAt > input.scanStartedAt
+        ) {
+          return false;
+        }
+        const branchLineageId = plannedLineages.get(ref.refName);
+        if (branchLineageId === undefined) {
+          throw new Error("A GitHub head lineage was not planned.");
+        }
+        if (previous === undefined) {
+          return initialRefProjectionRelevance(
+            ref,
+            canonicalRefName,
+            establishingBaseline
+          );
+        }
+        const nextProjectionRelevant =
+          previous.projectionRelevant ||
+          !previous.active ||
+          previous.headSha !== ref.headSha ||
+          ref.refName === canonicalRefName;
+        return (
+          nextProjectionRelevant &&
+          (!previous.projectionRelevant ||
+            !previous.active ||
+            previous.headSha !== ref.headSha ||
+            previous.branchLineageId !== branchLineageId)
+        );
+      });
     const observedRanges = new Set<string>();
     const observations: PushObservationInput[] = [];
     for (const ref of input.refs) {
@@ -1037,24 +1058,27 @@ export const persistGitHubRepositoryRefPage = async (input: {
           ],
         });
     }
-    if (input.complete) {
-      await transaction
-        .update(githubRepositoryRefs)
-        .set({
-          active: false,
-          lastObservedAt: input.scanStartedAt,
-          repairLeaseToken: null,
-          repairLeaseUntil: null,
-        })
-        .where(
-          and(
-            eq(githubRepositoryRefs.repositoryId, input.repository.id),
-            eq(githubRepositoryRefs.kind, input.kind),
-            eq(githubRepositoryRefs.active, true),
-            lt(githubRepositoryRefs.lastObservedAt, input.scanStartedAt)
+    const deactivated = input.complete
+      ? await transaction
+          .update(githubRepositoryRefs)
+          .set({
+            active: false,
+            lastObservedAt: input.scanStartedAt,
+            repairLeaseToken: null,
+            repairLeaseUntil: null,
+          })
+          .where(
+            and(
+              eq(githubRepositoryRefs.repositoryId, input.repository.id),
+              eq(githubRepositoryRefs.kind, input.kind),
+              eq(githubRepositoryRefs.active, true),
+              lt(githubRepositoryRefs.lastObservedAt, input.scanStartedAt)
+            )
           )
-        );
-    }
+          .returning({
+            projectionRelevant: githubRepositoryRefs.projectionRelevant,
+          })
+      : [];
     if (input.complete) {
       await transaction
         .update(githubRepositories)
@@ -1069,6 +1093,14 @@ export const persistGitHubRepositoryRefPage = async (input: {
       nextPage: input.nextPage,
       scanStartedAt: input.complete ? null : input.scanStartedAt,
     });
+    const headProjectionInputChanged =
+      input.kind === "head" &&
+      ((input.complete && establishingBaseline) ||
+        incomingProjectionInputChanged ||
+        deactivated.some((ref) => ref.projectionRelevant));
+    if (headProjectionInputChanged) {
+      await requestGitHubWorkUnitProjection(transaction);
+    }
     return {
       knownCommits: persisted.knownCommits,
       pushes: persisted.pushes,
@@ -1292,6 +1324,9 @@ const signalKnownPullRequestReconciliation = async (
         eq(githubPullRequests.nodeId, known.nodeId)
       )
     );
+  if (promoteToProvisionalClosed) {
+    await requestGitHubWorkUnitProjection(transaction);
+  }
   return true;
 };
 
@@ -1482,6 +1517,7 @@ export const persistGitHubWebhookHeadSignal = async (
         });
     }
     await markWebhookDeliveryAccepted(transaction, delivery, true);
+    await requestGitHubWorkUnitProjection(transaction);
     return {
       duplicate: false,
       ignored: false,

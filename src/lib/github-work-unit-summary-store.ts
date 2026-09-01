@@ -23,7 +23,10 @@ import {
   githubWorkUnitSummaryDailyUsage,
   githubWorkUnits,
 } from "@/db/schema";
+import { env } from "@/env";
 import { PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE } from "@/lib/github-activity-store";
+import { hasCurrentTrackedGitHubRepositoryAccess } from "@/lib/github-repository-access";
+import { acquireGitHubWorkUnitProjectionLock } from "@/lib/github-work-unit-projection-state";
 import { GITHUB_WORK_UNIT_SUMMARY_RECIPE } from "@/lib/github-work-unit-summary";
 import type { GitHubWorkUnitSummaryAttributionMode } from "@/lib/github-work-unit-summary";
 import type { GitHubWorkUnitSummaryProviderResult } from "@/lib/github-work-unit-summary-provider";
@@ -44,6 +47,13 @@ type SummaryTransaction = Parameters<
   Parameters<ReturnType<typeof getDatabase>["transaction"]>[0]
 >[0];
 
+const acquireSummaryStateLocks = async (transaction: SummaryTransaction) => {
+  await transaction.execute(
+    sql`select pg_advisory_xact_lock(hashtext(${SUMMARY_CLAIM_LOCK}))`
+  );
+  await acquireGitHubWorkUnitProjectionLock(transaction);
+};
+
 export interface GitHubWorkUnitSummaryClaim {
   readonly attributionMode: GitHubWorkUnitSummaryAttributionMode;
   readonly leaseToken: string;
@@ -52,7 +62,6 @@ export interface GitHubWorkUnitSummaryClaim {
   readonly serializedInput: string;
   readonly startedRequests: 1 | 2;
   readonly summaryInputDigest: string;
-  readonly unitRevision: number;
   readonly workUnitId: string;
 }
 
@@ -117,8 +126,6 @@ const checkedClaim = (claim: GitHubWorkUnitSummaryClaim) => {
     !DIGEST.test(claim.summaryInputDigest) ||
     !Number.isSafeInteger(claim.revision) ||
     claim.revision < 1 ||
-    !Number.isSafeInteger(claim.unitRevision) ||
-    claim.unitRevision < 1 ||
     (claim.startedRequests !== 1 && claim.startedRequests !== 2)
   ) {
     throw new TypeError("The GitHub work-unit summary claim is invalid.");
@@ -155,12 +162,16 @@ const checkedProviderResult = (result: GitHubWorkUnitSummaryProviderResult) => {
   return result;
 };
 
-const currentUnitMatchesAttempt = (
+const unitIsPublic = (unit: {
+  repositoryVisibility: string | null;
+  visibility: string;
+}) => unit.visibility === "public" && unit.repositoryVisibility === "public";
+
+const unitDisplaysAttempt = (
   unit: {
     attributionMode: string;
     outcomeDigest: string | null;
     repositoryVisibility: string | null;
-    revision: number;
     summaryInputDigest: string | null;
     visibility: string;
   },
@@ -168,15 +179,87 @@ const currentUnitMatchesAttempt = (
     attributionMode: string;
     outcomeDigest: string;
     summaryInputDigest: string;
-    unitRevision: number;
   }
 ) =>
-  unit.visibility === "public" &&
-  unit.repositoryVisibility === "public" &&
-  unit.revision === attempt.unitRevision &&
+  unitIsPublic(unit) &&
   unit.outcomeDigest === attempt.outcomeDigest &&
   unit.summaryInputDigest === attempt.summaryInputDigest &&
   unit.attributionMode === attempt.attributionMode;
+
+const currentUnitMatchesAttempt = (
+  unit: {
+    attributionMode: string;
+    outcomeDigest: string | null;
+    repositoryVisibility: string | null;
+    summaryEvaluatedDigest: string | null;
+    summaryEvaluationDigest: string | null;
+    summaryInputDigest: string | null;
+    visibility: string;
+  },
+  attempt: {
+    attributionMode: string;
+    outcomeDigest: string;
+    summaryInputDigest: string;
+  }
+) =>
+  unitDisplaysAttempt(unit, attempt) &&
+  unit.summaryEvaluationDigest !== null &&
+  unit.summaryEvaluationDigest === unit.summaryEvaluatedDigest;
+
+const reconcileInactiveSummaryInputs = async (
+  transaction: SummaryTransaction
+) => {
+  await transaction.execute(sql`
+    delete from ${githubWorkUnitSummaryAttempts} as attempt
+    using ${githubWorkUnits} as work_unit,
+      ${githubRepositories} as repository
+    where attempt.work_unit_id = work_unit.id
+      and work_unit.repository_id = repository.id
+      and attempt.state in ('pending', 'retryable')
+      and (
+        work_unit.visibility <> 'public'
+        or repository.visibility <> 'public'
+        or attempt.recipe <> ${GITHUB_WORK_UNIT_SUMMARY_RECIPE}
+        or (
+          attempt.started_requests = 0
+          and (
+            work_unit.summary_evaluation_digest is null
+            or work_unit.summary_evaluation_digest
+              is distinct from work_unit.summary_evaluated_digest
+            or work_unit.outcome_digest is distinct from attempt.outcome_digest
+            or work_unit.summary_input_digest
+              is distinct from attempt.summary_input_digest
+            or work_unit.attribution_mode
+              is distinct from attempt.attribution_mode
+          )
+        )
+      )
+  `);
+  await transaction.execute(sql`
+    update ${githubWorkUnitSummaryAttempts} as attempt
+    set request_payload = null
+    from ${githubWorkUnits} as work_unit,
+      ${githubRepositories} as repository
+    where attempt.work_unit_id = work_unit.id
+      and work_unit.repository_id = repository.id
+      and attempt.state = 'retryable'
+      and attempt.started_requests > 0
+      and attempt.request_payload is not null
+      and attempt.recipe = ${GITHUB_WORK_UNIT_SUMMARY_RECIPE}
+      and work_unit.visibility = 'public'
+      and repository.visibility = 'public'
+      and (
+        work_unit.summary_evaluation_digest is null
+        or work_unit.summary_evaluation_digest
+          is distinct from work_unit.summary_evaluated_digest
+        or work_unit.outcome_digest is distinct from attempt.outcome_digest
+        or work_unit.summary_input_digest
+          is distinct from attempt.summary_input_digest
+        or work_unit.attribution_mode
+          is distinct from attempt.attribution_mode
+      )
+  `);
+};
 
 const recoverExpiredClaims = async (
   transaction: SummaryTransaction,
@@ -198,50 +281,50 @@ const recoverExpiredClaims = async (
     .orderBy(githubWorkUnits.identityKey)
     .for("update", { of: githubWorkUnits });
   const expiredWorkUnitIds = [...new Set(expiredUnits.map(({ id }) => id))];
-  if (expiredWorkUnitIds.length === 0) {
-    return;
+  if (expiredWorkUnitIds.length > 0) {
+    await transaction
+      .update(githubWorkUnitSummaryAttempts)
+      .set({
+        acceptedAt: null,
+        completedAt: now,
+        leaseToken: null,
+        leaseUntil: null,
+        outcome: null,
+        requestPayload: null,
+        state: "terminal",
+      })
+      .where(
+        and(
+          inArray(githubWorkUnitSummaryAttempts.workUnitId, expiredWorkUnitIds),
+          eq(githubWorkUnitSummaryAttempts.state, "processing"),
+          lte(githubWorkUnitSummaryAttempts.leaseUntil, now),
+          gte(
+            githubWorkUnitSummaryAttempts.startedRequests,
+            MAXIMUM_STARTED_REQUESTS
+          )
+        )
+      );
+    await transaction
+      .update(githubWorkUnitSummaryAttempts)
+      .set({
+        debounceUntil: now,
+        leaseToken: null,
+        leaseUntil: null,
+        state: "retryable",
+      })
+      .where(
+        and(
+          inArray(githubWorkUnitSummaryAttempts.workUnitId, expiredWorkUnitIds),
+          eq(githubWorkUnitSummaryAttempts.state, "processing"),
+          lte(githubWorkUnitSummaryAttempts.leaseUntil, now),
+          lt(
+            githubWorkUnitSummaryAttempts.startedRequests,
+            MAXIMUM_STARTED_REQUESTS
+          )
+        )
+      );
   }
-  await transaction
-    .update(githubWorkUnitSummaryAttempts)
-    .set({
-      acceptedAt: null,
-      completedAt: now,
-      leaseToken: null,
-      leaseUntil: null,
-      outcome: null,
-      requestPayload: null,
-      state: "terminal",
-    })
-    .where(
-      and(
-        inArray(githubWorkUnitSummaryAttempts.workUnitId, expiredWorkUnitIds),
-        eq(githubWorkUnitSummaryAttempts.state, "processing"),
-        lte(githubWorkUnitSummaryAttempts.leaseUntil, now),
-        gte(
-          githubWorkUnitSummaryAttempts.startedRequests,
-          MAXIMUM_STARTED_REQUESTS
-        )
-      )
-    );
-  await transaction
-    .update(githubWorkUnitSummaryAttempts)
-    .set({
-      debounceUntil: now,
-      leaseToken: null,
-      leaseUntil: null,
-      state: "retryable",
-    })
-    .where(
-      and(
-        inArray(githubWorkUnitSummaryAttempts.workUnitId, expiredWorkUnitIds),
-        eq(githubWorkUnitSummaryAttempts.state, "processing"),
-        lte(githubWorkUnitSummaryAttempts.leaseUntil, now),
-        lt(
-          githubWorkUnitSummaryAttempts.startedRequests,
-          MAXIMUM_STARTED_REQUESTS
-        )
-      )
-    );
+  await reconcileInactiveSummaryInputs(transaction);
 };
 
 const claimSelection = {
@@ -256,7 +339,6 @@ const claimSelection = {
   startedRequests: githubWorkUnitSummaryAttempts.startedRequests,
   state: githubWorkUnitSummaryAttempts.state,
   summaryInputDigest: githubWorkUnitSummaryAttempts.summaryInputDigest,
-  unitRevision: githubWorkUnitSummaryAttempts.unitRevision,
   workUnitId: githubWorkUnitSummaryAttempts.workUnitId,
 };
 
@@ -295,8 +377,8 @@ async function selectClaimCandidate(
         eq(githubWorkUnits.visibility, "public"),
         eq(githubRepositories.visibility, "public"),
         eq(
-          githubWorkUnits.revision,
-          githubWorkUnitSummaryAttempts.unitRevision
+          githubWorkUnits.summaryEvaluationDigest,
+          githubWorkUnits.summaryEvaluatedDigest
         ),
         eq(
           githubWorkUnits.outcomeDigest,
@@ -336,7 +418,8 @@ const lockedUnit = async (
       attributionMode: githubWorkUnits.attributionMode,
       outcomeDigest: githubWorkUnits.outcomeDigest,
       repositoryVisibility: githubRepositories.visibility,
-      revision: githubWorkUnits.revision,
+      summaryEvaluatedDigest: githubWorkUnits.summaryEvaluatedDigest,
+      summaryEvaluationDigest: githubWorkUnits.summaryEvaluationDigest,
       summaryInputDigest: githubWorkUnits.summaryInputDigest,
       visibility: githubWorkUnits.visibility,
     })
@@ -346,7 +429,7 @@ const lockedUnit = async (
       eq(githubWorkUnits.repositoryId, githubRepositories.id)
     )
     .where(eq(githubWorkUnits.id, workUnitId))
-    .for("update", { of: githubWorkUnits });
+    .for("update", { of: [githubWorkUnits, githubRepositories] });
   return unit ?? null;
 };
 
@@ -366,7 +449,6 @@ const lockedAttempt = async (
       startedRequests: githubWorkUnitSummaryAttempts.startedRequests,
       state: githubWorkUnitSummaryAttempts.state,
       summaryInputDigest: githubWorkUnitSummaryAttempts.summaryInputDigest,
-      unitRevision: githubWorkUnitSummaryAttempts.unitRevision,
     })
     .from(githubWorkUnitSummaryAttempts)
     .where(
@@ -575,7 +657,6 @@ const tryClaimCandidate = async (
     serializedInput: attempt.requestPayload,
     startedRequests,
     summaryInputDigest: attempt.summaryInputDigest,
-    unitRevision: attempt.unitRevision,
     workUnitId: candidate.workUnitId,
   });
 };
@@ -588,7 +669,6 @@ const leaseMatchesClaim = (
   attempt.leaseToken === claim.leaseToken &&
   attempt.startedRequests === claim.startedRequests &&
   attempt.recipe === GITHUB_WORK_UNIT_SUMMARY_RECIPE &&
-  attempt.unitRevision === claim.unitRevision &&
   attempt.outcomeDigest === claim.outcomeDigest &&
   attempt.summaryInputDigest === claim.summaryInputDigest &&
   attempt.attributionMode === claim.attributionMode;
@@ -629,7 +709,8 @@ async function readInitialPageDays(transaction: SummaryTransaction) {
     ),
     and(
       eq(githubWorkUnits.visibility, "private"),
-      inArray(githubRepositories.visibility, ["private", "internal"])
+      inArray(githubRepositories.visibility, ["private", "internal"]),
+      hasCurrentTrackedGitHubRepositoryAccess(githubWorkUnits.repositoryId)
     )
   );
   const issueDay = sql<string>`to_char(${githubIssues.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
@@ -652,11 +733,13 @@ async function readInitialPageDays(transaction: SummaryTransaction) {
         eq(githubIssues.repositoryId, githubRepositories.id)
       )
       .where(
-        inArray(githubRepositories.visibility, [
-          "public",
-          "private",
-          "internal",
-        ])
+        or(
+          eq(githubRepositories.visibility, "public"),
+          and(
+            inArray(githubRepositories.visibility, ["private", "internal"]),
+            hasCurrentTrackedGitHubRepositoryAccess(githubIssues.repositoryId)
+          )
+        )
       )
       .orderBy(desc(issueDay))
       .limit(PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE),
@@ -669,34 +752,36 @@ async function readInitialPageDays(transaction: SummaryTransaction) {
   );
 }
 
-async function hasActiveInitialPageSummary(
+async function hasCurrentInitialPageSummaryWork(
   transaction: SummaryTransaction,
   now: Date,
   initialPageDays: ReadonlySet<string>
 ) {
-  if (initialPageDays.size === 0) {
+  if (
+    initialPageDays.size === 0 ||
+    (env.OPENAI_API_KEY?.trim().length ?? 0) === 0
+  ) {
     return false;
   }
   const [active] = await transaction
     .select({ revision: githubWorkUnitSummaryAttempts.revision })
-    .from(githubWorkUnitSummaryAttempts)
-    .innerJoin(
-      githubWorkUnits,
-      eq(githubWorkUnitSummaryAttempts.workUnitId, githubWorkUnits.id)
-    )
+    .from(githubWorkUnits)
     .innerJoin(
       githubRepositories,
       eq(githubWorkUnits.repositoryId, githubRepositories.id)
     )
-    .where(
+    .leftJoin(
+      githubWorkUnitSummaryAttempts,
       and(
-        eq(githubWorkUnitSummaryAttempts.state, "processing"),
-        gt(githubWorkUnitSummaryAttempts.leaseUntil, now),
-        isNotNull(githubWorkUnitSummaryAttempts.requestPayload),
+        eq(githubWorkUnitSummaryAttempts.workUnitId, githubWorkUnits.id),
         eq(
           githubWorkUnitSummaryAttempts.recipe,
           GITHUB_WORK_UNIT_SUMMARY_RECIPE
-        ),
+        )
+      )
+    )
+    .where(
+      and(
         eq(githubWorkUnits.visibility, "public"),
         eq(githubRepositories.visibility, "public"),
         gte(
@@ -704,21 +789,46 @@ async function hasActiveInitialPageSummary(
           new Date(now.getTime() - RECENT_WINDOW_MS)
         ),
         inArray(githubWorkUnits.activityDay, [...initialPageDays]),
-        eq(
-          githubWorkUnits.revision,
-          githubWorkUnitSummaryAttempts.unitRevision
-        ),
-        eq(
-          githubWorkUnits.outcomeDigest,
-          githubWorkUnitSummaryAttempts.outcomeDigest
-        ),
-        eq(
-          githubWorkUnits.summaryInputDigest,
-          githubWorkUnitSummaryAttempts.summaryInputDigest
-        ),
-        eq(
-          githubWorkUnits.attributionMode,
-          githubWorkUnitSummaryAttempts.attributionMode
+        or(
+          and(
+            isNotNull(githubWorkUnits.summaryEvaluationDigest),
+            sql`${githubWorkUnits.summaryEvaluationDigest} IS DISTINCT FROM ${githubWorkUnits.summaryEvaluatedDigest}`
+          ),
+          and(
+            eq(
+              githubWorkUnits.summaryEvaluationDigest,
+              githubWorkUnits.summaryEvaluatedDigest
+            ),
+            eq(
+              githubWorkUnits.outcomeDigest,
+              githubWorkUnitSummaryAttempts.outcomeDigest
+            ),
+            eq(
+              githubWorkUnits.summaryInputDigest,
+              githubWorkUnitSummaryAttempts.summaryInputDigest
+            ),
+            eq(
+              githubWorkUnits.attributionMode,
+              githubWorkUnitSummaryAttempts.attributionMode
+            ),
+            isNotNull(githubWorkUnitSummaryAttempts.requestPayload),
+            or(
+              and(
+                inArray(githubWorkUnitSummaryAttempts.state, [
+                  "pending",
+                  "retryable",
+                ]),
+                lt(
+                  githubWorkUnitSummaryAttempts.startedRequests,
+                  MAXIMUM_STARTED_REQUESTS
+                )
+              ),
+              and(
+                eq(githubWorkUnitSummaryAttempts.state, "processing"),
+                gt(githubWorkUnitSummaryAttempts.leaseUntil, now)
+              )
+            )
+          )
         )
       )
     )
@@ -737,7 +847,7 @@ async function revisePublicSummaryHead(
   initialPageDays: ReadonlySet<string>,
   mutation: PublicHeadMutation = {}
 ) {
-  const summarizing = await hasActiveInitialPageSummary(
+  const summarizing = await hasCurrentInitialPageSummaryWork(
     transaction,
     now,
     initialPageDays
@@ -790,9 +900,7 @@ export const claimGitHubWorkUnitSummary = async (
   const leaseDurationMs = checkedLeaseDuration(options.leaseDurationMs);
   const recentSince = new Date(now.getTime() - RECENT_WINDOW_MS);
   return await getDatabase().transaction(async (transaction) => {
-    await transaction.execute(
-      sql`select pg_advisory_xact_lock(hashtext(${SUMMARY_CLAIM_LOCK}))`
-    );
+    await acquireSummaryStateLocks(transaction);
     await recoverExpiredClaims(transaction, now);
     const usage = await readSummaryUsage(transaction, now);
     let claim: GitHubWorkUnitSummaryClaim | null = null;
@@ -842,7 +950,7 @@ export const claimGitHubWorkUnitSummary = async (
   });
 };
 
-/** Accepts provider output only while every current public summary key matches. */
+/** Stores valid public-input output, including reusable stale evaluations. */
 export const completeGitHubWorkUnitSummary = async (
   uncheckedClaim: GitHubWorkUnitSummaryClaim,
   uncheckedResult: GitHubWorkUnitSummaryProviderResult,
@@ -852,9 +960,7 @@ export const completeGitHubWorkUnitSummary = async (
   const result = checkedProviderResult(uncheckedResult);
   const now = checkedDate(completedAt, "completion timestamp");
   return await getDatabase().transaction(async (transaction) => {
-    await transaction.execute(
-      sql`select pg_advisory_xact_lock(hashtext(${SUMMARY_CLAIM_LOCK}))`
-    );
+    await acquireSummaryStateLocks(transaction);
     await recoverExpiredClaims(transaction, now);
     const initialPageDays = await readInitialPageDays(transaction);
     const settleHead = async (mutation?: PublicHeadMutation) =>
@@ -878,29 +984,14 @@ export const completeGitHubWorkUnitSummary = async (
       await settleHead();
       return { accepted: false };
     }
-    if (!currentUnitMatchesAttempt(unit, attempt)) {
+    if (!unitIsPublic(unit)) {
       await terminalizeLockedAttempt(transaction, claim, now);
       await settleHead();
       return { accepted: false };
     }
-    const [priorAcceptedOutcome] = await transaction
-      .select({ revision: githubWorkUnitSummaryAttempts.revision })
-      .from(githubWorkUnitSummaryAttempts)
-      .where(
-        and(
-          eq(githubWorkUnitSummaryAttempts.workUnitId, claim.workUnitId),
-          eq(githubWorkUnitSummaryAttempts.state, "accepted"),
-          eq(githubWorkUnitSummaryAttempts.outcomeDigest, claim.outcomeDigest),
-          eq(
-            githubWorkUnitSummaryAttempts.attributionMode,
-            claim.attributionMode
-          ),
-          isNotNull(githubWorkUnitSummaryAttempts.acceptedAt),
-          isNotNull(githubWorkUnitSummaryAttempts.outcome)
-        )
-      )
-      .limit(1);
-    const initialPageChanged = initialPageDays.has(unit.activityDay);
+    const currentlyVisible = unitDisplaysAttempt(unit, attempt);
+    const initialPageChanged =
+      currentlyVisible && initialPageDays.has(unit.activityDay);
     const [accepted] = await transaction
       .update(githubWorkUnitSummaryAttempts)
       .set({
@@ -932,7 +1023,7 @@ export const completeGitHubWorkUnitSummary = async (
     await settleHead(
       initialPageChanged
         ? {
-            feedRevisionChanged: priorAcceptedOutcome === undefined,
+            feedRevisionChanged: true,
             initialPageContentChanged: true,
           }
         : undefined
@@ -956,9 +1047,7 @@ export const deferGitHubWorkUnitSummary = async (
     );
   }
   return await getDatabase().transaction(async (transaction) => {
-    await transaction.execute(
-      sql`select pg_advisory_xact_lock(hashtext(${SUMMARY_CLAIM_LOCK}))`
-    );
+    await acquireSummaryStateLocks(transaction);
     await recoverExpiredClaims(transaction, now);
     const initialPageDays = await readInitialPageDays(transaction);
     const settleHead = async () =>
@@ -977,20 +1066,24 @@ export const deferGitHubWorkUnitSummary = async (
       await settleHead();
       return "stale";
     }
-    if (
-      !currentUnitMatchesAttempt(unit, attempt) ||
-      attempt.startedRequests >= MAXIMUM_STARTED_REQUESTS
-    ) {
+    if (!unitIsPublic(unit)) {
       await terminalizeLockedAttempt(transaction, claim, now);
       await settleHead();
       return "terminal";
     }
+    if (attempt.startedRequests >= MAXIMUM_STARTED_REQUESTS) {
+      await terminalizeLockedAttempt(transaction, claim, now);
+      await settleHead();
+      return "terminal";
+    }
+    const remainsCurrent = currentUnitMatchesAttempt(unit, attempt);
     const [deferred] = await transaction
       .update(githubWorkUnitSummaryAttempts)
       .set({
         debounceUntil: retry,
         leaseToken: null,
         leaseUntil: null,
+        requestPayload: remainsCurrent ? attempt.requestPayload : null,
         state: "retryable",
       })
       .where(
@@ -1003,7 +1096,7 @@ export const deferGitHubWorkUnitSummary = async (
       )
       .returning({ revision: githubWorkUnitSummaryAttempts.revision });
     await settleHead();
-    return deferred === undefined ? "stale" : "deferred";
+    return deferred === undefined || !remainsCurrent ? "stale" : "deferred";
   });
 };
 
@@ -1015,9 +1108,7 @@ export const terminalGitHubWorkUnitSummary = async (
   const claim = checkedClaim(uncheckedClaim);
   const now = checkedDate(terminalAt, "terminal timestamp");
   return await getDatabase().transaction(async (transaction) => {
-    await transaction.execute(
-      sql`select pg_advisory_xact_lock(hashtext(${SUMMARY_CLAIM_LOCK}))`
-    );
+    await acquireSummaryStateLocks(transaction);
     await recoverExpiredClaims(transaction, now);
     const initialPageDays = await readInitialPageDays(transaction);
     const attempt = await lockedAttempt(
@@ -1040,9 +1131,7 @@ export const reconcileGitHubWorkUnitSummaryStatus = async (
 ): Promise<boolean> => {
   const now = checkedDate(reconciledAt, "status timestamp");
   return await getDatabase().transaction(async (transaction) => {
-    await transaction.execute(
-      sql`select pg_advisory_xact_lock(hashtext(${SUMMARY_CLAIM_LOCK}))`
-    );
+    await acquireSummaryStateLocks(transaction);
     await recoverExpiredClaims(transaction, now);
     const initialPageDays = await readInitialPageDays(transaction);
     return await revisePublicSummaryHead(transaction, now, initialPageDays);

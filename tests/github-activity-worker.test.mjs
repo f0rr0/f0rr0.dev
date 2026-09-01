@@ -6,13 +6,11 @@ import {
 } from "../src/lib/github-activity-processor.ts";
 import {
   boundedWorkerLimit,
-  DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE,
   githubActivityRetryAt,
   githubPullRequestSnapshotDisposition,
   githubPrReconciliationCutoff,
   githubSummaryCanStart,
   GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS,
-  MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE,
   nextGitHubPullRequestReconciliationAt,
   workerBatchSizeFrom,
   workerDeadlineReached,
@@ -97,9 +95,7 @@ describe("GitHub activity terminal gaps", () => {
 
 describe("GitHub activity worker bounds", () => {
   test("accepts only deliberately small batches", () => {
-    expect(DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE).toBe(4);
-    expect(MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE).toBe(8);
-    expect(boundedWorkerLimit()).toBe(4);
+    expect(boundedWorkerLimit()).toBe(8);
     expect(boundedWorkerLimit(8)).toBe(8);
     expect(() => boundedWorkerLimit(0)).toThrow("batch size");
     expect(() => boundedWorkerLimit(9)).toThrow("batch size");
@@ -116,8 +112,8 @@ describe("GitHub activity worker bounds", () => {
   });
 
   test("starts summary work only with a complete provider budget", () => {
-    expect(githubSummaryCanStart(6000, 1000)).toBe(true);
-    expect(githubSummaryCanStart(5999, 1000)).toBe(false);
+    expect(githubSummaryCanStart(26_000, 1000)).toBe(true);
+    expect(githubSummaryCanStart(25_999, 1000)).toBe(false);
     expect(() => githubSummaryCanStart(Number.NaN, 1000)).toThrow(RangeError);
   });
 

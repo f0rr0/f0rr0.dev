@@ -33,6 +33,9 @@ if (import.meta.main) {
       argumentsFrom(process.argv.slice(2))
     );
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    if (!report.invariants.passed) {
+      process.exitCode = 1;
+    }
   } catch (error) {
     const name = error instanceof Error ? error.name : "UnknownError";
     const message = error instanceof Error ? error.message : "Unknown error";

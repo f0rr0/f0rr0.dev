@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import {
@@ -21,6 +21,7 @@ import {
 } from "@/db/schema";
 import { PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE } from "@/lib/github-activity-store";
 import type {
+  GitHubFileChangeStat,
   GitHubLanguageFact,
   GitHubWorkUnitFileFact,
 } from "@/lib/github-change-evidence";
@@ -43,17 +44,26 @@ import type {
   GitHubWorkUnitProjectionInput,
 } from "@/lib/github-work-unit-core";
 import {
+  acquireGitHubWorkUnitProjectionLock,
+  completeGitHubWorkUnitProjectionRequest,
+  requestGitHubWorkUnitProjection,
+} from "@/lib/github-work-unit-projection-state";
+import {
   buildGitHubWorkUnitSummaryInput,
+  digestGitHubWorkUnitSummaryEvaluation,
   GITHUB_WORK_UNIT_SUMMARY_RECIPE,
 } from "@/lib/github-work-unit-summary";
 import type {
+  GitHubWorkUnitSummaryBuildResult,
   GitHubWorkUnitSummaryCandidate,
+  GitHubWorkUnitSummaryEvaluationEvidence,
   GitHubWorkUnitSummaryOutcomeEvidence,
   GitHubWorkUnitSummaryRepositoryContext,
 } from "@/lib/github-work-unit-summary";
 
-const PROJECTION_LOCK = "github-work-unit-projection-v1";
+const SUMMARY_EVALUATION_LIMIT = 8;
 const SUMMARY_DEBOUNCE_MS = 5 * 60 * 1000;
+const DIGEST = /^[a-f0-9]{64}$/u;
 const SHA = /^[a-f0-9]{40}$/u;
 
 const trackedAuthorUserIds = new Set<string>(
@@ -99,6 +109,8 @@ export interface GitHubWorkUnitProjectionRefreshResult {
   insertedUnits: number;
   orderingRevisionChanged: boolean;
   summaryAttemptsQueued: number;
+  summaryEvaluationsPending: number;
+  summaryEvaluationsSettled: number;
   summaryInputsFailed: number;
   summaryInputsSet: number;
   updatedUnits: number;
@@ -127,6 +139,8 @@ interface CurrentWorkUnitRow {
   pullRequestNodeId: string | null;
   repositoryId: string;
   revision: number;
+  summaryEvaluationDigest: string | null;
+  summaryEvaluatedDigest: string | null;
   summaryInputDigest: string | null;
   visibility: string;
 }
@@ -138,12 +152,20 @@ interface LoadedProjectionSnapshot extends GitHubWorkUnitProjectionSnapshot {
     string,
     GitHubWorkUnitSummaryRepositoryContext
   >;
+  selectedSummaryEvaluationIdentities: ReadonlySet<string>;
+  summaryEvaluationDigests: ReadonlyMap<string, string>;
+  summaryEvaluationEvidence: ReadonlyMap<
+    string,
+    GitHubWorkUnitSummaryEvaluationEvidence
+  >;
+  summaryEvaluationsPending: number;
 }
 
 interface PersistedProjectionUnit {
   id: string;
   projected: GitHubProjectedWorkUnit;
   revision: number;
+  summaryEvaluationDigest: string;
 }
 
 interface ProjectionSwapResult {
@@ -153,6 +175,18 @@ interface ProjectionSwapResult {
   orderingRevisionChanged: boolean;
   summaryCandidates: readonly PersistedProjectionUnit[];
   updatedUnits: number;
+}
+
+interface CommitSummaryEvaluationEvidence {
+  additions: number;
+  deletions: number;
+  fileFactsDigest: string | null;
+}
+
+interface PullRequestSummaryEvaluationEvidence {
+  fileFactsComplete: boolean;
+  fileFactsDigest: string | null;
+  versionId: string;
 }
 
 const bytewiseCompare = (left: string, right: string) =>
@@ -177,8 +211,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const checkedFileFacts = (
   value: unknown
 ): readonly GitHubWorkUnitFileFact[] | null => {
-  if (!Array.isArray(value)) {
+  if (value === null) {
     return null;
+  }
+  if (!Array.isArray(value)) {
+    throw new TypeError("Stored GitHub file evidence must be an array.");
   }
   const facts: GitHubWorkUnitFileFact[] = [];
   for (const item of value) {
@@ -196,7 +233,7 @@ const checkedFileFacts = (
         item.previousFilename !== null) ||
       typeof item.status !== "string"
     ) {
-      return null;
+      throw new TypeError("Stored GitHub file evidence is invalid.");
     }
     facts.push({
       additions: item.additions as number,
@@ -212,12 +249,76 @@ const checkedFileFacts = (
   return facts;
 };
 
+const compactFileFacts = sql<unknown>`case
+when ${githubCommits.fileFacts} is null then null
+else coalesce(
+  (
+    select jsonb_agg(
+      jsonb_build_object(
+        'additions', entry.value -> 'additions',
+        'deletions', entry.value -> 'deletions',
+        'filename', entry.value -> 'filename'
+      )
+      order by entry.position
+    )
+    from jsonb_array_elements(${githubCommits.fileFacts})
+      with ordinality as entry(value, position)
+  ),
+  '[]'::jsonb
+)
+end`;
+
+const checkedCompactFileFacts = (
+  value: unknown
+): readonly GitHubFileChangeStat[] | null => {
+  if (value === null) {
+    return null;
+  }
+  if (!Array.isArray(value)) {
+    throw new TypeError(
+      "Stored compact GitHub file evidence must be an array."
+    );
+  }
+  const facts: GitHubFileChangeStat[] = [];
+  for (const item of value) {
+    if (
+      !isRecord(item) ||
+      !Number.isSafeInteger(item.additions) ||
+      (item.additions as number) < 0 ||
+      !Number.isSafeInteger(item.deletions) ||
+      (item.deletions as number) < 0 ||
+      typeof item.filename !== "string"
+    ) {
+      throw new TypeError("Stored compact GitHub file evidence is invalid.");
+    }
+    facts.push({
+      additions: item.additions as number,
+      deletions: item.deletions as number,
+      filename: item.filename,
+    });
+  }
+  return facts;
+};
+
+const checkedDigest = (value: string | null) => {
+  if (value === null) {
+    return null;
+  }
+  if (!DIGEST.test(value)) {
+    throw new Error("A stored GitHub file-evidence digest is invalid.");
+  }
+  return value;
+};
+
 const checkedParentShas = (value: unknown): readonly string[] | null => {
+  if (value === null) {
+    return null;
+  }
   if (
     !Array.isArray(value) ||
     value.some((sha) => typeof sha !== "string" || !SHA.test(sha))
   ) {
-    return null;
+    throw new TypeError("Stored GitHub parent evidence is invalid.");
   }
   return value;
 };
@@ -262,6 +363,8 @@ const currentWorkUnitSelection = {
   pullRequestNodeId: githubWorkUnits.pullRequestNodeId,
   repositoryId: githubWorkUnits.repositoryId,
   revision: githubWorkUnits.revision,
+  summaryEvaluationDigest: githubWorkUnits.summaryEvaluationDigest,
+  summaryEvaluatedDigest: githubWorkUnits.summaryEvaluatedDigest,
   summaryInputDigest: githubWorkUnits.summaryInputDigest,
   visibility: githubWorkUnits.visibility,
 };
@@ -417,10 +520,233 @@ const excludedChangesFrom = (
   );
 };
 
+const summaryUsesPullRequestNetOutcome = (
+  unit: GitHubProjectedWorkUnit,
+  pullRequestsByNodeId: ReadonlyMap<string, GitHubPullRequestProjectionEvidence>
+) =>
+  unit.kind === "pull_request" &&
+  unit.attributionMode === "tracked_authored_pr" &&
+  unit.pullRequestNodeId !== null &&
+  pullRequestsByNodeId.get(unit.pullRequestNodeId)
+    ?.netOutcomeOwnedCompletely === true;
+
+const summaryEvaluationEvidenceFrom = (
+  unit: GitHubProjectedWorkUnit,
+  commitsByLogicalKey: ReadonlyMap<string, CommitSummaryEvaluationEvidence>,
+  pullRequestsByNodeId: ReadonlyMap<
+    string,
+    GitHubPullRequestProjectionEvidence
+  >,
+  pullRequestEvidenceByNodeId: ReadonlyMap<
+    string,
+    PullRequestSummaryEvaluationEvidence
+  >
+): GitHubWorkUnitSummaryEvaluationEvidence => {
+  if (summaryUsesPullRequestNetOutcome(unit, pullRequestsByNodeId)) {
+    const pullRequest =
+      unit.pullRequestNodeId === null
+        ? undefined
+        : pullRequestEvidenceByNodeId.get(unit.pullRequestNodeId);
+    if (pullRequest === undefined) {
+      throw new Error(
+        `A pull-request summary lacks evaluation evidence: ${unit.identityKey}`
+      );
+    }
+    return {
+      fileFactsComplete: pullRequest.fileFactsComplete,
+      fileFactsDigest: pullRequest.fileFactsDigest,
+      mode: "net",
+    };
+  }
+  return {
+    changes: unit.members.map((member) => {
+      const change = commitsByLogicalKey.get(member.logicalKey);
+      if (change === undefined) {
+        throw new Error(
+          `A work-unit summary lacks commit evidence: ${member.logicalKey}`
+        );
+      }
+      const { additions, deletions, fileFactsDigest } = change;
+      if (fileFactsDigest === null) {
+        throw new Error(
+          `An eligible work-unit member lacks a file digest: ${member.logicalKey}`
+        );
+      }
+      return { additions, deletions, fileFactsDigest };
+    }),
+    mode: "composite",
+  };
+};
+
+const summaryEvaluationDigestFrom = (
+  unit: GitHubProjectedWorkUnit,
+  evidence: GitHubWorkUnitSummaryEvaluationEvidence,
+  repository: GitHubWorkUnitSummaryRepositoryContext
+) =>
+  digestGitHubWorkUnitSummaryEvaluation({
+    attributionMode: unit.attributionMode,
+    evidence,
+    kind: unit.kind,
+    membershipDigest: unit.membershipDigest,
+    repository,
+  });
+
+const requiredHydratedFileFacts = (
+  factsByKey: ReadonlyMap<string, readonly GitHubWorkUnitFileFact[] | null>,
+  key: string
+) => {
+  if (!factsByKey.has(key)) {
+    throw new Error(
+      `GitHub summary evidence disappeared while hydrating: ${key}`
+    );
+  }
+  return factsByKey.get(key) ?? null;
+};
+
+const hydrateSelectedSummaryEvidence = async (
+  transaction: GitHubWorkUnitTransaction,
+  input: GitHubWorkUnitProjectionInput,
+  units: readonly GitHubProjectedWorkUnit[],
+  pullRequestEvidenceByNodeId: ReadonlyMap<
+    string,
+    PullRequestSummaryEvaluationEvidence
+  >
+): Promise<GitHubWorkUnitProjectionInput> => {
+  if (units.length === 0) {
+    return input;
+  }
+  const pullRequestsByNodeId = new Map(
+    input.pullRequests.map((pullRequest) => [pullRequest.nodeId, pullRequest])
+  );
+  const netPullRequestNodeIds = new Set<string>();
+  const compositeMembers = new Map<
+    string,
+    { repositoryId: string; sha: string }
+  >();
+  for (const unit of units) {
+    if (summaryUsesPullRequestNetOutcome(unit, pullRequestsByNodeId)) {
+      if (unit.pullRequestNodeId !== null) {
+        netPullRequestNodeIds.add(unit.pullRequestNodeId);
+      }
+      continue;
+    }
+    for (const member of unit.members) {
+      compositeMembers.set(member.logicalKey, {
+        repositoryId: member.logicalRepositoryId,
+        sha: member.logicalSha,
+      });
+    }
+  }
+
+  const memberRows =
+    compositeMembers.size === 0
+      ? []
+      : await transaction
+          .select({
+            fileFacts: githubCommits.fileFacts,
+            repositoryId: githubCommits.repositoryId,
+            sha: githubCommits.sha,
+          })
+          .from(githubCommits)
+          .where(
+            or(
+              ...[...compositeMembers.values()].map((member) =>
+                and(
+                  eq(githubCommits.repositoryId, member.repositoryId),
+                  eq(githubCommits.sha, member.sha)
+                )
+              )
+            )
+          );
+  const rawCommitFactsByLogicalKey = new Map(
+    memberRows.map((row) => [
+      logicalKeyFrom(row.repositoryId, row.sha),
+      checkedFileFacts(row.fileFacts),
+    ])
+  );
+
+  const versionIds = [...netPullRequestNodeIds].map((nodeId) => {
+    const evidence = pullRequestEvidenceByNodeId.get(nodeId);
+    if (evidence === undefined) {
+      throw new Error(
+        `A pull-request summary lacks version evidence: ${nodeId}`
+      );
+    }
+    return evidence.versionId;
+  });
+  const versionRows =
+    versionIds.length === 0
+      ? []
+      : await transaction
+          .select({
+            fileFacts: githubPullRequestVersions.fileFacts,
+            id: githubPullRequestVersions.id,
+          })
+          .from(githubPullRequestVersions)
+          .where(inArray(githubPullRequestVersions.id, versionIds));
+  const rawPullRequestFactsByVersionId = new Map(
+    versionRows.map((row) => [row.id, checkedFileFacts(row.fileFacts)])
+  );
+
+  return {
+    ...input,
+    changes: input.changes.map((change) => {
+      const logicalKey = logicalKeyFrom(
+        change.logicalRepositoryId,
+        change.logicalSha
+      );
+      if (!compositeMembers.has(logicalKey)) {
+        return change;
+      }
+      const fileFacts = requiredHydratedFileFacts(
+        rawCommitFactsByLogicalKey,
+        logicalKey
+      );
+      return {
+        ...change,
+        fileFacts: fileFacts ?? [],
+        fileFactsComplete: change.fileFactsComplete && fileFacts !== null,
+        summaryFileFacts: fileFacts,
+      };
+    }),
+    pullRequests: input.pullRequests.map((pullRequest) => {
+      if (!netPullRequestNodeIds.has(pullRequest.nodeId)) {
+        return pullRequest;
+      }
+      const evidence = pullRequestEvidenceByNodeId.get(pullRequest.nodeId);
+      if (evidence === undefined) {
+        throw new Error(
+          `A pull-request summary lacks version evidence: ${pullRequest.nodeId}`
+        );
+      }
+      const fileFacts = requiredHydratedFileFacts(
+        rawPullRequestFactsByVersionId,
+        evidence.versionId
+      );
+      return {
+        ...pullRequest,
+        netOutcome:
+          fileFacts === null
+            ? null
+            : {
+                complete: evidence.fileFactsComplete,
+                files: fileFacts,
+                providerFileCapReached: false,
+              },
+      };
+    }),
+  };
+};
+
+interface ProjectionSnapshotOptions {
+  lockCurrentUnits: boolean;
+  summaryEvaluationLimit: number;
+}
+
 // oxlint-disable-next-line eslint/complexity -- This is one linear mapping of a transactionally consistent evidence snapshot; splitting ownership decisions across loaders would duplicate the production contract used by the verifier.
 const loadProjectionSnapshot = async (
   transaction: GitHubWorkUnitTransaction,
-  lockCurrentUnits: boolean
+  { lockCurrentUnits, summaryEvaluationLimit }: ProjectionSnapshotOptions
 ): Promise<LoadedProjectionSnapshot> => {
   const currentUnits = await readCurrentUnits(transaction, lockCurrentUnits);
   const repositoryRows = await transaction
@@ -590,8 +916,9 @@ const loadProjectionSnapshot = async (
       committerAt: githubCommits.committerAt,
       deletions: githubCommits.deletions,
       enrichmentState: githubCommits.enrichmentState,
-      fileFacts: githubCommits.fileFacts,
+      fileFacts: compactFileFacts,
       fileFactsComplete: githubCommits.fileFactsComplete,
+      fileFactsDigest: githubCommits.fileFactsDigest,
       firstObservedAt: githubCommits.firstObservedAt,
       parentShas: githubCommits.parentShas,
       providerFileCapReached: githubCommits.providerFileCapReached,
@@ -610,7 +937,7 @@ const loadProjectionSnapshot = async (
     )
   );
   const changes: GitHubLogicalChange[] = commitRows.map((row) => {
-    const fileFacts = checkedFileFacts(row.fileFacts);
+    const fileFacts = checkedCompactFileFacts(row.fileFacts);
     const parentShas = checkedParentShas(row.parentShas);
     const pullRequestCoverageComplete =
       row.pullRequestDiscoveryState === "complete";
@@ -634,8 +961,19 @@ const loadProjectionSnapshot = async (
       pullRequestCoverageComplete,
       repositoryId: row.repositoryId,
       sha: row.sha,
+      summaryFileFacts: null,
     };
   });
+  const commitSummaryEvidenceByLogicalKey = new Map(
+    commitRows.map((row) => [
+      logicalKeyFrom(row.repositoryId, row.sha),
+      {
+        additions: row.additions ?? -1,
+        deletions: row.deletions ?? -1,
+        fileFactsDigest: checkedDigest(row.fileFactsDigest),
+      },
+    ])
+  );
   const eligibleChanges = new Set(
     changes
       .filter((change) =>
@@ -652,14 +990,13 @@ const loadProjectionSnapshot = async (
       baseSha: githubPullRequestVersions.baseSha,
       commitCount: githubPullRequestVersions.commitCount,
       createdAt: githubPullRequests.createdAt,
-      fileFacts: githubPullRequestVersions.fileFacts,
       fileFactsComplete: githubPullRequestVersions.fileFactsComplete,
+      fileFactsDigest: githubPullRequestVersions.fileFactsDigest,
       headSha: githubPullRequestVersions.headSha,
       mergeSnapshot: githubPullRequestVersions.mergeSnapshot,
       membershipComplete: githubPullRequestVersions.membershipComplete,
       nodeId: githubPullRequests.nodeId,
       observedAt: githubPullRequestVersions.observedAt,
-      providerFileCapReached: githubPullRequests.providerFileCapReached,
       repositoryId: githubPullRequests.repositoryId,
       state: githubPullRequests.state,
       versionId: githubPullRequestVersions.id,
@@ -730,15 +1067,6 @@ const loadProjectionSnapshot = async (
       new Set(memberLogicalKeys).size === memberships.length &&
       (memberships.length === 0 ||
         memberships.at(-1)?.commitSha === row.headSha);
-    const netFiles = checkedFileFacts(row.fileFacts);
-    const netOutcome =
-      netFiles === null
-        ? null
-        : {
-            complete: row.fileFactsComplete,
-            files: netFiles,
-            providerFileCapReached: row.providerFileCapReached,
-          };
     pullRequests.push({
       authorUserId: row.authorUserId,
       baseRepositoryId: row.baseRepositoryId ?? row.repositoryId,
@@ -748,7 +1076,7 @@ const loadProjectionSnapshot = async (
       headSha: row.headSha,
       memberLogicalKeys,
       membershipComplete,
-      netOutcome,
+      netOutcome: null,
       netOutcomeOwnedCompletely:
         membershipComplete &&
         memberLogicalKeys.length > 0 &&
@@ -758,6 +1086,16 @@ const loadProjectionSnapshot = async (
       state: row.state,
     });
   }
+  const pullRequestSummaryEvidenceByNodeId = new Map(
+    pullRequestRows.map((row) => [
+      row.nodeId,
+      {
+        fileFactsComplete: row.fileFactsComplete,
+        fileFactsDigest: checkedDigest(row.fileFactsDigest),
+        versionId: row.versionId,
+      },
+    ])
+  );
   const desiredByRef = new Map(
     desiredHeadRows.map((row) => [
       refKeyFrom(row.repositoryId, row.refName),
@@ -789,10 +1127,7 @@ const loadProjectionSnapshot = async (
       {
         branchLineageId: generation.branchLineageId,
         complete: true,
-        contentObservedAt:
-          desired.lastObservedAt > generation.completedAt
-            ? desired.lastObservedAt.toISOString()
-            : generation.completedAt.toISOString(),
+        contentObservedAt: generation.completedAt.toISOString(),
         headSha: generation.headSha,
         memberLogicalKeys: memberships.map((membership) =>
           logicalKeyFrom(membership.commitRepositoryId, membership.commitSha)
@@ -820,7 +1155,7 @@ const loadProjectionSnapshot = async (
       ),
     })
   );
-  const input: GitHubWorkUnitProjectionInput = {
+  const compactInput: GitHubWorkUnitProjectionInput = {
     changes,
     priorActivityAnchors: currentUnits.flatMap((unit) =>
       unit.outcomeDigest === null
@@ -838,8 +1173,99 @@ const loadProjectionSnapshot = async (
     repositories,
     trackedAuthorUserIds,
   };
-  const ownership = indexGitHubWorkUnitOwnershipEvidence(input);
-  const units = projectGitHubWorkUnits(input, ownership);
+  const cachedOutcomeDigests = new Map(
+    currentUnits.map((unit) => [unit.identityKey, unit.outcomeDigest])
+  );
+  const compactOwnership = indexGitHubWorkUnitOwnershipEvidence(compactInput);
+  const compactUnits = projectGitHubWorkUnits(compactInput, compactOwnership, {
+    outcomeDigests: cachedOutcomeDigests,
+  });
+  const repositoryContexts = new Map(
+    repositoryRows.map((repository) => [
+      repository.id,
+      {
+        description: repository.description,
+        fullName: repository.fullName,
+        homepageUrl: repository.homepageUrl,
+        topics: repository.topics ?? [],
+      },
+    ])
+  );
+  const pullRequestsByNodeId = new Map(
+    pullRequests.map((pullRequest) => [pullRequest.nodeId, pullRequest])
+  );
+  const summaryEvaluationEvidence = new Map<
+    string,
+    GitHubWorkUnitSummaryEvaluationEvidence
+  >();
+  const summaryEvaluationDigests = new Map<string, string>();
+  for (const unit of compactUnits) {
+    if (unit.visibility !== "public") {
+      continue;
+    }
+    const repository = repositoryContexts.get(unit.repositoryId);
+    if (repository === undefined) {
+      throw new Error(
+        `A public work unit lacks repository context: ${unit.identityKey}`
+      );
+    }
+    const evidence = summaryEvaluationEvidenceFrom(
+      unit,
+      commitSummaryEvidenceByLogicalKey,
+      pullRequestsByNodeId,
+      pullRequestSummaryEvidenceByNodeId
+    );
+    summaryEvaluationEvidence.set(unit.identityKey, evidence);
+    summaryEvaluationDigests.set(
+      unit.identityKey,
+      summaryEvaluationDigestFrom(unit, evidence, repository)
+    );
+  }
+  const currentByIdentity = new Map(
+    currentUnits.map((unit) => [unit.identityKey, unit])
+  );
+  const pendingSummaryEvaluations = compactUnits
+    .filter((unit) => {
+      const digest = summaryEvaluationDigests.get(unit.identityKey);
+      return (
+        digest !== undefined &&
+        currentByIdentity.get(unit.identityKey)?.summaryEvaluatedDigest !==
+          digest
+      );
+    })
+    .toSorted(
+      (left, right) =>
+        Date.parse(right.activityAt) - Date.parse(left.activityAt) ||
+        Date.parse(right.contentObservedAt) -
+          Date.parse(left.contentObservedAt) ||
+        bytewiseCompare(left.identityKey, right.identityKey)
+    );
+  const selectedSummaryEvaluations = pendingSummaryEvaluations.slice(
+    0,
+    summaryEvaluationLimit
+  );
+  const input = await hydrateSelectedSummaryEvidence(
+    transaction,
+    compactInput,
+    selectedSummaryEvaluations,
+    pullRequestSummaryEvidenceByNodeId
+  );
+  const selectedSummaryIdentities = new Set(
+    selectedSummaryEvaluations.map((unit) => unit.identityKey)
+  );
+  const outcomeDigests = new Map(
+    [...cachedOutcomeDigests].filter(
+      ([identityKey]) => !selectedSummaryIdentities.has(identityKey)
+    )
+  );
+  const ownership =
+    selectedSummaryEvaluations.length === 0
+      ? compactOwnership
+      : indexGitHubWorkUnitOwnershipEvidence(input);
+  const units =
+    selectedSummaryEvaluations.length === 0
+      ? compactUnits
+      : projectGitHubWorkUnits(input, ownership, { outcomeDigests });
   const excludedChanges = excludedChangesFrom(input, units, ownership);
   const issueRows = await transaction
     .select({
@@ -865,17 +1291,12 @@ const loadProjectionSnapshot = async (
     currentUnits,
     input,
     issueDays,
-    repositoryContexts: new Map(
-      repositoryRows.map((repository) => [
-        repository.id,
-        {
-          description: repository.description,
-          fullName: repository.fullName,
-          homepageUrl: repository.homepageUrl,
-          topics: repository.topics ?? [],
-        },
-      ])
-    ),
+    repositoryContexts,
+    summaryEvaluationDigests,
+    selectedSummaryEvaluationIdentities: selectedSummaryIdentities,
+    summaryEvaluationEvidence,
+    summaryEvaluationsPending:
+      pendingSummaryEvaluations.length - selectedSummaryEvaluations.length,
     excludedChanges,
     exclusionReasonCounts: exclusionReasonCountsFrom(excludedChanges),
     units,
@@ -887,7 +1308,10 @@ export const readGitHubWorkUnitProjectionEvidence =
   async (): Promise<GitHubWorkUnitProjectionSnapshot> =>
     await getDatabase().transaction(
       async (transaction) => {
-        const snapshot = await loadProjectionSnapshot(transaction, false);
+        const snapshot = await loadProjectionSnapshot(transaction, {
+          lockCurrentUnits: false,
+          summaryEvaluationLimit: 0,
+        });
         return {
           excludedChanges: snapshot.excludedChanges,
           exclusionReasonCounts: snapshot.exclusionReasonCounts,
@@ -1017,6 +1441,8 @@ const publicPayloadChanged = (
 const projectedValues = (
   projected: GitHubProjectedWorkUnit,
   revision: number,
+  summaryEvaluationDigest: string | null,
+  summaryEvaluatedDigest: string | null,
   summaryInputDigest: string | null
 ) => ({
   activityAnchorAt: new Date(projected.activityAnchorAt),
@@ -1042,6 +1468,8 @@ const projectedValues = (
   pullRequestNodeId: projected.pullRequestNodeId,
   repositoryId: projected.repositoryId,
   revision,
+  summaryEvaluationDigest,
+  summaryEvaluatedDigest,
   summaryInputDigest,
   visibility: projected.visibility,
 });
@@ -1053,6 +1481,153 @@ const membershipValues = (unitId: string, unit: GitHubProjectedWorkUnit) =>
     position: member.position,
     workUnitId: unitId,
   }));
+
+const persistedSummaryCandidate = (
+  snapshot: LoadedProjectionSnapshot,
+  id: string,
+  projected: GitHubProjectedWorkUnit,
+  revision: number
+): PersistedProjectionUnit | null => {
+  if (
+    !snapshot.selectedSummaryEvaluationIdentities.has(projected.identityKey)
+  ) {
+    return null;
+  }
+  const summaryEvaluationDigest = snapshot.summaryEvaluationDigests.get(
+    projected.identityKey
+  );
+  if (summaryEvaluationDigest === undefined) {
+    throw new Error(
+      `A selected summary lacks an evaluation digest: ${projected.identityKey}`
+    );
+  }
+  return { id, projected, revision, summaryEvaluationDigest };
+};
+
+const projectedSummaryEvaluationDigest = (
+  snapshot: LoadedProjectionSnapshot,
+  projected: GitHubProjectedWorkUnit
+) => {
+  const digest = snapshot.summaryEvaluationDigests.get(projected.identityKey);
+  if (projected.visibility === "public" && digest === undefined) {
+    throw new Error(
+      `A public work unit lacks a summary evaluation digest: ${projected.identityKey}`
+    );
+  }
+  return digest ?? null;
+};
+
+const persistProjectedUnit = async (
+  transaction: GitHubWorkUnitTransaction,
+  snapshot: LoadedProjectionSnapshot,
+  projected: GitHubProjectedWorkUnit,
+  current: CurrentWorkUnitRow | undefined
+): Promise<PersistedProjectionUnit | null> => {
+  const summaryEvaluationDigest = projectedSummaryEvaluationDigest(
+    snapshot,
+    projected
+  );
+  if (current === undefined) {
+    const [row] = await transaction
+      .insert(githubWorkUnits)
+      .values(
+        projectedValues(projected, 1, summaryEvaluationDigest, null, null)
+      )
+      .returning({ id: githubWorkUnits.id });
+    if (row === undefined) {
+      throw new Error("A GitHub work unit could not be inserted.");
+    }
+    await transaction
+      .insert(githubWorkUnitMemberships)
+      .values(membershipValues(row.id, projected));
+    return persistedSummaryCandidate(snapshot, row.id, projected, 1);
+  }
+
+  const summaryEvaluationChanged =
+    summaryEvaluationDigest !== current.summaryEvaluationDigest;
+  if (!materialProjectionChanged(current, projected)) {
+    const contentObservedAtChanged =
+      current.contentObservedAt.toISOString() !== projected.contentObservedAt;
+    if (contentObservedAtChanged || summaryEvaluationChanged) {
+      await transaction
+        .update(githubWorkUnits)
+        .set({
+          ...(contentObservedAtChanged
+            ? { contentObservedAt: new Date(projected.contentObservedAt) }
+            : {}),
+          ...(summaryEvaluationChanged ? { summaryEvaluationDigest } : {}),
+        })
+        .where(eq(githubWorkUnits.id, current.id));
+    }
+    return persistedSummaryCandidate(
+      snapshot,
+      current.id,
+      projected,
+      current.revision
+    );
+  }
+
+  const keepPublicSummary = projected.visibility === "public";
+  const revision = current.revision + 1;
+  await transaction
+    .update(githubWorkUnits)
+    .set(
+      projectedValues(
+        projected,
+        revision,
+        keepPublicSummary ? summaryEvaluationDigest : null,
+        keepPublicSummary ? current.summaryEvaluatedDigest : null,
+        keepPublicSummary ? current.summaryInputDigest : null
+      )
+    )
+    .where(eq(githubWorkUnits.id, current.id));
+  await transaction
+    .insert(githubWorkUnitMemberships)
+    .values(membershipValues(current.id, projected));
+  if (!keepPublicSummary) {
+    await transaction
+      .delete(githubWorkUnitSummaryAttempts)
+      .where(eq(githubWorkUnitSummaryAttempts.workUnitId, current.id));
+  }
+  return persistedSummaryCandidate(snapshot, current.id, projected, revision);
+};
+
+const persistSummaryEvaluationTargets = async (
+  transaction: GitHubWorkUnitTransaction,
+  snapshot: LoadedProjectionSnapshot,
+  currentByIdentity: Map<string, CurrentWorkUnitRow>
+) => {
+  const targets = snapshot.units.flatMap((projected) => {
+    const current = currentByIdentity.get(projected.identityKey);
+    const digest = snapshot.summaryEvaluationDigests.get(projected.identityKey);
+    return projected.visibility === "public" &&
+      current !== undefined &&
+      digest !== undefined &&
+      !materialProjectionChanged(current, projected) &&
+      current.summaryEvaluationDigest !== digest
+      ? [{ digest, id: current.id, identityKey: projected.identityKey }]
+      : [];
+  });
+  if (targets.length === 0) {
+    return;
+  }
+  await transaction.execute(sql`
+    update ${githubWorkUnits} as work_unit
+    set summary_evaluation_digest = target.digest
+    from jsonb_to_recordset(${JSON.stringify(targets)}::jsonb)
+      as target(id uuid, digest varchar(64))
+    where work_unit.id = target.id
+  `);
+  for (const target of targets) {
+    const current = currentByIdentity.get(target.identityKey);
+    if (current !== undefined) {
+      currentByIdentity.set(target.identityKey, {
+        ...current,
+        summaryEvaluationDigest: target.digest,
+      });
+    }
+  }
+};
 
 const swapProjection = async (
   transaction: GitHubWorkUnitTransaction,
@@ -1075,15 +1650,6 @@ const swapProjection = async (
     const current = currentByIdentity.get(unit.identityKey);
     return current !== undefined && materialProjectionChanged(current, unit);
   });
-  const summaryCandidateIdentities = new Set([
-    ...inserted.map((unit) => unit.identityKey),
-    ...updated.map((unit) => unit.identityKey),
-    ...snapshot.currentUnits.flatMap((unit) =>
-      unit.visibility === "public" && unit.summaryInputDigest === null
-        ? [unit.identityKey]
-        : []
-    ),
-  ]);
   const publicPayloadIdentities = new Set([
     ...deleted.map((unit) => unit.identityKey),
     ...inserted.map((unit) => unit.identityKey),
@@ -1114,93 +1680,22 @@ const swapProjection = async (
       )
     );
   }
-  const persisted = new Map<string, PersistedProjectionUnit>();
+  await persistSummaryEvaluationTargets(
+    transaction,
+    snapshot,
+    currentByIdentity
+  );
+  const summaryCandidates: PersistedProjectionUnit[] = [];
   for (const projected of snapshot.units) {
-    const current = currentByIdentity.get(projected.identityKey);
-    if (current === undefined) {
-      const [row] = await transaction
-        .insert(githubWorkUnits)
-        .values(projectedValues(projected, 1, null))
-        .returning({ id: githubWorkUnits.id });
-      if (row === undefined) {
-        throw new Error("A GitHub work unit could not be inserted.");
-      }
-      await transaction
-        .insert(githubWorkUnitMemberships)
-        .values(membershipValues(row.id, projected));
-      persisted.set(projected.identityKey, {
-        id: row.id,
-        projected,
-        revision: 1,
-      });
-      continue;
-    }
-    if (!materialProjectionChanged(current, projected)) {
-      if (
-        current.contentObservedAt.toISOString() !== projected.contentObservedAt
-      ) {
-        await transaction
-          .update(githubWorkUnits)
-          .set({ contentObservedAt: new Date(projected.contentObservedAt) })
-          .where(eq(githubWorkUnits.id, current.id));
-      }
-      persisted.set(projected.identityKey, {
-        id: current.id,
-        projected,
-        revision: current.revision,
-      });
-      continue;
-    }
-    const summarySemanticsChanged =
-      current.outcomeDigest !== projected.outcomeDigest ||
-      current.attributionMode !== projected.attributionMode ||
-      projected.visibility !== "public";
-    const revision = current.revision + 1;
-    await transaction
-      .update(githubWorkUnits)
-      .set(
-        projectedValues(
-          projected,
-          revision,
-          summarySemanticsChanged ? null : current.summaryInputDigest
-        )
-      )
-      .where(eq(githubWorkUnits.id, current.id));
-    await transaction
-      .insert(githubWorkUnitMemberships)
-      .values(membershipValues(current.id, projected));
-    if (projected.visibility === "private") {
-      await transaction
-        .delete(githubWorkUnitSummaryAttempts)
-        .where(eq(githubWorkUnitSummaryAttempts.workUnitId, current.id));
-    } else if (summarySemanticsChanged) {
-      await transaction
-        .update(githubWorkUnitSummaryAttempts)
-        .set({
-          acceptedAt: null,
-          completedAt: now,
-          leaseToken: null,
-          leaseUntil: null,
-          outcome: null,
-          requestPayload: null,
-          state: "terminal",
-        })
-        .where(
-          and(
-            eq(githubWorkUnitSummaryAttempts.workUnitId, current.id),
-            inArray(githubWorkUnitSummaryAttempts.state, [
-              "pending",
-              "processing",
-              "retryable",
-            ])
-          )
-        );
-    }
-    persisted.set(projected.identityKey, {
-      id: current.id,
+    const candidate = await persistProjectedUnit(
+      transaction,
+      snapshot,
       projected,
-      revision,
-    });
+      currentByIdentity.get(projected.identityKey)
+    );
+    if (candidate !== null) {
+      summaryCandidates.push(candidate);
+    }
   }
   const orderingRevisionChanged =
     publicOrderingSignature(snapshot.currentUnits) !==
@@ -1243,12 +1738,7 @@ const swapProjection = async (
     feedRevisionChanged,
     insertedUnits: inserted.length,
     orderingRevisionChanged,
-    summaryCandidates: [...persisted.values()].filter(
-      ({ projected }) =>
-        summaryCandidateIdentities.has(projected.identityKey) &&
-        projected.visibility === "public" &&
-        projected.outcomeDigest !== null
-    ),
+    summaryCandidates,
     updatedUnits: updated.length,
   };
 };
@@ -1258,31 +1748,23 @@ const summaryOutcomeFrom = (
   changesByKey: ReadonlyMap<string, GitHubLogicalChange>,
   pullRequestsByNodeId: ReadonlyMap<string, GitHubPullRequestProjectionEvidence>
 ): GitHubWorkUnitSummaryOutcomeEvidence | null => {
-  const compositeChanges = unit.members.map((member) => {
-    const change = changesByKey.get(member.logicalKey);
-    return change === undefined
-      ? null
-      : githubWorkUnitSummaryDiffEvidenceFrom(
-          change.fileFacts,
-          change.additions,
-          change.deletions,
-          change.fileFactsComplete,
-          change.providerFileCapReached
-        );
-  });
-  if (compositeChanges.some((change) => change === null)) {
-    return null;
-  }
   if (unit.kind === "pull_request") {
-    const pullRequest =
-      unit.pullRequestNodeId === null
-        ? undefined
-        : pullRequestsByNodeId.get(unit.pullRequestNodeId);
+    if (unit.pullRequestNodeId === null) {
+      throw new Error("A projected pull-request unit lacks its pull request.");
+    }
+    const pullRequest = pullRequestsByNodeId.get(unit.pullRequestNodeId);
+    if (pullRequest === undefined) {
+      throw new Error(
+        `A projected unit references an unavailable pull request: ${unit.pullRequestNodeId}`
+      );
+    }
     if (
       unit.attributionMode === "tracked_authored_pr" &&
-      pullRequest?.netOutcomeOwnedCompletely === true &&
-      pullRequest.netOutcome !== null
+      pullRequest.netOutcomeOwnedCompletely
     ) {
+      if (pullRequest.netOutcome === null) {
+        return null;
+      }
       const additions = pullRequest.netOutcome.files.reduce(
         (total, file) => total + file.additions,
         0
@@ -1301,6 +1783,26 @@ const summaryOutcomeFrom = (
       return diff === null ? null : { diff, mode: "net" };
     }
   }
+  const compositeChanges = unit.members.map((member) => {
+    const change = changesByKey.get(member.logicalKey);
+    if (change === undefined) {
+      throw new Error(
+        `A projected unit references an unavailable change: ${member.logicalKey}`
+      );
+    }
+    return change.summaryFileFacts === null
+      ? null
+      : githubWorkUnitSummaryDiffEvidenceFrom(
+          change.summaryFileFacts,
+          change.additions,
+          change.deletions,
+          change.fileFactsComplete,
+          change.providerFileCapReached
+        );
+  });
+  if (compositeChanges.some((change) => change === null)) {
+    return null;
+  }
   return {
     changes: compositeChanges as NonNullable<
       (typeof compositeChanges)[number]
@@ -1317,7 +1819,12 @@ const summaryCandidateFrom = (
 ): GitHubWorkUnitSummaryCandidate | null => {
   const repository = snapshot.repositoryContexts.get(unit.repositoryId);
   const outcome = summaryOutcomeFrom(unit, changesByKey, pullRequestsByNodeId);
-  if (repository === undefined || outcome === null) {
+  if (repository === undefined) {
+    throw new Error(
+      `A projected unit references an unavailable repository: ${unit.repositoryId}`
+    );
+  }
+  if (outcome === null) {
     return null;
   }
   return {
@@ -1335,11 +1842,8 @@ const summaryCandidateFrom = (
   };
 };
 
-interface BuiltSummaryInput {
-  build: Extract<
-    Awaited<ReturnType<typeof buildGitHubWorkUnitSummaryInput>>,
-    { eligible: true }
-  >;
+interface SummaryEvaluation {
+  build: GitHubWorkUnitSummaryBuildResult | null;
   unit: PersistedProjectionUnit;
 }
 
@@ -1348,7 +1852,16 @@ const setSummaryInputs = async (
   candidates: readonly PersistedProjectionUnit[],
   now: Date
 ) => {
-  const built: BuiltSummaryInput[] = [];
+  if (candidates.length === 0) {
+    return {
+      failed: 0,
+      publicationChanged: false,
+      queued: 0,
+      set: 0,
+      settled: 0,
+    };
+  }
+  const evaluations: SummaryEvaluation[] = [];
   const changesByKey = new Map(
     snapshot.input.changes.map((change) => [
       logicalKeyFrom(change.logicalRepositoryId, change.logicalSha),
@@ -1361,7 +1874,6 @@ const setSummaryInputs = async (
       pullRequest,
     ])
   );
-  let failed = 0;
   for (const unit of candidates) {
     const candidate = summaryCandidateFrom(
       snapshot,
@@ -1369,44 +1881,40 @@ const setSummaryInputs = async (
       changesByKey,
       pullRequestsByNodeId
     );
-    if (candidate === null) {
-      throw new Error(
-        `A summary candidate lacks complete evidence: ${unit.projected.identityKey}`
-      );
-    }
-    const result = await buildGitHubWorkUnitSummaryInput(candidate);
-    if (!result.eligible) {
-      failed += 1;
-      continue;
-    }
+    const result =
+      candidate === null
+        ? null
+        : await buildGitHubWorkUnitSummaryInput(candidate);
     if (
-      result.outcomeDigest !== unit.projected.outcomeDigest ||
-      result.membershipDigest !== unit.projected.membershipDigest
+      result?.eligible === true &&
+      (result.outcomeDigest !== unit.projected.outcomeDigest ||
+        result.membershipDigest !== unit.projected.membershipDigest)
     ) {
       throw new Error(
         `Summary input diverged from projection: ${unit.projected.identityKey}`
       );
     }
-    built.push({ build: result, unit });
+    evaluations.push({ build: result, unit });
   }
-  if (built.length === 0) {
-    return { failed, queued: 0, set: 0 };
-  }
+  // oxlint-disable-next-line eslint/complexity -- This locked state transition keeps evaluation validation, attempt reuse, and queueing in one auditable transaction.
   const result = await getDatabase().transaction(async (transaction) => {
-    await transaction.execute(
-      sql`select pg_advisory_xact_lock(hashtext(${PROJECTION_LOCK}))`
-    );
-    const unitIds = built.map(({ unit }) => unit.id);
+    await acquireGitHubWorkUnitProjectionLock(transaction);
+    const unitIds = evaluations.map(({ unit }) => unit.id);
     const currentRows = await transaction
       .select({
         attributionMode: githubWorkUnits.attributionMode,
+        description: githubRepositories.description,
         factsDigest: githubWorkUnits.factsDigest,
+        fullName: githubRepositories.fullName,
+        homepageUrl: githubRepositories.homepageUrl,
         id: githubWorkUnits.id,
         membershipDigest: githubWorkUnits.membershipDigest,
         outcomeDigest: githubWorkUnits.outcomeDigest,
         repositoryVisibility: githubRepositories.visibility,
         revision: githubWorkUnits.revision,
+        summaryEvaluationDigest: githubWorkUnits.summaryEvaluationDigest,
         summaryInputDigest: githubWorkUnits.summaryInputDigest,
+        topics: githubRepositories.topics,
         visibility: githubWorkUnits.visibility,
       })
       .from(githubWorkUnits)
@@ -1419,18 +1927,55 @@ const setSummaryInputs = async (
     const currentById = new Map(currentRows.map((row) => [row.id, row]));
     const attemptRows = await transaction
       .select({
+        attributionMode: githubWorkUnitSummaryAttempts.attributionMode,
+        debounceUntil: githubWorkUnitSummaryAttempts.debounceUntil,
+        outcome: githubWorkUnitSummaryAttempts.outcome,
+        outcomeDigest: githubWorkUnitSummaryAttempts.outcomeDigest,
         recipe: githubWorkUnitSummaryAttempts.recipe,
+        requestPayload: githubWorkUnitSummaryAttempts.requestPayload,
         revision: githubWorkUnitSummaryAttempts.revision,
+        state: githubWorkUnitSummaryAttempts.state,
         summaryInputDigest: githubWorkUnitSummaryAttempts.summaryInputDigest,
         workUnitId: githubWorkUnitSummaryAttempts.workUnitId,
       })
       .from(githubWorkUnitSummaryAttempts)
       .where(inArray(githubWorkUnitSummaryAttempts.workUnitId, unitIds));
-    const existingInputs = new Set(
+    const attemptsByInput = new Map<string, (typeof attemptRows)[number]>(
       attemptRows.map(
         (attempt) =>
-          `${attempt.workUnitId}\0${attempt.summaryInputDigest}\0${attempt.recipe}`
+          [
+            `${attempt.workUnitId}\0${attempt.summaryInputDigest}\0${attempt.recipe}`,
+            attempt,
+          ] as const
       )
+    );
+    const acceptedOutcomes = new Map(
+      attemptRows.flatMap((attempt) =>
+        attempt.recipe === GITHUB_WORK_UNIT_SUMMARY_RECIPE &&
+        attempt.state === "accepted" &&
+        attempt.outcome !== null
+          ? [
+              [
+                `${attempt.workUnitId}\0${attempt.summaryInputDigest}\0${attempt.outcomeDigest}\0${attempt.attributionMode}`,
+                attempt.outcome,
+              ] as const,
+            ]
+          : []
+      )
+    );
+    const acceptedOutcomeFor = (
+      workUnitId: string,
+      summaryInputDigest: string | null,
+      outcomeDigest: string | null,
+      attributionMode: string
+    ) =>
+      summaryInputDigest === null || outcomeDigest === null
+        ? null
+        : (acceptedOutcomes.get(
+            `${workUnitId}\0${summaryInputDigest}\0${outcomeDigest}\0${attributionMode}`
+          ) ?? null);
+    const initialPageDays = new Set(
+      initialPageDaysFrom(snapshot.units, snapshot.issueDays)
     );
     const maximumRevisionByUnit = new Map<string, number>();
     for (const attempt of attemptRows) {
@@ -1442,87 +1987,160 @@ const setSummaryInputs = async (
         )
       );
     }
+    let failed = 0;
     let queued = 0;
     let set = 0;
-    for (const item of built) {
+    let settled = 0;
+    let publicationChanged = false;
+    for (const item of evaluations) {
       const current = currentById.get(item.unit.id);
+      const evidence = snapshot.summaryEvaluationEvidence.get(
+        item.unit.projected.identityKey
+      );
+      const currentEvaluationDigest =
+        current === undefined || evidence === undefined
+          ? null
+          : summaryEvaluationDigestFrom(item.unit.projected, evidence, {
+              description: current.description,
+              fullName: current.fullName,
+              homepageUrl: current.homepageUrl,
+              topics: current.topics ?? [],
+            });
       if (
         current === undefined ||
+        currentEvaluationDigest !== item.unit.summaryEvaluationDigest ||
+        current.summaryEvaluationDigest !== item.unit.summaryEvaluationDigest ||
         current.visibility !== "public" ||
         current.repositoryVisibility !== "public" ||
         current.revision !== item.unit.revision ||
         current.factsDigest !== item.unit.projected.factsDigest ||
-        current.membershipDigest !== item.build.membershipDigest ||
-        current.outcomeDigest !== item.build.outcomeDigest ||
+        current.membershipDigest !== item.unit.projected.membershipDigest ||
+        current.outcomeDigest !== item.unit.projected.outcomeDigest ||
         current.attributionMode !== item.unit.projected.attributionMode
       ) {
         continue;
       }
-      if (current.summaryInputDigest !== item.build.summaryInputDigest) {
-        await transaction
-          .update(githubWorkUnitSummaryAttempts)
-          .set({
-            acceptedAt: null,
-            completedAt: now,
-            leaseToken: null,
-            leaseUntil: null,
-            outcome: null,
-            requestPayload: null,
-            state: "terminal",
-          })
-          .where(
-            and(
-              eq(githubWorkUnitSummaryAttempts.workUnitId, current.id),
-              ne(
-                githubWorkUnitSummaryAttempts.summaryInputDigest,
-                item.build.summaryInputDigest
-              ),
-              inArray(githubWorkUnitSummaryAttempts.state, [
-                "pending",
-                "processing",
-                "retryable",
-              ])
-            )
-          );
-        await transaction
-          .update(githubWorkUnits)
-          .set({ summaryInputDigest: item.build.summaryInputDigest })
-          .where(
-            and(
-              eq(githubWorkUnits.id, current.id),
-              eq(githubWorkUnits.revision, current.revision),
-              eq(githubWorkUnits.outcomeDigest, item.build.outcomeDigest),
-              eq(githubWorkUnits.membershipDigest, item.build.membershipDigest),
-              eq(githubWorkUnits.attributionMode, current.attributionMode),
-              eq(githubWorkUnits.visibility, "public")
-            )
-          );
+      const eligibleBuild = item.build?.eligible === true ? item.build : null;
+      const nextSummaryInputDigest = eligibleBuild?.summaryInputDigest ?? null;
+      const [updated] = await transaction
+        .update(githubWorkUnits)
+        .set({
+          summaryEvaluatedDigest: item.unit.summaryEvaluationDigest,
+          summaryInputDigest: nextSummaryInputDigest,
+        })
+        .where(
+          and(
+            eq(githubWorkUnits.id, current.id),
+            eq(githubWorkUnits.revision, current.revision),
+            eq(
+              githubWorkUnits.summaryEvaluationDigest,
+              item.unit.summaryEvaluationDigest
+            ),
+            eq(githubWorkUnits.membershipDigest, current.membershipDigest),
+            eq(githubWorkUnits.attributionMode, current.attributionMode),
+            eq(githubWorkUnits.visibility, "public")
+          )
+        )
+        .returning({ id: githubWorkUnits.id });
+      if (updated === undefined) {
+        continue;
+      }
+      const previousOutcome = acceptedOutcomeFor(
+        current.id,
+        current.summaryInputDigest,
+        current.outcomeDigest,
+        current.attributionMode
+      );
+      const nextOutcome = acceptedOutcomeFor(
+        current.id,
+        nextSummaryInputDigest,
+        current.outcomeDigest,
+        current.attributionMode
+      );
+      publicationChanged ||=
+        previousOutcome !== nextOutcome &&
+        initialPageDays.has(item.unit.projected.activityDay);
+      settled += 1;
+      if (
+        eligibleBuild !== null &&
+        current.summaryInputDigest !== eligibleBuild.summaryInputDigest
+      ) {
         set += 1;
       }
-      const inputKey = `${current.id}\0${item.build.summaryInputDigest}\0${GITHUB_WORK_UNIT_SUMMARY_RECIPE}`;
-      if (existingInputs.has(inputKey)) {
+      if (eligibleBuild === null) {
+        failed += 1;
+        continue;
+      }
+      const inputKey = `${current.id}\0${eligibleBuild.summaryInputDigest}\0${GITHUB_WORK_UNIT_SUMMARY_RECIPE}`;
+      const existingAttempt = attemptsByInput.get(inputKey);
+      if (existingAttempt !== undefined) {
+        if (
+          (existingAttempt.state === "pending" ||
+            existingAttempt.state === "retryable") &&
+          (existingAttempt.requestPayload === null ||
+            current.summaryInputDigest !== eligibleBuild.summaryInputDigest)
+        ) {
+          const debounceUntil = new Date(now.getTime() + SUMMARY_DEBOUNCE_MS);
+          await transaction
+            .update(githubWorkUnitSummaryAttempts)
+            .set({
+              debounceUntil:
+                existingAttempt.debounceUntil < debounceUntil
+                  ? debounceUntil
+                  : existingAttempt.debounceUntil,
+              requestPayload: eligibleBuild.serializedInput,
+            })
+            .where(
+              and(
+                eq(
+                  githubWorkUnitSummaryAttempts.workUnitId,
+                  existingAttempt.workUnitId
+                ),
+                eq(
+                  githubWorkUnitSummaryAttempts.revision,
+                  existingAttempt.revision
+                ),
+                inArray(githubWorkUnitSummaryAttempts.state, [
+                  "pending",
+                  "retryable",
+                ])
+              )
+            );
+        }
         continue;
       }
       const revision = (maximumRevisionByUnit.get(current.id) ?? 0) + 1;
       await transaction.insert(githubWorkUnitSummaryAttempts).values({
         attributionMode: item.unit.projected.attributionMode,
         debounceUntil: new Date(now.getTime() + SUMMARY_DEBOUNCE_MS),
-        inputTokens: item.build.inputTokens,
-        outcomeDigest: item.build.outcomeDigest,
+        inputTokens: eligibleBuild.inputTokens,
+        outcomeDigest: eligibleBuild.outcomeDigest,
         recipe: GITHUB_WORK_UNIT_SUMMARY_RECIPE,
-        requestPayload: item.build.serializedInput,
+        requestPayload: eligibleBuild.serializedInput,
         revision,
-        summaryInputDigest: item.build.summaryInputDigest,
-        unitRevision: current.revision,
+        summaryInputDigest: eligibleBuild.summaryInputDigest,
         workUnitId: current.id,
       });
       maximumRevisionByUnit.set(current.id, revision);
-      existingInputs.add(inputKey);
       queued += 1;
     }
-    return { queued, set };
+    if (publicationChanged) {
+      const [head] = await transaction
+        .update(githubPublicFeedHead)
+        .set({
+          feedRevision: sql`${githubPublicFeedHead.feedRevision} + 1`,
+          headContentRevision: sql`${githubPublicFeedHead.headContentRevision} + 1`,
+          lastPublishedAt: now,
+        })
+        .where(eq(githubPublicFeedHead.id, true))
+        .returning({ id: githubPublicFeedHead.id });
+      if (head === undefined) {
+        throw new Error("The GitHub public feed head is unavailable.");
+      }
+    }
+    return { failed, publicationChanged, queued, set, settled };
   });
-  return { failed, ...result };
+  return result;
 };
 
 /**
@@ -1533,32 +2151,59 @@ export const refreshGitHubWorkUnitProjection = async (
   now = new Date()
 ): Promise<GitHubWorkUnitProjectionRefreshResult> => {
   checkedNow(now);
-  const { snapshot, swap } = await getDatabase().transaction(
-    async (transaction) => {
-      await transaction.execute(
-        sql`select pg_advisory_xact_lock(hashtext(${PROJECTION_LOCK}))`
-      );
-      const snapshot = await loadProjectionSnapshot(transaction, true);
-      return {
-        snapshot,
-        swap: await swapProjection(transaction, snapshot, now),
-      };
-    },
-    { isolationLevel: "repeatable read" }
-  );
+  const { projectionRequestToken, snapshot, swap } =
+    await getDatabase().transaction(
+      async (transaction) => {
+        await acquireGitHubWorkUnitProjectionLock(transaction);
+        const [head] = await transaction
+          .select({
+            projectionRequestToken: githubPublicFeedHead.projectionRequestToken,
+          })
+          .from(githubPublicFeedHead)
+          .where(eq(githubPublicFeedHead.id, true));
+        if (head === undefined) {
+          throw new Error("The GitHub public feed head is unavailable.");
+        }
+        const snapshot = await loadProjectionSnapshot(transaction, {
+          lockCurrentUnits: true,
+          summaryEvaluationLimit: SUMMARY_EVALUATION_LIMIT,
+        });
+        return {
+          projectionRequestToken: head.projectionRequestToken,
+          snapshot,
+          swap: await swapProjection(transaction, snapshot, now),
+        };
+      },
+      { isolationLevel: "repeatable read" }
+    );
   const summaries = await setSummaryInputs(
     snapshot,
     swap.summaryCandidates,
     now
   );
+  const summaryEvaluationsPending =
+    snapshot.summaryEvaluationsPending +
+    swap.summaryCandidates.length -
+    summaries.settled;
+  if (summaryEvaluationsPending > 0 && projectionRequestToken === null) {
+    await requestGitHubWorkUnitProjection(getDatabase());
+  } else if (
+    summaryEvaluationsPending === 0 &&
+    projectionRequestToken !== null
+  ) {
+    await completeGitHubWorkUnitProjectionRequest(projectionRequestToken);
+  }
   return {
     changed: swap.insertedUnits + swap.updatedUnits + swap.deletedUnits > 0,
     deletedUnits: swap.deletedUnits,
     exclusionReasonCounts: snapshot.exclusionReasonCounts,
-    feedRevisionChanged: swap.feedRevisionChanged,
+    feedRevisionChanged:
+      swap.feedRevisionChanged || summaries.publicationChanged,
     insertedUnits: swap.insertedUnits,
     orderingRevisionChanged: swap.orderingRevisionChanged,
     summaryAttemptsQueued: summaries.queued,
+    summaryEvaluationsPending,
+    summaryEvaluationsSettled: summaries.settled,
     summaryInputsFailed: summaries.failed,
     summaryInputsSet: summaries.set,
     updatedUnits: swap.updatedUnits,

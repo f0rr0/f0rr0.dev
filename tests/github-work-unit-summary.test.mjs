@@ -4,6 +4,7 @@ import {
   buildGitHubWorkUnitSummaryInput,
   digestGitHubWorkUnitMembership,
   digestGitHubWorkUnitOutcome,
+  digestGitHubWorkUnitSummaryEvaluation,
   GITHUB_WORK_UNIT_SUMMARY_MAX_INPUT_TOKENS,
   GITHUB_WORK_UNIT_SUMMARY_MAX_PAYLOAD_BYTES,
   githubWorkUnitSummaryInputSchema,
@@ -66,6 +67,59 @@ const objectKeys = (value) => {
 };
 
 describe("GitHub work-unit summary evidence", () => {
+  test("fingerprints representative semantic evaluation changes", () => {
+    const membershipDigest = "a".repeat(64);
+    const fileFactsDigest = "b".repeat(64);
+    const evaluation = {
+      attributionMode: "tracked_authored_pr",
+      evidence: {
+        fileFactsComplete: true,
+        fileFactsDigest,
+        mode: "net",
+      },
+      kind: "pull_request",
+      membershipDigest,
+      repository: candidate().repository,
+    };
+    const original = digestGitHubWorkUnitSummaryEvaluation(evaluation);
+    const normalizedEquivalent = digestGitHubWorkUnitSummaryEvaluation({
+      ...evaluation,
+      repository: {
+        ...evaluation.repository,
+        description: ` ${evaluation.repository.description} `,
+        fullName: ` ${evaluation.repository.fullName} `,
+        topics: ["sessions", "web", "sessions"],
+      },
+    });
+
+    expect(original).toMatch(/^[a-f0-9]{64}$/u);
+    expect(normalizedEquivalent).toBe(original);
+    expect(
+      digestGitHubWorkUnitSummaryEvaluation({
+        ...evaluation,
+        evidence: {
+          ...evaluation.evidence,
+          fileFactsDigest: "c".repeat(64),
+        },
+      })
+    ).not.toBe(original);
+    expect(
+      digestGitHubWorkUnitSummaryEvaluation({
+        ...evaluation,
+        membershipDigest: "d".repeat(64),
+      })
+    ).not.toBe(original);
+    expect(
+      digestGitHubWorkUnitSummaryEvaluation({
+        ...evaluation,
+        repository: {
+          ...evaluation.repository,
+          description: "A materially different repository.",
+        },
+      })
+    ).not.toBe(original);
+  });
+
   test("serializes an immutable, public-safe net-outcome request", async () => {
     const result = await buildGitHubWorkUnitSummaryInput(candidate());
 

@@ -12,6 +12,7 @@ import {
   countGitHubWorkUnitSummaryInputTokens,
   GITHUB_WORK_UNIT_SUMMARY_MAX_INPUT_TOKENS,
   GITHUB_WORK_UNIT_SUMMARY_MAX_PAYLOAD_BYTES,
+  GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY,
   GITHUB_WORK_UNIT_SUMMARY_SYSTEM_PROMPT,
   githubWorkUnitSummaryInputSchema,
   githubWorkUnitSummaryOutputSchema,
@@ -19,14 +20,11 @@ import {
 } from "./github-work-unit-summary";
 import type { GitHubWorkUnitSummaryOutputRejectionReason } from "./github-work-unit-summary";
 
-export const GITHUB_WORK_UNIT_SUMMARY_MODEL = "gpt-5.4-nano-2026-03-17";
-export const GITHUB_WORK_UNIT_SUMMARY_MAX_OUTPUT_TOKENS = 160;
-
 const MAXIMUM_ABORT_SIGNAL_TIMEOUT_MS = 2_147_483_647;
 const summaryOutput = Output.object({
   schema: githubWorkUnitSummaryOutputSchema,
 });
-const summaryModel = openai(GITHUB_WORK_UNIT_SUMMARY_MODEL);
+const summaryModel = openai(GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.model);
 
 export interface GitHubWorkUnitSummaryProviderRequest {
   readonly deadlineAt: number;
@@ -36,7 +34,7 @@ export interface GitHubWorkUnitSummaryProviderRequest {
 export interface GitHubWorkUnitSummaryProviderResult {
   readonly inputTokens: number | null;
   readonly latencyMs: number;
-  readonly model: typeof GITHUB_WORK_UNIT_SUMMARY_MODEL;
+  readonly model: (typeof GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY)["model"];
   readonly outcome: string;
   readonly outputTokens: number | null;
 }
@@ -131,16 +129,17 @@ export const generateGitHubWorkUnitSummary = async (
   try {
     generated = await generateText({
       abortSignal,
-      maxOutputTokens: GITHUB_WORK_UNIT_SUMMARY_MAX_OUTPUT_TOKENS,
-      maxRetries: 0,
+      maxOutputTokens: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.maxOutputTokens,
+      maxRetries: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.maxRetries,
       model: summaryModel,
       output: summaryOutput,
       prompt: request.serializedInput,
       providerOptions: {
         openai: {
-          reasoningEffort: "none",
-          store: false,
-          textVerbosity: "low",
+          reasoningEffort:
+            GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.reasoningEffort,
+          store: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.store,
+          textVerbosity: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.textVerbosity,
         },
       },
       system: GITHUB_WORK_UNIT_SUMMARY_SYSTEM_PROMPT,
@@ -174,7 +173,7 @@ export const generateGitHubWorkUnitSummary = async (
   return {
     inputTokens: nullableTokenCount(generated.usage.inputTokens),
     latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
-    model: GITHUB_WORK_UNIT_SUMMARY_MODEL,
+    model: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.model,
     outcome: validated.outcome,
     outputTokens: nullableTokenCount(generated.usage.outputTokens),
   };

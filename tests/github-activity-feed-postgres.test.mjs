@@ -13,6 +13,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
 import { env } from "../src/env.ts";
+import { GITHUB_WORK_UNIT_SUMMARY_RECIPE } from "../src/lib/github-work-unit-summary.ts";
 
 setDefaultTimeout(30_000);
 
@@ -231,37 +232,53 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit feed projection", () => {
           'https://github.com/unknown-owner/unknown-repository-sentinel/issues/9')
     `;
     await admin`
+      insert into github_repository_inventory_heads (
+        account_login, account_user_id, completed_at, generation, updated_at
+      ) values (
+        'f0rr0', '8574219', '2026-08-31T10:00:00Z', 1,
+        '2026-08-31T10:00:00Z'
+      )
+    `;
+    await admin`
+      insert into github_account_repository_catalogs (
+        account_user_id, active_access, inventory_generation, observed_at,
+        repository_id
+      ) values (
+        '8574219', true, 1, '2026-08-31T10:00:00Z', '201'
+      )
+    `;
+    await admin`
       insert into github_work_unit_summary_attempts (
         accepted_at, attribution_mode, completed_at, debounce_until,
         outcome, outcome_digest, recipe, revision, state,
-        summary_input_digest, unit_revision, work_unit_id
+        summary_input_digest, work_unit_id
       ) values
         (
           '2026-08-30T12:02:00Z', 'tracked_authored_pr',
           '2026-08-30T12:02:00Z', '2026-08-30T12:00:00Z',
           'Explains the current pull request outcome.', ${digest("a")},
-          'work-unit-outcome-v1', 1, 'accepted', ${digest("1")}, 1,
+          ${GITHUB_WORK_UNIT_SUMMARY_RECIPE}, 1, 'accepted', ${digest("1")},
           '00000000-0000-4000-8000-000000000101'
         ),
         (
           '2026-08-30T12:03:00Z', 'tracked_authored_pr',
           '2026-08-30T12:03:00Z', '2026-08-30T12:00:00Z',
           'Stale outcome must remain hidden.', ${digest("b")},
-          'work-unit-outcome-v1', 2, 'accepted', ${digest("2")}, 2,
+          ${GITHUB_WORK_UNIT_SUMMARY_RECIPE}, 2, 'accepted', ${digest("2")},
           '00000000-0000-4000-8000-000000000101'
         ),
         (
           '2026-08-30T12:04:00Z', 'tracked_authored_pr',
           '2026-08-30T12:04:00Z', '2026-08-30T12:00:00Z',
           'Stale input must remain hidden.', ${digest("a")},
-          'work-unit-outcome-v1', 3, 'accepted', ${digest("3")}, 2,
+          ${GITHUB_WORK_UNIT_SUMMARY_RECIPE}, 3, 'accepted', ${digest("3")},
           '00000000-0000-4000-8000-000000000101'
         ),
         (
           '2026-08-30T12:05:00Z', 'branch_owned_composite',
           '2026-08-30T12:05:00Z', '2026-08-30T12:00:00Z',
           'Wrong attribution must remain hidden.', ${digest("a")},
-          'corrupt-mode-test', 4, 'accepted', ${digest("1")}, 2,
+          'corrupt-mode-test', 4, 'accepted', ${digest("1")},
           '00000000-0000-4000-8000-000000000101'
         )
     `;

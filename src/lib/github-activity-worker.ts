@@ -72,6 +72,7 @@ import {
   githubCurrentRefMembershipReferenceFrom,
   releaseGitHubRefRepair,
 } from "@/lib/github-ref-membership-store";
+import { ensureGitHubWorkUnitProjectionRequest } from "@/lib/github-work-unit-projection-state";
 import { refreshGitHubWorkUnitProjection } from "@/lib/github-work-unit-store";
 import type { GitHubWorkUnitProjectionRefreshResult } from "@/lib/github-work-unit-store";
 import {
@@ -88,8 +89,9 @@ import {
 } from "@/lib/github-work-unit-summary-store";
 
 const DEFAULT_WORKER_MAXIMUM_DURATION_MS = 90_000;
-const MAXIMUM_PROJECTION_RESERVE_MS = 50_000;
+const MAXIMUM_PUBLICATION_RESERVE_MS = 30_000;
 const MINIMUM_FACTUAL_PROCESSING_MS = 8000;
+const SUMMARY_SETTLEMENT_RESERVE_MS = 3000;
 const SUMMARY_RETRY_DELAY_MS = 15 * 60_000;
 const TERMINAL_GITHUB_STATUSES = new Set([403, 404, 410, 422]);
 const TERMINAL_ACTIVITY_PROCESSING_CODES = new Set([
@@ -136,7 +138,6 @@ export interface GitHubActivityWorkerOptions {
   commitLimit?: number;
   includeProjection?: boolean;
   includeRefs?: boolean;
-  includeSummaries?: boolean;
   maximumDurationMs?: number;
   observationLimit?: number;
   pullRequestDiscoveryLimit?: number;
@@ -694,9 +695,6 @@ const checkedWorkerScope = (
   };
 };
 
-const hasDurableEvidenceChanges = (stages: readonly StageResult[]) =>
-  stages.some((stage) => stage.completed > 0 || stage.unavailable > 0);
-
 export const runGitHubActivityWorker = async (
   options: GitHubActivityWorkerOptions = {}
 ): Promise<GitHubActivityWorkerResult> => {
@@ -723,14 +721,14 @@ export const runGitHubActivityWorker = async (
   }
 
   const startedAt = Date.now();
-  const projectionReserveMs =
+  const publicationReserveMs =
     options.includeProjection === false
       ? 0
       : Math.min(
-          MAXIMUM_PROJECTION_RESERVE_MS,
+          MAXIMUM_PUBLICATION_RESERVE_MS,
           Math.max(0, maximumDurationMs - MINIMUM_FACTUAL_PROCESSING_MS)
         );
-  const processingDurationMs = maximumDurationMs - projectionReserveMs;
+  const processingDurationMs = maximumDurationMs - publicationReserveMs;
   const deadlineReached = () =>
     workerDeadlineReached(startedAt, processingDurationMs);
   const observations = emptyStageResult();
@@ -749,6 +747,8 @@ export const runGitHubActivityWorker = async (
   };
   const overallDeadlineReached = () =>
     workerDeadlineReached(startedAt, maximumDurationMs);
+  const summaryDeadlineAt =
+    startedAt + Math.max(0, maximumDurationMs - SUMMARY_SETTLEMENT_RESERVE_MS);
 
   await processObservations(context, observationLimit, observations);
   await processPullRequestSignals(
@@ -766,26 +766,18 @@ export const runGitHubActivityWorker = async (
     pullRequestDiscovery
   );
   await processPullRequests(context, pullRequestLimit, pullRequests);
-  const evidenceStages = [
-    observations,
-    pullRequestSignals,
-    refs,
-    commits,
-    pullRequestDiscovery,
-    pullRequests,
-  ];
   const projection =
     options.includeProjection !== false &&
-    hasDurableEvidenceChanges(evidenceStages)
+    (await ensureGitHubWorkUnitProjectionRequest()) !== null
       ? await refreshGitHubWorkUnitProjection(new Date())
       : null;
   await reconcileGitHubWorkUnitSummaryStatus(new Date());
-  if (options.includeSummaries !== false) {
+  if (options.includeProjection !== false) {
     await processSummary(
       {
         ...context,
-        deadlineAt: startedAt + maximumDurationMs,
-        deadlineReached: overallDeadlineReached,
+        deadlineAt: summaryDeadlineAt,
+        deadlineReached: () => Date.now() >= summaryDeadlineAt,
       },
       summaries
     );

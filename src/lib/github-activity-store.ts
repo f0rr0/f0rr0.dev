@@ -23,6 +23,7 @@ import type {
   PublicGitHubWorkUnitKind,
 } from "@/lib/github-activity-types";
 import { hasCurrentTrackedGitHubRepositoryAccess } from "@/lib/github-repository-access";
+import { GITHUB_WORK_UNIT_SUMMARY_RECIPE } from "@/lib/github-work-unit-summary";
 
 export const PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE = 5;
 const MAXIMUM_PUBLIC_DAY_PAGE_SIZE = 14;
@@ -239,7 +240,10 @@ const readAvailableDays = async (
           and(
             beforeWorkUnit,
             eq(githubWorkUnits.visibility, "private"),
-            inArray(githubRepositories.visibility, ["private", "internal"])
+            inArray(githubRepositories.visibility, ["private", "internal"]),
+            hasCurrentTrackedGitHubRepositoryAccess(
+              githubWorkUnits.repositoryId
+            )
           )
         )
         .orderBy(desc(githubWorkUnits.activityDay))
@@ -422,6 +426,10 @@ const readPublicRows = async (
           .where(
             and(
               inArray(githubWorkUnitSummaryAttempts.workUnitId, unitIds),
+              eq(
+                githubWorkUnitSummaryAttempts.recipe,
+                GITHUB_WORK_UNIT_SUMMARY_RECIPE
+              ),
               eq(githubWorkUnitSummaryAttempts.state, "accepted"),
               isNotNull(githubWorkUnitSummaryAttempts.acceptedAt),
               isNotNull(githubWorkUnitSummaryAttempts.outcome)

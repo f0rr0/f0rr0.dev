@@ -55,6 +55,7 @@ const change = (character, overrides = {}) => {
     pullRequestCoverageComplete: true,
     repositoryId: "1",
     sha: sha(character),
+    summaryFileFacts: fileFacts,
     ...overrides,
   };
 };
@@ -403,6 +404,39 @@ describe("deterministic GitHub work ownership", () => {
     expect(after.membershipDigest).not.toBe(before.membershipDigest);
     expect(after.facts.memberCount).toBe(1);
     expect(after.activityAt).toBe(before.activityAt);
+  });
+
+  test("uses an explicitly cached outcome without conflating it with a missing cache entry", () => {
+    const work = change("7");
+    const key = logicalKeyFrom(work);
+    const input = {
+      changes: [work],
+      pullRequests: [],
+      refs: [ref("refs/heads/main", [key])],
+      repositories: [repository()],
+      trackedAuthorUserIds: trackedIds,
+    };
+    const [calculated] = projectGitHubWorkUnits(input);
+    const { identityKey } = calculated;
+    const cachedDigest = "f".repeat(64);
+
+    expect(calculated.outcomeDigest).toMatch(/^[a-f0-9]{64}$/u);
+    expect(calculated.outcomeDigest).not.toBe(cachedDigest);
+    expect(
+      projectGitHubWorkUnits(input, undefined, {
+        outcomeDigests: new Map([[identityKey, cachedDigest]]),
+      })[0].outcomeDigest
+    ).toBe(cachedDigest);
+    expect(
+      projectGitHubWorkUnits(input, undefined, {
+        outcomeDigests: new Map([[identityKey, null]]),
+      })[0].outcomeDigest
+    ).toBeNull();
+    expect(
+      projectGitHubWorkUnits(input, undefined, {
+        outcomeDigests: new Map([["canonical:other:2026-08-30", null]]),
+      })[0].outcomeDigest
+    ).toBe(calculated.outcomeDigest);
   });
 
   test("uses only owned commit evidence when a tracked-authored PR includes collaborator work", () => {

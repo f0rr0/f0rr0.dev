@@ -259,6 +259,46 @@ describe.skipIf(!dockerAvailable)("GitHub pull request persistence", () => {
     expect(verified.mergeShaVerifiedAt).not.toBeNull();
   });
 
+  test("signals an equal-time terminal promotion despite a conflicting head", async () => {
+    const nodeId = "PR_pr_store_terminal_head_race_8301";
+    await persistGitHubWebhookPullRequest(
+      "00000000-0000-4000-8000-000000000011",
+      "f0rr0",
+      pullRequest({ nodeId, number: 318 })
+    );
+    await admin`
+      update github_public_feed_head set projection_request_token = null
+      where id
+    `;
+
+    await persistGitHubWebhookPullRequest(
+      "00000000-0000-4000-8000-000000000012",
+      "f0rr0",
+      pullRequest({
+        action: "closed",
+        closedAt: providerUpdatedAt,
+        headSha: secondHeadSha,
+        merged: true,
+        mergedAt: providerUpdatedAt,
+        nodeId,
+        number: 318,
+        state: "closed",
+      })
+    );
+
+    expect(
+      await admin`
+        select state from github_pull_requests where node_id = ${nodeId}
+      `
+    ).toEqual([{ state: "merged" }]);
+    expect(
+      await admin`
+        select projection_request_token is not null as "projectionRequested"
+        from github_public_feed_head
+      `
+    ).toEqual([{ projectionRequested: true }]);
+  });
+
   test("round-trips the completed authored-PR traversal digest", async () => {
     expect(
       await readGitHubPullRequestBackfillDigest("yuppiestechdev")
@@ -357,6 +397,60 @@ describe.skipIf(!dockerAvailable)("GitHub pull request persistence", () => {
       )
       .orderBy(schema.githubPullRequestMemberships.position);
     expect(currentMembership).toEqual([{ sha: secondHeadSha }]);
+  });
+
+  test("signals projection only when a newer snapshot changes projection evidence", async () => {
+    const nodeId = "PR_pr_store_projection_signal_8301";
+    await persistGitHubPullRequestSnapshot(
+      "f0rr0",
+      pullRequest({
+        changedFiles: null,
+        commitCount: null,
+        nodeId,
+        number: 317,
+      })
+    );
+    await admin`
+      update github_public_feed_head set projection_request_token = null
+      where id
+    `;
+
+    const metadataOnly = await persistGitHubPullRequestSnapshot(
+      "f0rr0",
+      pullRequest({
+        body: "Only explanatory copy changed.",
+        changedFiles: 2,
+        commitCount: 2,
+        nodeId,
+        number: 317,
+        providerUpdatedAt: "2026-08-30T12:01:00.000Z",
+        title: "A revised title that is not public feed evidence",
+      })
+    );
+    expect(metadataOnly).toMatchObject({ snapshotChanged: false });
+    expect(
+      await admin`
+        select projection_request_token as "projectionRequestToken"
+        from github_public_feed_head
+      `
+    ).toEqual([{ projectionRequestToken: null }]);
+
+    const changedHead = await persistGitHubPullRequestSnapshot(
+      "f0rr0",
+      pullRequest({
+        headSha: secondHeadSha,
+        nodeId,
+        number: 317,
+        providerUpdatedAt: "2026-08-30T12:02:00.000Z",
+      })
+    );
+    expect(changedHead).toMatchObject({ snapshotChanged: true });
+    expect(
+      await admin`
+        select projection_request_token is not null as "projectionRequested"
+        from github_public_feed_head
+      `
+    ).toEqual([{ projectionRequested: true }]);
   });
 
   test("replaces same-head membership after a base retarget", async () => {

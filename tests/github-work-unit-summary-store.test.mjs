@@ -55,6 +55,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
   let containerId;
   let deferGitHubWorkUnitSummary;
   let originalDatabaseUrl;
+  let originalOpenAiApiKey;
   let reconcileGitHubWorkUnitSummaryStatus;
   let sequence = 0;
   let terminalGitHubWorkUnitSummary;
@@ -71,8 +72,10 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     requestPayload,
     startedRequests = 0,
     state = "pending",
+    summaryEvaluationDigest = digest("e"),
+    summaryEvaluatedDigest = summaryEvaluationDigest,
     summaryInputDigest = digest("b"),
-    unitRevision = 1,
+    workUnitRevision = 1,
   }) => {
     sequence += 1;
     const suffix = String(sequence).padStart(12, "0");
@@ -96,14 +99,16 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
         facts_digest, file_count, first_activity_at, id, identity_key, kind,
         last_activity_at, member_count, membership_digest,
         newest_commit_repository_id, newest_commit_sha, outcome_digest,
-        repository_id, revision, summary_input_digest, visibility
+        repository_id, revision, summary_evaluated_digest,
+        summary_evaluation_digest, summary_input_digest, visibility
       ) values (
         ${instant(activityAt)}, ${instant(activityAt)}, ${activityDay}, 3,
         'branch_owned_composite', ${branchLineageId}, ${instant(contentObservedAt)}, 1,
         ${digest("c")}, 1, ${instant(activityAt)}, ${workUnitId},
         ${`branch:${branchLineageId}`}, 'branch', ${instant(activityAt)}, 1,
         ${digest("d")}, ${repositoryId}, ${sha}, ${outcomeDigest},
-        ${repositoryId}, ${unitRevision}, ${summaryInputDigest}, 'public'
+        ${repositoryId}, ${workUnitRevision}, ${summaryEvaluatedDigest},
+        ${summaryEvaluationDigest}, ${summaryInputDigest}, 'public'
       )
     `;
     await admin`
@@ -111,22 +116,19 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
         attribution_mode, created_at, debounce_until, input_tokens,
         last_started_at, lease_token, lease_until, outcome_digest, recipe,
         request_payload, revision, started_requests, state,
-        summary_input_digest, unit_revision, work_unit_id
+        summary_input_digest, work_unit_id
       ) values (
         'branch_owned_composite', ${instant(contentObservedAt)},
         ${instant(debounceUntil)}, 37, ${instant(lastStartedAt)}, ${leaseToken},
         ${instant(leaseUntil)}, ${outcomeDigest},
         ${recipe}, ${payload}, ${attemptRevision}, ${startedRequests}, ${state},
-        ${summaryInputDigest}, ${unitRevision}, ${workUnitId}
+        ${summaryInputDigest}, ${workUnitId}
       )
     `;
     return {
-      activityDay,
       outcomeDigest,
       payload,
       revision: attemptRevision,
-      summaryInputDigest,
-      unitRevision,
       workUnitId,
     };
   };
@@ -164,6 +166,8 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
 
   beforeAll(async () => {
     originalDatabaseUrl = env.DATABASE_URL;
+    originalOpenAiApiKey = env.OPENAI_API_KEY;
+    env.OPENAI_API_KEY = "summary-status-test-key";
     const started = Bun.spawnSync([
       "docker",
       "run",
@@ -257,6 +261,11 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     } else {
       env.DATABASE_URL = originalDatabaseUrl;
     }
+    if (originalOpenAiApiKey === undefined) {
+      delete env.OPENAI_API_KEY;
+    } else {
+      env.OPENAI_API_KEY = originalOpenAiApiKey;
+    }
     if (containerId !== undefined) {
       Bun.spawnSync(["docker", "stop", "--time", "1", containerId], {
         stderr: "ignore",
@@ -308,10 +317,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
       serializedInput: older.payload,
       workUnitId: older.workUnitId,
     });
-    expect(await readAttempt(stale)).toMatchObject({
-      started_requests: 0,
-      state: "pending",
-    });
+    expect(await readAttempt(stale)).toBeUndefined();
   });
 
   test("does not claim a stale public payload after its repository becomes private", async () => {
@@ -326,10 +332,84 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     `;
 
     expect(await claimGitHubWorkUnitSummary({ now })).toBeNull();
+    expect(await readAttempt(unit)).toBeUndefined();
+  });
+
+  test("discards completed output after repository access is revoked", async () => {
+    const now = new Date("2026-09-01T12:00:00.000Z");
+    const unit = await seedUnit({
+      activityAt: new Date("2026-09-01T11:30:00.000Z"),
+      debounceUntil: new Date("2026-09-01T11:00:00.000Z"),
+    });
+    const claim = await claimGitHubWorkUnitSummary({ now });
+    await admin`
+      update github_repositories set visibility = 'private'
+      where id = ${repositoryId}
+    `;
+
+    expect(
+      await completeGitHubWorkUnitSummary(
+        claim,
+        providerResult("This private result must be discarded."),
+        now
+      )
+    ).toEqual({ accepted: false });
     expect(await readAttempt(unit)).toMatchObject({
-      request_payload: unit.payload,
-      started_requests: 0,
-      state: "pending",
+      outcome: null,
+      request_payload: null,
+      state: "terminal",
+    });
+  });
+
+  test("discards retry payloads after repository access is revoked", async () => {
+    const now = new Date("2026-09-01T12:00:00.000Z");
+    const unit = await seedUnit({
+      activityAt: new Date("2026-09-01T11:30:00.000Z"),
+      debounceUntil: new Date("2026-09-01T11:00:00.000Z"),
+    });
+    const claim = await claimGitHubWorkUnitSummary({ now });
+    await admin`
+      update github_repositories set visibility = 'private'
+      where id = ${repositoryId}
+    `;
+
+    expect(
+      await deferGitHubWorkUnitSummary(
+        claim,
+        new Date("2026-09-01T13:00:00.000Z"),
+        now
+      )
+    ).toBe("terminal");
+    expect(await readAttempt(unit)).toMatchObject({
+      request_payload: null,
+      state: "terminal",
+    });
+  });
+
+  test("compacts a superseded input without resetting its retry budget", async () => {
+    const now = new Date("2026-09-01T12:00:00.000Z");
+    const unit = await seedUnit({
+      activityAt: new Date("2026-09-01T11:30:00.000Z"),
+      debounceUntil: new Date("2026-09-01T11:00:00.000Z"),
+    });
+    const claim = await claimGitHubWorkUnitSummary({ now });
+    await admin`
+      update github_work_units
+      set summary_evaluation_digest = ${digest("f")}
+      where id = ${unit.workUnitId}
+    `;
+
+    expect(
+      await deferGitHubWorkUnitSummary(
+        claim,
+        new Date("2026-09-01T13:00:00.000Z"),
+        now
+      )
+    ).toBe("stale");
+    expect(await readAttempt(unit)).toMatchObject({
+      request_payload: null,
+      started_requests: 1,
+      state: "retryable",
     });
   });
 
@@ -539,12 +619,8 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     });
   });
 
-  test("does not present pending, debounced, or historical work as active", async () => {
+  test("presents recent queued work but not historical work as active", async () => {
     const now = new Date("2026-09-06T12:00:00.000Z");
-    await seedUnit({
-      activityAt: new Date("2026-09-06T10:00:00.000Z"),
-      debounceUntil: new Date("2026-09-06T13:00:00.000Z"),
-    });
     await seedUnit({
       activityAt: new Date("2026-07-01T10:00:00.000Z"),
       debounceUntil: new Date("2026-09-06T10:00:00.000Z"),
@@ -560,6 +636,81 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
       head_content_revision: "0",
       summarizing: false,
     });
+
+    await seedUnit({
+      activityAt: new Date("2026-09-06T10:00:00.000Z"),
+      debounceUntil: new Date("2026-09-06T13:00:00.000Z"),
+    });
+    expect(await reconcileGitHubWorkUnitSummaryStatus(now)).toBe(true);
+    expect(await readHead()).toMatchObject({
+      head_content_revision: "1",
+      summarizing: true,
+    });
+
+    delete env.OPENAI_API_KEY;
+    try {
+      expect(await reconcileGitHubWorkUnitSummaryStatus(now)).toBe(false);
+    } finally {
+      env.OPENAI_API_KEY = "summary-status-test-key";
+    }
+  });
+
+  test("presents a recent initial-page reevaluation before its input is built", async () => {
+    const now = new Date("2026-09-06T12:00:00.000Z");
+    const unit = await seedUnit({
+      activityAt: new Date("2026-09-06T10:00:00.000Z"),
+      debounceUntil: new Date("2026-09-06T13:00:00.000Z"),
+      summaryEvaluatedDigest: digest("f"),
+    });
+    await admin`
+      delete from github_work_unit_summary_attempts
+      where work_unit_id = ${unit.workUnitId}
+    `;
+
+    expect(await reconcileGitHubWorkUnitSummaryStatus(now)).toBe(true);
+    expect(await readHead()).toMatchObject({
+      head_content_revision: "1",
+      summarizing: true,
+    });
+  });
+
+  test("ignores revoked private issue days when tracking initial-page work", async () => {
+    const now = new Date("2026-09-06T12:00:00.000Z");
+    const revokedRepositoryId = "999001";
+    await admin`
+      insert into github_repositories (
+        facts_verified_at, full_name, id, visibility
+      ) values (
+        '2026-09-01T00:00:00Z', 'private/revoked-summary-test',
+        ${revokedRepositoryId}, 'private'
+      ) on conflict (id) do update set visibility = 'private'
+    `;
+    for (const day of [1, 2, 3, 4, 5]) {
+      await admin`
+        insert into github_issues (
+          account, author_user_id, created_at, node_id, number,
+          repository_id, title_snapshot, url_snapshot
+        ) values (
+          'f0rr0', '8574219',
+          ${`2026-09-0${String(day)}T12:00:00.000Z`},
+          ${`ISSUE_revoked_summary_${String(day)}`}, ${day},
+          ${revokedRepositoryId}, 'Revoked private issue',
+          ${`https://github.com/private/revoked-summary-test/issues/${String(day)}`}
+        )
+      `;
+    }
+    await seedUnit({
+      activityAt: new Date("2026-08-31T12:00:00.000Z"),
+      debounceUntil: new Date("2026-08-31T12:00:00.000Z"),
+      lastStartedAt: new Date("2026-09-06T11:00:00.000Z"),
+      leaseToken: "20000000-0000-4000-8000-000000000099",
+      leaseUntil: new Date("2026-09-06T13:00:00.000Z"),
+      startedRequests: 1,
+      state: "processing",
+    });
+
+    expect(await reconcileGitHubWorkUnitSummaryStatus(now)).toBe(true);
+    expect(await readHead()).toMatchObject({ summarizing: true });
   });
 
   test("keeps one active transition while another current summary settles", async () => {
@@ -604,8 +755,8 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     ).toBe("deferred");
     expect(await readHead()).toMatchObject({
       feed_revision: "1",
-      head_content_revision: "3",
-      summarizing: false,
+      head_content_revision: "2",
+      summarizing: true,
     });
   });
 
@@ -637,8 +788,8 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     });
 
     const afterExpiry = new Date("2026-09-01T13:00:00.000Z");
-    expect(await reconcileGitHubWorkUnitSummaryStatus(afterExpiry)).toBe(false);
-    expect(await reconcileGitHubWorkUnitSummaryStatus(afterExpiry)).toBe(false);
+    expect(await reconcileGitHubWorkUnitSummaryStatus(afterExpiry)).toBe(true);
+    expect(await reconcileGitHubWorkUnitSummaryStatus(afterExpiry)).toBe(true);
     expect(await readAttempt(retryable)).toMatchObject({
       request_payload: retryable.payload,
       state: "retryable",
@@ -648,8 +799,8 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
       state: "terminal",
     });
     expect(await readHead()).toMatchObject({
-      head_content_revision: "2",
-      summarizing: false,
+      head_content_revision: "1",
+      summarizing: true,
     });
   });
 
@@ -667,12 +818,18 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     expect(await reconcileGitHubWorkUnitSummaryStatus(now)).toBe(true);
 
     for (const day of [1, 2, 3, 4, 5]) {
-      await seedUnit({
-        activityAt: new Date(
-          `2026-09-${String(day).padStart(2, "0")}T12:00:00.000Z`
-        ),
-        debounceUntil: new Date("2026-09-07T00:00:00.000Z"),
-      });
+      await admin`
+        insert into github_issues (
+          account, author_user_id, created_at, node_id, number,
+          repository_id, title_snapshot, url_snapshot
+        ) values (
+          'f0rr0', '8574219',
+          ${`2026-09-0${String(day)}T12:00:00.000Z`},
+          ${`ISSUE_initial_page_${String(day)}`}, ${day},
+          ${repositoryId}, 'Initial-page issue',
+          ${`https://github.com/f0rr0/summary-store-test/issues/${String(day)}`}
+        )
+      `;
     }
     expect(await reconcileGitHubWorkUnitSummaryStatus(now)).toBe(false);
     expect(await readAttempt(active)).toMatchObject({ state: "processing" });
@@ -721,7 +878,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     expect(head).toMatchObject({
       feed_revision: "1",
       head_content_revision: "2",
-      summarizing: false,
+      summarizing: true,
     });
     expect(new Date(head.last_published_at).getTime()).toBe(now.getTime());
 
@@ -742,12 +899,12 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     head = await readHead();
     expect(head).toMatchObject({
       feed_revision: "1",
-      head_content_revision: "10",
+      head_content_revision: "3",
       summarizing: false,
     });
   });
 
-  test("recipe rewrites avoid a live revision and stale or invalid output stays facts-only", async () => {
+  test("publishes exact rewrites, caches stale output, and rejects invalid output", async () => {
     const now = new Date("2026-09-01T12:00:00.000Z");
     const rewrite = await seedUnit({
       activityAt: new Date("2026-08-31T12:00:00.000Z"),
@@ -759,14 +916,14 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
         accepted_at, attribution_mode, completed_at, debounce_until,
         input_tokens, last_started_at, latency_ms, model, outcome,
         outcome_digest, output_tokens, recipe, revision, started_requests,
-        state, summary_input_digest, unit_revision, work_unit_id
+        state, summary_input_digest, work_unit_id
       ) values (
         '2026-08-31T13:00:00Z', 'branch_owned_composite',
         '2026-08-31T13:00:00Z', '2026-08-31T12:00:00Z', 40,
         '2026-08-31T13:00:00Z', 10, 'previous-model',
         'Prior prose for the same outcome.', ${rewrite.outcomeDigest}, 10,
         'github-work-unit-outcome-v0', 1, 1, 'accepted', ${digest("e")},
-        ${rewrite.unitRevision}, ${rewrite.workUnitId}
+        ${rewrite.workUnitId}
       )
     `;
     const rewriteClaim = await claimGitHubWorkUnitSummary({ now });
@@ -779,9 +936,8 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     ).toEqual({ accepted: true });
     let head = await readHead();
     expect(head).toMatchObject({
-      feed_revision: "0",
+      feed_revision: "1",
       head_content_revision: "2",
-      last_published_at: null,
       summarizing: false,
     });
 
@@ -798,14 +954,14 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     expect(
       await completeGitHubWorkUnitSummary(
         staleClaim,
-        providerResult("Must not be accepted."),
+        providerResult("Reusable output for the prior evidence."),
         now
       )
-    ).toEqual({ accepted: false });
+    ).toEqual({ accepted: true });
     expect(await readAttempt(stale)).toMatchObject({
-      outcome: null,
+      outcome: "Reusable output for the prior evidence.",
       request_payload: null,
-      state: "terminal",
+      state: "accepted",
     });
 
     const invalid = await seedUnit({
@@ -825,7 +981,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     expect(new Date(invalidAttempt.completed_at).getTime()).toBe(now.getTime());
     head = await readHead();
     expect(head).toMatchObject({
-      feed_revision: "0",
+      feed_revision: "1",
       head_content_revision: "6",
       summarizing: false,
     });

@@ -67,6 +67,7 @@ export interface GitHubWorkUnitCrosswalk {
   categories: {
     associatedOrRemovedUnreachableChanges: GitHubWorkUnitCrosswalkBucket;
     authoredPullRequestsWithoutOwnedCurrentMember: GitHubWorkUnitCrosswalkBucket;
+    commitEnrichmentBacklog: GitHubWorkUnitCrosswalkBucket;
     eligibleTrackedChanges: GitHubWorkUnitCrosswalkBucket;
     integrationMerges: GitHubWorkUnitCrosswalkBucket;
     projectedBranchUnits: GitHubWorkUnitCrosswalkBucket;
@@ -88,13 +89,14 @@ export interface GitHubWorkUnitCrosswalk {
   coverageGaps: GitHubWorkUnitCrosswalkReasonBuckets<GitHubWorkUnitCoverageGapReason>;
   invariants: {
     failures: readonly (
+      | "commit_enrichment_backlog"
       | "projection_coverage_gap"
       | "repository_visibility_gap"
     )[];
     passed: boolean;
   };
   policyExclusions: GitHubWorkUnitCrosswalkReasonBuckets<GitHubWorkUnitPolicyExclusionReason>;
-  version: 2;
+  version: 3;
 }
 
 const bytewiseCompare = (left: string, right: string) =>
@@ -250,6 +252,11 @@ export const buildGitHubWorkUnitCrosswalk = (
     isEligibleGitHubWorkChange(change, snapshot.input.trackedAuthorUserIds)
   );
   const eligibleKeys = new Set(eligibleChanges.map(logicalKeyFrom));
+  const enrichmentBacklogKeys = new Set(
+    trackedChanges
+      .filter((change) => !change.enrichmentComplete)
+      .map(logicalKeyFrom)
+  );
   const integrationMergeKeys = new Set(
     trackedChanges
       .filter((change) => change.parentCount > 1)
@@ -259,7 +266,9 @@ export const buildGitHubWorkUnitCrosswalk = (
     trackedChanges
       .filter(
         (change) =>
-          !eligibleKeys.has(logicalKeyFrom(change)) && change.parentCount <= 1
+          !eligibleKeys.has(logicalKeyFrom(change)) &&
+          !enrichmentBacklogKeys.has(logicalKeyFrom(change)) &&
+          change.parentCount <= 1
       )
       .map(logicalKeyFrom)
   );
@@ -342,6 +351,9 @@ export const buildGitHubWorkUnitCrosswalk = (
   const failures = new Set<
     GitHubWorkUnitCrosswalk["invariants"]["failures"][number]
   >();
+  if (enrichmentBacklogKeys.size > 0) {
+    failures.add("commit_enrichment_backlog");
+  }
   if (coverageGaps.count > 0) {
     failures.add("projection_coverage_gap");
   }
@@ -356,6 +368,7 @@ export const buildGitHubWorkUnitCrosswalk = (
       authoredPullRequestsWithoutOwnedCurrentMember: bucketFrom(
         authoredPullRequestsWithoutOwnedCurrentMember
       ),
+      commitEnrichmentBacklog: bucketFrom(enrichmentBacklogKeys),
       eligibleTrackedChanges: bucketFrom(eligibleKeys),
       integrationMerges: bucketFrom(integrationMergeKeys),
       projectedBranchUnits: bucketFrom(
@@ -392,7 +405,7 @@ export const buildGitHubWorkUnitCrosswalk = (
       passed: orderedFailures.length === 0,
     },
     policyExclusions,
-    version: 2,
+    version: 3,
   };
 };
 

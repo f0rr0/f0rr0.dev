@@ -7,12 +7,27 @@ import { z } from "zod";
 export const GITHUB_WORK_UNIT_SUMMARY_RECIPE = "github-work-unit-outcome-v1";
 export const GITHUB_WORK_UNIT_SUMMARY_MAX_INPUT_TOKENS = 32_000;
 export const GITHUB_WORK_UNIT_SUMMARY_MAX_PAYLOAD_BYTES = 384 * 1024;
-export const GITHUB_WORK_UNIT_SUMMARY_MAX_OUTCOME_CHARACTERS = 320;
-export const GITHUB_WORK_UNIT_SUMMARY_MAX_OUTCOME_WORDS = 60;
+const GITHUB_WORK_UNIT_SUMMARY_MAX_OUTCOME_CHARACTERS = 320;
+const GITHUB_WORK_UNIT_SUMMARY_MAX_OUTCOME_WORDS = 60;
+export const GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY = {
+  maxOutputTokens: 160,
+  maxRetries: 0,
+  model: "gpt-5.4-nano-2026-03-17",
+  reasoningEffort: "none",
+  store: false,
+  textVerbosity: "low",
+} as const;
 
 const REQUEST_FRAMING_TOKEN_RESERVE = 128;
+const MAXIMUM_OUTCOME_SENTENCES = 2;
 const MEMBERSHIP_DIGEST_RECIPE = "github-work-unit-membership-v1";
 const OUTCOME_DIGEST_RECIPE = "github-work-unit-outcome-diff-v1";
+const SUMMARY_INPUT_VERSION = 1;
+const SUMMARY_NORMALIZATION_POLICY = "github-work-unit-normalization-v1";
+const SUMMARY_OUTPUT_VALIDATION_POLICY =
+  "github-work-unit-output-validation-v1";
+const SUMMARY_EVALUATION_DIGEST_RECIPE =
+  "github-work-unit-summary-evaluation-v1";
 const SUMMARY_INPUT_DIGEST_RECIPE = "github-work-unit-summary-input-v1";
 const NO_DISALLOWED_SPECIAL_TOKENS = new Set<string>();
 
@@ -94,6 +109,31 @@ export interface GitHubWorkUnitSummaryCandidate {
   readonly repository: GitHubWorkUnitSummaryRepositoryContext;
 }
 
+interface GitHubWorkUnitSummaryEvaluationChange {
+  readonly additions: number;
+  readonly deletions: number;
+  readonly fileFactsDigest: string;
+}
+
+export type GitHubWorkUnitSummaryEvaluationEvidence =
+  | Readonly<{
+      fileFactsComplete: boolean;
+      fileFactsDigest: string | null;
+      mode: "net";
+    }>
+  | Readonly<{
+      changes: readonly GitHubWorkUnitSummaryEvaluationChange[];
+      mode: "composite";
+    }>;
+
+interface GitHubWorkUnitSummaryEvaluationInput {
+  readonly attributionMode: GitHubWorkUnitSummaryAttributionMode;
+  readonly evidence: GitHubWorkUnitSummaryEvaluationEvidence;
+  readonly kind: GitHubWorkUnitKind;
+  readonly membershipDigest: string;
+  readonly repository: GitHubWorkUnitSummaryRepositoryContext;
+}
+
 export interface NormalizedGitHubWorkUnitSummaryFile {
   readonly additions: number;
   readonly deletions: number;
@@ -127,7 +167,7 @@ export interface GitHubWorkUnitSummaryInput {
   readonly kind: GitHubWorkUnitKind;
   readonly recipe: typeof GITHUB_WORK_UNIT_SUMMARY_RECIPE;
   readonly repository: GitHubWorkUnitSummaryRepositoryContext;
-  readonly version: 1;
+  readonly version: typeof SUMMARY_INPUT_VERSION;
 }
 
 export type GitHubWorkUnitSummaryFactsOnlyReason =
@@ -354,7 +394,7 @@ export const githubWorkUnitSummaryInputSchema = z
         topics: z.array(z.string()),
       })
       .strict(),
-    version: z.literal(1),
+    version: z.literal(SUMMARY_INPUT_VERSION),
   })
   .strict()
   .superRefine((input, context) => {
@@ -438,6 +478,30 @@ const compareText = (left: string, right: string) =>
 
 const sha256 = (domain: string, value: string) =>
   createHash("sha256").update(domain).update("\0").update(value).digest("hex");
+
+export const GITHUB_WORK_UNIT_SUMMARY_POLICY_DIGEST = sha256(
+  "github-work-unit-summary-policy-v1",
+  JSON.stringify({
+    framingTokenReserve: REQUEST_FRAMING_TOKEN_RESERVE,
+    inputVersion: SUMMARY_INPUT_VERSION,
+    maxInputTokens: GITHUB_WORK_UNIT_SUMMARY_MAX_INPUT_TOKENS,
+    maxOutcomeCharacters: GITHUB_WORK_UNIT_SUMMARY_MAX_OUTCOME_CHARACTERS,
+    maxOutcomeSentences: MAXIMUM_OUTCOME_SENTENCES,
+    maxOutcomeWords: GITHUB_WORK_UNIT_SUMMARY_MAX_OUTCOME_WORDS,
+    maxPayloadBytes: GITHUB_WORK_UNIT_SUMMARY_MAX_PAYLOAD_BYTES,
+    normalization: SUMMARY_NORMALIZATION_POLICY,
+    outputValidation: SUMMARY_OUTPUT_VALIDATION_POLICY,
+    provider: {
+      maxOutputTokens: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.maxOutputTokens,
+      model: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.model,
+      reasoningEffort: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.reasoningEffort,
+      textVerbosity: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.textVerbosity,
+    },
+    recipe: GITHUB_WORK_UNIT_SUMMARY_RECIPE,
+    systemPrompt: GITHUB_WORK_UNIT_SUMMARY_SYSTEM_PROMPT,
+    tokenizer: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.model,
+  })
+);
 
 const checkedKey = (value: string, label: string) => {
   if (value.length === 0 || value.includes("\0")) {
@@ -797,20 +861,18 @@ export const digestGitHubWorkUnitOutcome = (
   };
 };
 
-export const digestGitHubWorkUnitSummaryInput = (
+const digestGitHubWorkUnitSummaryInput = (
   serializedInput: string,
   outcomeDigest: string,
-  attributionMode: GitHubWorkUnitSummaryAttributionMode,
-  recipe = GITHUB_WORK_UNIT_SUMMARY_RECIPE
+  attributionMode: GitHubWorkUnitSummaryAttributionMode
 ) =>
   sha256(
     SUMMARY_INPUT_DIGEST_RECIPE,
     JSON.stringify({
       attributionMode,
       outcomeDigest,
-      recipe,
+      policyDigest: GITHUB_WORK_UNIT_SUMMARY_POLICY_DIGEST,
       serializedInput,
-      systemPrompt: GITHUB_WORK_UNIT_SUMMARY_SYSTEM_PROMPT,
     })
   );
 
@@ -819,7 +881,7 @@ const normalizedOptionalText = (value: string | null) => {
   return normalized.length === 0 ? null : normalized;
 };
 
-const normalizedRepository = (
+const canonicalRepository = (
   repository: GitHubWorkUnitSummaryRepositoryContext
 ): GitHubWorkUnitSummaryRepositoryContext => {
   const fullName = repository.fullName.trim();
@@ -835,6 +897,62 @@ const normalizedRepository = (
     homepageUrl: normalizedOptionalText(repository.homepageUrl),
     topics,
   };
+};
+
+const digestPattern = /^[a-f0-9]{64}$/u;
+
+export const digestGitHubWorkUnitSummaryEvaluation = (
+  input: GitHubWorkUnitSummaryEvaluationInput
+) => {
+  if (
+    !attributionShapeIsValid(
+      input.attributionMode,
+      input.kind,
+      input.evidence.mode
+    ) ||
+    !digestPattern.test(input.membershipDigest)
+  ) {
+    throw new TypeError("The GitHub summary evaluation identity is invalid.");
+  }
+  const evidence: GitHubWorkUnitSummaryEvaluationEvidence =
+    input.evidence.mode === "net"
+      ? {
+          fileFactsComplete: input.evidence.fileFactsComplete,
+          fileFactsDigest: input.evidence.fileFactsDigest,
+          mode: "net",
+        }
+      : {
+          changes: input.evidence.changes.map(
+            ({ additions, deletions, fileFactsDigest }) => ({
+              additions,
+              deletions,
+              fileFactsDigest,
+            })
+          ),
+          mode: "composite",
+        };
+  const fingerprints =
+    evidence.mode === "net"
+      ? [evidence.fileFactsDigest]
+      : evidence.changes.map((change) => change.fileFactsDigest);
+  if (
+    fingerprints.some(
+      (fingerprint) => fingerprint !== null && !digestPattern.test(fingerprint)
+    )
+  ) {
+    throw new TypeError("The GitHub summary evidence digest is invalid.");
+  }
+  return sha256(
+    SUMMARY_EVALUATION_DIGEST_RECIPE,
+    JSON.stringify({
+      attributionMode: input.attributionMode,
+      evidence,
+      kind: input.kind,
+      membershipDigest: input.membershipDigest,
+      policyDigest: GITHUB_WORK_UNIT_SUMMARY_POLICY_DIGEST,
+      repository: canonicalRepository(input.repository),
+    })
+  );
 };
 
 const tightenedLimit = (value: number | undefined, hardLimit: number) => {
@@ -884,13 +1002,14 @@ export const buildGitHubWorkUnitSummaryInput = async (
     return { eligible: false, reason: outcome.reason };
   }
   const membershipDigest = digestGitHubWorkUnitMembership(candidate.membership);
+  const repository = canonicalRepository(candidate.repository);
   const input = deepFreeze({
     attributionMode: candidate.attributionMode,
     evidence: outcome.normalized,
     kind: candidate.kind,
     recipe: GITHUB_WORK_UNIT_SUMMARY_RECIPE,
-    repository: normalizedRepository(candidate.repository),
-    version: 1 as const,
+    repository,
+    version: SUMMARY_INPUT_VERSION,
   }) satisfies GitHubWorkUnitSummaryInput;
   githubWorkUnitSummaryInputSchema.parse(input);
   const serializedInput = JSON.stringify(input);
@@ -1011,7 +1130,7 @@ export const validateGitHubWorkUnitSummaryOutput = (
   ) {
     return { ok: false, reason: "overlength" };
   }
-  if (sentenceCount(outcome) > 2) {
+  if (sentenceCount(outcome) > MAXIMUM_OUTCOME_SENTENCES) {
     return { ok: false, reason: "too_many_sentences" };
   }
   return { ok: true, outcome };

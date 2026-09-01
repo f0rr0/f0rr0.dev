@@ -13,6 +13,7 @@ import type {
   TrackedGitHubAccount,
 } from "@/lib/github-commits-core";
 import { upsertGitHubRepositories } from "@/lib/github-repository-store";
+import { requestGitHubWorkUnitProjection } from "@/lib/github-work-unit-projection-state";
 
 type DatabaseTransaction = Parameters<
   Parameters<ReturnType<typeof getDatabase>["transaction"]>[0]
@@ -148,28 +149,23 @@ export const persistPullRequestSnapshotInTransaction = async (
         ? now
         : (existing?.mergeShaVerifiedAt ?? null)
       : null;
-  const canonicalEvidenceChanged =
+  const projectionEvidenceChanged =
     existing !== undefined &&
     (existing.headSha !== pullRequest.headSha ||
       existing.baseSha !== pullRequest.baseSha ||
       (pullRequest.headRepository !== null &&
         existing.headRepositoryId !== pullRequest.headRepository.id) ||
       existing.repositoryId !== pullRequest.repository.id ||
-      existing.mergeSha !== mergeSha ||
-      (existing.mergeShaVerifiedAt === null) !==
-        (mergeShaVerifiedAt === null) ||
       existing.state !== state);
-  const supplementalEvidenceChanged =
-    existing !== undefined &&
-    ((existing.additions === null && pullRequest.additions !== null) ||
-      (existing.changedFiles === null && pullRequest.changedFiles !== null) ||
-      (existing.commitCount === null && pullRequest.commitCount !== null) ||
-      (existing.deletions === null && pullRequest.deletions !== null) ||
-      (existing.headRepositoryId === null &&
-        pullRequest.headRepository !== null));
+  const persistedEvidenceChanged =
+    projectionEvidenceChanged ||
+    (existing !== undefined &&
+      (existing.mergeSha !== mergeSha ||
+        (existing.mergeShaVerifiedAt === null) !==
+          (mergeShaVerifiedAt === null)));
   const retryLifecycleReset =
     existing !== undefined &&
-    (disposition === "newer" || canonicalEvidenceChanged);
+    (disposition === "newer" || persistedEvidenceChanged);
   const retryLifecycleUpdate = retryLifecycleReset
     ? {
         nextReconcileAt: options.reconciliationLeaseUntil ?? now,
@@ -196,7 +192,6 @@ export const persistPullRequestSnapshotInTransaction = async (
       pullRequest.mergedAt === null ? null : new Date(pullRequest.mergedAt),
     mergeSha,
     mergeShaVerifiedAt,
-    providerFileCapReached: false,
     providerUpdatedAt,
     state,
     terminalAt,
@@ -281,6 +276,9 @@ export const persistPullRequestSnapshotInTransaction = async (
         )
       );
     if (existing.headSha !== pullRequest.headSha) {
+      if (terminalPromotion) {
+        await requestGitHubWorkUnitProjection(transaction);
+      }
       return null;
     }
   }
@@ -380,7 +378,7 @@ export const persistPullRequestSnapshotInTransaction = async (
             isCurrent: true,
             mergeSnapshot: state === "merged",
             ...(providerUpdatedAt > version.providerUpdatedAt ||
-            canonicalEvidenceChanged
+            projectionEvidenceChanged
               ? { observedAt: now }
               : {}),
             providerUpdatedAt,
@@ -461,6 +459,16 @@ export const persistPullRequestSnapshotInTransaction = async (
       );
   }
 
+  const projectionInputChanged =
+    projectionEvidenceChanged ||
+    version === undefined ||
+    !version.isCurrent ||
+    storedMembershipInvalid ||
+    (version.fileFactsComplete && !storedDiffComplete);
+  if (projectionInputChanged) {
+    await requestGitHubWorkUnitProjection(transaction);
+  }
+
   return {
     baseRepositoryId: pullRequest.baseRepository.id,
     baseSha: pullRequest.baseSha,
@@ -470,12 +478,7 @@ export const persistPullRequestSnapshotInTransaction = async (
     membershipRefreshRequired,
     pullRequestNodeId: pullRequest.nodeId,
     retryLifecycleReset,
-    snapshotChanged:
-      existing === undefined ||
-      disposition === "newer" ||
-      (disposition === "equal_authoritative" && canonicalEvidenceChanged) ||
-      terminalPromotion ||
-      supplementalEvidenceChanged,
+    snapshotChanged: projectionInputChanged,
     versionId,
   };
 };

@@ -3,7 +3,7 @@ import type { PublicActivityHead } from "@/lib/github-activity-types";
 export const PUBLIC_ACTIVITY_MAX_STATUS_REQUESTS = 12;
 export const PUBLIC_ACTIVITY_MAX_SETTLED_REQUESTS = 3;
 export const PUBLIC_ACTIVITY_SETTLED_POLL_MS = 5 * 60 * 1000;
-export const PUBLIC_ACTIVITY_SUMMARY_POLL_MS = 30 * 1000;
+export const PUBLIC_ACTIVITY_SUMMARY_POLL_MS = 3 * 60 * 1000;
 
 const REVISION = /^(?:0|[1-9]\d*)$/u;
 

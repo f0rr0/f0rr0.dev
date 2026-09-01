@@ -503,7 +503,6 @@ describe("GitHub factual history backfill", () => {
       accounts: ["f0rr0"],
       includeProjection: false,
       includeRefs: false,
-      includeSummaries: false,
       scope: {
         repositoryId: null,
         sinceAt: request.sinceAt,
@@ -538,7 +537,6 @@ describe("GitHub factual history backfill", () => {
         runWorker: async (options) => {
           workerPasses += 1;
           expect(options.includeProjection).toBe(false);
-          expect(options.includeSummaries).toBe(false);
           return workerResult({
             commits: emptyWorkerStage({
               claimed: 1,

@@ -34,10 +34,11 @@ The worker leases small batches and can safely resume after a deadline. It:
    reconciles PR snapshots, current/final memberships, authoritative merge
    evidence, and complete PR net file facts;
 4. recomputes the current work-unit projection from durable evidence and swaps
-   units, memberships, summary eligibility, and public feed revisions
-   atomically; and
-5. claims at most one eligible public work-unit summary at a time and accepts
-   output only through the current digest/revision compare-and-swap.
+   units, memberships, and public feed revisions atomically; and
+5. evaluates summary inputs in recent-first batches of eight, then claims at
+   most one eligible public summary. Valid public-input output can be cached
+   after becoming stale; display still requires exact current recipe, outcome,
+   attribution, and input digests.
 
 Multi-parent merge commits and commits with neither file facts nor churn are not
 separate timeline work. A same-repository merged-PR association suppresses
@@ -57,11 +58,13 @@ Unknown work contributes nothing. Private titles, messages, paths, branch
 names, repository identity, and generated prose are neither rendered nor sent
 to the model.
 
-Summary attempts are revisioned by the current outcome, attribution mode, and
+Summary attempts are keyed by the current outcome, attribution mode, recipe, and
 summary-input digest. Facts publish independently of optional prose. A force
-push recomputes current PR membership and net outcome; an unchanged outcome
-digest can reuse accepted prose. Daily and monthly request caps count started
-requests, including retries.
+push recomputes current PR membership and net outcome; an unchanged exact input
+can reuse accepted prose. A superseded unstarted input is removed. A paid
+retryable input drops its payload but retains its request count; the exact input
+is rebuilt and debounced if it becomes current later. Daily and monthly request
+caps count started requests, including retries.
 
 Opened issues remain durable authored milestones outside the work-unit summary
 pipeline. A newly inserted issue with known visibility transactionally advances
@@ -69,8 +72,12 @@ the public feed head; replayed deliveries and unknown visibility do not.
 
 The public reader groups a repository once per UTC day and reads complete days
 against the current ordered-set revision. `github_public_feed_head` contains
-only the monotone feed/content/order revisions, last feed publication time,
-and whether an initial-page summary is currently processing.
+the monotone feed/content/order revisions, last publication time, a durable
+projection-request token, the applied semantic summary-policy digest, and
+whether configured recent initial-page summary work is being evaluated, queued,
+retried, or processed. Evidence writers set the token transactionally;
+projection clears the observed token only after its bounded summary-evaluation
+backlog reaches zero.
 
 ## Runtime configuration
 

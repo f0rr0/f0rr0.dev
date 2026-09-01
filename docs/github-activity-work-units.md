@@ -144,24 +144,34 @@ presence.
 `github_work_unit_memberships` stores its ordered, one-owner membership. A
 projection refresh loads durable evidence, computes the full current result,
 and swaps changed units and memberships under one advisory lock and repeatable
-read transaction.
+read transaction. It reads compact file counters and generated evidence digests
+for the full corpus, then hydrates raw patches only for the bounded summary
+batch.
 
-`github_public_feed_head` is a singleton containing only:
+`github_public_feed_head` is a singleton containing:
 
 - `feed_revision` for initial-page work-unit changes, newly inserted
-  known-visible issues, or a first accepted initial-page summary;
+  known-visible issues, or an accepted summary becoming visible, hidden, or
+  replaced;
 - `ordering_revision` for ordered-set and membership changes;
 - `head_content_revision` for the lightweight status endpoint;
 - `last_published_at`; and
-- `summarizing`.
+- `summarizing`;
+- an internal projection-request token; and
+- the last completely evaluated semantic summary-policy digest.
+
+Evidence writers replace the projection token in the same transaction as the
+evidence change. A refresh clears only the token it observed and only after its
+bounded summary-evaluation backlog is empty. A semantic policy change creates a
+token until the current corpus has been reevaluated.
 
 The public feed reads at most five UTC days per page in a read-only repeatable
 read transaction. Pagination cursors are HMAC-signed and bound to the ordering
 revision. An ordering change returns `409`, prompting a fresh first page.
 
-Accepted summaries are read only when their outcome, input, and attribution
-digests still match the current public unit. Stale attempts cannot leak into a
-new projection.
+Accepted summaries are read only when their recipe, outcome, input, and
+attribution digests still match the current public unit. Stale attempts cannot
+leak into a new projection.
 
 ## Outcome summaries
 
@@ -191,14 +201,17 @@ low text verbosity, provider storage disabled, no SDK retry, a 32,000-token
 input cap, and a 160-token output cap. Output must be structured as one outcome
 of at most two sentences, 60 words, and 320 Unicode code points. Validation
 rejects invalid Unicode, control/bidirectional characters, URLs, HTML,
-Markdown, SHAs, unsupported numbers, and verbatim source strings.
+Markdown, and SHAs.
 
-Summary identity includes the recipe, prompt, normalized input, outcome digest,
-and attribution mode. A five-minute debounce absorbs active rewrites. Provider
-output is accepted only while the lease, unit revision, outcome digest,
-attribution mode, and summary-input digest all still match. A force push with
-the same complete PR net outcome can reuse accepted prose; a changed outcome
-queues a new attempt.
+Summary identity includes the semantic policy, recipe, prompt, normalized
+input, outcome digest, and attribution mode. Transport retries and storage
+configuration do not invalidate prose. A five-minute debounce absorbs active
+rewrites. Up to eight recent-first inputs are deterministically evaluated per
+projection refresh, while the provider worker still starts at most one claim.
+Valid public-input output remains cacheable if its input becomes stale while
+the request runs; it is displayed only when the current public unit's exact
+recipe, outcome, attribution, and summary-input keys match. A force push with
+the same complete PR net outcome can therefore reuse accepted prose.
 
 Claims are recent-first:
 
@@ -212,7 +225,10 @@ Claims are recent-first:
 
 Started requests count even when they fail. A transient failure waits 15
 minutes before its one possible retry. Invalid input/output and exhausted
-attempts become facts-only. Expired leases are recovered by the next worker.
+attempts become facts-only. Superseded attempts that never started are removed;
+a paid retryable attempt becomes a payload-free tombstone that retains its
+request count. Its input is rebuilt and debounced only if the exact input becomes
+current again. Expired leases are recovered by the next worker.
 
 `OPENAI_API_KEY` is optional; without it the factual pipeline continues and no
 summary claim is started. This is not an OpenAI free-tier design. At the
@@ -236,11 +252,11 @@ Three inputs converge on the same durable worker queues:
 
 Supabase Cron invokes:
 
-| Route                     | Schedule                              | Bound                                                               |
-| ------------------------- | ------------------------------------- | ------------------------------------------------------------------- |
-| `/api/cron/github-sync`   | every 5 minutes                       | 15-second request                                                   |
-| `/api/cron/github-worker` | every 5 minutes, offset by 2 minutes  | 60-second request; default four items per factual queue and one ref |
-| `/api/cron/github-refs`   | every 15 minutes, offset by 4 minutes | 15-second request; eight ref pages/repositories per account         |
+| Route                     | Schedule                              | Bound                                                                |
+| ------------------------- | ------------------------------------- | -------------------------------------------------------------------- |
+| `/api/cron/github-sync`   | every 5 minutes                       | 15-second request                                                    |
+| `/api/cron/github-worker` | every 5 minutes, offset by 2 minutes  | 60-second request; default eight items per factual queue and one ref |
+| `/api/cron/github-refs`   | every 15 minutes, offset by 4 minutes | 15-second request; eight ref pages/repositories per account          |
 
 The worker processes factual queues and current-ref repair before recomputing
 the projection. It then reconciles the minimal summary status and may claim one
@@ -287,13 +303,19 @@ membership can represent the same authored work as a PR independently. An
 unchanged pre-existing side branch with no surviving signal is not exhaustively
 discovered on cold start.
 
+Head webhooks are applied in delivery order; they are not an authoritative
+ordering oracle. A delayed delivery can therefore leave a stale desired tip
+until the bounded current-ref scan reads GitHub's present state. The ref route
+runs every 15 minutes and is the authoritative reconciliation path; a heavily
+paginated inventory can require more than one invocation.
+
 ## Minimal live state
 
 The status endpoint returns the feed revision, a monotone head revision, last
-feed publication time, and one boolean: whether the last worker reconciliation
-found a current, recent public summary lease on the initial five-day page. The
-next worker reconciliation clears an expired abandoned lease. The UI renders
-only:
+feed publication time, and one boolean: whether the configured summary pipeline
+has a current, recent public evaluation, queued input, retry, or provider lease
+on the initial five-day page. The next worker reconciliation clears an expired
+abandoned lease. The UI renders only:
 
 - `Shaping the latest update` while that boolean is true;
 - `Updated … ago` (or `Activity is up to date`) otherwise; or
@@ -303,7 +325,7 @@ only:
 Polling runs while the tab is visible, the browser is online, no refresh is
 pending, and the timeline is in view when the browser supports intersection
 observation. A settled page checks every five minutes at most three times.
-While summarizing, it checks every 30 seconds, subject to a total cap of 12
+While shaping recent summary work, it checks every three minutes, subject to a total cap of 12
 requests. The private, revalidated endpoint supports ETags; polling budgets
 reset after a successful feed refresh. New content is never inserted while the
 reader is moving through the page; the reader chooses `Show latest work` to
@@ -315,8 +337,9 @@ refresh.
 builds a deterministic, read-only crosswalk for a half-open interval. It emits
 stable IDs and counts for tracked candidates, eligible changes, integration
 merges, ineligible changes, PR/canonical/branch units, owned changes, visibility
-gaps, authored PRs without a current owned member, and each coverage or
-policy-exclusion reason. `merged_pr_landing` and
+gaps, commit-enrichment backlog, authored PRs without a current owned member,
+and each coverage or policy-exclusion reason. Any enrichment backlog fails the
+crosswalk. `merged_pr_landing` and
 `no_current_owner` are policy exclusions; unknown canonical branch, incomplete
 head generation, incomplete PR coverage, and unknown visibility are coverage
 gaps that fail the crosswalk.
@@ -336,6 +359,7 @@ class names:
 | same-repository merged landing absent from effective PR membership      | canonical suppressed; active side head may own it     |
 | PR rewrite with unchanged net outcome                                   | stable identity, anchor, and reusable prose           |
 | changed PR/ref membership                                               | removed SHA loses its old ownership                   |
+| ref head A → B → A                                                      | final A is projected rather than suppressed           |
 | incomplete PR discovery, visibility, default branch, or head generation | fail closed with a reported reason                    |
 | shared side-branch commit                                               | deterministic primary branch, one owner               |
 | private or unknown repository                                           | generic private day or no output                      |
@@ -343,6 +367,8 @@ class names:
 | concurrent projection/summary work                                      | leases and compare-and-swap prevent stale publication |
 | same-day repository rows                                                | one header and a count derived from final groups      |
 | summary budget/retry/expiry                                             | hard caps and facts-only terminal state               |
+| nine pending summary evaluations                                        | eight settle, then one on the next refresh            |
+| paid input A superseded by B then current again                         | count retained and debounce re-armed                  |
 
 Run the complete local gate with:
 

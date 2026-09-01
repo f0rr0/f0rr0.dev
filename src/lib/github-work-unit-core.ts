@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { aggregateGitHubLanguages } from "@/lib/github-change-evidence";
 import type {
+  GitHubFileChangeStat,
   GitHubLanguageFact,
   GitHubWorkUnitFileFact,
 } from "@/lib/github-change-evidence";
@@ -28,7 +29,7 @@ export interface GitHubLogicalChange {
   contentObservedAt: string;
   deletions: number;
   enrichmentComplete: boolean;
-  fileFacts: readonly GitHubWorkUnitFileFact[];
+  fileFacts: readonly GitHubFileChangeStat[];
   fileFactsComplete: boolean;
   mergedPullRequestLanding: boolean;
   logicalActivityAt: string;
@@ -40,6 +41,7 @@ export interface GitHubLogicalChange {
   pullRequestCoverageComplete: boolean;
   repositoryId: string;
   sha: string;
+  summaryFileFacts: readonly GitHubWorkUnitFileFact[] | null;
 }
 
 export interface GitHubRepositoryProjectionEvidence {
@@ -94,6 +96,10 @@ export interface GitHubWorkUnitProjectionInput {
   refs: readonly GitHubRefProjectionEvidence[];
   repositories: readonly GitHubRepositoryProjectionEvidence[];
   trackedAuthorUserIds: ReadonlySet<string>;
+}
+
+interface GitHubWorkUnitProjectionOptions {
+  outcomeDigests?: ReadonlyMap<string, string | null>;
 }
 
 export interface GitHubWorkUnitOwnershipIndex {
@@ -285,13 +291,15 @@ const digestCompositeOutcome = (
   orderedChanges: readonly GitHubLogicalChange[]
 ): string | null => {
   const changes = orderedChanges.map((change) =>
-    githubWorkUnitSummaryDiffEvidenceFrom(
-      change.fileFacts,
-      change.additions,
-      change.deletions,
-      change.fileFactsComplete,
-      change.providerFileCapReached
-    )
+    change.summaryFileFacts === null
+      ? null
+      : githubWorkUnitSummaryDiffEvidenceFrom(
+          change.summaryFileFacts,
+          change.additions,
+          change.deletions,
+          change.fileFactsComplete,
+          change.providerFileCapReached
+        )
   );
   if (changes.some((change) => change === null)) {
     return null;
@@ -399,7 +407,7 @@ export const chooseEffectivePullRequest = (
   return eligible[0] ?? null;
 };
 
-export const choosePrimarySideRef = (
+const choosePrimarySideRef = (
   refs: readonly GitHubRefProjectionEvidence[]
 ): GitHubRefProjectionEvidence | null => {
   const completeHeads = refs
@@ -481,11 +489,11 @@ export const stableTopologicalOrder = <
   return ordered;
 };
 
-export const aggregateGitHubWorkUnitFacts = (
+const aggregateGitHubWorkUnitFacts = (
   changes: readonly GitHubLogicalChange[]
 ): GitHubWorkUnitFacts => {
   const filenames = new Set<string>();
-  const files: GitHubWorkUnitFileFact[] = [];
+  const files: GitHubFileChangeStat[] = [];
   let additions = 0;
   let deletions = 0;
 
@@ -673,7 +681,8 @@ const projectedUnitFrom = (
   repository: GitHubRepositoryProjectionEvidence,
   changes: readonly GitHubLogicalChange[],
   trackedAuthorUserIds: ReadonlySet<string>,
-  priorAnchors: ReadonlyMap<string, string>
+  priorAnchors: ReadonlyMap<string, string>,
+  outcomeDigests: ReadonlyMap<string, string | null> | undefined
 ): GitHubProjectedWorkUnit | null => {
   const visibility = visibilityFrom(repository.visibility);
   if (visibility === null) {
@@ -690,11 +699,10 @@ const projectedUnitFrom = (
   const orderedChanges = stableTopologicalOrder(keyedChanges);
   const facts = aggregateGitHubWorkUnitFacts(orderedChanges);
   const identityKey = identityKeyFrom(owner);
-  const outcomeDigest = outcomeDigestFor(
-    owner,
-    orderedChanges,
-    trackedAuthorUserIds
-  );
+  const outcomeDigest =
+    outcomeDigests !== undefined && outcomeDigests.has(identityKey)
+      ? (outcomeDigests.get(identityKey) ?? null)
+      : outcomeDigestFor(owner, orderedChanges, trackedAuthorUserIds);
   const currentAnchor = maxInstant(
     orderedChanges.map((change) => change.logicalActivityAt)
   );
@@ -793,7 +801,8 @@ const projectedUnitFrom = (
 
 export const projectGitHubWorkUnits = (
   input: GitHubWorkUnitProjectionInput,
-  ownership = indexGitHubWorkUnitOwnershipEvidence(input)
+  ownership = indexGitHubWorkUnitOwnershipEvidence(input),
+  options: GitHubWorkUnitProjectionOptions = {}
 ): readonly GitHubProjectedWorkUnit[] => {
   const priorAnchors = new Map(
     (input.priorActivityAnchors ?? []).map((anchor) => [
@@ -855,7 +864,8 @@ export const projectGitHubWorkUnits = (
       group.repository,
       group.changes,
       input.trackedAuthorUserIds,
-      priorAnchors
+      priorAnchors,
+      options.outcomeDigests
     );
     if (unit !== null) {
       projected.push(unit);

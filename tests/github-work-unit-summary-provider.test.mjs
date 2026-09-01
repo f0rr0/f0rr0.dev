@@ -4,10 +4,9 @@ import { NoObjectGeneratedError, NoOutputGeneratedError } from "ai";
 
 import {
   generateGitHubWorkUnitSummary,
-  GITHUB_WORK_UNIT_SUMMARY_MAX_OUTPUT_TOKENS,
-  GITHUB_WORK_UNIT_SUMMARY_MODEL,
   GitHubWorkUnitSummaryInvalidInputError,
 } from "../src/lib/github-work-unit-summary-provider.ts";
+import { GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY } from "../src/lib/github-work-unit-summary.ts";
 
 const summaryInput = (overrides = {}) => ({
   attributionMode: "tracked_authored_pr",
@@ -79,9 +78,11 @@ describe("GitHub work-unit summary provider", () => {
     });
 
     expect(call).toBeDefined();
-    expect(call.model.modelId).toBe(GITHUB_WORK_UNIT_SUMMARY_MODEL);
+    expect(call.model.modelId).toBe(
+      GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.model
+    );
     expect(call.maxOutputTokens).toBe(
-      GITHUB_WORK_UNIT_SUMMARY_MAX_OUTPUT_TOKENS
+      GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.maxOutputTokens
     );
     expect(call.maxRetries).toBe(0);
     expect(call.providerOptions).toEqual({
@@ -106,7 +107,7 @@ describe("GitHub work-unit summary provider", () => {
     });
     expect(result).toMatchObject({
       inputTokens: 12,
-      model: GITHUB_WORK_UNIT_SUMMARY_MODEL,
+      model: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.model,
       outcome: "Added resilient session recovery.",
       outputTokens: 6,
     });
@@ -163,7 +164,7 @@ describe("GitHub work-unit summary provider", () => {
           finishReason: "stop",
           response: {
             id: "response-id",
-            modelId: GITHUB_WORK_UNIT_SUMMARY_MODEL,
+            modelId: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.model,
             timestamp: new Date(0),
           },
           text: JSON.stringify({ outcome: "Safe.", extra: true }),

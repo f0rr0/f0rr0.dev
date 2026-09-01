@@ -33,6 +33,7 @@ import {
   trackedGitHubAccountFrom,
 } from "@/lib/github-commits-core";
 import type { TrackedGitHubAccount } from "@/lib/github-commits-core";
+import { requestGitHubWorkUnitProjection } from "@/lib/github-work-unit-projection-state";
 
 const DEFAULT_LEASE_MS = 5 * 60 * 1000;
 const SHA = /^[a-f0-9]{40}$/u;
@@ -561,6 +562,7 @@ export const completeGitHubRefRepair = async (
         repairLeaseUntil: null,
       })
       .where(repairIdentity(repair));
+    await requestGitHubWorkUnitProjection(transaction);
     return {
       generation,
       insertedCommits: inserted.length,
@@ -604,6 +606,7 @@ export const completeGitHubRefDeletion = async (
         repairLeaseUntil: null,
       })
       .where(repairIdentity(repair));
+    await requestGitHubWorkUnitProjection(transaction);
     return { stale: false };
   });
 
