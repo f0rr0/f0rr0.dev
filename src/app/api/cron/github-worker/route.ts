@@ -1,14 +1,14 @@
 import { env } from "@/env";
 import { runGitHubActivityWorker } from "@/lib/github-activity-worker";
 import { workerBatchSizeFrom } from "@/lib/github-activity-worker-core";
-import { GITHUB_CRON_EXECUTION_DURATION_MS } from "@/lib/github-cron-config";
-import type { GITHUB_ROUTINE_MAX_DURATION_SECONDS } from "@/lib/github-cron-config";
+import { GITHUB_WORKER_EXECUTION_DURATION_MS } from "@/lib/github-cron-config";
+import type { GITHUB_WORKER_MAX_DURATION_SECONDS } from "@/lib/github-cron-config";
 import { reportOperationalError } from "@/lib/operational-error";
 import { hasBearerSecret } from "@/lib/request-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration =
-  15 satisfies typeof GITHUB_ROUTINE_MAX_DURATION_SECONDS;
+  60 satisfies typeof GITHUB_WORKER_MAX_DURATION_SECONDS;
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
@@ -26,10 +26,10 @@ export async function POST(request: Request) {
   try {
     const activity = await runGitHubActivityWorker(
       batchSize === undefined
-        ? { maximumDurationMs: GITHUB_CRON_EXECUTION_DURATION_MS }
+        ? { maximumDurationMs: GITHUB_WORKER_EXECUTION_DURATION_MS }
         : {
             commitLimit: batchSize,
-            maximumDurationMs: GITHUB_CRON_EXECUTION_DURATION_MS,
+            maximumDurationMs: GITHUB_WORKER_EXECUTION_DURATION_MS,
             observationLimit: batchSize,
             pullRequestDiscoveryLimit: batchSize,
             pullRequestLimit: batchSize,

@@ -8,6 +8,9 @@ import {
   GITHUB_HEAD_REFS_CRON_JOB,
   GITHUB_REF_REPOSITORY_BATCH_SIZE,
   GITHUB_ROUTINE_MAX_DURATION_SECONDS,
+  GITHUB_WORKER_EXECUTION_DURATION_MS,
+  GITHUB_WORKER_HTTP_TIMEOUT_MS,
+  GITHUB_WORKER_MAX_DURATION_SECONDS,
   GITHUB_WORKER_CRON_JOB,
   githubRefRepositoryLimitFrom,
 } from "../src/lib/github-cron-config.ts";
@@ -53,6 +56,13 @@ describe("GitHub cron configuration", () => {
     expect(GITHUB_ROUTINE_MAX_DURATION_SECONDS).toBe(15);
     expect(GITHUB_CRON_EXECUTION_DURATION_MS).toBe(
       GITHUB_ROUTINE_MAX_DURATION_SECONDS * 1000
+    );
+    expect(GITHUB_WORKER_MAX_DURATION_SECONDS).toBe(60);
+    expect(GITHUB_WORKER_EXECUTION_DURATION_MS).toBeLessThan(
+      GITHUB_WORKER_HTTP_TIMEOUT_MS
+    );
+    expect(GITHUB_WORKER_HTTP_TIMEOUT_MS).toBe(
+      GITHUB_WORKER_MAX_DURATION_SECONDS * 1000
     );
     expect(githubRefRepositoryLimitFrom(null)).toBe(8);
     expect(githubRefRepositoryLimitFrom("1")).toBe(1);

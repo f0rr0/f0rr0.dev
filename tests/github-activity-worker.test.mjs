@@ -10,6 +10,7 @@ import {
   githubActivityRetryAt,
   githubPullRequestSnapshotDisposition,
   githubPrReconciliationCutoff,
+  githubSummaryCanStart,
   GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS,
   MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE,
   nextGitHubPullRequestReconciliationAt,
@@ -112,6 +113,12 @@ describe("GitHub activity worker bounds", () => {
   test("uses a deterministic wall-clock deadline", () => {
     expect(workerDeadlineReached(1000, 10_000, 10_999)).toBe(false);
     expect(workerDeadlineReached(1000, 10_000, 11_000)).toBe(true);
+  });
+
+  test("starts summary work only with a complete provider budget", () => {
+    expect(githubSummaryCanStart(6000, 1000)).toBe(true);
+    expect(githubSummaryCanStart(5999, 1000)).toBe(false);
+    expect(() => githubSummaryCanStart(Number.NaN, 1000)).toThrow(RangeError);
   });
 
   test("stops terminal PR polling", () => {

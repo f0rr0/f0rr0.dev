@@ -13,6 +13,7 @@ import {
 import {
   boundedWorkerLimit,
   GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS,
+  githubSummaryCanStart,
   workerDeadlineReached,
 } from "@/lib/github-activity-worker-core";
 import {
@@ -87,7 +88,8 @@ import {
 } from "@/lib/github-work-unit-summary-store";
 
 const DEFAULT_WORKER_MAXIMUM_DURATION_MS = 90_000;
-const MAXIMUM_PROJECTION_RESERVE_MS = 2000;
+const MAXIMUM_PROJECTION_RESERVE_MS = 50_000;
+const MINIMUM_FACTUAL_PROCESSING_MS = 8000;
 const SUMMARY_RETRY_DELAY_MS = 15 * 60_000;
 const TERMINAL_GITHUB_STATUSES = new Set([403, 404, 410, 422]);
 const TERMINAL_ACTIVITY_PROCESSING_CODES = new Set([
@@ -601,6 +603,7 @@ const processPullRequests = async (
 const processSummary = async (context: WorkerContext, result: StageResult) => {
   if (
     context.deadlineReached() ||
+    !githubSummaryCanStart(context.deadlineAt) ||
     (env.OPENAI_API_KEY?.trim().length ?? 0) === 0
   ) {
     return;
@@ -720,10 +723,13 @@ export const runGitHubActivityWorker = async (
   }
 
   const startedAt = Date.now();
-  const projectionReserveMs = Math.min(
-    MAXIMUM_PROJECTION_RESERVE_MS,
-    Math.floor(maximumDurationMs / 5)
-  );
+  const projectionReserveMs =
+    options.includeProjection === false
+      ? 0
+      : Math.min(
+          MAXIMUM_PROJECTION_RESERVE_MS,
+          Math.max(0, maximumDurationMs - MINIMUM_FACTUAL_PROCESSING_MS)
+        );
   const processingDurationMs = maximumDurationMs - projectionReserveMs;
   const deadlineReached = () =>
     workerDeadlineReached(startedAt, processingDurationMs);
@@ -741,6 +747,8 @@ export const runGitHubActivityWorker = async (
     deadlineReached,
     scope,
   };
+  const overallDeadlineReached = () =>
+    workerDeadlineReached(startedAt, maximumDurationMs);
 
   await processObservations(context, observationLimit, observations);
   await processPullRequestSignals(
@@ -773,12 +781,19 @@ export const runGitHubActivityWorker = async (
       : null;
   await reconcileGitHubWorkUnitSummaryStatus(new Date());
   if (options.includeSummaries !== false) {
-    await processSummary(context, summaries);
+    await processSummary(
+      {
+        ...context,
+        deadlineAt: startedAt + maximumDurationMs,
+        deadlineReached: overallDeadlineReached,
+      },
+      summaries
+    );
   }
 
   return {
     commits,
-    deadlineReached: context.deadlineReached(),
+    deadlineReached: overallDeadlineReached(),
     observations,
     projection,
     pullRequests,

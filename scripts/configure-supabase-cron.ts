@@ -6,12 +6,12 @@ import {
   GITHUB_EVENTS_CRON_JOB,
   GITHUB_HEAD_REFS_CRON_JOB,
   GITHUB_REF_REPOSITORY_BATCH_SIZE,
+  GITHUB_WORKER_HTTP_TIMEOUT_MS,
   GITHUB_WORKER_CRON_JOB,
 } from "../src/lib/github-cron-config";
 import { CANONICAL_SITE_URL } from "../src/lib/site-url";
 import { shouldApplyProductionMigrations } from "./migrate-production-database";
 
-const CRON_HTTP_TIMEOUT_MS = GITHUB_CRON_EXECUTION_DURATION_MS;
 const SECRET_DESCRIPTION = "Vercel GitHub sync cron configuration";
 const SECRET_NAME = "github_sync_bearer_secret";
 const URL_NAME = "github_sync_url";
@@ -112,7 +112,10 @@ const upsertVaultSecret = async (
   `;
 };
 
-const cronHttpPostCommand = (urlSecretName: string) => `
+const cronHttpPostCommand = (
+  urlSecretName: string,
+  timeoutMilliseconds = GITHUB_CRON_EXECUTION_DURATION_MS
+) => `
   select net.http_post(
     url := (
       select decrypted_secret
@@ -128,7 +131,7 @@ const cronHttpPostCommand = (urlSecretName: string) => `
       )
     ),
     body := jsonb_build_object('source', 'supabase-cron'),
-    timeout_milliseconds := ${String(CRON_HTTP_TIMEOUT_MS)}
+    timeout_milliseconds := ${String(timeoutMilliseconds)}
   ) as request_id
 `;
 
@@ -212,7 +215,7 @@ export const configureSupabaseCron = async (
         select cron.schedule(
           ${GITHUB_WORKER_CRON_JOB.name},
           ${GITHUB_WORKER_CRON_JOB.schedule},
-          ${cronHttpPostCommand(WORKER_URL_NAME)}
+          ${cronHttpPostCommand(WORKER_URL_NAME, GITHUB_WORKER_HTTP_TIMEOUT_MS)}
         ) as "jobId"
       `;
       if (
