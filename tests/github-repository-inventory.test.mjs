@@ -484,10 +484,10 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
     `;
     await admin`
       insert into github_commits (
-        author_login, committed_at, message, repository, repository_id, sha
+        author_login, committed_at, message, repository_id, sha
       ) values
-        ('f0rr0', ${startedAtIso}, 'affected', 'f0rr0/example', '101', ${sha("a")}),
-        ('f0rr0', ${startedAtIso}, 'unrelated', 'f0rr0/unrelated', '202', ${sha("b")})
+        ('f0rr0', ${startedAtIso}, 'affected', '101', ${sha("a")}),
+        ('f0rr0', ${startedAtIso}, 'unrelated', '202', ${sha("b")})
     `;
     await admin`
       insert into github_work_units (

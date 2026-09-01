@@ -83,10 +83,10 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     const payload = requestPayload ?? JSON.stringify({ unit: sequence });
     await admin`
       insert into github_commits (
-        author_login, committed_at, message, repository, repository_id, sha
+        author_login, committed_at, message, repository_id, sha
       ) values (
         'f0rr0', ${instant(activityAt)}, ${`summary store ${String(sequence)}`},
-        'f0rr0/summary-store-test', ${repositoryId}, ${sha}
+        ${repositoryId}, ${sha}
       )
     `;
     await admin`

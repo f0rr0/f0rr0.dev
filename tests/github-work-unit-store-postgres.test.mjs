@@ -158,7 +158,6 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       message: "first",
       parentShas: [],
       pullRequestDiscoveryState: "complete",
-      repository: "f0rr0/projection-store-test",
       repositoryId,
       sha: firstSha,
     });
@@ -306,7 +305,6 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       message: "second",
       parentShas: [firstSha],
       pullRequestDiscoveryState: "complete",
-      repository: "f0rr0/projection-store-test",
       repositoryId,
       sha: secondSha,
     });
@@ -476,7 +474,6 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       message: "owned",
       parentShas: [baseSha],
       pullRequestDiscoveryState: "complete",
-      repository: "f0rr0/collaborative-pr-test",
       repositoryId: collaborativeRepositoryId,
       sha: ownedSha,
     });
@@ -712,7 +709,6 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       message: "current access",
       parentShas: [],
       pullRequestDiscoveryState: "complete",
-      repository: "f0rr0/current-access-public-test",
       repositoryId: publicRepositoryId,
       sha: publicSha,
     });

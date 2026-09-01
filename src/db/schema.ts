@@ -150,12 +150,7 @@ export const githubCommits = pgTable(
     pullRequestDiscoveryState: varchar("pr_discovery_state", { length: 16 })
       .default("pending")
       .notNull(),
-    repository: varchar("repository", { length: 200 }),
     repositoryId: varchar("repository_id", { length: 32 }).notNull(),
-    repositoryOwnerAvatarUrl: text("repository_owner_avatar_url"),
-    repositoryOwnerLogin: varchar("repository_owner_login", { length: 39 }),
-    repositoryOwnerType: varchar("repository_owner_type", { length: 12 }),
-    repositoryPrivate: boolean("repository_private"),
     sha: varchar("sha", { length: 40 }).notNull(),
   },
   (table) => [
@@ -216,10 +211,6 @@ export const githubCommits = pgTable(
     check(
       "github_commits_nonnegative_attempts",
       sql`${table.enrichmentAttempts} >= 0 AND ${table.pullRequestDiscoveryAttempts} >= 0`
-    ),
-    check(
-      "github_commits_owner_type",
-      sql`${table.repositoryOwnerType} IS NULL OR ${table.repositoryOwnerType} IN ('Organization', 'User')`
     ),
   ]
 ).enableRLS();

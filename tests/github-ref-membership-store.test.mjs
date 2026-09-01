@@ -212,9 +212,9 @@ describe.skipIf(!dockerAvailable)(
     `;
       await admin`
       insert into github_commits
-        (author_login, author_user_id, committed_at, message, repository, repository_id, sha)
+        (author_login, author_user_id, committed_at, message, repository_id, sha)
       values
-        ('f0rr0', '8574219', ${iso(coverageSinceAt)}, 'Old work', 'f0rr0/example', '1', ${oldTrackedSha})
+        ('f0rr0', '8574219', ${iso(coverageSinceAt)}, 'Old work', '1', ${oldTrackedSha})
     `;
       await admin`
       insert into github_repository_refs
