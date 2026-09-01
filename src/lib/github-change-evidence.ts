@@ -49,10 +49,13 @@ const languageByExtension = {
   zig: ["zig", "Zig"],
 } as const;
 
-export interface GitHubFileChangeEvidence {
+export interface GitHubFileChangeStat {
   additions: number;
   deletions: number;
   filename: string;
+}
+
+export interface GitHubFileChangeEvidence extends GitHubFileChangeStat {
   patch: string | null;
   previousFilename: string | null;
   status: string;
@@ -85,12 +88,12 @@ export interface GitHubLanguageFact {
   label: string;
 }
 
-const isSubstantiveGitHubFile = (file: GitHubFileChangeEvidence) =>
+const isSubstantiveGitHubFile = (file: GitHubFileChangeStat) =>
   !generatedOrVendored.test(file.filename) &&
   !lockfile.test(file.filename) &&
   !binaryAsset.test(file.filename);
 
-const languageForFile = (file: GitHubFileChangeEvidence) => {
+const languageForFile = (file: GitHubFileChangeStat) => {
   const extension = /\.([A-Za-z0-9]+)$/u
     .exec(file.filename)?.[1]
     ?.toLowerCase();
@@ -113,7 +116,7 @@ export const githubWorkUnitFileFactsFrom = (
   }));
 
 export const aggregateGitHubLanguages = (
-  files: readonly GitHubFileChangeEvidence[]
+  files: readonly GitHubFileChangeStat[]
 ): readonly GitHubLanguageFact[] => {
   const facts = new Map<string, GitHubLanguageFact>();
   for (const file of files) {

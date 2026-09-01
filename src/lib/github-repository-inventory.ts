@@ -24,6 +24,7 @@ import type {
 } from "@/lib/github-commits-core";
 import { collectAccessibleGitHubRepositories } from "@/lib/github-reconciliation";
 import { upsertGitHubRepositoryInventory } from "@/lib/github-repository-store";
+import { requestGitHubWorkUnitProjection } from "@/lib/github-work-unit-projection-state";
 
 const INVENTORY_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const INVENTORY_RETRY_INTERVAL_MS = 15 * 60 * 1000;
@@ -228,6 +229,7 @@ const publishGitHubRepositoryInventory = async (
           )
         );
     }
+    await requestGitHubWorkUnitProjection(transaction);
   });
 };
 

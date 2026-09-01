@@ -43,6 +43,14 @@ const fileFact = (filename) => ({
   status: "modified",
 });
 
+const summaryResult = (outcome) => ({
+  inputTokens: 20,
+  latencyMs: 1,
+  model: "gpt-5.4-nano-2026-03-17",
+  outcome,
+  outputTokens: 8,
+});
+
 const checkedOutput = (result, operation) => {
   if (result.exitCode !== 0) {
     throw new Error(
@@ -57,10 +65,19 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
   let closeDatabase;
   let containerId;
   let database;
+  let claimGitHubWorkUnitSummary;
+  let completeGitHubWorkUnitSummary;
+  let deferGitHubWorkUnitSummary;
   let originalDatabaseUrl;
   let persistGitHubWebhookIssue;
+  let completeGitHubWorkUnitProjectionRequest;
+  let ensureGitHubWorkUnitProjectionRequest;
+  let readPublicGitHubActivityPage;
   let refreshGitHubWorkUnitProjection;
+  let requestGitHubWorkUnitProjection;
+  let runGitHubActivityWorker;
   let schema;
+  let terminalGitHubWorkUnitSummary;
 
   beforeAll(async () => {
     originalDatabaseUrl = env.DATABASE_URL;
@@ -122,6 +139,21 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       await import("../src/lib/github-work-unit-store.ts"));
     ({ persistGitHubWebhookIssue } =
       await import("../src/lib/github-commits-store.ts"));
+    ({
+      claimGitHubWorkUnitSummary,
+      completeGitHubWorkUnitSummary,
+      deferGitHubWorkUnitSummary,
+      terminalGitHubWorkUnitSummary,
+    } = await import("../src/lib/github-work-unit-summary-store.ts"));
+    ({ readPublicGitHubActivityPage } =
+      await import("../src/lib/github-activity-store.ts"));
+    ({ runGitHubActivityWorker } =
+      await import("../src/lib/github-activity-worker.ts"));
+    ({
+      completeGitHubWorkUnitProjectionRequest,
+      ensureGitHubWorkUnitProjectionRequest,
+      requestGitHubWorkUnitProjection,
+    } = await import("../src/lib/github-work-unit-projection-state.ts"));
 
     await database.insert(schema.githubRepositories).values({
       defaultBranch: "main",
@@ -196,6 +228,154 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
     }
   });
 
+  test("keeps generated file-evidence fingerprints in sync with stored facts", async () => {
+    const pullRequestDigestNodeId = "PR_file_digest_7001";
+    const pullRequestVersionId = "70010000-0000-4000-8000-000000000099";
+    await database.insert(schema.githubPullRequests).values({
+      account: "f0rr0",
+      authorUserId: "8574219",
+      baseRepositoryId: repositoryId,
+      baseSha: firstSha,
+      commitCount: 0,
+      createdAt: observedAt,
+      headRepositoryId: repositoryId,
+      headSha: firstSha,
+      nodeId: pullRequestDigestNodeId,
+      number: 99,
+      providerUpdatedAt: observedAt,
+      repositoryId,
+      state: "open",
+      title: "digest fixture",
+      titleSnapshot: "digest fixture",
+      url: "https://github.com/f0rr0/projection-store-test/pull/99",
+    });
+    await database.insert(schema.githubPullRequestVersions).values({
+      baseRepositoryId: repositoryId,
+      baseSha: firstSha,
+      commitCount: 0,
+      fileFacts: [fileFact("src/pr-before.ts")],
+      fileFactsComplete: true,
+      headRepositoryId: repositoryId,
+      headSha: firstSha,
+      id: pullRequestVersionId,
+      membershipComplete: true,
+      observedAt,
+      providerUpdatedAt: observedAt,
+      pullRequestNodeId: pullRequestDigestNodeId,
+    });
+
+    const [commitBefore] = await database
+      .select({ digest: schema.githubCommits.fileFactsDigest })
+      .from(schema.githubCommits)
+      .where(
+        and(
+          eq(schema.githubCommits.repositoryId, repositoryId),
+          eq(schema.githubCommits.sha, firstSha)
+        )
+      );
+    const [pullRequestBefore] = await database
+      .select({ digest: schema.githubPullRequestVersions.fileFactsDigest })
+      .from(schema.githubPullRequestVersions)
+      .where(eq(schema.githubPullRequestVersions.id, pullRequestVersionId));
+
+    expect(commitBefore.digest).toMatch(/^[a-f0-9]{64}$/u);
+    expect(pullRequestBefore.digest).toMatch(/^[a-f0-9]{64}$/u);
+
+    await database
+      .update(schema.githubCommits)
+      .set({ fileFacts: [fileFact("src/commit-after.ts")] })
+      .where(
+        and(
+          eq(schema.githubCommits.repositoryId, repositoryId),
+          eq(schema.githubCommits.sha, firstSha)
+        )
+      );
+    await database
+      .update(schema.githubPullRequestVersions)
+      .set({ fileFacts: [fileFact("src/pr-after.ts")] })
+      .where(eq(schema.githubPullRequestVersions.id, pullRequestVersionId));
+
+    const [commitAfter] = await database
+      .select({ digest: schema.githubCommits.fileFactsDigest })
+      .from(schema.githubCommits)
+      .where(
+        and(
+          eq(schema.githubCommits.repositoryId, repositoryId),
+          eq(schema.githubCommits.sha, firstSha)
+        )
+      );
+    const [pullRequestAfter] = await database
+      .select({ digest: schema.githubPullRequestVersions.fileFactsDigest })
+      .from(schema.githubPullRequestVersions)
+      .where(eq(schema.githubPullRequestVersions.id, pullRequestVersionId));
+
+    expect(commitAfter.digest).not.toBe(commitBefore.digest);
+    expect(pullRequestAfter.digest).not.toBe(pullRequestBefore.digest);
+
+    await database
+      .update(schema.githubCommits)
+      .set({ fileFacts: [fileFact("src/first.ts")] })
+      .where(
+        and(
+          eq(schema.githubCommits.repositoryId, repositoryId),
+          eq(schema.githubCommits.sha, firstSha)
+        )
+      );
+    await database
+      .delete(schema.githubPullRequests)
+      .where(eq(schema.githubPullRequests.nodeId, pullRequestDigestNodeId));
+  });
+
+  test("rejects malformed stored evidence instead of silently losing work", async () => {
+    await database
+      .update(schema.githubCommits)
+      .set({ fileFacts: [{ filename: "src/malformed.ts" }] })
+      .where(
+        and(
+          eq(schema.githubCommits.repositoryId, repositoryId),
+          eq(schema.githubCommits.sha, firstSha)
+        )
+      );
+    try {
+      await expect(
+        refreshGitHubWorkUnitProjection(new Date("2026-08-30T12:00:30.000Z"))
+      ).rejects.toThrow(TypeError);
+    } finally {
+      await database
+        .update(schema.githubCommits)
+        .set({ fileFacts: [fileFact("src/first.ts")] })
+        .where(
+          and(
+            eq(schema.githubCommits.repositoryId, repositoryId),
+            eq(schema.githubCommits.sha, firstSha)
+          )
+        );
+    }
+  });
+
+  test("clears only the projection request token it observed", async () => {
+    const first = await requestGitHubWorkUnitProjection(database);
+    expect(await ensureGitHubWorkUnitProjectionRequest()).toBe(first);
+
+    const replacement = await requestGitHubWorkUnitProjection(database);
+    expect(replacement).not.toBe(first);
+    expect(await completeGitHubWorkUnitProjectionRequest(first)).toBe(false);
+    expect(await ensureGitHubWorkUnitProjectionRequest()).toBe(replacement);
+
+    expect(await completeGitHubWorkUnitProjectionRequest(replacement)).toBe(
+      true
+    );
+    expect(await ensureGitHubWorkUnitProjectionRequest()).toBeNull();
+
+    await database
+      .update(schema.githubPublicFeedHead)
+      .set({ summaryPolicyDigest: "f".repeat(64) })
+      .where(eq(schema.githubPublicFeedHead.id, true));
+    expect(await ensureGitHubWorkUnitProjectionRequest()).toMatch(
+      /^[0-9a-f-]{36}$/u
+    );
+  });
+
   test("atomically swaps public facts, revisions, and summary eligibility", async () => {
     const first = await refreshGitHubWorkUnitProjection(observedAt);
     expect(first).toMatchObject({
@@ -218,6 +398,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       visibility: "public",
     });
     expect(unit.summaryInputDigest).toMatch(/^[a-f0-9]{64}$/u);
+    expect(unit.summaryEvaluatedDigest).toMatch(/^[a-f0-9]{64}$/u);
     expect(head).toMatchObject({
       feedRevision: 1,
       headContentRevision: 1,
@@ -248,6 +429,155 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       headContentRevision: 1,
       orderingRevision: 1,
     });
+  });
+
+  test("reactivates an exact cached summary and revises the public head", async () => {
+    const firstClaim = await claimGitHubWorkUnitSummary({
+      now: new Date("2026-08-30T12:06:00.000Z"),
+    });
+    expect(firstClaim).not.toBeNull();
+    await completeGitHubWorkUnitSummary(
+      firstClaim,
+      summaryResult("Cached outcome A."),
+      new Date("2026-08-30T12:06:01.000Z")
+    );
+    const [firstUnit] = await database.select().from(schema.githubWorkUnits);
+    const inputA = firstUnit.summaryInputDigest;
+
+    await database
+      .update(schema.githubRepositories)
+      .set({ description: "Temporary repository context B." })
+      .where(eq(schema.githubRepositories.id, repositoryId));
+    await refreshGitHubWorkUnitProjection(new Date("2026-08-30T12:07:00.000Z"));
+    const secondClaim = await claimGitHubWorkUnitSummary({
+      now: new Date("2026-08-30T12:13:00.000Z"),
+    });
+    expect(secondClaim).not.toBeNull();
+    await completeGitHubWorkUnitSummary(
+      secondClaim,
+      summaryResult("Current outcome B."),
+      new Date("2026-08-30T12:13:01.000Z")
+    );
+
+    await database
+      .update(schema.githubRepositories)
+      .set({ description: null })
+      .where(eq(schema.githubRepositories.id, repositoryId));
+    const [beforeReversion] = await database
+      .select()
+      .from(schema.githubPublicFeedHead);
+    const reverted = await refreshGitHubWorkUnitProjection(
+      new Date("2026-08-30T12:14:00.000Z")
+    );
+    const [revertedUnit] = await database.select().from(schema.githubWorkUnits);
+    const [afterReversion] = await database
+      .select()
+      .from(schema.githubPublicFeedHead);
+    const page = await readPublicGitHubActivityPage(null, 1);
+    const [publicUnit] = page.days[0].repositories[0].items;
+
+    expect(reverted).toMatchObject({
+      feedRevisionChanged: true,
+      summaryAttemptsQueued: 0,
+    });
+    expect(revertedUnit.summaryInputDigest).toBe(inputA);
+    expect(afterReversion.feedRevision).toBe(beforeReversion.feedRevision + 1);
+    expect(afterReversion.headContentRevision).toBe(
+      beforeReversion.headContentRevision + 1
+    );
+    expect(publicUnit).toMatchObject({ outcome: "Cached outcome A." });
+  });
+
+  test("reuses a superseded paid input without resetting its request budget", async () => {
+    await database
+      .update(schema.githubRepositories)
+      .set({ description: "Retryable context C." })
+      .where(eq(schema.githubRepositories.id, repositoryId));
+    await refreshGitHubWorkUnitProjection(new Date("2026-08-30T12:15:00.000Z"));
+    const firstClaim = await claimGitHubWorkUnitSummary({
+      now: new Date("2026-08-30T12:21:00.000Z"),
+    });
+    expect(firstClaim).not.toBeNull();
+
+    await database
+      .update(schema.githubRepositories)
+      .set({ description: "Superseding context D." })
+      .where(eq(schema.githubRepositories.id, repositoryId));
+    await refreshGitHubWorkUnitProjection(new Date("2026-08-30T12:22:00.000Z"));
+    expect(
+      await deferGitHubWorkUnitSummary(
+        firstClaim,
+        new Date("2026-08-30T12:24:00.000Z"),
+        new Date("2026-08-30T12:22:01.000Z")
+      )
+    ).toBe("stale");
+    const [parked] = await database
+      .select()
+      .from(schema.githubWorkUnitSummaryAttempts)
+      .where(
+        and(
+          eq(
+            schema.githubWorkUnitSummaryAttempts.workUnitId,
+            firstClaim.workUnitId
+          ),
+          eq(schema.githubWorkUnitSummaryAttempts.revision, firstClaim.revision)
+        )
+      );
+    expect(parked).toMatchObject({
+      requestPayload: null,
+      startedRequests: 1,
+      state: "retryable",
+    });
+
+    await database
+      .update(schema.githubRepositories)
+      .set({ description: "Retryable context C." })
+      .where(eq(schema.githubRepositories.id, repositoryId));
+    const reactivated = await refreshGitHubWorkUnitProjection(
+      new Date("2026-08-30T12:23:00.000Z")
+    );
+    expect(reactivated).toMatchObject({ summaryAttemptsQueued: 0 });
+    const [rehydrated] = await database
+      .select()
+      .from(schema.githubWorkUnitSummaryAttempts)
+      .where(
+        and(
+          eq(
+            schema.githubWorkUnitSummaryAttempts.workUnitId,
+            firstClaim.workUnitId
+          ),
+          eq(schema.githubWorkUnitSummaryAttempts.revision, firstClaim.revision)
+        )
+      );
+    expect(rehydrated).toMatchObject({
+      debounceUntil: new Date("2026-08-30T12:28:00.000Z"),
+      requestPayload: firstClaim.serializedInput,
+      startedRequests: 1,
+      state: "retryable",
+    });
+    expect(
+      await claimGitHubWorkUnitSummary({
+        now: new Date("2026-08-30T12:27:59.999Z"),
+      })
+    ).toBeNull();
+    const secondClaim = await claimGitHubWorkUnitSummary({
+      now: new Date("2026-08-30T12:28:00.000Z"),
+    });
+    expect(secondClaim).toMatchObject({
+      revision: firstClaim.revision,
+      startedRequests: 2,
+      workUnitId: firstClaim.workUnitId,
+    });
+    await terminalGitHubWorkUnitSummary(
+      secondClaim,
+      new Date("2026-08-30T12:28:01.000Z")
+    );
+
+    await database
+      .update(schema.githubRepositories)
+      .set({ description: null })
+      .where(eq(schema.githubRepositories.id, repositoryId));
+    await refreshGitHubWorkUnitProjection(new Date("2026-08-30T13:02:00.000Z"));
   });
 
   test("withholds only a same-repository merged-PR landing until the association clears", async () => {
@@ -551,14 +881,82 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       )
     ).toEqual(["src/owned-only.ts"]);
 
+    const replacementSha = "7".repeat(40);
+    await database.insert(schema.githubCommits).values({
+      additions: 1,
+      author: "f0rr0",
+      authorUserId: "8574219",
+      committedAt: new Date(activityAt.getTime() + 30_000),
+      committerAt: new Date(activityAt.getTime() + 30_000),
+      deletions: 1,
+      enrichmentState: "complete",
+      fileFacts: [fileFact("src/owned-only.ts")],
+      fileFactsComplete: true,
+      firstObservedAt: new Date(activityAt.getTime() + 30_000),
+      message: "equivalent replacement",
+      parentShas: [baseSha],
+      pullRequestDiscoveryState: "complete",
+      repositoryId: collaborativeRepositoryId,
+      sha: replacementSha,
+    });
+    await database
+      .delete(schema.githubPullRequestMemberships)
+      .where(
+        and(
+          eq(schema.githubPullRequestMemberships.versionId, versionId),
+          eq(schema.githubPullRequestMemberships.commitSha, ownedSha)
+        )
+      );
+    await database.insert(schema.githubPullRequestMemberships).values({
+      commitRepositoryId: collaborativeRepositoryId,
+      commitSha: replacementSha,
+      position: 0,
+      versionId,
+    });
+
+    const rewritten = await refreshGitHubWorkUnitProjection(
+      new Date(activityAt.getTime() + 30_000)
+    );
+    const [rewrittenUnit] = await database
+      .select()
+      .from(schema.githubWorkUnits)
+      .where(eq(schema.githubWorkUnits.id, unit.id));
+    const [rewrittenAttempt] = await database
+      .select()
+      .from(schema.githubWorkUnitSummaryAttempts)
+      .where(eq(schema.githubWorkUnitSummaryAttempts.workUnitId, unit.id));
+    expect(rewritten).toMatchObject({
+      summaryAttemptsQueued: 0,
+      summaryEvaluationsSettled: 1,
+      summaryInputsSet: 0,
+      updatedUnits: 1,
+    });
+    expect(rewrittenUnit.revision).toBeGreaterThan(unit.revision);
+    expect(rewrittenUnit.summaryInputDigest).toBe(unit.summaryInputDigest);
+    expect(rewrittenAttempt).toMatchObject({
+      revision: attempt.revision,
+      state: "pending",
+      summaryInputDigest: attempt.summaryInputDigest,
+    });
+    const claim = await claimGitHubWorkUnitSummary({
+      now: new Date(activityAt.getTime() + 6 * 60_000),
+    });
+    expect(claim).toMatchObject({
+      revision: attempt.revision,
+      workUnitId: unit.id,
+    });
+    if (claim === null) {
+      throw new Error("The outcome-identical rewrite was not claimable.");
+    }
+    await terminalGitHubWorkUnitSummary(
+      claim,
+      new Date(activityAt.getTime() + 6 * 60_000 + 1)
+    );
+
     const attemptsBeforeUnrelatedChange = await database
       .select()
       .from(schema.githubWorkUnitSummaryAttempts)
       .where(eq(schema.githubWorkUnitSummaryAttempts.workUnitId, unit.id));
-    await database
-      .update(schema.githubRepositories)
-      .set({ fullName: "" })
-      .where(eq(schema.githubRepositories.id, collaborativeRepositoryId));
     await database
       .update(schema.githubRepositories)
       .set({ visibility: "public" })
@@ -578,11 +976,6 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       updatedUnits: 0,
     });
     expect(attemptsAfterUnrelatedChange).toEqual(attemptsBeforeUnrelatedChange);
-
-    await database
-      .update(schema.githubRepositories)
-      .set({ fullName: "f0rr0/collaborative-pr-test" })
-      .where(eq(schema.githubRepositories.id, collaborativeRepositoryId));
   });
 
   test("bumps the durable feed head once for newly visible issue intake", async () => {
@@ -811,5 +1204,232 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       feedRevisionChanged: true,
       updatedUnits: 1,
     });
+  });
+
+  test("settles facts-only summary evidence once instead of retrying it forever", async () => {
+    const factsOnlyRepositoryId = "7091";
+    const factsOnlySha = "8".repeat(40);
+    const factsOnlyLineageId = "70910000-0000-4000-8000-000000000001";
+    const factsOnlyAt = new Date("2026-09-20T10:00:00.000Z");
+    await database.insert(schema.githubRepositories).values({
+      defaultBranch: "main",
+      factsVerifiedAt: factsOnlyAt,
+      firstObservedAt: factsOnlyAt,
+      fullName: "f0rr0/facts-only-projection-test",
+      headsLastReconciledAt: factsOnlyAt,
+      id: factsOnlyRepositoryId,
+      lastObservedAt: factsOnlyAt,
+      visibility: "public",
+    });
+    await database.insert(schema.githubRepositoryRefs).values({
+      active: true,
+      branchLineageId: factsOnlyLineageId,
+      firstObservedAt: factsOnlyAt,
+      headSha: factsOnlySha,
+      kind: "head",
+      lastObservedAt: factsOnlyAt,
+      projectionRelevant: true,
+      refName: "refs/heads/main",
+      repositoryId: factsOnlyRepositoryId,
+    });
+    await database.insert(schema.githubCommits).values({
+      additions: 1,
+      author: "f0rr0",
+      authorUserId: "8574219",
+      committedAt: factsOnlyAt,
+      committerAt: factsOnlyAt,
+      deletions: 1,
+      enrichmentState: "complete",
+      fileFacts: [
+        {
+          ...fileFact("src/unavailable.ts"),
+          patch: null,
+          patchComplete: false,
+        },
+      ],
+      fileFactsComplete: true,
+      firstObservedAt: factsOnlyAt,
+      message: "facts without a usable patch",
+      parentShas: [],
+      pullRequestDiscoveryState: "complete",
+      repositoryId: factsOnlyRepositoryId,
+      sha: factsOnlySha,
+    });
+    await database.insert(schema.githubRefGenerations).values({
+      branchLineageId: factsOnlyLineageId,
+      completedAt: factsOnlyAt,
+      coverageSinceAt: new Date("2026-09-01T00:00:00.000Z"),
+      generation: 1,
+      headSha: factsOnlySha,
+      refName: "refs/heads/main",
+      repositoryId: factsOnlyRepositoryId,
+    });
+    await database.insert(schema.githubRefMemberships).values({
+      commitRepositoryId: factsOnlyRepositoryId,
+      commitSha: factsOnlySha,
+      generation: 1,
+      position: 0,
+      refName: "refs/heads/main",
+      repositoryId: factsOnlyRepositoryId,
+    });
+
+    const first = await refreshGitHubWorkUnitProjection(factsOnlyAt);
+    const [unit] = await database
+      .select()
+      .from(schema.githubWorkUnits)
+      .where(
+        eq(
+          schema.githubWorkUnits.identityKey,
+          `canonical:${factsOnlyRepositoryId}:2026-09-20`
+        )
+      );
+    expect(first).toMatchObject({
+      summaryEvaluationsSettled: 1,
+      summaryInputsFailed: 1,
+    });
+    expect(unit).toMatchObject({
+      outcomeDigest: null,
+      summaryInputDigest: null,
+    });
+    expect(unit.summaryEvaluatedDigest).toMatch(/^[a-f0-9]{64}$/u);
+
+    const second = await refreshGitHubWorkUnitProjection(
+      new Date("2026-09-20T10:01:00.000Z")
+    );
+    const [unchanged] = await database
+      .select()
+      .from(schema.githubWorkUnits)
+      .where(eq(schema.githubWorkUnits.id, unit.id));
+    expect(second).toMatchObject({
+      summaryEvaluationsSettled: 0,
+      summaryInputsFailed: 0,
+    });
+    expect(unchanged.summaryEvaluatedDigest).toBe(unit.summaryEvaluatedDigest);
+  });
+
+  test("an idle worker drains summary evaluation recent-first without clearing a partial request", async () => {
+    const batchRepositoryId = "7092";
+    const batchLineageId = "70920000-0000-4000-8000-000000000001";
+    const completedAt = new Date("2026-09-10T12:00:00.000Z");
+    const commits = Array.from({ length: 9 }, (_, index) => {
+      const day = index + 1;
+      return {
+        day: `2026-09-${String(day).padStart(2, "0")}`,
+        sha: (index + 1).toString(16).repeat(40).slice(0, 40),
+      };
+    });
+    await database.insert(schema.githubRepositories).values({
+      defaultBranch: "main",
+      factsVerifiedAt: completedAt,
+      firstObservedAt: completedAt,
+      fullName: "f0rr0/summary-batch-projection-test",
+      headsLastReconciledAt: completedAt,
+      id: batchRepositoryId,
+      lastObservedAt: completedAt,
+      visibility: "public",
+    });
+    await database.insert(schema.githubRepositoryRefs).values({
+      active: true,
+      branchLineageId: batchLineageId,
+      firstObservedAt: completedAt,
+      headSha: commits.at(-1).sha,
+      kind: "head",
+      lastObservedAt: completedAt,
+      projectionRelevant: true,
+      refName: "refs/heads/main",
+      repositoryId: batchRepositoryId,
+    });
+    await database.insert(schema.githubCommits).values(
+      commits.map((commit, index) => ({
+        additions: 1,
+        author: "f0rr0",
+        authorUserId: "8574219",
+        committedAt: new Date(`${commit.day}T12:00:00.000Z`),
+        committerAt: new Date(`${commit.day}T12:00:00.000Z`),
+        deletions: 1,
+        enrichmentState: "complete",
+        fileFacts: [fileFact(`src/day-${String(index + 1)}.ts`)],
+        fileFactsComplete: true,
+        firstObservedAt: completedAt,
+        message: `day ${String(index + 1)}`,
+        parentShas: index === 0 ? [] : [commits[index - 1].sha],
+        pullRequestDiscoveryState: "complete",
+        repositoryId: batchRepositoryId,
+        sha: commit.sha,
+      }))
+    );
+    await database.insert(schema.githubRefGenerations).values({
+      branchLineageId: batchLineageId,
+      completedAt,
+      coverageSinceAt: new Date("2026-09-01T00:00:00.000Z"),
+      generation: 1,
+      headSha: commits.at(-1).sha,
+      refName: "refs/heads/main",
+      repositoryId: batchRepositoryId,
+    });
+    await database.insert(schema.githubRefMemberships).values(
+      commits.map((commit, position) => ({
+        commitRepositoryId: batchRepositoryId,
+        commitSha: commit.sha,
+        generation: 1,
+        position,
+        refName: "refs/heads/main",
+        repositoryId: batchRepositoryId,
+      }))
+    );
+    const token = await requestGitHubWorkUnitProjection(database);
+    const workerOptions = {
+      accounts: ["f0rr0"],
+      includeRefs: false,
+      maximumDurationMs: 3000,
+      scope: {
+        repositoryId: batchRepositoryId,
+        sinceAt: new Date("2026-09-01T00:00:00.000Z"),
+        untilAt: new Date("2026-09-11T00:00:00.000Z"),
+      },
+    };
+
+    const first = await runGitHubActivityWorker(workerOptions);
+    expect(first).toMatchObject({
+      commits: { claimed: 0 },
+      observations: { claimed: 0 },
+      projection: {
+        summaryAttemptsQueued: 8,
+        summaryEvaluationsPending: 1,
+        summaryEvaluationsSettled: 8,
+      },
+      pullRequestDiscovery: { claimed: 0 },
+      pullRequestSignals: { claimed: 0 },
+      pullRequests: { claimed: 0 },
+    });
+    expect(await ensureGitHubWorkUnitProjectionRequest()).toBe(token);
+    const afterFirst = await database
+      .select({
+        activityDay: schema.githubWorkUnits.activityDay,
+        summaryEvaluatedDigest: schema.githubWorkUnits.summaryEvaluatedDigest,
+      })
+      .from(schema.githubWorkUnits)
+      .where(eq(schema.githubWorkUnits.repositoryId, batchRepositoryId))
+      .orderBy(schema.githubWorkUnits.activityDay);
+    expect(
+      afterFirst
+        .filter(({ summaryEvaluatedDigest }) => summaryEvaluatedDigest === null)
+        .map(({ activityDay }) => activityDay)
+    ).toEqual(["2026-09-01"]);
+
+    const second = await runGitHubActivityWorker(workerOptions);
+    expect(second).toMatchObject({
+      commits: { claimed: 0 },
+      observations: { claimed: 0 },
+      projection: {
+        summaryAttemptsQueued: 1,
+        summaryEvaluationsPending: 0,
+        summaryEvaluationsSettled: 1,
+      },
+      pullRequestDiscovery: { claimed: 0 },
+      pullRequestSignals: { claimed: 0 },
+      pullRequests: { claimed: 0 },
+    });
+    expect(await ensureGitHubWorkUnitProjectionRequest()).toBeNull();
   });
 });

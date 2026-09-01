@@ -40,7 +40,10 @@ import {
 } from "@/lib/github-activity-worker-core";
 import { githubWorkUnitFileFactsFrom } from "@/lib/github-change-evidence";
 import type { GitHubFileChangeEvidence } from "@/lib/github-change-evidence";
-import { trackedGitHubAccountFrom } from "@/lib/github-commits-core";
+import {
+  githubCommitReferenceValuesFrom,
+  trackedGitHubAccountFrom,
+} from "@/lib/github-commits-core";
 import type {
   GitHubPullRequest,
   TrackedGitHubAccount,
@@ -50,6 +53,7 @@ import {
   persistPullRequestSnapshotInTransaction,
 } from "@/lib/github-pull-request-store";
 import type { StoredPullRequestSnapshot } from "@/lib/github-pull-request-store";
+import { requestGitHubWorkUnitProjection } from "@/lib/github-work-unit-projection-state";
 
 const DEFAULT_LEASE_MS = 5 * 60 * 1000;
 
@@ -425,14 +429,9 @@ export const completeGitHubPushObservation = async (
         : await transaction
             .insert(githubCommits)
             .values(
-              source.commits.map((commit) => ({
-                author: commit.author,
-                committedAt: new Date(commit.committedAt),
-                firstObservedAt: observation.observedAt,
-                message: commit.message,
-                repositoryId: commit.repositoryId,
-                sha: commit.sha,
-              }))
+              source.commits.map((commit) =>
+                githubCommitReferenceValuesFrom(commit, observation.observedAt)
+              )
             )
             .onConflictDoNothing({
               target: [githubCommits.repositoryId, githubCommits.sha],
@@ -633,36 +632,42 @@ export const completeGitHubCommitEnrichment = async (
   source: GitHubActivityCommitSource
 ): Promise<boolean> => {
   const fileFacts = githubWorkUnitFileFactsFrom(source.commit.files);
-  const [updated] = await getDatabase()
-    .update(githubCommits)
-    .set({
-      additions: source.commit.stats.additions,
-      authoredAt: new Date(source.authoredAt),
-      authorUserId: source.authorUserId,
-      changedFiles: source.commit.files.length,
-      committerAt: new Date(source.committerAt),
-      committerUserId: source.committerUserId,
-      committedAt: new Date(source.committerAt),
-      deletions: source.commit.stats.deletions,
-      enrichmentError: null,
-      enrichmentLeaseToken: null,
-      enrichmentLeaseUntil: null,
-      enrichmentState: "complete",
-      fileFacts,
-      fileFactsComplete: !source.commit.providerFileCapReached,
-      message: source.commit.message,
-      parentShas: source.commit.parents,
-      providerFileCapReached: source.commit.providerFileCapReached,
-    })
-    .where(
-      and(
-        commitIdentity(commit),
-        eq(githubCommits.enrichmentState, "processing"),
-        eq(githubCommits.enrichmentLeaseToken, commit.leaseToken)
+  return await getDatabase().transaction(async (transaction) => {
+    const [updated] = await transaction
+      .update(githubCommits)
+      .set({
+        additions: source.commit.stats.additions,
+        authoredAt: new Date(source.authoredAt),
+        authorUserId: source.authorUserId,
+        changedFiles: source.commit.files.length,
+        committerAt: new Date(source.committerAt),
+        committerUserId: source.committerUserId,
+        committedAt: new Date(source.committerAt),
+        deletions: source.commit.stats.deletions,
+        enrichmentError: null,
+        enrichmentLeaseToken: null,
+        enrichmentLeaseUntil: null,
+        enrichmentState: "complete",
+        fileFacts,
+        fileFactsComplete: !source.commit.providerFileCapReached,
+        message: source.commit.message,
+        parentShas: source.commit.parents,
+        providerFileCapReached: source.commit.providerFileCapReached,
+      })
+      .where(
+        and(
+          commitIdentity(commit),
+          eq(githubCommits.enrichmentState, "processing"),
+          eq(githubCommits.enrichmentLeaseToken, commit.leaseToken)
+        )
       )
-    )
-    .returning({ sha: githubCommits.sha });
-  return updated !== undefined;
+      .returning({ sha: githubCommits.sha });
+    if (updated === undefined) {
+      return false;
+    }
+    await requestGitHubWorkUnitProjection(transaction);
+    return true;
+  });
 };
 
 export const deferGitHubCommitEnrichment = async (
@@ -1167,7 +1172,11 @@ export const completeGitHubPullRequestDiscovery = async (
         )
       )
       .returning({ sha: githubCommits.sha });
-    return completed !== undefined;
+    if (completed === undefined) {
+      return false;
+    }
+    await requestGitHubWorkUnitProjection(transaction);
+    return true;
   });
 
 export const claimDueGitHubPullRequests = async (
@@ -1322,10 +1331,19 @@ export const persistGitHubPullRequestMembership = async (
       headSha === version.headSha &&
       (version.commitCount === 0 || commitShas.at(-1) === version.headSha);
     if (!completeMembershipIsValid) {
-      await transaction
+      const [invalidated] = await transaction
         .update(githubPullRequestVersions)
         .set({ membershipComplete: false })
-        .where(eq(githubPullRequestVersions.id, stored.versionId));
+        .where(
+          and(
+            eq(githubPullRequestVersions.id, stored.versionId),
+            eq(githubPullRequestVersions.membershipComplete, true)
+          )
+        )
+        .returning({ id: githubPullRequestVersions.id });
+      if (invalidated !== undefined) {
+        await requestGitHubWorkUnitProjection(transaction);
+      }
       return false;
     }
     await transaction
@@ -1346,6 +1364,7 @@ export const persistGitHubPullRequestMembership = async (
       .update(githubPullRequestVersions)
       .set({ membershipComplete: true })
       .where(eq(githubPullRequestVersions.id, stored.versionId));
+    await requestGitHubWorkUnitProjection(transaction);
     return true;
   });
 
@@ -1394,7 +1413,11 @@ export const persistGitHubPullRequestDiff = async (
         )
       )
       .returning({ id: githubPullRequestVersions.id });
-    return updated !== undefined;
+    if (updated === undefined) {
+      return false;
+    }
+    await requestGitHubWorkUnitProjection(transaction);
+    return true;
   });
 };
 

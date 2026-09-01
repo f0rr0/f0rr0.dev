@@ -188,6 +188,7 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
     /** @type {string[]} */
     const paths = [];
     const headSha = "a".repeat(40);
+    let sideHeadSha = "b".repeat(40);
     globalThis.fetch = async (input) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
@@ -196,7 +197,10 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
         return Response.json([repositoryResponse()]);
       }
       if (url.pathname === "/repos/f0rr0/example/branches") {
-        return Response.json([{ commit: { sha: headSha }, name: "main" }]);
+        return Response.json([
+          { commit: { sha: headSha }, name: "main" },
+          { commit: { sha: sideHeadSha }, name: "unmerged-side" },
+        ]);
       }
       throw new Error(`Unexpected GitHub request: ${url.pathname}`);
     };
@@ -210,21 +214,59 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
         token: "token",
       });
     const first = await runBatch();
+    const [afterFirst] = await admin`
+      select projection_request_token as "projectionRequestToken"
+      from github_public_feed_head
+    `;
     const second = await runBatch();
+    const [afterUnchanged] = await admin`
+      select projection_request_token as "projectionRequestToken"
+      from github_public_feed_head
+    `;
 
     expect(first).toEqual({
       complete: true,
       knownCommits: 0,
       pages: 1,
       pushes: 0,
-      refs: 1,
+      refs: 2,
       repositories: 1,
     });
     expect(second).toEqual(first);
+    expect(afterFirst.projectionRequestToken).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(afterUnchanged.projectionRequestToken).toBe(
+      afterFirst.projectionRequestToken
+    );
+    expect(
+      await admin`
+        select projection_relevant as "projectionRelevant"
+        from github_repository_refs
+        where repository_id = '101' and ref_name = 'refs/heads/unmerged-side'
+      `
+    ).toEqual([{ projectionRelevant: false }]);
+    await admin`
+      update github_public_feed_head set projection_request_token = null
+      where id
+    `;
+    sideHeadSha = "c".repeat(40);
+    await runBatch();
+    expect(
+      await admin`
+        select projection_relevant as "projectionRelevant"
+        from github_repository_refs
+        where repository_id = '101' and ref_name = 'refs/heads/unmerged-side'
+      `
+    ).toEqual([{ projectionRelevant: true }]);
+    expect(
+      await admin`
+        select projection_request_token is not null as "projectionRequested"
+        from github_public_feed_head
+      `
+    ).toEqual([{ projectionRequested: true }]);
     expect({
       branches: paths.filter((path) => path.endsWith("/branches")).length,
       inventory: paths.filter((path) => path === "/user/repos").length,
-    }).toEqual({ branches: 2, inventory: 1 });
+    }).toEqual({ branches: 3, inventory: 1 });
     expect(
       await admin`
         select
@@ -260,6 +302,67 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
         topics: ["example", "typescript"],
       },
     ]);
+  });
+
+  test("requests projection when a scanned head returns to its complete generation", async () => {
+    let desiredHeadSha = sha("a");
+    globalThis.fetch = async (input) => {
+      const url =
+        input instanceof Request ? new URL(input.url) : new URL(input);
+      if (url.pathname === "/user/repos") {
+        return Response.json([repositoryResponse()]);
+      }
+      if (url.pathname === "/repos/f0rr0/example/branches") {
+        return Response.json([
+          { commit: { sha: desiredHeadSha }, name: "main" },
+        ]);
+      }
+      throw new Error(`Unexpected GitHub request: ${url.pathname}`);
+    };
+    const runBatch = () =>
+      reconcileGitHubRepositoryRefBatch({
+        account: "f0rr0",
+        deadlineAt: Date.now() + 15_000,
+        kind: "head",
+        repositoryLimit: 1,
+        token: "token",
+      });
+
+    await runBatch();
+    const [ref] = await admin`
+      select branch_lineage_id as "branchLineageId"
+      from github_repository_refs
+      where repository_id = '101' and ref_name = 'refs/heads/main'
+    `;
+    await admin`
+      insert into github_ref_generations (
+        branch_lineage_id, completed_at, coverage_since_at, generation,
+        head_sha, ref_name, repository_id
+      ) values (
+        ${ref.branchLineageId}, '2026-09-01T12:00:00.000Z',
+        '2026-08-01T00:00:00.000Z', 1, ${desiredHeadSha},
+        'refs/heads/main', '101'
+      )
+    `;
+
+    desiredHeadSha = sha("b");
+    await runBatch();
+    await admin`
+      update github_public_feed_head set projection_request_token = null
+      where id
+    `;
+    desiredHeadSha = sha("a");
+    await runBatch();
+
+    expect(
+      await admin`
+        select projection_request_token is not null as "projectionRequested"
+        from github_public_feed_head
+      `
+    ).toEqual([{ projectionRequested: true }]);
+    expect(
+      await claimGitHubRefRepairs({ limit: 1, repositoryId: "101" })
+    ).toEqual([]);
   });
 
   test("publishes metadata when sparse facts arrive during inventory traversal", async () => {
@@ -467,7 +570,7 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
     ]);
   });
 
-  test("invalidates only affected public summaries when repository context changes", async () => {
+  test("requests bounded summary reevaluation when repository context changes", async () => {
     const startedAt = new Date("2026-09-01T12:00:00.000Z");
     const startedAtIso = startedAt.toISOString();
     let providerRepositories = [repositoryResponse()];
@@ -496,7 +599,8 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
         facts_digest, file_count, first_activity_at, id, identity_key, kind,
         last_activity_at, member_count, membership_digest,
         newest_commit_repository_id, newest_commit_sha, outcome_digest,
-        repository_id, summary_input_digest, visibility
+        repository_id, summary_evaluated_digest, summary_input_digest,
+        visibility
       ) values
         (
           ${startedAtIso}, ${startedAtIso}, '2026-09-01', 1,
@@ -505,7 +609,7 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
           '20000000-0000-4000-8000-000000000101',
           'branch:10000000-0000-4000-8000-000000000101', 'branch',
           ${startedAtIso}, 1, ${digest("b")}, '101', ${sha("a")}, ${digest("c")},
-          '101', ${digest("d")}, 'public'
+          '101', ${digest("7")}, ${digest("d")}, 'public'
         ),
         (
           ${startedAtIso}, ${startedAtIso}, '2026-09-01', 1,
@@ -514,7 +618,7 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
           '20000000-0000-4000-8000-000000000102',
           'branch:10000000-0000-4000-8000-000000000102', 'branch',
           ${startedAtIso}, 1, ${digest("f")}, '101', ${sha("a")}, ${digest("1")},
-          '101', ${digest("2")}, 'private'
+          '101', ${digest("8")}, null, 'public'
         ),
         (
           ${startedAtIso}, ${startedAtIso}, '2026-09-01', 1,
@@ -523,7 +627,7 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
           '20000000-0000-4000-8000-000000000103',
           'branch:10000000-0000-4000-8000-000000000103', 'branch',
           ${startedAtIso}, 1, ${digest("4")}, '202', ${sha("b")}, ${digest("5")},
-          '202', ${digest("6")}, 'public'
+          '202', ${digest("9")}, ${digest("6")}, 'public'
         )
     `;
 
@@ -535,24 +639,33 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
     });
     expect(
       await admin`
-        select id::text, summary_input_digest as "summaryInputDigest"
+        select id::text,
+          summary_evaluated_digest as "summaryEvaluatedDigest",
+          summary_input_digest as "summaryInputDigest"
         from github_work_units
         order by id
       `
     ).toEqual([
       {
         id: "20000000-0000-4000-8000-000000000101",
+        summaryEvaluatedDigest: digest("7"),
         summaryInputDigest: digest("d"),
       },
       {
         id: "20000000-0000-4000-8000-000000000102",
-        summaryInputDigest: digest("2"),
+        summaryEvaluatedDigest: digest("8"),
+        summaryInputDigest: null,
       },
       {
         id: "20000000-0000-4000-8000-000000000103",
+        summaryEvaluatedDigest: digest("9"),
         summaryInputDigest: digest("6"),
       },
     ]);
+    const [beforeContextChange] = await admin`
+      select projection_request_token as "projectionRequestToken"
+      from github_public_feed_head
+    `;
 
     await getDatabase().transaction(async (transaction) => {
       await upsertGitHubRepository(
@@ -561,6 +674,16 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
         new Date(startedAt.getTime() + 2)
       );
     });
+    const [afterContextChange] = await admin`
+      select projection_request_token as "projectionRequestToken"
+      from github_public_feed_head
+    `;
+    expect(afterContextChange.projectionRequestToken).toMatch(
+      /^[0-9a-f-]{36}$/u
+    );
+    expect(afterContextChange.projectionRequestToken).not.toBe(
+      beforeContextChange.projectionRequestToken
+    );
     expect(
       await admin`
         select description, full_name as "fullName",
@@ -578,16 +701,25 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
     ]);
     expect(
       await admin`
-        select summary_input_digest as "summaryInputDigest"
+        select id::text,
+          summary_evaluated_digest as "summaryEvaluatedDigest",
+          summary_input_digest as "summaryInputDigest"
         from github_work_units
-        where id = '20000000-0000-4000-8000-000000000101'
+        where repository_id = '101'
+        order by id
       `
-    ).toEqual([{ summaryInputDigest: null }]);
-    await admin`
-      update github_work_units
-      set summary_input_digest = ${digest("d")}
-      where id = '20000000-0000-4000-8000-000000000101'
-    `;
+    ).toEqual([
+      {
+        id: "20000000-0000-4000-8000-000000000101",
+        summaryEvaluatedDigest: digest("7"),
+        summaryInputDigest: digest("d"),
+      },
+      {
+        id: "20000000-0000-4000-8000-000000000102",
+        summaryEvaluatedDigest: digest("8"),
+        summaryInputDigest: null,
+      },
+    ]);
 
     providerRepositories = [
       repositoryResponse({
@@ -629,21 +761,26 @@ describe.skipIf(!dockerAvailable)("GitHub repository inventory", () => {
     ]);
     expect(
       await admin`
-        select id::text, summary_input_digest as "summaryInputDigest"
+        select id::text,
+          summary_evaluated_digest as "summaryEvaluatedDigest",
+          summary_input_digest as "summaryInputDigest"
         from github_work_units
         order by id
       `
     ).toEqual([
       {
         id: "20000000-0000-4000-8000-000000000101",
-        summaryInputDigest: null,
+        summaryEvaluatedDigest: digest("7"),
+        summaryInputDigest: digest("d"),
       },
       {
         id: "20000000-0000-4000-8000-000000000102",
-        summaryInputDigest: digest("2"),
+        summaryEvaluatedDigest: digest("8"),
+        summaryInputDigest: null,
       },
       {
         id: "20000000-0000-4000-8000-000000000103",
+        summaryEvaluatedDigest: digest("9"),
         summaryInputDigest: digest("6"),
       },
     ]);

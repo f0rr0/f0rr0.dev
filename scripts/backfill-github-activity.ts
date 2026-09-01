@@ -258,7 +258,6 @@ export const runGitHubBackfillFactualDrain = async (
       commitLimit: FACTUAL_WORKER_BATCH_LIMIT,
       includeProjection: false,
       includeRefs: false,
-      includeSummaries: false,
       maximumDurationMs,
       observationLimit: FACTUAL_WORKER_BATCH_LIMIT,
       pullRequestDiscoveryLimit: FACTUAL_WORKER_BATCH_LIMIT,

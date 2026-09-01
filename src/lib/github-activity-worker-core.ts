@@ -1,10 +1,10 @@
-export const DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE = 4;
-export const MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE = 8;
+const DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE = 8;
+const MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE = 8;
 export const GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS = Number.POSITIVE_INFINITY;
 
 const DEFAULT_RETRY_DELAY_MS = 15 * 60 * 1000;
 const MAXIMUM_RETRY_DELAY_MS = 24 * 60 * 60 * 1000;
-export const GITHUB_SUMMARY_MINIMUM_REMAINING_MS = 5000;
+const GITHUB_SUMMARY_MINIMUM_REMAINING_MS = 25_000;
 
 export const boundedWorkerLimit = (
   value: number | undefined,
@@ -44,7 +44,13 @@ export const workerBatchSizeFrom = (
   if (value === null) {
     return undefined;
   }
-  return /^[1-8]$/.test(value) ? Number(value) : null;
+  const selected = Number(value);
+  return Number.isSafeInteger(selected) &&
+    selected >= 1 &&
+    selected <= MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE &&
+    String(selected) === value
+    ? selected
+    : null;
 };
 
 export const githubPrReconciliationCutoff = (
