@@ -8,6 +8,7 @@ import {
   GITHUB_HEAD_REFS_CRON_JOB,
   GITHUB_REF_REPOSITORY_BATCH_SIZE,
   GITHUB_ROUTINE_MAX_DURATION_SECONDS,
+  GITHUB_SUMMARY_CRON_JOB,
   GITHUB_WORKER_EXECUTION_DURATION_MS,
   GITHUB_WORKER_HTTP_TIMEOUT_MS,
   GITHUB_WORKER_MAX_DURATION_SECONDS,
@@ -44,11 +45,19 @@ describe("GitHub cron configuration", () => {
     const jobs = [
       GITHUB_EVENTS_CRON_JOB,
       GITHUB_WORKER_CRON_JOB,
+      GITHUB_SUMMARY_CRON_JOB,
       GITHUB_HEAD_REFS_CRON_JOB,
     ];
     const allMinutes = jobs.flatMap((job) => minutesFrom(job.schedule));
     expect(new Set(jobs.map((job) => job.name)).size).toBe(jobs.length);
     expect(new Set(allMinutes).size).toBe(allMinutes.length);
+
+    const factualMinutes = new Set(
+      minutesFrom(GITHUB_WORKER_CRON_JOB.schedule)
+    );
+    for (const summaryMinute of minutesFrom(GITHUB_SUMMARY_CRON_JOB.schedule)) {
+      expect(factualMinutes.has((summaryMinute + 59) % 60)).toBe(true);
+    }
   });
 
   test("bounds scheduled repository reconciliation", () => {

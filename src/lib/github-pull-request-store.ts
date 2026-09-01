@@ -157,12 +157,12 @@ export const persistPullRequestSnapshotInTransaction = async (
         existing.headRepositoryId !== pullRequest.headRepository.id) ||
       existing.repositoryId !== pullRequest.repository.id ||
       existing.state !== state);
+  const mergeLandingChanged =
+    existing !== undefined &&
+    (existing.mergeSha !== mergeSha ||
+      (existing.mergeShaVerifiedAt === null) !== (mergeShaVerifiedAt === null));
   const persistedEvidenceChanged =
-    projectionEvidenceChanged ||
-    (existing !== undefined &&
-      (existing.mergeSha !== mergeSha ||
-        (existing.mergeShaVerifiedAt === null) !==
-          (mergeShaVerifiedAt === null)));
+    projectionEvidenceChanged || mergeLandingChanged;
   const retryLifecycleReset =
     existing !== undefined &&
     (disposition === "newer" || persistedEvidenceChanged);
@@ -460,7 +460,7 @@ export const persistPullRequestSnapshotInTransaction = async (
   }
 
   const projectionInputChanged =
-    projectionEvidenceChanged ||
+    persistedEvidenceChanged ||
     version === undefined ||
     !version.isCurrent ||
     storedMembershipInvalid ||

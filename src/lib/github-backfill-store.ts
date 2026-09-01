@@ -1,20 +1,11 @@
-import {
-  and,
-  eq,
-  gt,
-  gte,
-  inArray,
-  isNotNull,
-  isNull,
-  lte,
-  or,
-} from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, or } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import {
   githubAccountCheckpoints,
   githubCommits,
   githubPullRequests,
+  githubPullRequestVersions,
   githubPullRequestSignals,
   githubPushObservations,
   githubRepositories,
@@ -166,14 +157,22 @@ export const readGitHubFactualWorkerBacklog = async (input: {
         );
       const pullRequests = await transaction
         .select({
-          attempts: githubPullRequests.reconcileAttempts,
-          error: githubPullRequests.reconcileError,
           retryAt: githubPullRequests.nextReconcileAt,
         })
         .from(githubPullRequests)
         .innerJoin(
           githubRepositories,
           eq(githubRepositories.id, githubPullRequests.repositoryId)
+        )
+        .leftJoin(
+          githubPullRequestVersions,
+          and(
+            eq(
+              githubPullRequestVersions.pullRequestNodeId,
+              githubPullRequests.nodeId
+            ),
+            eq(githubPullRequestVersions.isCurrent, true)
+          )
         )
         .where(
           and(
@@ -189,17 +188,19 @@ export const readGitHubFactualWorkerBacklog = async (input: {
               inArray(githubPullRequests.state, ["closed", "merged"])
             ),
             or(
+              isNotNull(githubPullRequests.reconcileError),
+              isNull(githubPullRequestVersions.id),
+              eq(githubPullRequestVersions.membershipComplete, false),
               and(
-                isNotNull(githubPullRequests.nextReconcileAt),
-                or(
-                  lte(githubPullRequests.nextReconcileAt, now),
-                  gt(githubPullRequests.reconcileAttempts, 0),
-                  isNotNull(githubPullRequests.reconcileError)
-                )
+                isNotNull(githubPullRequests.changedFiles),
+                eq(githubPullRequestVersions.fileFactsComplete, false)
               ),
               and(
-                isNull(githubPullRequests.nextReconcileAt),
-                isNotNull(githubPullRequests.reconcileError)
+                eq(githubPullRequests.state, "merged"),
+                or(
+                  isNull(githubPullRequests.mergeShaVerifiedAt),
+                  eq(githubPullRequestVersions.mergeSnapshot, false)
+                )
               )
             )
           )
@@ -252,9 +253,7 @@ export const readGitHubFactualWorkerBacklog = async (input: {
             enrichmentState === "complete" && pullRequestState === "unavailable"
         ).length +
         signals.filter(({ state }) => state === "unavailable").length +
-        pullRequests.filter(
-          ({ error, retryAt }) => error !== null && retryAt === null
-        ).length;
+        pullRequests.filter(({ retryAt }) => retryAt === null).length;
       return {
         pending,
         retryAt: retryAtFrom(retryRows, now),

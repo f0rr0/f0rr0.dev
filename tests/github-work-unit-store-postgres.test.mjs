@@ -8,12 +8,13 @@ import {
 } from "bun:test";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
 import { env } from "../src/env.ts";
+import { GITHUB_WORK_UNIT_SUMMARY_POLICY_DIGEST } from "../src/lib/github-work-unit-summary.ts";
 
 setDefaultTimeout(30_000);
 
@@ -73,6 +74,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
   let completeGitHubWorkUnitProjectionRequest;
   let ensureGitHubWorkUnitProjectionRequest;
   let readPublicGitHubActivityPage;
+  let readGitHubFactualWorkerBacklog;
   let refreshGitHubWorkUnitProjection;
   let requestGitHubWorkUnitProjection;
   let runGitHubActivityWorker;
@@ -147,6 +149,8 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
     } = await import("../src/lib/github-work-unit-summary-store.ts"));
     ({ readPublicGitHubActivityPage } =
       await import("../src/lib/github-activity-store.ts"));
+    ({ readGitHubFactualWorkerBacklog } =
+      await import("../src/lib/github-backfill-store.ts"));
     ({ runGitHubActivityWorker } =
       await import("../src/lib/github-activity-worker.ts"));
     ({
@@ -353,6 +357,151 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
     }
   });
 
+  test("backfill waits only for incomplete or failed PR evidence", async () => {
+    const backlogRepositoryId = "7093";
+    const nodeId = "PR_backfill_blocker_7093";
+    const versionId = "70930000-0000-4000-8000-000000000001";
+    const baseSha = "c".repeat(40);
+    const headSha = "d".repeat(40);
+    const now = new Date("2026-09-21T12:00:00.000Z");
+    const leaseUntil = new Date("2026-09-21T12:05:00.000Z");
+    const scope = {
+      repositoryId: backlogRepositoryId,
+      sinceAt: new Date("2026-09-01T00:00:00.000Z"),
+      untilAt: new Date("2026-09-30T23:59:59.999Z"),
+    };
+    const readBacklog = async () =>
+      await readGitHubFactualWorkerBacklog({
+        accounts: ["f0rr0"],
+        now,
+        scope,
+      });
+
+    await database.insert(schema.githubRepositories).values({
+      defaultBranch: "main",
+      factsVerifiedAt: now,
+      firstObservedAt: now,
+      fullName: "f0rr0/backfill-blocker-test",
+      id: backlogRepositoryId,
+      lastObservedAt: now,
+      visibility: "public",
+    });
+    await database.insert(schema.githubPullRequests).values({
+      account: "f0rr0",
+      authorUserId: "8574219",
+      baseRepositoryId: backlogRepositoryId,
+      baseSha,
+      changedFiles: 1,
+      commitCount: 1,
+      createdAt: now,
+      headRepositoryId: backlogRepositoryId,
+      headSha,
+      nextReconcileAt: new Date(now.getTime() - 1),
+      nodeId,
+      number: 1,
+      providerUpdatedAt: now,
+      repositoryId: backlogRepositoryId,
+      state: "open",
+      title: "complete evidence",
+      titleSnapshot: "complete evidence",
+      url: "https://github.com/f0rr0/backfill-blocker-test/pull/1",
+    });
+    await database.insert(schema.githubPullRequestVersions).values({
+      baseRepositoryId: backlogRepositoryId,
+      baseSha,
+      commitCount: 1,
+      fileFacts: [fileFact("src/complete.ts")],
+      fileFactsComplete: true,
+      headRepositoryId: backlogRepositoryId,
+      headSha,
+      id: versionId,
+      membershipComplete: true,
+      observedAt: now,
+      providerUpdatedAt: now,
+      pullRequestNodeId: nodeId,
+    });
+    await database.insert(schema.githubPullRequestMemberships).values({
+      commitRepositoryId: backlogRepositoryId,
+      commitSha: headSha,
+      isHead: true,
+      position: 0,
+      versionId,
+    });
+
+    expect((await readBacklog()).pending.pullRequestReconciliation).toBe(0);
+
+    await database
+      .update(schema.githubPullRequests)
+      .set({ nextReconcileAt: leaseUntil, reconcileAttempts: 1 })
+      .where(eq(schema.githubPullRequests.nodeId, nodeId));
+    expect((await readBacklog()).pending.pullRequestReconciliation).toBe(0);
+
+    await database
+      .update(schema.githubPullRequestVersions)
+      .set({ isCurrent: false })
+      .where(eq(schema.githubPullRequestVersions.id, versionId));
+    expect(await readBacklog()).toMatchObject({
+      pending: { pullRequestReconciliation: 1 },
+      retryAt: leaseUntil,
+    });
+
+    await database
+      .update(schema.githubPullRequestVersions)
+      .set({ isCurrent: true, membershipComplete: false })
+      .where(eq(schema.githubPullRequestVersions.id, versionId));
+    expect((await readBacklog()).pending.pullRequestReconciliation).toBe(1);
+
+    await database
+      .update(schema.githubPullRequestVersions)
+      .set({ fileFactsComplete: false, membershipComplete: true })
+      .where(eq(schema.githubPullRequestVersions.id, versionId));
+    expect((await readBacklog()).pending.pullRequestReconciliation).toBe(1);
+
+    await database
+      .update(schema.githubPullRequestVersions)
+      .set({ fileFactsComplete: true })
+      .where(eq(schema.githubPullRequestVersions.id, versionId));
+    await database
+      .update(schema.githubPullRequests)
+      .set({ mergedAt: now, state: "merged", terminalAt: now })
+      .where(eq(schema.githubPullRequests.nodeId, nodeId));
+    expect((await readBacklog()).pending.pullRequestReconciliation).toBe(1);
+
+    await database
+      .update(schema.githubPullRequests)
+      .set({ mergeShaVerifiedAt: now })
+      .where(eq(schema.githubPullRequests.nodeId, nodeId));
+    expect((await readBacklog()).pending.pullRequestReconciliation).toBe(1);
+
+    await database
+      .update(schema.githubPullRequestVersions)
+      .set({ mergeSnapshot: true })
+      .where(eq(schema.githubPullRequestVersions.id, versionId));
+    expect((await readBacklog()).pending.pullRequestReconciliation).toBe(0);
+
+    await database
+      .update(schema.githubPullRequests)
+      .set({ reconcileError: "provider_unavailable" })
+      .where(eq(schema.githubPullRequests.nodeId, nodeId));
+    expect((await readBacklog()).pending.pullRequestReconciliation).toBe(1);
+
+    await database
+      .update(schema.githubPullRequests)
+      .set({ nextReconcileAt: null })
+      .where(eq(schema.githubPullRequests.nodeId, nodeId));
+    expect(await readBacklog()).toMatchObject({
+      pending: { pullRequestReconciliation: 0 },
+      unavailable: 1,
+    });
+
+    await database
+      .delete(schema.githubPullRequests)
+      .where(eq(schema.githubPullRequests.nodeId, nodeId));
+    await database
+      .delete(schema.githubRepositories)
+      .where(eq(schema.githubRepositories.id, backlogRepositoryId));
+  });
+
   test("clears only the projection request token it observed", async () => {
     const first = await requestGitHubWorkUnitProjection(database);
     expect(await ensureGitHubWorkUnitProjectionRequest()).toBe(first);
@@ -369,11 +518,17 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
 
     await database
       .update(schema.githubPublicFeedHead)
-      .set({ summaryPolicyDigest: "f".repeat(64) })
+      .set({
+        projectionRequestToken: null,
+        summaryPolicyDigest: GITHUB_WORK_UNIT_SUMMARY_POLICY_DIGEST,
+      })
       .where(eq(schema.githubPublicFeedHead.id, true));
-    expect(await ensureGitHubWorkUnitProjectionRequest()).toMatch(
-      /^[0-9a-f-]{36}$/u
+    const policyUpgrade = await ensureGitHubWorkUnitProjectionRequest();
+    expect(policyUpgrade).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(await completeGitHubWorkUnitProjectionRequest(policyUpgrade)).toBe(
+      true
     );
+    expect(await ensureGitHubWorkUnitProjectionRequest()).toBeNull();
   });
 
   test("atomically swaps public facts, revisions, and summary eligibility", async () => {
@@ -580,7 +735,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
     await refreshGitHubWorkUnitProjection(new Date("2026-08-30T13:02:00.000Z"));
   });
 
-  test("withholds only a same-repository merged-PR landing until the association clears", async () => {
+  test("does not infer a landing from associations or another repository's verified SHA", async () => {
     const secondObservedAt = new Date("2026-08-30T13:00:00.000Z");
     const foreignBaseRepositoryId = "7009";
     const foreignPullRequestNodeId = "PR_foreign_landing_7001";
@@ -596,11 +751,12 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       account: "f0rr0",
       authorUserId: "9000",
       createdAt: secondObservedAt,
+      mergedAt: secondObservedAt,
       nodeId: pullRequestNodeId,
       number: 71,
       providerUpdatedAt: secondObservedAt,
       repositoryId,
-      state: "closed",
+      state: "merged",
       terminalAt: secondObservedAt,
       title: "associated",
       titleSnapshot: "associated",
@@ -610,6 +766,8 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       account: "f0rr0",
       authorUserId: "9000",
       createdAt: secondObservedAt,
+      mergeSha: secondSha,
+      mergeShaVerifiedAt: secondObservedAt,
       mergedAt: secondObservedAt,
       nodeId: foreignPullRequestNodeId,
       number: 72,
@@ -684,43 +842,77 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       },
     ]);
 
-    const unmerged = await refreshGitHubWorkUnitProjection(secondObservedAt);
-    const [afterUnmergedAssociation] = await database
-      .select()
-      .from(schema.githubWorkUnits);
-    expect(unmerged.exclusionReasonCounts.merged_pr_landing).toBe(0);
-    expect(afterUnmergedAssociation).toMatchObject({ memberCount: 2 });
+    const result = await refreshGitHubWorkUnitProjection(secondObservedAt);
+    const [unit] = await database.select().from(schema.githubWorkUnits);
+    expect(result.exclusionReasonCounts.merged_pr_landing).toBe(0);
+    expect(unit).toMatchObject({ memberCount: 2 });
 
     await database
-      .update(schema.githubPullRequests)
-      .set({ mergedAt: secondObservedAt, state: "merged" })
-      .where(eq(schema.githubPullRequests.nodeId, pullRequestNodeId));
+      .delete(schema.githubPullRequests)
+      .where(
+        inArray(schema.githubPullRequests.nodeId, [
+          pullRequestNodeId,
+          foreignPullRequestNodeId,
+        ])
+      );
+  });
+
+  test("withholds a provider-verified squash landing without a commit association", async () => {
+    const mergedAt = new Date("2026-08-30T13:01:30.000Z");
+    const nodeId = "PR_verified_squash_landing_7001";
+    await database.insert(schema.githubPullRequests).values({
+      account: "f0rr0",
+      authorUserId: "9000",
+      createdAt: mergedAt,
+      mergeSha: secondSha,
+      mergeShaVerifiedAt: mergedAt,
+      mergedAt,
+      nodeId,
+      number: 73,
+      providerUpdatedAt: mergedAt,
+      repositoryId,
+      state: "merged",
+      terminalAt: mergedAt,
+      title: "verified squash landing",
+      titleSnapshot: "verified squash landing",
+      url: "https://github.com/f0rr0/projection-store-test/pull/73",
+    });
+
     const excluded = await refreshGitHubWorkUnitProjection(
-      new Date("2026-08-30T13:00:30.000Z")
+      new Date("2026-08-30T13:01:31.000Z")
     );
-    const [afterMergedAssociation] = await database
+    const [withoutLanding] = await database
       .select()
       .from(schema.githubWorkUnits);
     expect(excluded.exclusionReasonCounts.merged_pr_landing).toBe(1);
-    expect(afterMergedAssociation).toMatchObject({ memberCount: 1 });
+    expect(withoutLanding).toMatchObject({ memberCount: 1 });
 
     await database
-      .delete(schema.githubCommitPullRequestAssociations)
-      .where(
-        and(
-          eq(
-            schema.githubCommitPullRequestAssociations.commitRepositoryId,
-            repositoryId
-          ),
-          eq(schema.githubCommitPullRequestAssociations.commitSha, secondSha)
-        )
-      );
-    const resolved = await refreshGitHubWorkUnitProjection(
-      new Date("2026-08-30T13:01:00.000Z")
+      .update(schema.githubRepositories)
+      .set({ defaultBranch: "trunk" })
+      .where(eq(schema.githubRepositories.id, repositoryId));
+    const sideRefExcluded = await refreshGitHubWorkUnitProjection(
+      new Date("2026-08-30T13:01:31.500Z")
     );
-    const [afterProof] = await database.select().from(schema.githubWorkUnits);
-    expect(resolved.exclusionReasonCounts.merged_pr_landing).toBe(0);
-    expect(afterProof).toMatchObject({ memberCount: 2 });
+    const [withoutSideRefLanding] = await database
+      .select()
+      .from(schema.githubWorkUnits);
+    expect(sideRefExcluded.exclusionReasonCounts.merged_pr_landing).toBe(1);
+    expect(withoutSideRefLanding).toMatchObject({ memberCount: 1 });
+
+    await database
+      .delete(schema.githubPullRequests)
+      .where(eq(schema.githubPullRequests.nodeId, nodeId));
+    await database
+      .update(schema.githubRepositories)
+      .set({ defaultBranch: "main" })
+      .where(eq(schema.githubRepositories.id, repositoryId));
+    const restored = await refreshGitHubWorkUnitProjection(
+      new Date("2026-08-30T13:01:32.000Z")
+    );
+    const [withLanding] = await database.select().from(schema.githubWorkUnits);
+    expect(restored.exclusionReasonCounts.merged_pr_landing).toBe(0);
+    expect(withLanding).toMatchObject({ memberCount: 2 });
   });
 
   test("purges private prose and removes unknown visibility instead of leaking", async () => {
@@ -1307,7 +1499,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
     expect(unchanged.summaryEvaluatedDigest).toBe(unit.summaryEvaluatedDigest);
   });
 
-  test("an idle worker drains summary evaluation recent-first without clearing a partial request", async () => {
+  test("an idle worker drains a bounded recent-first summary batch without clearing a partial request", async () => {
     const batchRepositoryId = "7092";
     const batchLineageId = "70920000-0000-4000-8000-000000000001";
     const completedAt = new Date("2026-09-10T12:00:00.000Z");

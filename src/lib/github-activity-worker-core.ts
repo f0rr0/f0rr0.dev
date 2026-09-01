@@ -4,7 +4,6 @@ export const GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS = Number.POSITIVE_INFINITY;
 
 const DEFAULT_RETRY_DELAY_MS = 15 * 60 * 1000;
 const MAXIMUM_RETRY_DELAY_MS = 24 * 60 * 60 * 1000;
-const GITHUB_SUMMARY_MINIMUM_REMAINING_MS = 25_000;
 
 export const boundedWorkerLimit = (
   value: number | undefined,
@@ -89,13 +88,6 @@ export const workerDeadlineReached = (
     throw new RangeError("The GitHub activity worker deadline is invalid.");
   }
   return now - startedAt >= maximumDurationMs;
-};
-
-export const githubSummaryCanStart = (deadlineAt: number, now = Date.now()) => {
-  if (!Number.isFinite(deadlineAt) || !Number.isFinite(now)) {
-    throw new RangeError("The GitHub summary deadline is invalid.");
-  }
-  return deadlineAt - now >= GITHUB_SUMMARY_MINIMUM_REMAINING_MS;
 };
 
 export const nextGitHubPullRequestReconciliationAt = (

@@ -8,6 +8,11 @@ export const GITHUB_WORKER_CRON_JOB = {
   schedule: "2-57/5 * * * *",
 } as const;
 
+export const GITHUB_SUMMARY_CRON_JOB = {
+  name: "github-summary-worker-every-five-minutes",
+  schedule: "3-58/5 * * * *",
+} as const;
+
 export const GITHUB_HEAD_REFS_CRON_JOB = {
   name: "github-head-refs-every-fifteen-minutes",
   schedule: "4,19,34,49 * * * *",

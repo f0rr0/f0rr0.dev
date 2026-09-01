@@ -65,16 +65,17 @@ interface GitHubWorkUnitCrosswalkReasonBuckets<
 
 export interface GitHubWorkUnitCrosswalk {
   categories: {
-    associatedOrRemovedUnreachableChanges: GitHubWorkUnitCrosswalkBucket;
     authoredPullRequestsWithoutOwnedCurrentMember: GitHubWorkUnitCrosswalkBucket;
     commitEnrichmentBacklog: GitHubWorkUnitCrosswalkBucket;
     eligibleTrackedChanges: GitHubWorkUnitCrosswalkBucket;
     integrationMerges: GitHubWorkUnitCrosswalkBucket;
+    policyExcludedChanges: GitHubWorkUnitCrosswalkBucket;
     projectedBranchUnits: GitHubWorkUnitCrosswalkBucket;
     projectedCanonicalUnits: GitHubWorkUnitCrosswalkBucket;
     projectedOwnedChanges: GitHubWorkUnitCrosswalkBucket;
     projectedPullRequestUnits: GitHubWorkUnitCrosswalkBucket;
     trackedChangeCandidates: GitHubWorkUnitCrosswalkBucket;
+    verifiedMergeLandingOwnershipViolations: GitHubWorkUnitCrosswalkBucket;
     visibilityGaps: GitHubWorkUnitCrosswalkBucket;
     zeroDiffOrIneligibleChanges: GitHubWorkUnitCrosswalkBucket;
   };
@@ -92,11 +93,12 @@ export interface GitHubWorkUnitCrosswalk {
       | "commit_enrichment_backlog"
       | "projection_coverage_gap"
       | "repository_visibility_gap"
+      | "verified_merge_landing_owned"
     )[];
     passed: boolean;
   };
   policyExclusions: GitHubWorkUnitCrosswalkReasonBuckets<GitHubWorkUnitPolicyExclusionReason>;
-  version: 3;
+  version: 4;
 }
 
 const bytewiseCompare = (left: string, right: string) =>
@@ -277,13 +279,26 @@ export const buildGitHubWorkUnitCrosswalk = (
     unit.members.some((member) => eligibleKeys.has(member.logicalKey))
   );
   const projectedOwnedKeys = new Set<string>();
+  const projectedRefOwnedKeys = new Set<string>();
   for (const unit of unitsInScope) {
     for (const member of unit.members) {
       if (eligibleKeys.has(member.logicalKey)) {
         projectedOwnedKeys.add(member.logicalKey);
+        if (unit.kind !== "pull_request") {
+          projectedRefOwnedKeys.add(member.logicalKey);
+        }
       }
     }
   }
+  const verifiedMergeLandingOwnershipViolationKeys = new Set(
+    eligibleChanges
+      .filter(
+        (change) =>
+          change.verifiedMergeLanding &&
+          projectedRefOwnedKeys.has(logicalKeyFrom(change))
+      )
+      .map(logicalKeyFrom)
+  );
   const filteredExcludedChanges = snapshot.excludedChanges.filter((change) =>
     eligibleKeys.has(change.logicalKey)
   );
@@ -360,17 +375,20 @@ export const buildGitHubWorkUnitCrosswalk = (
   if (visibilityGapIds.length > 0) {
     failures.add("repository_visibility_gap");
   }
+  if (verifiedMergeLandingOwnershipViolationKeys.size > 0) {
+    failures.add("verified_merge_landing_owned");
+  }
   const orderedFailures = [...failures].toSorted(bytewiseCompare);
 
   return {
     categories: {
-      associatedOrRemovedUnreachableChanges: bucketFrom(policyExclusions.ids),
       authoredPullRequestsWithoutOwnedCurrentMember: bucketFrom(
         authoredPullRequestsWithoutOwnedCurrentMember
       ),
       commitEnrichmentBacklog: bucketFrom(enrichmentBacklogKeys),
       eligibleTrackedChanges: bucketFrom(eligibleKeys),
       integrationMerges: bucketFrom(integrationMergeKeys),
+      policyExcludedChanges: bucketFrom(policyExclusions.ids),
       projectedBranchUnits: bucketFrom(
         unitsInScope
           .filter((unit) => unit.kind === "branch")
@@ -388,6 +406,9 @@ export const buildGitHubWorkUnitCrosswalk = (
           .map((unit) => unit.identityKey)
       ),
       trackedChangeCandidates: bucketFrom(trackedChangeKeys),
+      verifiedMergeLandingOwnershipViolations: bucketFrom(
+        verifiedMergeLandingOwnershipViolationKeys
+      ),
       visibilityGaps: bucketFrom(visibilityGapIds),
       zeroDiffOrIneligibleChanges: bucketFrom(ineligibleKeys),
     },
@@ -405,7 +426,7 @@ export const buildGitHubWorkUnitCrosswalk = (
       passed: orderedFailures.length === 0,
     },
     policyExclusions,
-    version: 3,
+    version: 4,
   };
 };
 

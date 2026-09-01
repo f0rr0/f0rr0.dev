@@ -63,24 +63,24 @@ tracked-authored commit. This is why work-unit counts can differ from GitHub's
 authored-PR count.
 
 There is no patch-equality aliasing or inferred squash, rebase, or cherry-pick
-lineage. A logical change is the exact repository ID plus commit SHA. One
-narrow landing rule prevents duplication: when GitHub associates a commit with
-a merged PR whose base repository is that commit's repository, but the commit
-is absent from every effective PR membership, canonical-day ownership is
-suppressed as a `merged_pr_landing` policy exclusion. A complete active side
-head may still own it. Open, closed-unmerged, and foreign-base PR associations
-do not suppress ref ownership.
+lineage. A logical change is the exact repository ID plus commit SHA. One narrow
+landing rule prevents duplication: a provider-verified merge SHA for a merged
+PR in the same repository is excluded from canonical and side-ref ownership
+when it is absent from effective PR membership. It is reported as a
+`merged_pr_landing` policy exclusion. Associations alone do not establish
+landing identity and never suppress current-ref ownership.
 
 ## Deterministic ownership
 
 The projector evaluates current complete evidence in this order:
 
-| Priority | Evidence                                  | Owner                    |
-| -------- | ----------------------------------------- | ------------------------ |
-| 1        | Member of an effective PR snapshot        | Pull-request unit        |
-| 2        | Reachable from the current canonical head | Repository + UTC day     |
-| 3        | Reachable from an active side head        | Persisted branch lineage |
-| 4        | No current complete owner                 | Not published            |
+| Priority | Evidence                                            | Owner                    |
+| -------- | --------------------------------------------------- | ------------------------ |
+| 1        | Member of an effective PR snapshot                  | Pull-request unit        |
+| 2        | Verified merge landing without effective membership | Not published            |
+| 3        | Reachable from the current canonical head           | Repository + UTC day     |
+| 4        | Reachable from an active side head                  | Persisted branch lineage |
+| 5        | No current complete owner                           | Not published            |
 
 For an open PR, the effective snapshot is its current complete version. For a
 closed or merged PR, it is its final complete version. When several effective
@@ -158,12 +158,15 @@ batch.
 - `last_published_at`; and
 - `summarizing`;
 - an internal projection-request token; and
-- the last completely evaluated semantic summary-policy digest.
+- the last applied projection-and-summary pipeline policy digest.
 
 Evidence writers replace the projection token in the same transaction as the
 evidence change. A refresh clears only the token it observed and only after its
 bounded summary-evaluation backlog is empty. A semantic policy change creates a
-token until the current corpus has been reevaluated.
+token until the affected corpus has been reevaluated. The combined policy digest
+also makes ownership changes self-activating after a rolling deployment. Each
+bounded refresh still publishes its current factual projection; historical
+summary reevaluation does not hold factual changes back.
 
 The public feed reads at most five UTC days per page in a read-only repeatable
 read transaction. Pagination cursors are HMAC-signed and bound to the ordering
@@ -207,7 +210,9 @@ Summary identity includes the semantic policy, recipe, prompt, normalized
 input, outcome digest, and attribution mode. Transport retries and storage
 configuration do not invalidate prose. A five-minute debounce absorbs active
 rewrites. Up to eight recent-first inputs are deterministically evaluated per
-projection refresh, while the provider worker still starts at most one claim.
+projection refresh. A separate bounded worker starts at most one provider claim,
+so a historical evaluation backlog cannot consume the provider request's
+runtime window.
 Valid public-input output remains cacheable if its input becomes stale while
 the request runs; it is displayed only when the current public unit's exact
 recipe, outcome, attribution, and summary-input keys match. A force push with
@@ -252,17 +257,20 @@ Three inputs converge on the same durable worker queues:
 
 Supabase Cron invokes:
 
-| Route                     | Schedule                              | Bound                                                                |
-| ------------------------- | ------------------------------------- | -------------------------------------------------------------------- |
-| `/api/cron/github-sync`   | every 5 minutes                       | 15-second request                                                    |
-| `/api/cron/github-worker` | every 5 minutes, offset by 2 minutes  | 60-second request; default eight items per factual queue and one ref |
-| `/api/cron/github-refs`   | every 15 minutes, offset by 4 minutes | 15-second request; eight ref pages/repositories per account          |
+| Route                      | Schedule                              | Bound                                                                |
+| -------------------------- | ------------------------------------- | -------------------------------------------------------------------- |
+| `/api/cron/github-sync`    | every 5 minutes                       | 15-second request                                                    |
+| `/api/cron/github-worker`  | every 5 minutes, offset by 2 minutes  | 60-second request; default eight items per factual queue and one ref |
+| `/api/cron/github-summary` | every 5 minutes, offset by 3 minutes  | 60-second request; at most one provider claim                        |
+| `/api/cron/github-refs`    | every 15 minutes, offset by 4 minutes | 15-second request; eight ref pages/repositories per account          |
 
 The worker processes factual queues and current-ref repair before recomputing
-the projection. It then reconciles the minimal summary status and may claim one
-summary. Webhooks shorten discovery, but they do not render a page directly;
-publication still waits for the bounded worker. Timeline payloads are read from
-the current projection and are never held in a shared response cache.
+the projection and reconciling the minimal summary status. The separate summary
+worker may claim one provider request, so historical input reevaluation cannot
+consume its provider budget. Webhooks shorten discovery, but they do not render
+a page directly; publication still waits for the bounded factual worker.
+Timeline payloads are read from the current projection and are never held in a
+shared response cache.
 
 ## Historical backfill
 
@@ -283,6 +291,11 @@ The backfill:
 6. drains only the scoped factual queues without projecting after every batch;
    and
 7. refreshes the projection once when the scoped factual backlog reaches zero.
+
+Routine due or leased reconciliation for an otherwise complete open PR is not
+factual backlog. Missing current membership, required PR diff facts, unresolved
+merged-PR identity, or a reconciliation error remains blocking and is reported
+explicitly.
 
 The command does not generate summaries and does not wait in process for a
 durably deferred provider claim. It exits non-zero with a structured stop
@@ -338,8 +351,9 @@ builds a deterministic, read-only crosswalk for a half-open interval. It emits
 stable IDs and counts for tracked candidates, eligible changes, integration
 merges, ineligible changes, PR/canonical/branch units, owned changes, visibility
 gaps, commit-enrichment backlog, authored PRs without a current owned member,
-and each coverage or policy-exclusion reason. Any enrichment backlog fails the
-crosswalk. `merged_pr_landing` and
+verified-landing ref-ownership violations, and each coverage or policy-exclusion
+reason. Any enrichment backlog or verified landing in a canonical/branch unit
+fails the crosswalk. `merged_pr_landing` and
 `no_current_owner` are policy exclusions; unknown canonical branch, incomplete
 head generation, incomplete PR coverage, and unknown visibility are coverage
 gaps that fail the crosswalk.
@@ -356,7 +370,7 @@ class names:
 | ----------------------------------------------------------------------- | ----------------------------------------------------- |
 | merge, empty, or foreign-authored commit                                | no work-unit membership                               |
 | effective PR also reachable from canonical/side refs                    | PR owns it once                                       |
-| same-repository merged landing absent from effective PR membership      | canonical suppressed; active side head may own it     |
+| verified same-repository landing absent from effective PR membership    | no canonical or side-ref row                          |
 | PR rewrite with unchanged net outcome                                   | stable identity, anchor, and reusable prose           |
 | changed PR/ref membership                                               | removed SHA loses its old ownership                   |
 | ref head A → B → A                                                      | final A is projected rather than suppressed           |
@@ -368,6 +382,7 @@ class names:
 | same-day repository rows                                                | one header and a count derived from final groups      |
 | summary budget/retry/expiry                                             | hard caps and facts-only terminal state               |
 | nine pending summary evaluations                                        | eight settle, then one on the next refresh            |
+| recent summary ready during historical policy reevaluation              | separate summary worker may claim it                  |
 | paid input A superseded by B then current again                         | count retained and debounce re-armed                  |
 
 Run the complete local gate with:

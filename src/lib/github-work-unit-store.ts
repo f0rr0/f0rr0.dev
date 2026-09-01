@@ -1,9 +1,8 @@
-import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, isNotNull, or, sql } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import {
   githubAccountRepositoryCatalogs,
-  githubCommitPullRequestAssociations,
   githubCommits,
   githubIssues,
   githubPublicFeedHead,
@@ -491,18 +490,14 @@ const excludedChangesFrom = (
       throw new Error(
         `Effective pull-request member was not projected: ${logicalKey}`
       );
+    } else if (change.verifiedMergeLanding) {
+      reason = "merged_pr_landing";
     } else if (!change.pullRequestCoverageComplete) {
       reason = "pull_request_coverage_incomplete";
     } else if (repository.defaultBranch === null) {
       reason = "canonical_branch_unknown";
     } else if (repository.headGenerationComplete) {
-      const reachableRefs = (
-        ownership.refsByLogicalKey.get(logicalKey) ?? []
-      ).filter((ref) => ref.complete && ref.repositoryId === repository.id);
-      reason =
-        reachableRefs.length === 0 || !change.mergedPullRequestLanding
-          ? "no_current_owner"
-          : "merged_pr_landing";
+      reason = "no_current_owner";
     } else {
       reason = "head_generation_incomplete";
     }
@@ -881,33 +876,17 @@ const loadProjectionSnapshot = async (
       asc(githubRefMemberships.refName),
       asc(githubRefMemberships.position)
     );
-  const associationRows = await transaction
-    .select({
-      baseRepositoryId: githubPullRequests.repositoryId,
-      commitRepositoryId:
-        githubCommitPullRequestAssociations.commitRepositoryId,
-      commitSha: githubCommitPullRequestAssociations.commitSha,
-      state: githubPullRequests.state,
-    })
-    .from(githubCommitPullRequestAssociations)
-    .innerJoin(
-      githubCommits,
+  const verifiedMergeLanding = transaction
+    .select({ one: sql<number>`1` })
+    .from(githubPullRequests)
+    .where(
       and(
-        eq(
-          githubCommits.repositoryId,
-          githubCommitPullRequestAssociations.commitRepositoryId
-        ),
-        eq(githubCommits.sha, githubCommitPullRequestAssociations.commitSha)
+        eq(githubPullRequests.repositoryId, githubCommits.repositoryId),
+        eq(githubPullRequests.state, "merged"),
+        isNotNull(githubPullRequests.mergeShaVerifiedAt),
+        eq(githubPullRequests.mergeSha, githubCommits.sha)
       )
-    )
-    .innerJoin(
-      githubPullRequests,
-      eq(
-        githubPullRequests.nodeId,
-        githubCommitPullRequestAssociations.pullRequestNodeId
-      )
-    )
-    .where(inArray(githubCommits.authorUserId, [...trackedAuthorUserIds]));
+    );
   const commitRows = await transaction
     .select({
       additions: githubCommits.additions,
@@ -925,23 +904,16 @@ const loadProjectionSnapshot = async (
       pullRequestDiscoveryState: githubCommits.pullRequestDiscoveryState,
       repositoryId: githubCommits.repositoryId,
       sha: githubCommits.sha,
+      verifiedMergeLanding: exists(verifiedMergeLanding).mapWith(Boolean),
     })
     .from(githubCommits)
     .where(inArray(githubCommits.authorUserId, [...trackedAuthorUserIds]))
     .orderBy(asc(githubCommits.repositoryId), asc(githubCommits.sha));
-  const mergedPullRequestLandings = new Set(
-    associationRows.flatMap((row) =>
-      row.state === "merged" && row.baseRepositoryId === row.commitRepositoryId
-        ? [logicalKeyFrom(row.commitRepositoryId, row.commitSha)]
-        : []
-    )
-  );
   const changes: GitHubLogicalChange[] = commitRows.map((row) => {
     const fileFacts = checkedCompactFileFacts(row.fileFacts);
     const parentShas = checkedParentShas(row.parentShas);
     const pullRequestCoverageComplete =
       row.pullRequestDiscoveryState === "complete";
-    const logicalKey = logicalKeyFrom(row.repositoryId, row.sha);
     return {
       additions: row.additions ?? -1,
       authorUserId: row.authorUserId,
@@ -950,7 +922,6 @@ const loadProjectionSnapshot = async (
       enrichmentComplete: row.enrichmentState === "complete",
       fileFacts: fileFacts ?? [],
       fileFactsComplete: row.fileFactsComplete && fileFacts !== null,
-      mergedPullRequestLanding: mergedPullRequestLandings.has(logicalKey),
       logicalActivityAt: (row.committerAt ?? row.committedAt).toISOString(),
       logicalRepositoryId: row.repositoryId,
       logicalSha: row.sha,
@@ -962,6 +933,7 @@ const loadProjectionSnapshot = async (
       repositoryId: row.repositoryId,
       sha: row.sha,
       summaryFileFacts: null,
+      verifiedMergeLanding: row.verifiedMergeLanding,
     };
   });
   const commitSummaryEvidenceByLogicalKey = new Map(

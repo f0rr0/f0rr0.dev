@@ -98,7 +98,6 @@ const workerResult = (overrides = {}) => ({
   pullRequestDiscovery: emptyWorkerStage(),
   pullRequestSignals: emptyWorkerStage(),
   refs: emptyWorkerStage(),
-  summaries: emptyWorkerStage(),
   ...overrides,
 });
 

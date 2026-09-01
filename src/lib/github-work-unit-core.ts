@@ -31,7 +31,6 @@ export interface GitHubLogicalChange {
   enrichmentComplete: boolean;
   fileFacts: readonly GitHubFileChangeStat[];
   fileFactsComplete: boolean;
-  mergedPullRequestLanding: boolean;
   logicalActivityAt: string;
   logicalRepositoryId: string;
   logicalSha: string;
@@ -42,6 +41,7 @@ export interface GitHubLogicalChange {
   repositoryId: string;
   sha: string;
   summaryFileFacts: readonly GitHubWorkUnitFileFact[] | null;
+  verifiedMergeLanding: boolean;
 }
 
 export interface GitHubRepositoryProjectionEvidence {
@@ -594,6 +594,9 @@ const chooseOwnerFor = (
   if (pullRequest !== null) {
     return { kind: "pull_request", pullRequest };
   }
+  if (change.verifiedMergeLanding) {
+    return null;
+  }
 
   const repository = ownership.repositoriesById.get(change.repositoryId);
   if (
@@ -612,7 +615,7 @@ const chooseOwnerFor = (
   const canonicalRef = reachableRefs.find(
     (ref) => ref.refName === canonicalRefName
   );
-  if (canonicalRef !== undefined && !change.mergedPullRequestLanding) {
+  if (canonicalRef !== undefined) {
     return {
       activityDay: utcDayFrom(change.logicalActivityAt),
       kind: "canonical_day",

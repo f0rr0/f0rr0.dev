@@ -6,6 +6,7 @@ import {
   GITHUB_EVENTS_CRON_JOB,
   GITHUB_HEAD_REFS_CRON_JOB,
   GITHUB_REF_REPOSITORY_BATCH_SIZE,
+  GITHUB_SUMMARY_CRON_JOB,
   GITHUB_WORKER_HTTP_TIMEOUT_MS,
   GITHUB_WORKER_CRON_JOB,
 } from "../src/lib/github-cron-config";
@@ -16,6 +17,7 @@ const SECRET_DESCRIPTION = "Vercel GitHub sync cron configuration";
 const SECRET_NAME = "github_sync_bearer_secret";
 const URL_NAME = "github_sync_url";
 const HEAD_REFS_URL_NAME = "github_head_refs_url";
+const SUMMARY_URL_NAME = "github_summary_url";
 const WORKER_URL_NAME = "github_worker_url";
 const LEGACY_JOB_NAME = "github-sync-every-three-hours";
 const LEGACY_REFS_JOB_NAME = "github-refs-every-fifteen-minutes";
@@ -67,6 +69,7 @@ export const supabaseCronUrlsFrom = (configuredSiteUrl: string) => {
   return {
     events,
     headRefs: headRefs.toString(),
+    summary: new URL("/api/cron/github-summary", siteUrl).toString(),
     worker: new URL("/api/cron/github-worker", siteUrl).toString(),
   };
 };
@@ -176,6 +179,10 @@ export const configureSupabaseCron = async (
         value: urls.headRefs,
       });
       await upsertVaultSecret(transaction, {
+        name: SUMMARY_URL_NAME,
+        value: urls.summary,
+      });
+      await upsertVaultSecret(transaction, {
         name: WORKER_URL_NAME,
         value: urls.worker,
       });
@@ -193,6 +200,7 @@ export const configureSupabaseCron = async (
           ${LEGACY_TAG_REFS_JOB_NAME},
           ${GITHUB_EVENTS_CRON_JOB.name},
           ${GITHUB_HEAD_REFS_CRON_JOB.name},
+          ${GITHUB_SUMMARY_CRON_JOB.name},
           ${GITHUB_WORKER_CRON_JOB.name}
         )
       `;
@@ -218,18 +226,26 @@ export const configureSupabaseCron = async (
           ${cronHttpPostCommand(WORKER_URL_NAME, GITHUB_WORKER_HTTP_TIMEOUT_MS)}
         ) as "jobId"
       `;
+      const [summaryJob] = await transaction<{ jobId: number }[]>`
+        select cron.schedule(
+          ${GITHUB_SUMMARY_CRON_JOB.name},
+          ${GITHUB_SUMMARY_CRON_JOB.schedule},
+          ${cronHttpPostCommand(SUMMARY_URL_NAME, GITHUB_WORKER_HTTP_TIMEOUT_MS)}
+        ) as "jobId"
+      `;
       if (
         eventsJob === undefined ||
         headRefsJob === undefined ||
+        summaryJob === undefined ||
         workerJob === undefined
       ) {
         throw new Error("Supabase did not return every scheduled cron job.");
       }
-      return { eventsJob, headRefsJob, workerJob };
+      return { eventsJob, headRefsJob, summaryJob, workerJob };
     });
 
     process.stdout.write(
-      `Configured Supabase cron jobs ${String(jobs.eventsJob.jobId)}, ${String(jobs.headRefsJob.jobId)}, and ${String(jobs.workerJob.jobId)} for GitHub intake, head refs, and processing.\n`
+      `Configured Supabase cron jobs ${String(jobs.eventsJob.jobId)}, ${String(jobs.headRefsJob.jobId)}, ${String(jobs.workerJob.jobId)}, and ${String(jobs.summaryJob.jobId)} for GitHub intake, head refs, factual processing, and summaries.\n`
     );
     return jobs;
   } finally {
