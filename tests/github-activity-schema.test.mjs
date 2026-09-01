@@ -32,7 +32,6 @@ describe("GitHub activity persistence schema", () => {
   test("keeps compact commit identity and durable enrichment state", () => {
     expect(getTableName(githubCommits)).toBe("github_commits");
     expect(githubCommits.repositoryId.primary).toBe(false);
-    expect(githubCommits.repository.notNull).toBe(false);
     expect(githubCommits.enrichmentState.default).toBe("pending");
     expect(githubCommits.enrichmentState.notNull).toBe(true);
     expect(githubCommits.pullRequestDiscoveryState.default).toBe("pending");

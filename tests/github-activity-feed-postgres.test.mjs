@@ -126,20 +126,14 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit feed projection", () => {
     `;
     await admin`
       insert into github_commits (
-        author_login, committed_at, message, repository, repository_id, sha
+        author_login, committed_at, message, repository_id, sha
       ) values
-        ('f0rr0', '2026-08-30T12:00:00Z', 'public pr',
-          'f0rr0/public-one', '101', ${sha("a")}),
-        ('f0rr0', '2026-08-30T10:00:00Z', 'public direct',
-          'f0rr0/public-one', '101', ${sha("b")}),
-        ('f0rr0', '2026-08-29T11:00:00Z', 'public second repo',
-          'f0rr0/public-two', '102', ${sha("c")}),
-        ('f0rr0', '2026-08-28T11:00:00Z', 'public earlier',
-          'f0rr0/public-one', '101', ${sha("d")}),
-        ('f0rr0', '2026-08-30T09:00:00Z', 'private sentinel commit',
-          'secret-owner/private-repository-sentinel', '201', ${sha("e")}),
-        ('f0rr0', '2026-08-31T09:00:00Z', 'unknown sentinel commit',
-          'unknown-owner/unknown-repository-sentinel', '301', ${sha("f")})
+        ('f0rr0', '2026-08-30T12:00:00Z', 'public pr', '101', ${sha("a")}),
+        ('f0rr0', '2026-08-30T10:00:00Z', 'public direct', '101', ${sha("b")}),
+        ('f0rr0', '2026-08-29T11:00:00Z', 'public second repo', '102', ${sha("c")}),
+        ('f0rr0', '2026-08-28T11:00:00Z', 'public earlier', '101', ${sha("d")}),
+        ('f0rr0', '2026-08-30T09:00:00Z', 'private sentinel commit', '201', ${sha("e")}),
+        ('f0rr0', '2026-08-31T09:00:00Z', 'unknown sentinel commit', '301', ${sha("f")})
     `;
     await admin`
       insert into github_pull_requests (
