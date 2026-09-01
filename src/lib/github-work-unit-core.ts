@@ -326,14 +326,6 @@ export const isEligibleGitHubWorkChange = (
       file.filename.length > 0 &&
       !file.filename.includes("\0")
   );
-  const fileAdditions = change.fileFacts.reduce(
-    (total, file) => total + file.additions,
-    0
-  );
-  const fileDeletions = change.fileFacts.reduce(
-    (total, file) => total + file.deletions,
-    0
-  );
   if (
     change.authorUserId === null ||
     !trackedAuthorUserIds.has(change.authorUserId) ||
@@ -348,8 +340,6 @@ export const isEligibleGitHubWorkChange = (
     change.additions < 0 ||
     change.deletions < 0 ||
     !fileCountersAreValid ||
-    fileAdditions !== change.additions ||
-    fileDeletions !== change.deletions ||
     !shaPattern.test(change.sha) ||
     !shaPattern.test(change.logicalSha)
   ) {

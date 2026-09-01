@@ -332,6 +332,35 @@ describe("GitHub work-unit crosswalk", () => {
     expect(report.invariants).toMatchObject({ failures: [], passed: true });
   });
 
+  test("counts complete provider-ledger drift as projected owned work", () => {
+    const evidence = snapshot();
+    const [ledgerChange] = evidence.input.changes;
+    evidence.input.changes[0] = {
+      ...ledgerChange,
+      additions: 5,
+      deletions: 7,
+    };
+    const providerChangeKey = logicalKey("1", "a");
+
+    const report = buildGitHubWorkUnitCrosswalk(evidence, {
+      since: "2026-08-01",
+      until: "2026-08-08",
+    });
+
+    expect(report.categories.eligibleTrackedChanges.ids).toContain(
+      providerChangeKey
+    );
+    expect(report.categories.projectedOwnedChanges.ids).toContain(
+      providerChangeKey
+    );
+    expect(report.categories.projectedPullRequestUnits.ids).toContain(
+      "pr:PR_1"
+    );
+    expect(report.categories.zeroDiffOrIneligibleChanges.ids).not.toContain(
+      providerChangeKey
+    );
+  });
+
   test("fails coverage for each blocking exclusion reason", () => {
     const blockingReasons = [
       "canonical_branch_unknown",
