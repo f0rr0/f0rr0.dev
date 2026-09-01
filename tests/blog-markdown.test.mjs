@@ -24,12 +24,19 @@ describe("blog Markdown", () => {
       },
     });
 
-    expect(markdown).toContain("# A post\n\n> A concise summary.");
-    expect(markdown).toContain(
-      "Sid Jain · Published 2026-08-01 · updated 2026-08-04"
-    );
-    expect(markdown).toContain(
-      "Canonical post: https://f0rr0.dev/blog/a-post\n\n---\n\nFirst paragraph."
-    );
+    expect(markdown).toBe(`# A post
+
+> A concise summary.
+
+Sid Jain · Published 2026-08-01 · updated 2026-08-04
+
+Canonical post: https://f0rr0.dev/blog/a-post
+
+---
+
+First paragraph.
+
+## Detail
+`);
   });
 });

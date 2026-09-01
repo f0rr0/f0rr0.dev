@@ -1,7 +1,6 @@
 import { ArrowDown, ArrowUpRight, Star } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { connection } from "next/server";
 
 import { GitHubTimeline } from "@/components/github-timeline";
 import { SiteShell } from "@/components/site-shell";
@@ -54,10 +53,9 @@ export const metadata: Metadata = {
   },
 };
 
-export const revalidate = 900;
+export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  await connection();
   const [github, posts, activity] = await Promise.all([
     getGitHubProfile(),
     getBlogPosts(),

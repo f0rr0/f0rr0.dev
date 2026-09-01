@@ -1,74 +1,74 @@
-export interface PublicGitHubActivityLanguage {
-  changedLines: number;
-  iconUrl: string | null;
-  id: string;
+export type PublicGitHubWorkUnitKind =
+  | "branch"
+  | "canonical-day"
+  | "pull-request";
+
+export interface PublicGitHubActivityDestination {
   label: string;
+  url: string;
 }
 
 export interface PublicGitHubActivityRepository {
   avatarUrl: string | null;
   key: string;
-  label: string | null;
-  url: string | null;
+  label: string;
+  url: string;
 }
 
-export interface PublicGitHubActivityCommit {
+export interface PublicGitHubActivityDateRange {
+  end: string;
+  start: string;
+}
+
+export interface PublicGitHubWorkUnitFacts {
   additions: number;
-  changedFiles: number;
-  committedAt: string;
+  dateRange: PublicGitHubActivityDateRange | null;
   deletions: number;
-  headline: string;
-  id: string;
-  languages: readonly PublicGitHubActivityLanguage[];
-  providerFileCapReached: boolean;
-  summary: string | null;
+  languages: readonly string[] | null;
+  ownedCommitCount: number;
+  uniqueFileCount: number;
 }
 
-export interface PublicGitHubStandaloneCommitActivity {
-  commit: PublicGitHubActivityCommit;
+export interface PublicGitHubWorkUnitActivity {
+  destination: PublicGitHubActivityDestination;
+  facts: PublicGitHubWorkUnitFacts;
   id: string;
-  kind: "commit";
-  occurredAt: string;
-  repository: PublicGitHubActivityRepository;
-}
-
-export interface PublicGitHubPullRequestCommitActivity {
-  commits: readonly PublicGitHubActivityCommit[];
-  id: string;
-  kind: "pull-request-commits";
-  occurredAt: string;
-  repository: PublicGitHubActivityRepository;
-  title: string;
+  kind: PublicGitHubWorkUnitKind;
+  outcome: string | null;
 }
 
 export interface PublicGitHubIssueOpenedActivity {
+  destination: PublicGitHubActivityDestination;
   id: string;
   kind: "issue-opened";
-  occurredAt: string;
-  repository: PublicGitHubActivityRepository;
   title: string;
 }
 
 export type PublicGitHubActivityItem =
   | PublicGitHubIssueOpenedActivity
-  | PublicGitHubPullRequestCommitActivity
-  | PublicGitHubStandaloneCommitActivity;
+  | PublicGitHubWorkUnitActivity;
 
-export interface PublicGitHubActivityDayTotals {
-  additions: number;
-  deletions: number;
-  issuesOpened: number;
-  repositories: number;
+export interface PublicGitHubActivityRepositoryGroup {
+  items: readonly PublicGitHubActivityItem[];
+  repository: PublicGitHubActivityRepository;
 }
 
 export interface PublicGitHubActivityDay {
   day: string;
-  items: readonly PublicGitHubActivityItem[];
-  totals: PublicGitHubActivityDayTotals;
+  privateWork: boolean;
+  repositories: readonly PublicGitHubActivityRepositoryGroup[];
+}
+
+export interface PublicActivityHead {
+  feedRevision: string;
+  lastPublishedAt: string | null;
+  revision: string;
+  summarizing: boolean;
 }
 
 export interface PublicGitHubActivityPage {
   days: readonly PublicGitHubActivityDay[];
+  head: PublicActivityHead;
   nextCursor: string | null;
-  snapshotAt: string;
+  orderingRevision: string;
 }

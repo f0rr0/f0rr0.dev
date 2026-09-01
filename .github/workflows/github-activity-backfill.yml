@@ -25,9 +25,9 @@ on:
         required: false
         type: string
       maximum_minutes:
-        description: Hard discovery/processing budget; incomplete work fails visibly (1-330 min)
+        description: Factual processing budget; incomplete work fails visibly (1-30 min)
         required: true
-        default: 60
+        default: 30
         type: number
 
 concurrency:
@@ -39,9 +39,9 @@ permissions:
 
 jobs:
   backfill:
-    name: Discover and process backfill
+    name: Backfill factual history
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -52,10 +52,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Discover history and process work
+      - name: Discover and project factual GitHub work
         env:
           ACCOUNT: ${{ inputs.account }}
-          CRON_SECRET: ${{ secrets.ACTIVITY_CRON_SECRET }}
           DATABASE_URL: ${{ secrets.ACTIVITY_DATABASE_URL }}
           END_DATE: ${{ inputs.end_date }}
           GITHUB_F0RR0_TOKEN: ${{ secrets.ACTIVITY_F0RR0_TOKEN }}

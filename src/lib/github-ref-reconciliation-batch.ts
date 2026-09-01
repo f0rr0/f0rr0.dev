@@ -11,17 +11,17 @@ import {
   skipGitHubRefRepository,
 } from "@/lib/github-commits-store";
 import type { GitHubRepositoryRefKind } from "@/lib/github-commits-store";
-import {
-  collectAccessibleGitHubRepositories,
-  collectGitHubRepositoryRefPage,
-} from "@/lib/github-reconciliation";
+import { collectGitHubRepositoryRefPage } from "@/lib/github-reconciliation";
+import { loadGitHubRepositoryInventory } from "@/lib/github-repository-inventory";
 
 const LEASE_PADDING_MS = 30_000;
+const INVENTORY_PUBLISH_RESERVE_MS = 2000;
 const MINIMUM_REQUEST_BUDGET_MS = 10_000;
 
 export interface GitHubRefReconciliationBatchInput {
   account: TrackedGitHubAccount;
   deadlineAt: number;
+  forceInventoryRefresh?: boolean;
   kind: GitHubRepositoryRefKind;
   repositoryLimit: number;
   token: string;
@@ -106,8 +106,15 @@ const remainingBatchDurationMs = (input: GitHubRefReconciliationBatchInput) => {
 export const reconcileGitHubRepositoryRefBatch = async (
   input: GitHubRefReconciliationBatchInput
 ): Promise<GitHubRefReconciliationBatchResult> => {
-  const remainingDurationMs = remainingBatchDurationMs(input);
+  remainingBatchDurationMs(input);
   const { deadlineAt } = input;
+  const repositories = await loadGitHubRepositoryInventory({
+    account: input.account,
+    deadlineAt: deadlineAt - INVENTORY_PUBLISH_RESERVE_MS,
+    forceRefresh: input.forceInventoryRefresh,
+    token: input.token,
+  });
+  const remainingDurationMs = remainingBatchDurationMs(input);
   const lease = await acquireGitHubRefReconciliationLease({
     account: input.account,
     kind: input.kind,
@@ -125,13 +132,6 @@ export const reconcileGitHubRepositoryRefBatch = async (
   } = lease;
 
   try {
-    const repositories = await collectAccessibleGitHubRepositories(
-      input.token,
-      null,
-      {
-        deadlineAt,
-      }
-    );
     const orderedRepositories = sortGitHubRefRepositories(repositories);
     const repositoriesById = new Map(
       orderedRepositories.map((repository) => [repository.id, repository])

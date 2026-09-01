@@ -1,5 +1,3 @@
-import { setTimeout as delay } from "node:timers/promises";
-
 import {
   ActivityProcessingError,
   fetchGitHubPullRequestMembershipWithToken,
@@ -17,18 +15,15 @@ import {
   persistGitHubPullRequestMembership,
   persistGitHubPullRequestSnapshot,
 } from "@/lib/github-activity-worker-store";
-import type { StoredPullRequestSnapshot } from "@/lib/github-activity-worker-store";
 import {
   fetchGitHub,
   GitHubRequestDeadlineError,
   GitHubResponseError,
   githubApiUrl,
-  nextGitHubPage,
 } from "@/lib/github-api";
 import type {
   GitHubCommit,
   GitHubPullRequest,
-  GitHubRepositoryFacts,
   TrackedGitHubAccount,
 } from "@/lib/github-commits-core";
 import {
@@ -36,12 +31,10 @@ import {
   repositoryIdFrom,
 } from "@/lib/github-commits-core";
 import { persistGitHubCommitReferences } from "@/lib/github-commits-store";
-import { collectAccessibleGitHubRepositories } from "@/lib/github-reconciliation";
+import type { StoredPullRequestSnapshot } from "@/lib/github-pull-request-store";
 
-const GITHUB_PAGE_SIZE = 100;
 const PULL_REQUEST_PROCESSING_BATCH_SIZE = 10;
 const DEADLINE_MARGIN_MS = 30_000;
-const RATE_LIMIT_RESET_PADDING_MS = 1000;
 const AUTHORED_PULL_REQUEST_PAGE_SIZE = 100;
 const PERMANENT_RESOURCE_STATUSES = new Set([403, 404, 410, 422]);
 
@@ -66,14 +59,6 @@ const AUTHORED_PULL_REQUESTS_QUERY = `query AuthoredPullRequests($login: String!
     }
   }
 }`;
-
-const repositoryApiPath = (repository: string, suffix: string) => {
-  const [owner, name, ...rest] = repository.split("/");
-  if (owner === undefined || name === undefined || rest.length > 0) {
-    throw new TypeError("GitHub returned an invalid repository name.");
-  }
-  return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}${suffix}`;
-};
 
 type JsonObject = Record<string, unknown>;
 
@@ -106,45 +91,9 @@ const providerRetryFrom = (error: unknown) => {
   return null;
 };
 
-const withProviderRetryWait = async <Value>(
-  operation: () => Promise<Value>,
-  input: {
-    deadlineAt: number;
-    onRateLimitWait?: (retryAt: Date) => void;
-  }
-) => {
-  while (true) {
-    try {
-      return await operation();
-    } catch (error) {
-      const retry = providerRetryFrom(error);
-      if (retry?.retryAt === null || retry === null) {
-        throw error;
-      }
-      const waitMilliseconds = Math.max(
-        0,
-        retry.retryAt.getTime() - Date.now() + RATE_LIMIT_RESET_PADDING_MS
-      );
-      if (
-        Date.now() + waitMilliseconds + DEADLINE_MARGIN_MS >=
-        input.deadlineAt
-      ) {
-        throw error;
-      }
-      input.onRateLimitWait?.(retry.retryAt);
-      await delay(waitMilliseconds);
-    }
-  }
-};
-
 export interface GitHubPullRequestBackfillCandidate extends GitHubActivityPullRequestReference {
   nodeId: string;
   providerUpdatedAt: string;
-}
-
-export interface GitHubPullRequestBackfillCandidateCollection {
-  complete: boolean;
-  pullRequests: readonly GitHubPullRequestBackfillCandidate[];
 }
 
 export interface GitHubAuthoredPullRequestBackfillCandidateCollection {
@@ -210,7 +159,7 @@ const samePullRequestIdentity = (
   left.repository === right.repository &&
   left.repositoryId === right.repositoryId;
 
-export const mergeGitHubPullRequestBackfillCandidates = (
+const mergeGitHubPullRequestBackfillCandidates = (
   candidates: Map<string, GitHubPullRequestBackfillCandidate>,
   incoming: readonly GitHubPullRequestBackfillCandidate[]
 ) => {
@@ -367,166 +316,6 @@ export const collectGitHubAuthoredPullRequestBackfillCandidates =
   };
 // oxlint-enable eslint/complexity
 
-const pullRequestCandidateFromListValue = (
-  value: unknown,
-  input: {
-    account: TrackedGitHubAccount;
-    repository: GitHubRepositoryFacts;
-  }
-) => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
-  const root = value as Record<string, unknown>;
-  const {
-    created_at: providerCreatedAt,
-    html_url: htmlUrl,
-    node_id: nodeId,
-    number,
-    updated_at: providerUpdatedAt,
-  } = root;
-  const createdAt =
-    typeof providerCreatedAt === "string"
-      ? new Date(providerCreatedAt)
-      : new Date(Number.NaN);
-  const updatedAt =
-    typeof providerUpdatedAt === "string"
-      ? new Date(providerUpdatedAt)
-      : new Date(Number.NaN);
-  if (
-    !Number.isSafeInteger(number) ||
-    Number(number) < 1 ||
-    typeof nodeId !== "string" ||
-    nodeId.length === 0 ||
-    nodeId.length > 100 ||
-    Number.isNaN(createdAt.getTime()) ||
-    Number.isNaN(updatedAt.getTime()) ||
-    htmlUrl !==
-      `https://github.com/${input.repository.fullName}/pull/${String(number)}`
-  ) {
-    return null;
-  }
-  return {
-    candidate: {
-      account: input.account,
-      nodeId,
-      number: Number(number),
-      providerUpdatedAt: updatedAt.toISOString(),
-      repository: input.repository.fullName,
-      repositoryId: input.repository.id,
-    } satisfies GitHubPullRequestBackfillCandidate,
-    createdAt: createdAt.toISOString(),
-  };
-};
-
-const validateNextPullRequestPage = (
-  next: URL,
-  currentPage: number,
-  repository: GitHubRepositoryFacts
-) => {
-  const namedPath = repositoryApiPath(repository.fullName, "/pulls");
-  const numericPath = `/repositories/${encodeURIComponent(repository.id)}/pulls`;
-  if (
-    (next.pathname !== namedPath && next.pathname !== numericPath) ||
-    next.searchParams.get("direction") !== "desc" ||
-    next.searchParams.get("page") !== String(currentPage + 1) ||
-    next.searchParams.get("per_page") !== String(GITHUB_PAGE_SIZE) ||
-    next.searchParams.get("sort") !== "updated" ||
-    next.searchParams.get("state") !== "all" ||
-    next.searchParams.size !== 5
-  ) {
-    throw new TypeError("GitHub returned invalid pull request pagination.");
-  }
-};
-
-/** Enumerates PRs changed since the requested history window began. */
-export const collectGitHubPullRequestBackfillCandidates = async (input: {
-  account: TrackedGitHubAccount;
-  deadlineAt: number;
-  onRateLimitWait?: (retryAt: Date) => void;
-  repository: GitHubRepositoryFacts;
-  token: string;
-  updatedSinceAt: Date;
-}): Promise<GitHubPullRequestBackfillCandidateCollection> => {
-  if (Number.isNaN(input.updatedSinceAt.getTime())) {
-    throw new RangeError("The GitHub pull request activity cutoff is invalid.");
-  }
-  let url: URL | null = githubApiUrl(
-    repositoryApiPath(input.repository.fullName, "/pulls")
-  );
-  url.searchParams.set("direction", "desc");
-  url.searchParams.set("page", "1");
-  url.searchParams.set("per_page", String(GITHUB_PAGE_SIZE));
-  url.searchParams.set("sort", "updated");
-  url.searchParams.set("state", "all");
-  const pullRequests = new Map<string, GitHubPullRequestBackfillCandidate>();
-  const visited = new Set<string>();
-  let previousUpdatedAt = Number.POSITIVE_INFINITY;
-  let page = 1;
-
-  while (url !== null) {
-    if (deadlineReached(input.deadlineAt)) {
-      return { complete: false, pullRequests: [...pullRequests.values()] };
-    }
-    if (visited.has(url.href)) {
-      throw new TypeError("GitHub returned cyclic pull request pagination.");
-    }
-    visited.add(url.href);
-    const requestUrl = url;
-    const response = await withProviderRetryWait(
-      async () =>
-        await fetchGitHub(requestUrl, {
-          deadlineAt: input.deadlineAt,
-          token: input.token,
-        }),
-      input
-    );
-    const payload = (await response.json()) as unknown;
-    if (!Array.isArray(payload)) {
-      throw new TypeError("GitHub returned an invalid pull request page.");
-    }
-
-    let reachedCutoff = false;
-    for (const value of payload) {
-      const parsed = pullRequestCandidateFromListValue(value, input);
-      if (parsed === null) {
-        throw new TypeError("GitHub returned an invalid pull request page.");
-      }
-      const updatedAt = new Date(parsed.candidate.providerUpdatedAt).getTime();
-      if (updatedAt > previousUpdatedAt) {
-        throw new TypeError(
-          "GitHub returned pull requests outside descending updated order."
-        );
-      }
-      previousUpdatedAt = updatedAt;
-      if (updatedAt < input.updatedSinceAt.getTime()) {
-        reachedCutoff = true;
-        continue;
-      }
-      const { candidate } = parsed;
-      const existing = pullRequests.get(candidate.nodeId);
-      if (
-        existing !== undefined &&
-        (existing.number !== candidate.number ||
-          existing.repositoryId !== candidate.repositoryId)
-      ) {
-        throw new TypeError("GitHub returned conflicting pull requests.");
-      }
-      pullRequests.set(candidate.nodeId, candidate);
-    }
-    if (reachedCutoff) {
-      return { complete: true, pullRequests: [...pullRequests.values()] };
-    }
-    const next = nextGitHubPage(response);
-    if (next !== null) {
-      validateNextPullRequestPage(next, page, input.repository);
-      page += 1;
-    }
-    url = next;
-  }
-  return { complete: true, pullRequests: [...pullRequests.values()] };
-};
-
 export type GitHubPullRequestBackfillStopReason =
   | "complete"
   | "deadline"
@@ -547,7 +336,6 @@ export interface GitHubPullRequestBackfillResult {
   skippedPullRequests: number;
   stopReason: GitHubPullRequestBackfillStopReason;
   unavailablePullRequests: number;
-  unavailableRepositories: number;
 }
 
 interface PreparedPullRequest {
@@ -571,7 +359,6 @@ const emptyResult = (): GitHubPullRequestBackfillResult => ({
   skippedPullRequests: 0,
   stopReason: "complete",
   unavailablePullRequests: 0,
-  unavailableRepositories: 0,
 });
 
 const isDeadlineError = (error: unknown) =>
@@ -796,6 +583,12 @@ interface PullRequestProcessingInterruption {
   retryAt: Date | null;
 }
 
+type GitHubPullRequestBackfillProgressReporter = (
+  result: Readonly<GitHubPullRequestBackfillResult>
+) => void;
+
+const ignorePullRequestBackfillProgress = () => null;
+
 const comparePullRequestCandidates = (
   left: GitHubPullRequestBackfillCandidate,
   right: GitHubPullRequestBackfillCandidate
@@ -816,7 +609,7 @@ const processPullRequestCandidates = async (
   input: {
     account: TrackedGitHubAccount;
     deadlineAt: number;
-    onRateLimitWait?: (retryAt: Date) => void;
+    onProgress: GitHubPullRequestBackfillProgressReporter;
     sinceAt: Date;
     token: string;
     untilAt: Date;
@@ -840,18 +633,14 @@ const processPullRequestCandidates = async (
       }
       result.scannedPullRequests += 1;
       try {
-        const value = await withProviderRetryWait(
-          async () =>
-            await preparePullRequest({
-              account: input.account,
-              candidate,
-              deadlineAt: input.deadlineAt,
-              sinceAt: input.sinceAt,
-              token: input.token,
-              untilAt: input.untilAt,
-            }),
-          input
-        );
+        const value = await preparePullRequest({
+          account: input.account,
+          candidate,
+          deadlineAt: input.deadlineAt,
+          sinceAt: input.sinceAt,
+          token: input.token,
+          untilAt: input.untilAt,
+        });
         if (value === null) {
           result.skippedPullRequests += 1;
         } else {
@@ -888,15 +677,7 @@ const processPullRequestCandidates = async (
     if (merged.length > 0) {
       try {
         await persistPreparedPullRequestsWithGaps(
-          await withProviderRetryWait(
-            async () =>
-              await withResolvedMergeCommits(
-                merged,
-                input.token,
-                input.deadlineAt
-              ),
-            input
-          ),
+          await withResolvedMergeCommits(merged, input.token, input.deadlineAt),
           input.account,
           result
         );
@@ -908,14 +689,10 @@ const processPullRequestCandidates = async (
           for (const item of merged) {
             try {
               await persistPreparedPullRequestsWithGaps(
-                await withProviderRetryWait(
-                  async () =>
-                    await withResolvedMergeCommits(
-                      [item],
-                      input.token,
-                      input.deadlineAt
-                    ),
-                  input
+                await withResolvedMergeCommits(
+                  [item],
+                  input.token,
+                  input.deadlineAt
                 ),
                 input.account,
                 result
@@ -948,23 +725,26 @@ const processPullRequestCandidates = async (
       }
     }
     if (interrupted !== null) {
+      input.onProgress({ ...result });
       return interrupted;
     }
+    input.onProgress({ ...result });
   }
   return null;
 };
 
-// oxlint-disable-next-line complexity -- Provider retries, deadlines, stale snapshots, and partial batches fail closed distinctly.
+/** Discovers only authored PRs; current-head commits find associated PRs later. */
 export const backfillGitHubPullRequests = async (input: {
   account: TrackedGitHubAccount;
   deadlineAt: number;
-  onRateLimitWait?: (retryAt: Date) => void;
+  onProgress?: GitHubPullRequestBackfillProgressReporter;
   repositoryId: string | null;
   sinceAt: Date;
   token: string;
   untilAt: Date;
 }): Promise<GitHubPullRequestBackfillResult> => {
   if (
+    !Number.isFinite(input.deadlineAt) ||
     Number.isNaN(input.sinceAt.getTime()) ||
     Number.isNaN(input.untilAt.getTime()) ||
     input.sinceAt > input.untilAt
@@ -972,17 +752,15 @@ export const backfillGitHubPullRequests = async (input: {
     throw new RangeError("The GitHub pull request backfill window is invalid.");
   }
   const result = emptyResult();
-  let repositories: readonly GitHubRepositoryFacts[];
+  const onProgress = input.onProgress ?? ignorePullRequestBackfillProgress;
+  let authored: GitHubAuthoredPullRequestBackfillCandidateCollection;
   try {
-    repositories = await withProviderRetryWait(
-      async () =>
-        await collectAccessibleGitHubRepositories(
-          input.token,
-          input.repositoryId,
-          { deadlineAt: input.deadlineAt, pushedSinceAt: input.sinceAt }
-        ),
-      input
-    );
+    authored = await collectGitHubAuthoredPullRequestBackfillCandidates({
+      account: input.account,
+      deadlineAt: input.deadlineAt,
+      token: input.token,
+      updatedSinceAt: input.sinceAt,
+    });
   } catch (error) {
     if (isDeadlineError(error)) {
       return stop(result, "deadline");
@@ -993,148 +771,27 @@ export const backfillGitHubPullRequests = async (input: {
     }
     throw error;
   }
-
-  const authoredCandidates = new Map<
-    string,
-    GitHubPullRequestBackfillCandidate
-  >();
-  if (input.repositoryId === null) {
-    try {
-      const authored = await withProviderRetryWait(
-        async () =>
-          await collectGitHubAuthoredPullRequestBackfillCandidates({
-            account: input.account,
-            deadlineAt: input.deadlineAt,
-            token: input.token,
-            updatedSinceAt: input.sinceAt,
-          }),
-        input
-      );
-      result.authoredPullRequestPages = authored.pages;
-      result.authoredPullRequestsLifetime = authored.totalCount;
-      result.selectedAuthoredPullRequests = authored.pullRequests.length;
-      mergeGitHubPullRequestBackfillCandidates(
-        authoredCandidates,
-        authored.pullRequests
-      );
-    } catch (error) {
-      if (isDeadlineError(error)) {
-        return stop(result, "deadline");
-      }
-      const retry = providerRetryFrom(error);
-      if (retry !== null) {
-        return stop(result, "provider_retry", retry.retryAt);
-      }
-      throw error;
-    }
-
-    // Repository-scoped Action runs can shard the affiliated inventory when it
-    // is large. Authored PRs in unaffiliated repositories have no equivalent
-    // shard, so persist them before the potentially long per-repository scan.
-    const accessibleRepositoryIds = new Set(
-      repositories.map((repository) => repository.id)
-    );
-    const externalCandidates = [...authoredCandidates.values()]
-      .filter(
-        (candidate) => !accessibleRepositoryIds.has(candidate.repositoryId)
-      )
-      .toSorted(comparePullRequestCandidates);
-    for (const candidate of externalCandidates) {
-      authoredCandidates.delete(candidate.nodeId);
-    }
-    result.repositories += new Set(
-      externalCandidates.map((candidate) => candidate.repositoryId)
-    ).size;
-    const interrupted = await processPullRequestCandidates(
-      externalCandidates,
-      input,
-      result
-    );
-    if (interrupted !== null) {
-      return stop(result, interrupted.reason, interrupted.retryAt);
-    }
-  }
-
-  for (const repository of repositories) {
-    if (deadlineReached(input.deadlineAt)) {
-      return stop(result, "deadline");
-    }
-    let candidates: GitHubPullRequestBackfillCandidateCollection;
-    try {
-      candidates = await withProviderRetryWait(
-        async () =>
-          await collectGitHubPullRequestBackfillCandidates({
-            account: input.account,
-            deadlineAt: input.deadlineAt,
-            onRateLimitWait: input.onRateLimitWait,
-            repository,
-            token: input.token,
-            updatedSinceAt: input.sinceAt,
-          }),
-        input
-      );
-    } catch (error) {
-      if (isDeadlineError(error)) {
-        return stop(result, "deadline");
-      }
-      if (permanentlyUnavailableResource(error)) {
-        result.unavailableRepositories += 1;
-        const authoredRepositoryCandidates = [...authoredCandidates.values()]
-          .filter((candidate) => candidate.repositoryId === repository.id)
-          .toSorted(comparePullRequestCandidates);
-        for (const candidate of authoredRepositoryCandidates) {
-          authoredCandidates.delete(candidate.nodeId);
-        }
-        const interrupted = await processPullRequestCandidates(
-          authoredRepositoryCandidates,
-          input,
-          result
-        );
-        if (interrupted !== null) {
-          return stop(result, interrupted.reason, interrupted.retryAt);
-        }
-        continue;
-      }
-      const retry = providerRetryFrom(error);
-      if (retry !== null) {
-        return stop(result, "provider_retry", retry.retryAt);
-      }
-      throw error;
-    }
-    result.repositories += 1;
-    const repositoryCandidates = new Map<
-      string,
-      GitHubPullRequestBackfillCandidate
-    >();
-    mergeGitHubPullRequestBackfillCandidates(
-      repositoryCandidates,
-      candidates.pullRequests
-    );
-    for (const candidate of authoredCandidates.values()) {
-      if (candidate.repositoryId === repository.id) {
-        mergeGitHubPullRequestBackfillCandidates(repositoryCandidates, [
-          candidate,
-        ]);
-        authoredCandidates.delete(candidate.nodeId);
-      }
-    }
-    const interrupted = await processPullRequestCandidates(
-      [...repositoryCandidates.values()].toSorted(comparePullRequestCandidates),
-      input,
-      result
-    );
-    if (interrupted !== null) {
-      return stop(result, interrupted.reason, interrupted.retryAt);
-    }
-    if (!candidates.complete) {
-      return stop(result, "deadline");
-    }
-  }
-
-  if (authoredCandidates.size > 0) {
-    throw new TypeError(
-      "GitHub returned an authored pull request outside the reconciled repository inventory."
-    );
+  const candidates = authored.pullRequests
+    .filter(
+      (candidate) =>
+        input.repositoryId === null ||
+        candidate.repositoryId === input.repositoryId
+    )
+    .toSorted(comparePullRequestCandidates);
+  result.authoredPullRequestPages = authored.pages;
+  result.authoredPullRequestsLifetime = authored.totalCount;
+  result.selectedAuthoredPullRequests = candidates.length;
+  result.repositories = new Set(
+    candidates.map((candidate) => candidate.repositoryId)
+  ).size;
+  onProgress({ ...result });
+  const interrupted = await processPullRequestCandidates(
+    candidates,
+    { ...input, onProgress },
+    result
+  );
+  if (interrupted !== null) {
+    return stop(result, interrupted.reason, interrupted.retryAt);
   }
   return result;
 };

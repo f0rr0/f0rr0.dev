@@ -1,10 +1,12 @@
-import type { GitHubActivityAuditStatus } from "@/lib/github-activity-audit";
+import type { GitHubFactualWorkerBacklog } from "@/lib/github-backfill-store";
 import {
   repositoryIdFrom,
   TRACKED_GITHUB_ACCOUNTS,
   trackedGitHubAccountFrom,
 } from "@/lib/github-commits-core";
 import type { TrackedGitHubAccount } from "@/lib/github-commits-core";
+import type { GitHubCurrentHeadBackfillResult } from "@/lib/github-direct-backfill";
+import type { GitHubPullRequestBackfillResult } from "@/lib/github-pull-request-backfill";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -13,141 +15,10 @@ const MAXIMUM_BROAD_BACKFILL_LOOKBACK_DAYS = 62;
 const MINIMUM_GITHUB_DATE = Date.UTC(1970, 0, 1);
 const MAXIMUM_GITHUB_DATE = Date.UTC(2099, 11, 31);
 
-export const GITHUB_BACKFILL_WORKER_BATCH_SIZE = 8;
-
-export interface GitHubBackfillCompletion {
-  complete: boolean;
-  pipelineSettled: boolean;
-}
-
-export type GitHubBackfillOutcome =
-  | "complete"
-  | "completed_with_gaps"
-  | "incomplete";
-
-export const githubBackfillDiscoveryCompleteFrom = (
-  inventories: readonly {
-    direct: { complete: boolean } | null;
-    pullRequests: { complete: boolean };
-  }[]
-) =>
-  inventories.length > 0 &&
-  inventories.every(
-    ({ direct, pullRequests }) =>
-      direct?.complete === true && pullRequests.complete
-  );
-
-export const githubBackfillCompletionFrom = (input: {
-  auditStatuses: readonly GitHubActivityAuditStatus[];
-  boundedDiscoveryComplete: boolean;
-}): GitHubBackfillCompletion => {
-  const pipelineSettled =
-    input.auditStatuses.length > 0 &&
-    input.auditStatuses.every(
-      (status) => status === "stored_projection_verified"
-    );
-  return {
-    complete: input.boundedDiscoveryComplete && pipelineSettled,
-    pipelineSettled,
-  };
-};
-
-export const githubBackfillExitCodeFrom = (
-  completion: GitHubBackfillCompletion
-) => (completion.complete ? 0 : 1);
-
-export const githubBackfillOutcomeFrom = (
-  completion: GitHubBackfillCompletion,
-  coverageGaps: number
-): GitHubBackfillOutcome => {
-  if (!Number.isSafeInteger(coverageGaps) || coverageGaps < 0) {
-    throw new RangeError("The GitHub backfill coverage gap count is invalid.");
-  }
-  return completion.complete
-    ? coverageGaps === 0
-      ? "complete"
-      : "completed_with_gaps"
-    : "incomplete";
-};
-
-interface GitHubBackfillWorkerStageCounts {
-  claimed: number;
-  completed: number;
-  deferred: number;
-  failed: number;
-  unavailable: number;
-}
-
-interface GitHubBackfillWorkerPassCounts {
-  aliases: number;
-  canonicalizationAttempts: number;
-  canonicalized: number;
-  commits: GitHubBackfillWorkerStageCounts;
-  observations: GitHubBackfillWorkerStageCounts;
-  pullRequestDiscovery: GitHubBackfillWorkerStageCounts;
-  pullRequests: GitHubBackfillWorkerStageCounts;
-  pullRequestSignals: GitHubBackfillWorkerStageCounts;
-  summaries: GitHubBackfillWorkerStageCounts;
-}
-
-export interface GitHubBackfillProcessingCounts {
-  aliases: number;
-  canonicalizationAttempts: number;
-  canonicalized: number;
-  claimed: number;
-  deferred: number;
-  failed: number;
-  processed: number;
-  unavailable: number;
-}
-
-export const githubBackfillProcessingMadeProgress = (
-  counts: Pick<
-    GitHubBackfillProcessingCounts,
-    "canonicalizationAttempts" | "claimed"
-  >
-) => counts.claimed > 0 || counts.canonicalizationAttempts > 0;
-
 type JsonObject = Record<string, unknown>;
 
 const isObject = (value: unknown): value is JsonObject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
-
-export const githubBackfillProcessingCountsFrom = (
-  result: GitHubBackfillWorkerPassCounts
-): GitHubBackfillProcessingCounts => {
-  const counts: GitHubBackfillProcessingCounts = {
-    aliases: result.aliases,
-    canonicalizationAttempts: result.canonicalizationAttempts,
-    canonicalized: result.canonicalized,
-    claimed: 0,
-    deferred: 0,
-    failed: 0,
-    processed: 0,
-    unavailable: 0,
-  };
-  const stages = [
-    result.observations,
-    result.commits,
-    result.pullRequestDiscovery,
-    result.pullRequestSignals,
-    result.pullRequests,
-    result.summaries,
-  ];
-  for (const stage of stages) {
-    counts.claimed += stage.claimed;
-    counts.deferred += stage.deferred;
-    counts.processed += stage.completed;
-    counts.unavailable += stage.unavailable;
-    // Worker stages include deferred and unavailable items in `failed`.
-    // Report those outcomes once so the final counts remain disjoint.
-    counts.failed += Math.max(
-      0,
-      stage.failed - stage.deferred - stage.unavailable
-    );
-  }
-  return counts;
-};
 
 const utcDayFrom = (value: unknown) => {
   if (typeof value !== "string" || !DATE_PATTERN.test(value)) {
@@ -169,35 +40,28 @@ export interface GitHubBackfillRequest {
   untilAt: Date;
 }
 
-interface NormalizedGitHubBackfillInput {
-  accounts: readonly TrackedGitHubAccount[];
-  endDay: Date;
-  repositoryId: string | null;
-  startAt: Date;
-}
-
-const normalizedGitHubBackfillInputFrom = (
+export const githubBackfillRequestFrom = (
   value: unknown,
-  now: Date
-): NormalizedGitHubBackfillInput | null => {
+  now = new Date()
+): GitHubBackfillRequest | null => {
   if (!isObject(value)) {
     return null;
   }
-  const startAt = utcDayFrom(value.startDate);
+  const sinceAt = utcDayFrom(value.startDate);
   const endDay = utcDayFrom(value.endDate);
   const today = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
   );
   if (
-    startAt === null ||
+    sinceAt === null ||
     endDay === null ||
-    startAt > endDay ||
-    startAt.getTime() < MINIMUM_GITHUB_DATE ||
+    sinceAt > endDay ||
+    sinceAt.getTime() < MINIMUM_GITHUB_DATE ||
     endDay.getTime() > Math.min(MAXIMUM_GITHUB_DATE, today.getTime())
   ) {
     return null;
   }
-  const dayCount = (endDay.getTime() - startAt.getTime()) / DAY_MS + 1;
+  const dayCount = (endDay.getTime() - sinceAt.getTime()) / DAY_MS + 1;
   if (dayCount > MAXIMUM_BACKFILL_DAYS) {
     return null;
   }
@@ -206,8 +70,6 @@ const normalizedGitHubBackfillInputFrom = (
   if (account === null) {
     return null;
   }
-  const accounts =
-    account === "all" ? TRACKED_GITHUB_ACCOUNTS : ([account] as const);
   const rawRepositoryId =
     typeof value.repositoryId === "string" ? value.repositoryId.trim() : "";
   const repositoryId =
@@ -215,38 +77,190 @@ const normalizedGitHubBackfillInputFrom = (
   if (rawRepositoryId.length > 0 && repositoryId === null) {
     return null;
   }
-  const lookbackDays = (today.getTime() - startAt.getTime()) / DAY_MS + 1;
+  const lookbackDays = (today.getTime() - sinceAt.getTime()) / DAY_MS + 1;
   if (
     repositoryId === null &&
     lookbackDays > MAXIMUM_BROAD_BACKFILL_LOOKBACK_DAYS
   ) {
     return null;
   }
-
-  return { accounts, endDay, repositoryId, startAt };
-};
-
-const githubBackfillRequestFor = (
-  input: NormalizedGitHubBackfillInput
-): GitHubBackfillRequest => {
-  const { accounts, endDay, repositoryId, startAt } = input;
+  const accounts =
+    account === "all" ? TRACKED_GITHUB_ACCOUNTS : ([account] as const);
   return {
     accounts,
     endDate: endDay.toISOString().slice(0, 10),
     repositoryId,
-    sinceAt: startAt,
-    startDate: startAt.toISOString().slice(0, 10),
+    sinceAt,
+    startDate: sinceAt.toISOString().slice(0, 10),
     untilAt: new Date(endDay.getTime() + DAY_MS - 1),
   };
 };
 
-export const githubBackfillRequestFrom = (
-  value: unknown,
-  now = new Date()
-): GitHubBackfillRequest | null => {
-  const input = normalizedGitHubBackfillInputFrom(value, now);
-  if (input === null) {
+type GitHubBackfillStopReason =
+  | "complete"
+  | "deadline"
+  | "deferred"
+  | "provider_retry";
+
+export interface GitHubBackfillIdentityResult {
+  complete: boolean;
+  retryAt: Date | null;
+  stopReason: GitHubBackfillStopReason;
+}
+
+export interface GitHubBackfillAccountInventory {
+  account: TrackedGitHubAccount;
+  identity: GitHubBackfillIdentityResult;
+  pullRequests: GitHubPullRequestBackfillResult | null;
+  repositoryInventory: GitHubBackfillIdentityResult | null;
+}
+
+export interface GitHubBackfillInventory {
+  accounts: readonly GitHubBackfillAccountInventory[];
+  currentHeads: GitHubCurrentHeadBackfillResult | null;
+  factualDrain: GitHubBackfillFactualDrainResult | null;
+}
+
+export interface GitHubBackfillFactualDrainResult {
+  claimed: number;
+  complete: boolean;
+  completed: number;
+  passes: number;
+  pending: GitHubFactualWorkerBacklog["pending"];
+  projectionRuns: number;
+  retryAt: Date | null;
+  stopReason: GitHubBackfillStopReason;
+  unavailable: number;
+}
+
+type GitHubBackfillOutcome = "complete" | "completed_with_gaps" | "incomplete";
+
+interface GitHubBackfillInterruption {
+  account: TrackedGitHubAccount | null;
+  retryAt: string | null;
+  stage:
+    | "identity"
+    | "repository_inventory"
+    | "pull_requests"
+    | "current_heads"
+    | "factual_drain";
+  stopReason: Exclude<GitHubBackfillStopReason, "complete">;
+}
+
+const interruptionFrom = (
+  account: TrackedGitHubAccount | null,
+  stage: GitHubBackfillInterruption["stage"],
+  result: GitHubBackfillIdentityResult
+): GitHubBackfillInterruption | null => {
+  if (result.complete) {
+    if (result.stopReason !== "complete" || result.retryAt !== null) {
+      throw new TypeError(
+        "A completed GitHub discovery stage is inconsistent."
+      );
+    }
     return null;
   }
-  return githubBackfillRequestFor(input);
+  if (result.stopReason === "complete") {
+    throw new TypeError(
+      "An incomplete GitHub discovery stage is inconsistent."
+    );
+  }
+  return {
+    account,
+    retryAt: result.retryAt?.toISOString() ?? null,
+    stage,
+    stopReason: result.stopReason,
+  };
+};
+
+const interruptionsFrom = (inventory: GitHubBackfillInventory) => {
+  const interruptions: GitHubBackfillInterruption[] = [];
+  for (const account of inventory.accounts) {
+    const stages = [
+      ["identity", account.identity],
+      ["repository_inventory", account.repositoryInventory],
+      ["pull_requests", account.pullRequests],
+    ] as const;
+    for (const [stage, result] of stages) {
+      if (result === null) {
+        continue;
+      }
+      const interruption = interruptionFrom(account.account, stage, result);
+      if (interruption !== null) {
+        interruptions.push(interruption);
+      }
+    }
+  }
+  if (inventory.currentHeads !== null) {
+    const interruption = interruptionFrom(
+      null,
+      "current_heads",
+      inventory.currentHeads
+    );
+    if (interruption !== null) {
+      interruptions.push(interruption);
+    }
+  }
+  if (inventory.factualDrain !== null) {
+    const interruption = interruptionFrom(
+      null,
+      "factual_drain",
+      inventory.factualDrain
+    );
+    if (interruption !== null) {
+      interruptions.push(interruption);
+    }
+  }
+  return interruptions;
+};
+
+const hasCompleteTraversal = (inventory: GitHubBackfillInventory) =>
+  inventory.accounts.length > 0 &&
+  inventory.accounts.every(
+    (account) =>
+      account.identity.complete &&
+      account.repositoryInventory?.complete === true &&
+      account.pullRequests?.complete === true
+  ) &&
+  inventory.currentHeads?.complete === true &&
+  inventory.factualDrain?.complete === true;
+
+export const githubBackfillDiscoveryReportFrom = (input: {
+  deadlineAt: number;
+  inventory: GitHubBackfillInventory;
+}) => {
+  const deadline = new Date(input.deadlineAt);
+  if (Number.isNaN(deadline.getTime())) {
+    throw new TypeError("The GitHub discovery deadline is invalid.");
+  }
+  const interruptions = interruptionsFrom(input.inventory);
+  const complete = hasCompleteTraversal(input.inventory);
+  if (!complete && interruptions.length === 0) {
+    throw new TypeError("Incomplete GitHub discovery has no terminal reason.");
+  }
+  const coverageGaps = {
+    factualWorker: input.inventory.factualDrain?.unavailable ?? 0,
+    pullRequests: 0,
+  };
+  for (const inventory of input.inventory.accounts) {
+    coverageGaps.pullRequests +=
+      inventory.pullRequests?.unavailablePullRequests ?? 0;
+  }
+  const totalCoverageGaps =
+    coverageGaps.factualWorker + coverageGaps.pullRequests;
+  const outcome: GitHubBackfillOutcome = complete
+    ? totalCoverageGaps === 0
+      ? "complete"
+      : "completed_with_gaps"
+    : "incomplete";
+  return {
+    complete,
+    coverageGaps: { ...coverageGaps, total: totalCoverageGaps },
+    deadlineAt: deadline.toISOString(),
+    discoveryCoverage:
+      "authored_pull_requests_current_ref_generations_and_factual_projection" as const,
+    interruptions,
+    inventory: input.inventory,
+    outcome,
+  };
 };

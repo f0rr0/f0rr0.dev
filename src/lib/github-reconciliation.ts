@@ -38,7 +38,31 @@ const fetchJson = async (
   return { payload: (await response.json()) as unknown, response };
 };
 
-const fetchPaginatedArray = async (
+const nextRepositoryInventoryPage = (
+  response: Response,
+  currentPage: number
+) => {
+  const next = nextGitHubPage(response);
+  if (next === null) {
+    return null;
+  }
+  if (
+    next.origin !== "https://api.github.com" ||
+    next.pathname !== "/user/repos" ||
+    next.searchParams.get("affiliation") !==
+      "owner,collaborator,organization_member" ||
+    next.searchParams.get("direction") !== "asc" ||
+    next.searchParams.get("page") !== String(currentPage + 1) ||
+    next.searchParams.get("per_page") !== String(GITHUB_PAGE_SIZE) ||
+    next.searchParams.get("sort") !== "full_name" ||
+    next.searchParams.get("visibility") !== "all"
+  ) {
+    throw new TypeError("GitHub returned invalid repository pagination.");
+  }
+  return next;
+};
+
+const fetchRepositoryInventory = async (
   initialUrl: URL,
   token: string,
   options: { deadlineAt?: number } = {}
@@ -46,6 +70,7 @@ const fetchPaginatedArray = async (
   const values: unknown[] = [];
   const visited = new Set<string>();
   let url: URL | null = initialUrl;
+  let page = 1;
   while (url !== null) {
     if (visited.has(url.href)) {
       throw new TypeError("GitHub returned cyclic pagination links.");
@@ -56,7 +81,8 @@ const fetchPaginatedArray = async (
       throw new TypeError("GitHub returned an invalid paginated response.");
     }
     values.push(...result.payload);
-    url = nextGitHubPage(result.response);
+    url = nextRepositoryInventoryPage(result.response, page);
+    page += 1;
   }
   return values;
 };
@@ -88,30 +114,24 @@ export const collectAccessibleGitHubRepositories = async (
   url.searchParams.set("affiliation", "owner,collaborator,organization_member");
   url.searchParams.set("direction", "asc");
   url.searchParams.set("per_page", String(GITHUB_PAGE_SIZE));
+  url.searchParams.set("page", "1");
   url.searchParams.set("sort", "full_name");
   url.searchParams.set("visibility", "all");
-  const values = await fetchPaginatedArray(url, token, options);
+  const values = await fetchRepositoryInventory(url, token, options);
   const repositories = new Map<string, GitHubRepositoryFacts>();
   for (const value of values) {
-    if (options.pushedSinceAt !== undefined) {
-      const pushedAt = isObject(value) ? value.pushed_at : undefined;
-      if (pushedAt === null) {
-        continue;
-      }
-      const pushedDate =
-        typeof pushedAt === "string"
-          ? new Date(pushedAt)
-          : new Date(Number.NaN);
-      if (Number.isNaN(pushedDate.getTime())) {
-        throw new TypeError("GitHub returned an invalid repository push date.");
-      }
-      if (pushedDate < options.pushedSinceAt) {
-        continue;
-      }
-    }
     const repository = repositoryFactsFrom(value);
     if (repository === null) {
       throw new TypeError("GitHub returned an invalid repository response.");
+    }
+    if (options.pushedSinceAt !== undefined) {
+      if (repository.pushedAt === null) {
+        continue;
+      }
+      const pushedDate = new Date(repository.pushedAt);
+      if (pushedDate < options.pushedSinceAt) {
+        continue;
+      }
     }
     const existing = repositories.get(repository.id);
     if (existing !== undefined && existing.fullName !== repository.fullName) {
@@ -230,43 +250,4 @@ export const collectGitHubRepositoryRefPage = async (
       compareStrings(left.refName, right.refName)
     ),
   };
-};
-
-export const collectGitHubRepositoryRefs = async (
-  repository: GitHubRepositoryFacts,
-  token: string,
-  options: { deadlineAt?: number } = {}
-): Promise<readonly GitHubRepositoryRefSnapshot[] | null> => {
-  const refs = new Map<string, GitHubRepositoryRefSnapshot>();
-  for (const kind of ["head", "tag"] as const) {
-    let page = 1;
-    while (true) {
-      const collected = await collectGitHubRepositoryRefPage(
-        repository,
-        kind,
-        token,
-        { deadlineAt: options.deadlineAt, page }
-      );
-      if (collected === null) {
-        return null;
-      }
-      for (const ref of collected.refs) {
-        const existing = refs.get(ref.refName);
-        if (
-          existing !== undefined &&
-          (existing.headSha !== ref.headSha || existing.kind !== ref.kind)
-        ) {
-          throw new TypeError("GitHub returned conflicting Git references.");
-        }
-        refs.set(ref.refName, ref);
-      }
-      if (collected.nextPage === null) {
-        break;
-      }
-      page = collected.nextPage;
-    }
-  }
-  return [...refs.values()].toSorted((left, right) =>
-    compareStrings(left.refName, right.refName)
-  );
 };

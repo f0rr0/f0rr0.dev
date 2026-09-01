@@ -3,7 +3,6 @@ const EVENT_ID = /^\d{1,64}$/;
 const GITHUB_DELIVERY_ID =
   /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
 const GITHUB_LOGIN = /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i;
-const GITHUB_WEBHOOK_COMMIT_LIMIT = 2048;
 const PULL_REQUEST_ACTION = /^[a-z][a-z_]{0,39}$/;
 const REPOSITORY_FULL_NAME =
   /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9._-]{1,100}$/;
@@ -13,6 +12,11 @@ export const TRACKED_GITHUB_ACCOUNTS = ["f0rr0", "yuppiestechdev"] as const;
 
 export type TrackedGitHubAccount = (typeof TRACKED_GITHUB_ACCOUNTS)[number];
 
+export const TRACKED_GITHUB_USER_IDS = {
+  f0rr0: "8574219",
+  yuppiestechdev: "99666891",
+} as const satisfies Record<TrackedGitHubAccount, string>;
+
 type JsonObject = Record<string, unknown>;
 
 export interface GitHubRepository {
@@ -21,13 +25,103 @@ export interface GitHubRepository {
 }
 
 export interface GitHubRepositoryFacts extends GitHubRepository {
+  defaultBranch: string | null;
   htmlUrl: string | null;
   ownerAvatarUrl: string | null;
   ownerId: string | null;
   ownerLogin: string;
   ownerType: "Organization" | "User" | null;
+  pushedAt: string | null;
   visibility: "internal" | "private" | "public" | null;
 }
+
+interface GitHubRefSignal {
+  afterSha: string | null;
+  beforeSha: string | null;
+  forced: boolean;
+  operation: "create" | "delete" | "update";
+  refName: string;
+  repository: GitHubRepositoryFacts;
+}
+
+export interface GitHubHeadSignal extends GitHubRefSignal {
+  kind: "head";
+}
+
+export interface GitHubTagSignal extends GitHubRefSignal {
+  kind: "tag";
+}
+
+export type GitHubWebhookRefSignal = GitHubHeadSignal | GitHubTagSignal;
+
+export interface GitHubBranchLineageRef {
+  active: boolean;
+  branchLineageId: string;
+  headSha: string;
+  refName: string;
+}
+
+export interface GitHubBranchLineageTip {
+  headSha: string;
+  refName: string;
+}
+
+export const planGitHubBranchLineages = (
+  existingRefs: readonly GitHubBranchLineageRef[],
+  incomingRefs: readonly GitHubBranchLineageTip[],
+  createLineage: () => string
+): ReadonlyMap<string, string> => {
+  const refs = new Map(existingRefs.map((ref) => [ref.refName, { ...ref }]));
+  const planned = new Map<string, string>();
+  const activeLineageCounts = () => {
+    const counts = new Map<string, number>();
+    for (const ref of refs.values()) {
+      if (ref.active) {
+        counts.set(
+          ref.branchLineageId,
+          (counts.get(ref.branchLineageId) ?? 0) + 1
+        );
+      }
+    }
+    return counts;
+  };
+
+  for (const incoming of [...incomingRefs].toSorted((left, right) =>
+    left.refName < right.refName ? -1 : left.refName > right.refName ? 1 : 0
+  )) {
+    const previous = refs.get(incoming.refName);
+    const [peerLineage] = [...refs.values()]
+      .filter(
+        (ref) =>
+          ref.refName !== incoming.refName && ref.headSha === incoming.headSha
+      )
+      .map((ref) => ref.branchLineageId)
+      .toSorted();
+    const previousIsSoleActiveLineage =
+      previous !== undefined &&
+      (activeLineageCounts().get(previous.branchLineageId) ?? 0) <= 1;
+    const branchLineageId =
+      previous?.headSha === incoming.headSha
+        ? [previous.branchLineageId, peerLineage]
+            .filter((value): value is string => value !== undefined)
+            .toSorted()[0]
+        : (peerLineage ??
+          (previousIsSoleActiveLineage
+            ? previous.branchLineageId
+            : createLineage()));
+    if (branchLineageId === undefined || branchLineageId.length === 0) {
+      throw new Error("A GitHub head lineage could not be assigned.");
+    }
+    planned.set(incoming.refName, branchLineageId);
+    refs.set(incoming.refName, {
+      active: true,
+      branchLineageId,
+      headSha: incoming.headSha,
+      refName: incoming.refName,
+    });
+  }
+  return planned;
+};
 
 export interface GitHubIssue {
   account: TrackedGitHubAccount;
@@ -147,6 +241,14 @@ const optionalDate = (value: unknown) => {
   return { valid: date !== null, value: date } as const;
 };
 
+const optionalRepositoryDate = (value: unknown) => {
+  if (value === null || value === undefined) {
+    return { valid: true, value: null } as const;
+  }
+  const date = normalizedDate(value);
+  return { valid: date !== null, value: date } as const;
+};
+
 export const repositoryIdFrom = (value: unknown) => {
   if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
     return String(value);
@@ -180,6 +282,17 @@ export const trackedGitHubAccountFrom = (
 ): TrackedGitHubAccount | null => {
   const login = normalizedText(value, 39)?.toLowerCase();
   return TRACKED_GITHUB_ACCOUNTS.find((account) => account === login) ?? null;
+};
+
+export const trackedGitHubAccountFromUserId = (
+  value: unknown
+): TrackedGitHubAccount | null => {
+  const userId = repositoryIdFrom(value);
+  return userId === null
+    ? null
+    : (TRACKED_GITHUB_ACCOUNTS.find(
+        (account) => TRACKED_GITHUB_USER_IDS[account] === userId
+      ) ?? null);
 };
 
 const githubLoginFrom = (value: unknown) => {
@@ -309,6 +422,54 @@ const repositoryVisibilityFrom = (
   };
 };
 
+const gitRefPathFrom = (value: unknown, maximumLength = 1000) => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maximumLength
+  ) {
+    return null;
+  }
+  if (
+    value === "@" ||
+    value.startsWith("/") ||
+    value.endsWith("/") ||
+    value.endsWith(".") ||
+    value.includes("..") ||
+    value.includes("//") ||
+    value.includes("@{")
+  ) {
+    return null;
+  }
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (
+      codePoint <= 32 ||
+      codePoint === 127 ||
+      "~^:?*[\\".includes(character)
+    ) {
+      return null;
+    }
+  }
+  const components = value.split("/");
+  return components.some(
+    (component) =>
+      component.length === 0 ||
+      component.startsWith(".") ||
+      component.endsWith(".lock")
+  )
+    ? null
+    : value;
+};
+
+const optionalDefaultBranchFrom = (value: unknown) => {
+  if (value === null || value === undefined) {
+    return { valid: true, value: null } as const;
+  }
+  const branch = gitRefPathFrom(value, 255);
+  return { valid: branch !== null, value: branch } as const;
+};
+
 export const repositoryFactsFrom = (
   value: unknown
 ): GitHubRepositoryFacts | null => {
@@ -319,7 +480,14 @@ export const repositoryFactsFrom = (
 
   const owner = repositoryOwnerFactsFrom(value, repository.fullName);
   const visibility = repositoryVisibilityFrom(value);
-  if (owner === null || !visibility.valid) {
+  const defaultBranch = optionalDefaultBranchFrom(value.default_branch);
+  const pushedAt = optionalRepositoryDate(value.pushed_at);
+  if (
+    owner === null ||
+    !defaultBranch.valid ||
+    !pushedAt.valid ||
+    !visibility.valid
+  ) {
     return null;
   }
   const expectedHtmlUrl = `https://github.com/${repository.fullName}`;
@@ -327,8 +495,10 @@ export const repositoryFactsFrom = (
 
   return {
     ...repository,
+    defaultBranch: defaultBranch.value,
     htmlUrl,
     ...owner,
+    pushedAt: pushedAt.value,
     visibility: visibility.visibility,
   };
 };
@@ -375,9 +545,9 @@ export const issueFromGitHub = (
   if (!isObject(value) || !isObject(value.user) || "pull_request" in value) {
     return null;
   }
-  const account = trackedGitHubAccountFrom(value.user.login);
   const authorLogin = githubLoginFrom(value.user.login);
   const authorUserId = repositoryIdFrom(value.user.id);
+  const account = trackedGitHubAccountFromUserId(authorUserId);
   const createdAt = normalizedDate(value.created_at);
   const nodeId = normalizedText(value.node_id, 128);
   const number = positiveInteger(value.number);
@@ -409,59 +579,6 @@ export const issueFromGitHub = (
     number,
     repository,
     title,
-    url,
-  };
-};
-
-const expectedCommitUrl = (repository: GitHubRepository, sha: string) =>
-  `https://github.com/${repository.fullName}/commit/${sha}`;
-
-export const commitFromGitHub = (
-  value: unknown,
-  repository: GitHubRepository
-): GitHubCommit | null => {
-  if (!isObject(value) || !isObject(value.commit)) {
-    throw new TypeError("GitHub returned an invalid commit response.");
-  }
-
-  const sha = commitShaFrom(value.sha);
-  const message =
-    typeof value.commit.message === "string"
-      ? (normalizedText(value.commit.message.split(/\r?\n/, 1)[0], 240) ?? "")
-      : null;
-  const committedAt = normalizedDate(
-    (isObject(value.commit.committer)
-      ? value.commit.committer.date
-      : undefined) ??
-      (isObject(value.commit.author) ? value.commit.author.date : undefined)
-  );
-  if (sha === null || message === null || committedAt === null) {
-    throw new TypeError("GitHub returned an invalid commit response.");
-  }
-
-  const url = expectedCommitUrl(repository, sha);
-  if (value.html_url !== url) {
-    throw new TypeError("GitHub returned an invalid commit response.");
-  }
-
-  if (value.author === null) {
-    return null;
-  }
-  if (!isObject(value.author) || typeof value.author.login !== "string") {
-    throw new TypeError("GitHub returned an invalid commit response.");
-  }
-  const authoredBy = trackedGitHubAccountFrom(value.author.login);
-  if (authoredBy === null) {
-    return null;
-  }
-
-  return {
-    author: authoredBy,
-    committedAt,
-    message,
-    repository: repository.fullName,
-    repositoryId: repository.id,
-    sha,
     url,
   };
 };
@@ -606,8 +723,8 @@ export const pullRequestFromGitHub = (
   }
 
   const author = githubActorLoginFrom(value.user.login);
-  const authorAccount = trackedGitHubAccountFrom(value.user.login);
   const authorUserId = repositoryIdFrom(value.user.id);
+  const authorAccount = trackedGitHubAccountFromUserId(authorUserId);
   if (author === null || authorUserId === null) {
     return null;
   }
@@ -733,7 +850,7 @@ const issueEventFrom = (
   if (authorLogin === null) {
     return null;
   }
-  if (trackedGitHubAccountFrom(authorLogin) !== account) {
+  if (trackedGitHubAccountFromUserId(rawIssue.user.id) !== account) {
     return { id, issue: null, occurredAt, pullRequest: null, push: null };
   }
   const issue = issueFromGitHub(rawIssue, repository);
@@ -951,50 +1068,80 @@ export const githubEventFrom = (
   return { id, issue: null, occurredAt, pullRequest: null, push: null };
 };
 
-export const pushFromWebhook = (value: unknown): GitHubPush | null => {
-  if (!isObject(value) || value.deleted === true) {
+const webhookRefFrom = (value: unknown) => {
+  if (typeof value !== "string") {
     return null;
   }
+  const headPrefix = "refs/heads/";
+  const tagPrefix = "refs/tags/";
+  const kind = value.startsWith(headPrefix)
+    ? ("head" as const)
+    : value.startsWith(tagPrefix)
+      ? ("tag" as const)
+      : null;
+  if (kind === null) {
+    return null;
+  }
+  const prefix = kind === "head" ? headPrefix : tagPrefix;
+  return gitRefPathFrom(value.slice(prefix.length)) === null
+    ? null
+    : { kind, refName: value };
+};
 
-  const rawSender = value.sender;
-  const hasSender = isObject(rawSender);
-  const sender = hasSender ? trackedGitHubAccountFrom(rawSender.login) : null;
-  const pusher = isObject(value.pusher)
-    ? trackedGitHubAccountFrom(value.pusher.name)
-    : null;
-  // GitHub's authenticated sender is authoritative when present. A foreign
-  // sender must not be replaced by the less authoritative pusher name.
-  const pushedBy = hasSender ? sender : pusher;
-  const repository = repositoryFrom(value.repository);
-  const before = commitShaFrom(value.before);
-  const head = commitShaFrom(value.after);
-  const ref = normalizedText(value.ref, 300);
+const refOperationFrom = (
+  beforeSha: string | null,
+  afterSha: string | null
+) => {
+  if (beforeSha === null) {
+    return afterSha === null ? null : ("create" as const);
+  }
+  return afterSha === null ? ("delete" as const) : ("update" as const);
+};
+
+const webhookRefTransitionFrom = (value: JsonObject) => {
+  const rawBeforeSha = commitShaFrom(value.before);
+  const rawAfterSha = commitShaFrom(value.after);
   if (
-    pushedBy === null ||
-    repository === null ||
-    before === null ||
-    head === null ||
-    ref === null ||
-    !ref.startsWith("refs/heads/") ||
-    head === ZERO_SHA
+    rawBeforeSha === null ||
+    rawAfterSha === null ||
+    typeof value.created !== "boolean" ||
+    typeof value.deleted !== "boolean" ||
+    typeof value.forced !== "boolean"
   ) {
     return null;
   }
-
-  const rawCommits = Array.isArray(value.commits) ? value.commits : [];
-  const commitShas = uniqueCommitReferences(rawCommits);
-  const explicitSize = nonNegativeInteger(value.size);
-  const size =
-    explicitSize ??
-    (rawCommits.length >= GITHUB_WEBHOOK_COMMIT_LIMIT
-      ? null
-      : commitShas.length);
-
-  if (size !== null && commitShas.length > size) {
+  const beforeSha = rawBeforeSha === ZERO_SHA ? null : rawBeforeSha;
+  const afterSha = rawAfterSha === ZERO_SHA ? null : rawAfterSha;
+  const operation = refOperationFrom(beforeSha, afterSha);
+  if (
+    operation === null ||
+    value.created !== (operation === "create") ||
+    value.deleted !== (operation === "delete") ||
+    (value.forced && operation !== "update")
+  ) {
     return null;
   }
+  return { afterSha, beforeSha, forced: value.forced, operation };
+};
 
-  return { before, commitShas, head, pushedBy, ref, repository, size };
+export const githubWebhookRefSignalFrom = (
+  value: unknown
+): GitHubWebhookRefSignal | null => {
+  if (!isObject(value)) {
+    return null;
+  }
+  const repository = repositoryFactsFrom(value.repository);
+  const ref = webhookRefFrom(value.ref);
+  const transition = webhookRefTransitionFrom(value);
+  if (repository === null || ref === null || transition === null) {
+    return null;
+  }
+  return {
+    kind: ref.kind,
+    refName: ref.refName,
+    repository,
+    ...transition,
+  };
 };
 
 export const pullRequestFromWebhook = (value: unknown) => {
@@ -1038,6 +1185,4 @@ export const pullRequestObservationFromWebhook = (
 };
 
 export const authenticatedGitHubAccountFrom = (value: unknown) =>
-  isObject(value) && GITHUB_LOGIN.test(String(value.login))
-    ? trackedGitHubAccountFrom(value.login)
-    : null;
+  isObject(value) ? trackedGitHubAccountFromUserId(value.id) : null;

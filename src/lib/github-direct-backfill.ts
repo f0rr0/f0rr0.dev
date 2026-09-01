@@ -1,410 +1,268 @@
-import { setTimeout as delay } from "node:timers/promises";
-
 import {
-  fetchGitHub,
+  ActivityProcessingError,
+  fetchGitHubCurrentRefMembership,
+  GitHubGraphQlResponseError,
+} from "@/lib/github-activity-processor";
+import {
   GitHubRequestDeadlineError,
   GitHubResponseError,
-  githubApiUrl,
-  nextGitHubPage,
 } from "@/lib/github-api";
 import {
-  commitShaFrom,
-  trackedGitHubAccountFrom,
-} from "@/lib/github-commits-core";
-import type {
-  GitHubCommit,
-  GitHubRepositoryFacts,
-  TrackedGitHubAccount,
-} from "@/lib/github-commits-core";
-import { persistGitHubCommitReferences } from "@/lib/github-commits-store";
-import type { GitHubRepositoryRefSnapshot } from "@/lib/github-commits-store";
-import {
-  collectAccessibleGitHubRepositories,
-  collectGitHubRepositoryRefs,
-} from "@/lib/github-reconciliation";
+  claimGitHubRefRepairs,
+  completeGitHubRefDeletion,
+  completeGitHubRefRepair,
+  deferGitHubRefRepair,
+  githubCurrentRefMembershipReferenceFrom,
+  readGitHubRefRepairBacklog,
+  releaseGitHubRefRepair,
+} from "@/lib/github-ref-membership-store";
+import type { ClaimedGitHubRefRepair } from "@/lib/github-ref-membership-store";
 
 const DEADLINE_MARGIN_MS = 30_000;
-const GITHUB_PAGE_SIZE = 100;
-const PERSISTENCE_BATCH_SIZE = 1000;
-const RATE_LIMIT_RESET_PADDING_MS = 1000;
-const PERMANENT_RESOURCE_STATUSES = new Set([403, 404, 410, 422]);
+const DEFAULT_CLAIM_LIMIT = 8;
 
-type JsonObject = Record<string, unknown>;
+export type GitHubCurrentHeadBackfillStopReason =
+  | "complete"
+  | "deadline"
+  | "deferred"
+  | "provider_retry";
 
-const isObject = (value: unknown): value is JsonObject =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+export interface GitHubCurrentHeadBackfillResult {
+  claimedRefs: number;
+  complete: boolean;
+  completedGenerations: number;
+  deferredRefs: number;
+  deletedGenerations: number;
+  insertedCommits: number;
+  memberCommits: number;
+  remainingRefs: number;
+  retryAt: Date | null;
+  staleRefs: number;
+  stopReason: GitHubCurrentHeadBackfillStopReason;
+}
 
-const repositoryApiPath = (repository: string, suffix: string) => {
-  const [owner, name, ...rest] = repository.split("/");
-  if (owner === undefined || name === undefined || rest.length > 0) {
-    throw new TypeError("GitHub returned an invalid repository name.");
-  }
-  return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}${suffix}`;
+interface GitHubCurrentHeadBackfillDependencies {
+  claim: typeof claimGitHubRefRepairs;
+  completeActive: typeof completeGitHubRefRepair;
+  completeDeleted: typeof completeGitHubRefDeletion;
+  defer: typeof deferGitHubRefRepair;
+  fetch: typeof fetchGitHubCurrentRefMembership;
+  readBacklog: typeof readGitHubRefRepairBacklog;
+  release: typeof releaseGitHubRefRepair;
+}
+
+const productionDependencies: GitHubCurrentHeadBackfillDependencies = {
+  claim: claimGitHubRefRepairs,
+  completeActive: completeGitHubRefRepair,
+  completeDeleted: completeGitHubRefDeletion,
+  defer: deferGitHubRefRepair,
+  fetch: fetchGitHubCurrentRefMembership,
+  readBacklog: readGitHubRefRepairBacklog,
+  release: releaseGitHubRefRepair,
 };
+
+const emptyResult = (): GitHubCurrentHeadBackfillResult => ({
+  claimedRefs: 0,
+  complete: false,
+  completedGenerations: 0,
+  deferredRefs: 0,
+  deletedGenerations: 0,
+  insertedCommits: 0,
+  memberCommits: 0,
+  remainingRefs: 0,
+  retryAt: null,
+  staleRefs: 0,
+  stopReason: "deferred",
+});
 
 const deadlineReached = (deadlineAt: number) =>
   Date.now() + DEADLINE_MARGIN_MS >= deadlineAt;
 
-const permanentlyUnavailableResource = (error: unknown) =>
-  error instanceof GitHubResponseError &&
-  !error.retryable &&
-  PERMANENT_RESOURCE_STATUSES.has(error.status);
+const providerRetryAtFrom = (error: unknown) => {
+  if (error instanceof GitHubResponseError && error.retryable) {
+    return { retryAt: error.retryAt };
+  }
+  if (error instanceof GitHubGraphQlResponseError && error.retryable) {
+    return { retryAt: error.retryAt };
+  }
+  return null;
+};
 
-const withRateLimitWait = async <Value>(
-  operation: () => Promise<Value>,
+const errorCode = (error: unknown) => {
+  if (error instanceof ActivityProcessingError) {
+    return error.code;
+  }
+  if (error instanceof GitHubResponseError) {
+    return `github_${String(error.status)}`;
+  }
+  if (error instanceof GitHubGraphQlResponseError) {
+    return `github_graphql_${error.kind}`;
+  }
+  return error instanceof Error ? error.name.slice(0, 80) : "unknown_error";
+};
+
+const releaseRepairs = async (
+  repairs: readonly ClaimedGitHubRefRepair[],
+  dependencies: GitHubCurrentHeadBackfillDependencies
+) => {
+  for (const repair of repairs) {
+    await dependencies.release(repair);
+  }
+};
+
+const stoppedResult = (
+  result: GitHubCurrentHeadBackfillResult,
   input: {
-    deadlineAt: number;
-    onRateLimitWait?: (retryAt: Date) => void;
+    remainingRefs: number;
+    retryAt?: Date | null;
+    stopReason: Exclude<GitHubCurrentHeadBackfillStopReason, "complete">;
   }
-) => {
-  while (true) {
-    try {
-      return await operation();
-    } catch (error) {
-      if (
-        !(error instanceof GitHubResponseError) ||
-        !error.retryable ||
-        error.retryAt === null
-      ) {
-        throw error;
-      }
-      const waitMilliseconds = Math.max(
-        0,
-        error.retryAt.getTime() - Date.now() + RATE_LIMIT_RESET_PADDING_MS
-      );
-      if (
-        Date.now() + waitMilliseconds + DEADLINE_MARGIN_MS >=
-        input.deadlineAt
-      ) {
-        throw error;
-      }
-      input.onRateLimitWait?.(error.retryAt);
-      await delay(waitMilliseconds);
-    }
-  }
-};
-
-const commitReferenceFrom = (
-  value: unknown,
-  account: TrackedGitHubAccount,
-  repository: GitHubRepositoryFacts
-) => {
-  if (!isObject(value) || !isObject(value.commit)) {
-    throw new TypeError("GitHub returned an invalid commit page.");
-  }
-  const sha = commitShaFrom(value.sha);
-  const returnedAuthor = isObject(value.author)
-    ? trackedGitHubAccountFrom(value.author.login)
-    : null;
-  if (
-    sha === null ||
-    (value.author !== null && returnedAuthor !== account) ||
-    !isObject(value.commit.committer) ||
-    typeof value.commit.committer.date !== "string" ||
-    typeof value.commit.message !== "string"
-  ) {
-    throw new TypeError("GitHub returned an invalid filtered commit.");
-  }
-  const committedAt = new Date(value.commit.committer.date);
-  if (Number.isNaN(committedAt.getTime())) {
-    throw new TypeError("GitHub returned an invalid commit timestamp.");
-  }
-  const message = (value.commit.message.split(/\r?\n/, 1)[0] ?? "")
-    .replaceAll(/\s+/g, " ")
-    .trim()
-    .slice(0, 240);
-  return {
-    author: account,
-    committedAt: committedAt.toISOString(),
-    message,
-    repository: repository.fullName,
-    repositoryId: repository.id,
-    sha,
-    url: `https://github.com/${repository.fullName}/commit/${sha}`,
-  } satisfies GitHubCommit;
-};
-
-const validateNextCommitPage = (
-  next: URL,
-  currentPage: number,
-  input: {
-    account: TrackedGitHubAccount;
-    headSha: string;
-    repository: GitHubRepositoryFacts;
-    sinceAt: Date;
-    untilAt: Date;
-  }
-) => {
-  const expectedPath = repositoryApiPath(input.repository.fullName, "/commits");
-  if (
-    next.pathname !== expectedPath ||
-    next.searchParams.get("author") !== input.account ||
-    next.searchParams.get("page") !== String(currentPage + 1) ||
-    next.searchParams.get("per_page") !== String(GITHUB_PAGE_SIZE) ||
-    next.searchParams.get("sha") !== input.headSha ||
-    next.searchParams.get("since") !== input.sinceAt.toISOString() ||
-    next.searchParams.get("until") !== input.untilAt.toISOString()
-  ) {
-    throw new TypeError("GitHub returned invalid commit pagination.");
-  }
-};
-
-export const collectGitHubCommitsFromHead = async (input: {
-  account: TrackedGitHubAccount;
-  deadlineAt: number;
-  headSha: string;
-  onRateLimitWait?: (retryAt: Date) => void;
-  repository: GitHubRepositoryFacts;
-  sinceAt: Date;
-  token: string;
-  untilAt: Date;
-}) => {
-  let page = 1;
-  let url: URL | null = githubApiUrl(
-    repositoryApiPath(input.repository.fullName, "/commits")
-  );
-  url.searchParams.set("author", input.account);
-  url.searchParams.set("page", String(page));
-  url.searchParams.set("per_page", String(GITHUB_PAGE_SIZE));
-  url.searchParams.set("sha", input.headSha);
-  url.searchParams.set("since", input.sinceAt.toISOString());
-  url.searchParams.set("until", input.untilAt.toISOString());
-  const commits: GitHubCommit[] = [];
-  const seenPages = new Set<string>();
-  let pages = 0;
-
-  while (url !== null) {
-    if (deadlineReached(input.deadlineAt)) {
-      throw new GitHubRequestDeadlineError();
-    }
-    if (seenPages.has(url.href)) {
-      throw new TypeError("GitHub returned cyclic commit pagination.");
-    }
-    seenPages.add(url.href);
-    const requestUrl = url;
-    const response = await withRateLimitWait(
-      async () =>
-        await fetchGitHub(requestUrl, {
-          deadlineAt: input.deadlineAt,
-          token: input.token,
-        }),
-      input
-    );
-    const payload = (await response.json()) as unknown;
-    if (!Array.isArray(payload)) {
-      throw new TypeError("GitHub returned an invalid commit page.");
-    }
-    for (const value of payload) {
-      const commit = commitReferenceFrom(
-        value,
-        input.account,
-        input.repository
-      );
-      const committedAt = new Date(commit.committedAt).getTime();
-      if (
-        committedAt >= input.sinceAt.getTime() &&
-        committedAt <= input.untilAt.getTime()
-      ) {
-        commits.push(commit);
-      }
-    }
-    pages += 1;
-    const next = nextGitHubPage(response);
-    if (next !== null) {
-      validateNextCommitPage(next, page, input);
-      page += 1;
-    }
-    url = next;
-  }
-  return { commits, pages };
-};
-
-export const distinctGitHubCurrentRefHeads = (
-  refs: readonly GitHubRepositoryRefSnapshot[]
-) => {
-  const distinct = new Map<string, string>();
-  for (const ref of refs.toSorted((left, right) => {
-    if (left.kind !== right.kind) {
-      return left.kind === "head" ? -1 : 1;
-    }
-    return left.refName < right.refName
-      ? -1
-      : left.refName > right.refName
-        ? 1
-        : 0;
-  })) {
-    if (!distinct.has(ref.headSha)) {
-      distinct.set(ref.headSha, ref.refName);
-    }
-  }
-  return [...distinct].map(([headSha, refName]) => ({ headSha, refName }));
-};
-
-export type GitHubDirectBackfillStopReason =
-  | "complete"
-  | "deadline"
-  | "provider_retry";
-
-export interface GitHubDirectBackfillResult {
-  complete: boolean;
-  duplicateCommits: number;
-  duplicateReachability: number;
-  heads: number;
-  insertedCommits: number;
-  pages: number;
-  refs: number;
-  repositories: number;
-  retryAt: Date | null;
-  stopReason: GitHubDirectBackfillStopReason;
-  unavailableRepositories: number;
-  uniqueCommits: number;
-}
-
-const emptyResult = (): GitHubDirectBackfillResult => ({
-  complete: true,
-  duplicateCommits: 0,
-  duplicateReachability: 0,
-  heads: 0,
-  insertedCommits: 0,
-  pages: 0,
-  refs: 0,
-  repositories: 0,
-  retryAt: null,
-  stopReason: "complete",
-  unavailableRepositories: 0,
-  uniqueCommits: 0,
+): GitHubCurrentHeadBackfillResult => ({
+  ...result,
+  complete: false,
+  remainingRefs: input.remainingRefs,
+  retryAt: input.retryAt ?? null,
+  stopReason: input.stopReason,
 });
 
-const stoppedResult = (result: GitHubDirectBackfillResult, error: unknown) => {
-  if (error instanceof GitHubRequestDeadlineError) {
-    return { ...result, complete: false, stopReason: "deadline" as const };
-  }
-  if (error instanceof GitHubResponseError && error.retryable) {
-    return {
-      ...result,
-      complete: false,
-      retryAt: error.retryAt,
-      stopReason: "provider_retry" as const,
-    };
-  }
-  throw error;
-};
-
 /**
- * Discovers tracked commits directly from every distinct current ref head.
- * Refs are inventoried once for the whole requested window; heads precede tags
- * and all traversal is deterministic so an idempotent rerun repeats safely.
+ * Drains only stale projection-relevant desired heads. Each successful ref is
+ * atomically checkpointed as a complete generation before another is claimed.
  */
-export const backfillGitHubCommitsFromCurrentRefs = async (input: {
-  account: TrackedGitHubAccount;
-  deadlineAt: number;
-  onRateLimitWait?: (retryAt: Date) => void;
-  repositoryId: string | null;
-  sinceAt: Date;
-  token: string;
-  untilAt: Date;
-}): Promise<GitHubDirectBackfillResult> => {
+export const backfillGitHubCurrentRefGenerations = async (
+  input: {
+    claimLimit?: number;
+    deadlineAt: number;
+    repositoryId: string | null;
+  },
+  dependencies: GitHubCurrentHeadBackfillDependencies = productionDependencies
+): Promise<GitHubCurrentHeadBackfillResult> => {
+  const claimLimit = input.claimLimit ?? DEFAULT_CLAIM_LIMIT;
   if (
-    Number.isNaN(input.sinceAt.getTime()) ||
-    Number.isNaN(input.untilAt.getTime()) ||
-    input.sinceAt > input.untilAt
+    !Number.isSafeInteger(claimLimit) ||
+    claimLimit < 1 ||
+    claimLimit > 100 ||
+    !Number.isFinite(input.deadlineAt)
   ) {
-    throw new RangeError("The GitHub direct backfill window is invalid.");
+    throw new RangeError(
+      "The GitHub current-head backfill bounds are invalid."
+    );
   }
   const result = emptyResult();
-  const buffered: GitHubCommit[] = [];
-  const seenCommits = new Set<string>();
-  const flush = async () => {
-    if (buffered.length === 0) {
-      return;
-    }
-    const persisted = await persistGitHubCommitReferences({
-      commits: buffered.splice(0),
-    });
-    result.insertedCommits += persisted.inserted;
-    result.duplicateCommits += persisted.duplicates;
-  };
 
-  try {
-    const repositories = await withRateLimitWait(
-      async () =>
-        await collectAccessibleGitHubRepositories(
-          input.token,
-          input.repositoryId,
-          { deadlineAt: input.deadlineAt, pushedSinceAt: input.sinceAt }
-        ),
-      input
-    );
-    for (const repository of repositories) {
-      if (deadlineReached(input.deadlineAt)) {
-        throw new GitHubRequestDeadlineError();
+  while (!deadlineReached(input.deadlineAt)) {
+    const claims = await dependencies.claim({
+      limit: claimLimit,
+      repositoryId: input.repositoryId,
+    });
+    result.claimedRefs += claims.length;
+    if (claims.length === 0) {
+      const backlog = await dependencies.readBacklog({
+        repositoryId: input.repositoryId,
+      });
+      if (backlog.remaining === 0) {
+        return {
+          ...result,
+          complete: true,
+          remainingRefs: 0,
+          retryAt: null,
+          stopReason: "complete",
+        };
       }
-      let refs: readonly GitHubRepositoryRefSnapshot[] | null;
+      return stoppedResult(result, {
+        remainingRefs: backlog.remaining,
+        retryAt: backlog.retryAt,
+        stopReason: "deferred",
+      });
+    }
+
+    for (const [index, repair] of claims.entries()) {
+      if (deadlineReached(input.deadlineAt)) {
+        await releaseRepairs(claims.slice(index), dependencies);
+        const backlog = await dependencies.readBacklog({
+          repositoryId: input.repositoryId,
+        });
+        return stoppedResult(result, {
+          remainingRefs: backlog.remaining,
+          stopReason: "deadline",
+        });
+      }
       try {
-        refs = await withRateLimitWait(
-          async () =>
-            await collectGitHubRepositoryRefs(repository, input.token, {
-              deadlineAt: input.deadlineAt,
-            }),
-          input
-        );
-      } catch (error) {
-        if (permanentlyUnavailableResource(error)) {
-          result.unavailableRepositories += 1;
+        if (!repair.active) {
+          const completion = await dependencies.completeDeleted(repair);
+          if (completion.stale) {
+            result.staleRefs += 1;
+            await releaseRepairs(claims.slice(index + 1), dependencies);
+            const backlog = await dependencies.readBacklog({
+              repositoryId: input.repositoryId,
+            });
+            return stoppedResult(result, {
+              remainingRefs: backlog.remaining,
+              retryAt: backlog.retryAt,
+              stopReason: "deferred",
+            });
+          }
+          result.deletedGenerations += 1;
           continue;
         }
-        throw error;
-      }
-      if (refs === null) {
-        result.unavailableRepositories += 1;
-        continue;
-      }
-      result.repositories += 1;
-      result.refs += refs.length;
-      const distinctHeads = distinctGitHubCurrentRefHeads(refs);
-      let repositoryHasUnavailableHead = false;
-      for (const { headSha } of distinctHeads) {
-        if (deadlineReached(input.deadlineAt)) {
-          throw new GitHubRequestDeadlineError();
-        }
-        let page: Awaited<ReturnType<typeof collectGitHubCommitsFromHead>>;
-        try {
-          page = await collectGitHubCommitsFromHead({
-            ...input,
-            headSha,
-            repository,
+
+        const source = await dependencies.fetch(
+          githubCurrentRefMembershipReferenceFrom(repair),
+          { deadlineAt: input.deadlineAt }
+        );
+        const completion = await dependencies.completeActive(repair, source);
+        if (completion.stale) {
+          result.staleRefs += 1;
+          await releaseRepairs(claims.slice(index + 1), dependencies);
+          const backlog = await dependencies.readBacklog({
+            repositoryId: input.repositoryId,
           });
-        } catch (error) {
-          if (permanentlyUnavailableResource(error)) {
-            if (!repositoryHasUnavailableHead) {
-              repositoryHasUnavailableHead = true;
-              result.unavailableRepositories += 1;
-            }
-            continue;
-          }
-          throw error;
+          return stoppedResult(result, {
+            remainingRefs: backlog.remaining,
+            retryAt: backlog.retryAt,
+            stopReason: "deferred",
+          });
         }
-        result.heads += 1;
-        result.pages += page.pages;
-        for (const commit of page.commits) {
-          const identity = `${commit.repositoryId}:${commit.sha}`;
-          if (seenCommits.has(identity)) {
-            result.duplicateReachability += 1;
-            continue;
-          }
-          seenCommits.add(identity);
-          buffered.push(commit);
-          result.uniqueCommits += 1;
-          if (buffered.length >= PERSISTENCE_BATCH_SIZE) {
-            await flush();
-          }
+        result.completedGenerations += 1;
+        result.insertedCommits += completion.insertedCommits;
+        result.memberCommits += completion.memberCount;
+      } catch (error) {
+        if (error instanceof GitHubRequestDeadlineError) {
+          await dependencies.release(repair);
+          await releaseRepairs(claims.slice(index + 1), dependencies);
+          const backlog = await dependencies.readBacklog({
+            repositoryId: input.repositoryId,
+          });
+          return stoppedResult(result, {
+            remainingRefs: backlog.remaining,
+            stopReason: "deadline",
+          });
         }
+        const providerRetry = providerRetryAtFrom(error);
+        const retryAt = await dependencies.defer(
+          repair,
+          errorCode(error),
+          providerRetry?.retryAt ?? null
+        );
+        result.deferredRefs += 1;
+        await releaseRepairs(claims.slice(index + 1), dependencies);
+        const backlog = await dependencies.readBacklog({
+          repositoryId: input.repositoryId,
+        });
+        return stoppedResult(result, {
+          remainingRefs: backlog.remaining,
+          retryAt,
+          stopReason: providerRetry === null ? "deferred" : "provider_retry",
+        });
       }
     }
-    await flush();
-    return result;
-  } catch (error) {
-    await flush();
-    return stoppedResult(result, error);
   }
+
+  const backlog = await dependencies.readBacklog({
+    repositoryId: input.repositoryId,
+  });
+  return stoppedResult(result, {
+    remainingRefs: backlog.remaining,
+    stopReason: "deadline",
+  });
 };

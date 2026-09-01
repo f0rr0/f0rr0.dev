@@ -1,23 +1,22 @@
 import { createHmac } from "node:crypto";
 
-import { revalidateTag } from "next/cache";
-
 import { isDatabaseConfigured } from "@/db/client";
 import { env } from "@/env";
 import {
   githubDeliveryIdFrom,
+  githubWebhookRefSignalFrom,
   issueActionFromWebhook,
   issueFromWebhook,
   pullRequestObservationFromWebhook,
-  pushFromWebhook,
   trackedGitHubAccountFrom,
 } from "@/lib/github-commits-core";
 import {
   persistIgnoredGitHubWebhookDelivery,
+  persistGitHubWebhookHeadSignal,
   persistGitHubWebhookIssue,
   persistGitHubWebhookPullRequest,
-  persistGitHubWebhookPush,
 } from "@/lib/github-commits-store";
+import type { GITHUB_ROUTINE_MAX_DURATION_SECONDS } from "@/lib/github-cron-config";
 import { reportOperationalError } from "@/lib/operational-error";
 import { constantTimeEqual } from "@/lib/request-auth";
 
@@ -52,25 +51,6 @@ const hasForeignActor = (value: unknown) => {
   return login !== null && trackedGitHubAccountFrom(login) === null;
 };
 
-const intentionallyIgnoredPush = (payload: unknown) => {
-  if (!isObject(payload)) {
-    return false;
-  }
-  if (payload.deleted === true) {
-    return true;
-  }
-  if (
-    typeof payload.ref === "string" &&
-    payload.ref.startsWith("refs/") &&
-    !payload.ref.startsWith("refs/heads/")
-  ) {
-    return true;
-  }
-  return isObject(payload.sender)
-    ? hasForeignActor(payload.sender)
-    : hasForeignActor(payload.pusher);
-};
-
 const intentionallyIgnoredIssue = (payload: unknown) => {
   const action = issueActionFromWebhook(payload);
   if (action !== "opened") {
@@ -87,7 +67,8 @@ const supportedGitHubEventFrom = (event: string): SupportedGitHubEvent | null =>
   SUPPORTED_GITHUB_EVENTS.has(event) ? (event as SupportedGitHubEvent) : null;
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration =
+  15 satisfies typeof GITHUB_ROUTINE_MAX_DURATION_SECONDS;
 export const runtime = "nodejs";
 
 const validSignature = (
@@ -132,13 +113,20 @@ const persistSupportedWebhook = async (
   payload: unknown
 ) => {
   if (eventType === "push") {
-    const push = pushFromWebhook(payload);
-    if (push !== null) {
-      return await persistGitHubWebhookPush(deliveryId, push);
-    }
-    if (!intentionallyIgnoredPush(payload)) {
+    const signal = githubWebhookRefSignalFrom(payload);
+    if (signal === null) {
       throw new InvalidGitHubWebhookPayloadError();
     }
+    if (signal.kind === "head") {
+      return await persistGitHubWebhookHeadSignal(deliveryId, signal);
+    }
+    return await persistIgnoredGitHubWebhookDelivery({
+      account: null,
+      action: signal.operation,
+      deliveryId,
+      event: eventType,
+      repositoryId: signal.repository.id,
+    });
   } else if (eventType === "pull_request") {
     const observation = pullRequestObservationFromWebhook(payload);
     if (observation !== null) {
@@ -256,9 +244,6 @@ export async function POST(request: Request) {
       eventType,
       payload
     );
-    if (result.issues > 0) {
-      revalidateTag("github-activity", "max");
-    }
     return acceptedResponse(result);
   } catch (error) {
     if (error instanceof InvalidGitHubWebhookPayloadError) {

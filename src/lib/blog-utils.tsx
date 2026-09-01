@@ -56,7 +56,7 @@ const importCandidates = (slug: string) => [
   `${slug}.${MDX_EXT}`,
 ];
 
-export const resolveImportPathForSlug = async (slug: string) => {
+const resolveImportPathForSlug = async (slug: string) => {
   for (const candidate of importCandidates(slug)) {
     if (await hasFile(candidate)) {
       return candidate;
@@ -124,7 +124,7 @@ export const importMetadataImageModule = async <Module = unknown,>(
   importPath: string
 ) => await (import(`@/content/blog/${importPath}`) as Promise<Module>);
 
-export const parseBlogPostMetadata = (metadata: unknown) =>
+const parseBlogPostMetadata = (metadata: unknown) =>
   metadataSchema.parse(metadata);
 
 const METADATA_IMAGE_EXTENSIONS = [
