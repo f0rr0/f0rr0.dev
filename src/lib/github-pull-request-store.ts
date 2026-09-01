@@ -9,9 +9,10 @@ import {
 import { githubPullRequestSnapshotDisposition } from "@/lib/github-activity-worker-core";
 import type {
   GitHubPullRequest,
+  GitHubRepository,
   TrackedGitHubAccount,
 } from "@/lib/github-commits-core";
-import { upsertGitHubRepository } from "@/lib/github-repository-store";
+import { upsertGitHubRepositories } from "@/lib/github-repository-store";
 
 type DatabaseTransaction = Parameters<
   Parameters<ReturnType<typeof getDatabase>["transaction"]>[0]
@@ -21,6 +22,7 @@ const RECONCILIATION_LEASE_MS = 5 * 60 * 1000;
 
 export interface StoredPullRequestSnapshot {
   baseRepositoryId: string;
+  baseSha: string;
   commitRepositoryId: string;
   diffRefreshRequired: boolean;
   expectedChangedFiles: number | null;
@@ -33,6 +35,7 @@ export interface StoredPullRequestSnapshot {
 
 interface PersistPullRequestSnapshotOptions {
   authority: "authoritative" | "observed";
+  existingOnly?: boolean;
   reconciliationLeaseUntil?: Date;
   refreshMembership?: boolean;
 }
@@ -98,18 +101,21 @@ export const persistPullRequestSnapshotInTransaction = async (
   if (disposition === "stale") {
     return null;
   }
+  if (existing === undefined && options.existingOnly === true) {
+    return null;
+  }
 
-  await upsertGitHubRepository(transaction, pullRequest.repository, now);
-  if (pullRequest.baseRepository.id !== pullRequest.repository.id) {
-    await upsertGitHubRepository(transaction, pullRequest.baseRepository, now);
+  const repositories = new Map<string, GitHubRepository>();
+  for (const repository of [
+    pullRequest.repository,
+    pullRequest.baseRepository,
+    pullRequest.headRepository,
+  ]) {
+    if (repository !== null) {
+      repositories.set(repository.id, repository);
+    }
   }
-  if (
-    pullRequest.headRepository !== null &&
-    pullRequest.headRepository.id !== pullRequest.repository.id &&
-    pullRequest.headRepository.id !== pullRequest.baseRepository.id
-  ) {
-    await upsertGitHubRepository(transaction, pullRequest.headRepository, now);
-  }
+  await upsertGitHubRepositories(transaction, [...repositories.values()], now);
 
   const observedState = githubPullRequestStateFrom(pullRequest);
   const terminalAt = terminalAtFrom(pullRequest, observedState);
@@ -390,11 +396,18 @@ export const persistPullRequestSnapshotInTransaction = async (
 
   const expectedMembershipCount =
     pullRequest.commitCount ?? version?.commitCount ?? null;
+  const commitRepositoryId =
+    pullRequest.headRepository?.id ??
+    existing?.headRepositoryId ??
+    pullRequest.repository.id;
   const storedMembershipCompleteFlag = version?.membershipComplete ?? false;
   const storedMembershipComplete =
     storedMembershipCompleteFlag &&
     expectedMembershipCount !== null &&
     version.membershipCount === expectedMembershipCount &&
+    version.baseSha === pullRequest.baseSha &&
+    (version.headRepositoryId ?? pullRequest.repository.id) ===
+      commitRepositoryId &&
     (expectedMembershipCount === 0
       ? version.membershipHeadSha === null
       : version.membershipHeadSha === pullRequest.headSha);
@@ -449,11 +462,9 @@ export const persistPullRequestSnapshotInTransaction = async (
   }
 
   return {
-    baseRepositoryId: pullRequest.repository.id,
-    commitRepositoryId:
-      pullRequest.headRepository?.id ??
-      existing?.headRepositoryId ??
-      pullRequest.repository.id,
+    baseRepositoryId: pullRequest.baseRepository.id,
+    baseSha: pullRequest.baseSha,
+    commitRepositoryId,
     diffRefreshRequired,
     expectedChangedFiles,
     membershipRefreshRequired,

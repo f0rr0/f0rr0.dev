@@ -23,6 +23,75 @@ import type {
   GitHubWorkUnitFileFact,
 } from "@/lib/github-change-evidence";
 
+export const githubRepositories = pgTable(
+  "github_repositories",
+  {
+    defaultBranch: varchar("default_branch", { length: 255 }),
+    description: text("description"),
+    firstObservedAt: timestamp("first_observed_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+    factsVerifiedAt: timestamp("facts_verified_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    inventoryVerifiedAt: timestamp("inventory_verified_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    fullName: varchar("full_name", { length: 200 }).notNull(),
+    homepageUrl: text("homepage_url"),
+    headsLastReconciledAt: timestamp("heads_last_reconciled_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    htmlUrl: text("html_url"),
+    id: varchar("id", { length: 32 }).primaryKey(),
+    lastObservedAt: timestamp("last_observed_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+    ownerAvatarUrl: text("owner_avatar_url"),
+    ownerId: varchar("owner_id", { length: 32 }),
+    ownerLogin: varchar("owner_login", { length: 39 }),
+    ownerType: varchar("owner_type", { length: 12 }),
+    pushedAt: timestamp("pushed_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    topics: jsonb("topics").$type<readonly string[]>(),
+    tagsLastReconciledAt: timestamp("tags_last_reconciled_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    visibility: varchar("visibility", { length: 12 }),
+  },
+  (table) => [
+    index("github_repositories_full_name_idx").on(table.fullName),
+    check(
+      "github_repositories_owner_type",
+      sql`${table.ownerType} IS NULL OR ${table.ownerType} IN ('Organization', 'User')`
+    ),
+    check(
+      "github_repositories_visibility",
+      sql`${table.visibility} IS NULL OR ${table.visibility} IN ('public', 'private', 'internal')`
+    ),
+    check(
+      "github_repositories_topics_array",
+      sql`${table.topics} IS NULL OR jsonb_typeof(${table.topics}) = 'array'`
+    ),
+    check(
+      "github_repositories_observation_order",
+      sql`${table.lastObservedAt} >= ${table.firstObservedAt}`
+    ),
+  ]
+).enableRLS();
+
 export const githubCommits = pgTable(
   "github_commits",
   {
@@ -81,7 +150,7 @@ export const githubCommits = pgTable(
     pullRequestDiscoveryState: varchar("pr_discovery_state", { length: 16 })
       .default("pending")
       .notNull(),
-    repository: varchar("repository", { length: 200 }).notNull(),
+    repository: varchar("repository", { length: 200 }),
     repositoryId: varchar("repository_id", { length: 32 }).notNull(),
     repositoryOwnerAvatarUrl: text("repository_owner_avatar_url"),
     repositoryOwnerLogin: varchar("repository_owner_login", { length: 39 }),
@@ -91,6 +160,11 @@ export const githubCommits = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.repositoryId, table.sha] }),
+    foreignKey({
+      columns: [table.repositoryId],
+      foreignColumns: [githubRepositories.id],
+      name: "github_commits_repository_fk",
+    }),
     index("github_commits_committed_at_idx").on(table.committedAt),
     index("github_commits_enrichment_pending_idx").on(
       table.enrichmentState,
@@ -178,6 +252,9 @@ export const githubAccountCheckpoints = pgTable(
     gapState: varchar("gap_state", { length: 12 }).default("clear").notNull(),
     latestEventId: varchar("latest_event_id", { length: 64 }),
     paused: boolean("paused").default(false).notNull(),
+    pullRequestBackfillDigest: varchar("pull_request_backfill_digest", {
+      length: 64,
+    }),
     headRefCursorRepositoryId: varchar("head_ref_cursor_repository_id", {
       length: 32,
     }),
@@ -264,70 +341,9 @@ export const githubAccountCheckpoints = pgTable(
       "github_account_checkpoints_ref_scans",
       sql`(${table.headRefNextPage} IS NULL AND ${table.headRefScanStartedAt} IS NULL OR ${table.headRefNextPage} >= 2 AND ${table.headRefScanStartedAt} IS NOT NULL) AND (${table.tagRefNextPage} IS NULL AND ${table.tagRefScanStartedAt} IS NULL OR ${table.tagRefNextPage} >= 2 AND ${table.tagRefScanStartedAt} IS NOT NULL)`
     ),
-  ]
-).enableRLS();
-
-export const githubRepositories = pgTable(
-  "github_repositories",
-  {
-    defaultBranch: varchar("default_branch", { length: 255 }),
-    description: text("description"),
-    firstObservedAt: timestamp("first_observed_at", {
-      mode: "date",
-      withTimezone: true,
-    })
-      .defaultNow()
-      .notNull(),
-    factsVerifiedAt: timestamp("facts_verified_at", {
-      mode: "date",
-      withTimezone: true,
-    }),
-    fullName: varchar("full_name", { length: 200 }).notNull(),
-    homepageUrl: text("homepage_url"),
-    headsLastReconciledAt: timestamp("heads_last_reconciled_at", {
-      mode: "date",
-      withTimezone: true,
-    }),
-    htmlUrl: text("html_url"),
-    id: varchar("id", { length: 32 }).primaryKey(),
-    lastObservedAt: timestamp("last_observed_at", {
-      mode: "date",
-      withTimezone: true,
-    })
-      .defaultNow()
-      .notNull(),
-    ownerAvatarUrl: text("owner_avatar_url"),
-    ownerId: varchar("owner_id", { length: 32 }),
-    ownerLogin: varchar("owner_login", { length: 39 }),
-    ownerType: varchar("owner_type", { length: 12 }),
-    pushedAt: timestamp("pushed_at", {
-      mode: "date",
-      withTimezone: true,
-    }),
-    topics: jsonb("topics").$type<readonly string[]>(),
-    tagsLastReconciledAt: timestamp("tags_last_reconciled_at", {
-      mode: "date",
-      withTimezone: true,
-    }),
-    visibility: varchar("visibility", { length: 12 }),
-  },
-  (table) => [
-    index("github_repositories_full_name_idx").on(table.fullName),
     check(
-      "github_repositories_owner_type",
-      sql`${table.ownerType} IS NULL OR ${table.ownerType} IN ('Organization', 'User')`
-    ),
-    check(
-      "github_repositories_visibility",
-      sql`${table.visibility} IS NULL OR ${table.visibility} IN ('public', 'private', 'internal')`
-    ),
-    check(
-      "github_repositories_topics_array",
-      sql`${table.topics} IS NULL OR jsonb_typeof(${table.topics}) = 'array'`
-    ),
-    check(
-      "github_repositories_observation_order",
-      sql`${table.lastObservedAt} >= ${table.firstObservedAt}`
+      "github_account_checkpoints_pr_backfill_digest",
+      sql`${table.pullRequestBackfillDigest} IS NULL OR ${table.pullRequestBackfillDigest} ~ '^[a-f0-9]{64}$'`
     ),
   ]
 ).enableRLS();

@@ -560,4 +560,90 @@ describe("GitHub factual history backfill", () => {
       stopReason: "deferred",
     });
   });
+
+  test("continues with ready work after one claim defers", async () => {
+    let backlogReads = 0;
+    let workerPasses = 0;
+    const result = await runGitHubBackfillFactualDrain(
+      {
+        accounts: ["f0rr0"],
+        deadlineAt: Date.now() + 60_000,
+        request,
+      },
+      {
+        readBacklog: async () => {
+          backlogReads += 1;
+          return backlogReads === 1
+            ? {
+                pending: emptyPendingFactualWork({
+                  commitEnrichment: 1,
+                  total: 1,
+                }),
+                retryAt: null,
+                unavailable: 0,
+              }
+            : {
+                pending: emptyPendingFactualWork(),
+                retryAt: null,
+                unavailable: 0,
+              };
+        },
+        refreshProjection: async () => ({}),
+        runWorker: async () => {
+          workerPasses += 1;
+          return workerResult({
+            commits:
+              workerPasses === 1
+                ? emptyWorkerStage({ claimed: 1, deferred: 1, failed: 1 })
+                : emptyWorkerStage({ claimed: 1, completed: 1 }),
+          });
+        },
+      }
+    );
+
+    expect(result).toMatchObject({
+      claimed: 2,
+      complete: true,
+      completed: 1,
+      passes: 2,
+      projectionRuns: 1,
+      stopReason: "complete",
+    });
+    expect(workerPasses).toBe(2);
+  });
+
+  test("stops without spinning when no ready work can be claimed", async () => {
+    let workerPasses = 0;
+    const result = await runGitHubBackfillFactualDrain(
+      {
+        accounts: ["f0rr0"],
+        deadlineAt: Date.now() + 60_000,
+        request,
+      },
+      {
+        readBacklog: async () => ({
+          pending: emptyPendingFactualWork({
+            pullRequestReconciliation: 1,
+            total: 1,
+          }),
+          retryAt: null,
+          unavailable: 0,
+        }),
+        refreshProjection: async () => ({}),
+        runWorker: async () => {
+          workerPasses += 1;
+          return workerResult();
+        },
+      }
+    );
+
+    expect(result).toMatchObject({
+      claimed: 0,
+      complete: false,
+      passes: 1,
+      retryAt: null,
+      stopReason: "deferred",
+    });
+    expect(workerPasses).toBe(1);
+  });
 });

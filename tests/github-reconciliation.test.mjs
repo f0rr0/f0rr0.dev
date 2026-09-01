@@ -13,7 +13,9 @@ afterEach(() => {
 
 const repository = {
   default_branch: "main",
+  description: "A private example repository.",
   full_name: "example-org/example-repo",
+  homepage: "https://example.com/project",
   html_url: "https://github.com/example-org/example-repo",
   id: 123,
   owner: {
@@ -24,12 +26,15 @@ const repository = {
   },
   private: true,
   pushed_at: "2026-08-20T00:00:00Z",
+  topics: ["typescript", "example"],
   visibility: "private",
 };
 
 const repositoryFacts = {
   defaultBranch: "main",
+  description: "A private example repository.",
   fullName: "example-org/example-repo",
+  homepageUrl: "https://example.com/project",
   htmlUrl: "https://github.com/example-org/example-repo",
   id: "123",
   ownerAvatarUrl: "https://avatars.githubusercontent.com/u/456?v=4",
@@ -37,6 +42,7 @@ const repositoryFacts = {
   ownerLogin: "example-org",
   ownerType: "Organization",
   pushedAt: "2026-08-20T00:00:00.000Z",
+  topics: ["example", "typescript"],
   visibility: "private",
 };
 
@@ -72,6 +78,15 @@ describe("GitHub repository reconciliation", () => {
         pushedSinceAt: new Date("2026-09-01T00:00:00.000Z"),
       })
     ).toEqual([repositoryFacts]);
+  });
+
+  test("rejects sparse repository responses instead of inventing summary context", async () => {
+    globalThis.fetch = async () =>
+      Response.json([{ ...repository, topics: undefined }]);
+
+    await expect(collectAccessibleGitHubRepositories("token")).rejects.toThrow(
+      "invalid repository response"
+    );
   });
 
   test("bounds a historical inventory to repositories pushed since the window began", async () => {

@@ -473,7 +473,6 @@ export const completeGitHubRefRepair = async (
                 committedAt: new Date(commit.committedAt),
                 firstObservedAt: repair.observedAt,
                 message: commit.message,
-                repository: commit.repository,
                 repositoryId: commit.repositoryId,
                 sha: commit.sha,
               }))
