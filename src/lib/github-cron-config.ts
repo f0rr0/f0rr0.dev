@@ -17,6 +17,10 @@ export const GITHUB_REF_REPOSITORY_BATCH_SIZE = 8;
 export const GITHUB_ROUTINE_MAX_DURATION_SECONDS = 15 as const;
 export const GITHUB_CRON_EXECUTION_DURATION_MS =
   GITHUB_ROUTINE_MAX_DURATION_SECONDS * 1000;
+export const GITHUB_WORKER_MAX_DURATION_SECONDS = 60 as const;
+export const GITHUB_WORKER_EXECUTION_DURATION_MS = 58 * 1000;
+export const GITHUB_WORKER_HTTP_TIMEOUT_MS =
+  GITHUB_WORKER_MAX_DURATION_SECONDS * 1000;
 
 export const githubRefRepositoryLimitFrom = (value: string | null) => {
   if (value === null) {

@@ -239,7 +239,7 @@ Supabase Cron invokes:
 | Route                     | Schedule                              | Bound                                                               |
 | ------------------------- | ------------------------------------- | ------------------------------------------------------------------- |
 | `/api/cron/github-sync`   | every 5 minutes                       | 15-second request                                                   |
-| `/api/cron/github-worker` | every 5 minutes, offset by 2 minutes  | 15-second request; default four items per factual queue and one ref |
+| `/api/cron/github-worker` | every 5 minutes, offset by 2 minutes  | 60-second request; default four items per factual queue and one ref |
 | `/api/cron/github-refs`   | every 15 minutes, offset by 4 minutes | 15-second request; eight ref pages/repositories per account         |
 
 The worker processes factual queues and current-ref repair before recomputing
