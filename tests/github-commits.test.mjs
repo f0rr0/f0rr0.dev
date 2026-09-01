@@ -365,7 +365,10 @@ describe("push webhook routing", () => {
         deleted: false,
         forced: false,
         ref: "refs/heads/feature",
-        repository,
+        repository: {
+          ...repository,
+          pushed_at: Date.parse(repository.pushed_at) / 1000,
+        },
         sender: { login: "somebody-else" },
       })
     ).toEqual({
