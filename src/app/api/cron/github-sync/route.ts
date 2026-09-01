@@ -1,7 +1,6 @@
-import { revalidateTag } from "next/cache";
-
 import { env } from "@/env";
 import { syncGitHubAccounts } from "@/lib/github-commits";
+import type { GITHUB_ROUTINE_MAX_DURATION_SECONDS } from "@/lib/github-cron-config";
 import {
   GITHUB_CRON_EXECUTION_DURATION_MS,
   githubCronStatusFromFailedAccounts,
@@ -10,7 +9,8 @@ import { reportOperationalError } from "@/lib/operational-error";
 import { hasBearerSecret } from "@/lib/request-auth";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration =
+  15 satisfies typeof GITHUB_ROUTINE_MAX_DURATION_SECONDS;
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
@@ -21,9 +21,6 @@ export async function POST(request: Request) {
   const deadlineAt = Date.now() + GITHUB_CRON_EXECUTION_DURATION_MS;
   try {
     const result = await syncGitHubAccounts({ deadlineAt });
-    if (result.issues > 0) {
-      revalidateTag("github-activity", "max");
-    }
     const status = githubCronStatusFromFailedAccounts(result.failedAccounts);
     if (status === 503) {
       for (const failure of result.failedAccounts) {

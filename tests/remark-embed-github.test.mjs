@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
+/* oxlint-disable unicorn/prefer-dom-node-dataset -- Bun's HTMLRewriter element has no HTMLElement dataset API. */
 
 import {
   dedentCode,
@@ -117,11 +118,33 @@ describe("GitHub code reference embeds", () => {
     expect(requestedUrl).toBe(
       `https://api.github.com/repos/f0rr0/zeroclaw/contents/src/meal/store.rs?ref=${commit}`
     );
-    expect(html).toContain('data-github-code-embed="true"');
-    expect(html).toContain('data-language="rust"');
-    expect(html).toContain('data-line-number="2"');
-    expect(html).toContain('data-line-number="4"');
-    expect(html).not.toContain("fn before");
-    expect(html).not.toContain("fn after");
+    const embeds = [];
+    const lineNumbers = [];
+    let renderedCode = "";
+    await new HTMLRewriter()
+      .on("[data-github-code-embed]", {
+        element(element) {
+          embeds.push({
+            enabled: element.getAttribute("data-github-code-embed"),
+            language: element.getAttribute("data-language"),
+          });
+        },
+      })
+      .on("[data-line-number]", {
+        element(element) {
+          lineNumbers.push(element.getAttribute("data-line-number"));
+        },
+      })
+      .on("code", {
+        text(chunk) {
+          renderedCode += chunk.text;
+        },
+      })
+      .transform(new Response(html))
+      .text();
+
+    expect(embeds).toEqual([{ enabled: "true", language: "rust" }]);
+    expect(lineNumbers).toEqual(["2", "3", "4"]);
+    expect(renderedCode).toBe(source.split("\n").slice(1, 4).join("\n"));
   });
 });

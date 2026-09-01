@@ -1,31 +1,19 @@
-import { createHash } from "node:crypto";
-
-import { openai } from "@ai-sdk/openai";
-import { generateText } from "ai";
-
 import { env } from "@/env";
-import {
-  formatPublicCommitSummaryMarkdown,
-  parseCommitPublicSummary,
-  PUBLIC_COMMIT_SUMMARY_RECIPE,
-  PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT,
-} from "@/lib/github-activity-public-summary";
-import type {
-  PublicCommitEvidence,
-  PublicCommitFileEvidence,
-} from "@/lib/github-activity-public-summary";
-import { buildCommitPublicSummaryModelInput } from "@/lib/github-activity-public-summary-input";
 import {
   fetchGitHub,
   GitHubResponseError,
   githubApiUrl,
   nextGitHubPage,
 } from "@/lib/github-api";
+import type {
+  GitHubCommitChangeEvidence,
+  GitHubFileChangeEvidence,
+} from "@/lib/github-change-evidence";
 import {
   commitShaFrom,
   pullRequestFromGitHub,
   repositoryFrom,
-  trackedGitHubAccountFrom,
+  trackedGitHubAccountFromUserId,
 } from "@/lib/github-commits-core";
 import type {
   GitHubCommit,
@@ -34,10 +22,6 @@ import type {
   TrackedGitHubAccount,
 } from "@/lib/github-commits-core";
 
-export const GITHUB_ACTIVITY_SUMMARY_MODEL = "gpt-5-nano-2025-08-07";
-export const GITHUB_ACTIVITY_FALLBACK_SUMMARY_MODEL = "deterministic";
-export const GITHUB_ACTIVITY_FALLBACK_SUMMARY_RECIPE =
-  "commit-message-summary-v1";
 const GITHUB_FILE_PAGE_SIZE = 100;
 const MAXIMUM_GITHUB_FILE_PAGES = 30;
 const GITHUB_PULL_REQUEST_COMMIT_LIMIT = 250;
@@ -62,7 +46,7 @@ export interface GitHubActivityRepositoryEvidence {
 export interface GitHubActivityCommitSource {
   authorUserId: string;
   authoredAt: string;
-  commit: PublicCommitEvidence & { treeSha: string };
+  commit: GitHubCommitChangeEvidence;
   committerAt: string;
   committerUserId: string | null;
   repository: GitHubActivityRepositoryEvidence;
@@ -96,6 +80,16 @@ export interface GitHubActivityPushObservationSource {
   commits: readonly GitHubCommit[];
 }
 
+export interface GitHubCurrentRefMembershipReference {
+  account: TrackedGitHubAccount;
+  coverageSinceAt: Date;
+  headSha: string;
+  observedAt: Date;
+  refName: string;
+  repository: string;
+  repositoryId: string;
+}
+
 export interface GitHubActivityPullRequestReference {
   account: TrackedGitHubAccount;
   number: number;
@@ -119,6 +113,14 @@ export interface GitHubActivityPullRequestMembershipSource {
 export interface GitHubActivityPullRequestSnapshot {
   expectedCommitCount: number;
   pullRequest: GitHubPullRequest;
+}
+
+export interface GitHubPullRequestDiffReference extends GitHubActivityPullRequestReference {
+  expectedChangedFiles: number;
+}
+
+export interface GitHubPullRequestDiffSource {
+  files: readonly GitHubFileChangeEvidence[];
 }
 
 export interface GitHubProviderRequestOptions {
@@ -175,6 +177,16 @@ export interface GitHubPullRequestMergeCommitResolution {
 
 const isObject = (value: unknown): value is JsonObject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const comparePullRequests = (
+  left: GitHubPullRequest,
+  right: GitHubPullRequest
+) =>
+  left.createdAt === right.createdAt
+    ? left.number - right.number
+    : left.createdAt < right.createdAt
+      ? -1
+      : 1;
 
 const retryAtFromHeaders = (headers: Headers, now = Date.now()) => {
   const retryAfter = headers.get("retry-after")?.trim();
@@ -695,7 +707,7 @@ const repositoryEvidenceFrom = (
   };
 };
 
-const fileEvidenceFrom = (value: unknown): PublicCommitFileEvidence => {
+const fileEvidenceFrom = (value: unknown): GitHubFileChangeEvidence => {
   if (!isObject(value)) {
     throw new ActivityProcessingError(
       "source_invalid",
@@ -714,15 +726,14 @@ const fileEvidenceFrom = (value: unknown): PublicCommitFileEvidence => {
 
 const commitEvidenceFrom = (
   root: JsonObject,
-  files: readonly PublicCommitFileEvidence[],
+  files: readonly GitHubFileChangeEvidence[],
   providerFileCapReached: boolean,
   expected: GitHubActivityCommitReference
-): PublicCommitEvidence & { treeSha: string } => {
+): GitHubCommitChangeEvidence => {
   if (
     !isObject(root.commit) ||
     !isObject(root.commit.author) ||
     !isObject(root.commit.committer) ||
-    !isObject(root.commit.tree) ||
     !isObject(root.author) ||
     !isObject(root.stats)
   ) {
@@ -732,7 +743,7 @@ const commitEvidenceFrom = (
     );
   }
   const sha = requiredString(root.sha, "commit SHA").toLowerCase();
-  const author = trackedGitHubAccountFrom(root.author.login);
+  const author = trackedGitHubAccountFromUserId(root.author.id);
   if (sha !== expected.sha || author !== expected.author) {
     throw new ActivityProcessingError(
       "provenance_changed",
@@ -785,13 +796,6 @@ const commitEvidenceFrom = (
       "GitHub returned inconsistent commit statistics."
     );
   }
-  const treeSha = requiredString(root.commit.tree.sha, "commit tree SHA");
-  if (!/^[a-f0-9]{40}$/.test(treeSha)) {
-    throw new ActivityProcessingError(
-      "source_invalid",
-      "GitHub returned an invalid commit tree SHA."
-    );
-  }
   return {
     committedAt: authoredAt.toISOString(),
     files,
@@ -800,7 +804,6 @@ const commitEvidenceFrom = (
     providerFileCapReached,
     sha,
     stats: { additions, deletions, total },
-    treeSha,
   };
 };
 
@@ -818,7 +821,7 @@ const fetchCommitSourceWithToken = async (
     repositoryPayload,
     row.repositoryId
   );
-  const files = new Map<string, PublicCommitFileEvidence>();
+  const files = new Map<string, GitHubFileChangeEvidence>();
   let root: JsonObject | null = null;
   let providerFileCapReached = false;
   for (let page = 1; page <= MAXIMUM_GITHUB_FILE_PAGES; page += 1) {
@@ -1097,7 +1100,7 @@ const newBranchCommitValuesWithToken = async (
               authoredDate
               committedDate
               url
-              author { user { login } }
+              author { user { databaseId login } }
             }
             pageInfo { hasNextPage endCursor }
           }
@@ -1172,7 +1175,9 @@ const newBranchCommitValuesWithToken = async (
       }
       const user = isObject(node.author) ? node.author.user : null;
       values.push({
-        author: isObject(user) ? { login: user.login } : null,
+        author: isObject(user)
+          ? { id: user.databaseId, login: user.login }
+          : null,
         commit: {
           author: { date: node.authoredDate },
           committer: { date: node.committedDate },
@@ -1333,7 +1338,7 @@ const trackedCommitFromPushValue = (
     return null;
   }
   const author = isObject(value.author)
-    ? trackedGitHubAccountFrom(value.author.login)
+    ? trackedGitHubAccountFromUserId(value.author.id)
     : null;
   if (author === null) {
     return null;
@@ -1382,7 +1387,7 @@ const trackedCommitFromPullRequestValue = (
     );
   }
   const author = isObject(value.author)
-    ? trackedGitHubAccountFrom(value.author.login)
+    ? trackedGitHubAccountFromUserId(value.author.id)
     : null;
   if (author === null) {
     return null;
@@ -1469,6 +1474,104 @@ export const fetchGitHubPushObservationSource = async (
     async (token) => await pushObservationSourceWithToken(row, token, options)
   );
 
+/**
+ * Reads the complete tracked-author intersection of one current head back to
+ * the explicit coverage boundary. Unlike a push comparison, this result can
+ * replace ref membership after a force-push because it is rooted at the
+ * current tip and does not retain historical members by assumption.
+ */
+export const fetchGitHubCurrentRefMembership = async (
+  row: GitHubCurrentRefMembershipReference,
+  options: GitHubProviderRequestOptions = {}
+) =>
+  await fetchGitHubPushObservationSource(
+    {
+      account: row.account,
+      afterSha: row.headSha,
+      beforeSha: ZERO_SHA,
+      expectedCommitCount: null,
+      historySinceAt: row.coverageSinceAt,
+      historyUntilAt: null,
+      knownShas: [],
+      observedAt: row.observedAt,
+      refName: row.refName,
+      repository: row.repository,
+      repositoryId: row.repositoryId,
+    },
+    options
+  );
+
+const fetchGitHubPullRequestDiffWithToken = async (
+  row: GitHubPullRequestDiffReference,
+  token: string,
+  options: GitHubProviderRequestOptions
+): Promise<GitHubPullRequestDiffSource> => {
+  if (
+    !Number.isSafeInteger(row.expectedChangedFiles) ||
+    row.expectedChangedFiles < 0 ||
+    row.expectedChangedFiles > GITHUB_FILE_PAGE_SIZE * MAXIMUM_GITHUB_FILE_PAGES
+  ) {
+    throw new ActivityProcessingError(
+      "source_incomplete",
+      "The pull request changed-file count exceeds the complete provider bound."
+    );
+  }
+  let url: URL | null = githubApiUrl(
+    repositoryApiPath(row.repository, `/pulls/${String(row.number)}/files`)
+  );
+  url.searchParams.set("per_page", String(GITHUB_FILE_PAGE_SIZE));
+  const visited = new Set<string>();
+  const files = new Map<string, GitHubFileChangeEvidence>();
+  while (url !== null) {
+    if (visited.has(url.href) || visited.size >= MAXIMUM_GITHUB_FILE_PAGES) {
+      throw new ActivityProcessingError(
+        "source_incomplete",
+        "GitHub did not return a bounded complete pull request diff."
+      );
+    }
+    visited.add(url.href);
+    const result = await fetchJsonWithResponse(url, token, options);
+    if (!Array.isArray(result.payload)) {
+      throw new ActivityProcessingError(
+        "source_invalid",
+        "GitHub returned an invalid pull request file page."
+      );
+    }
+    for (const value of result.payload) {
+      const file = fileEvidenceFrom(value);
+      if (files.has(file.filename)) {
+        throw new ActivityProcessingError(
+          "source_invalid",
+          "GitHub repeated a pull request file across pages."
+        );
+      }
+      files.set(file.filename, file);
+    }
+    url = nextGitHubPage(result.response);
+  }
+  if (files.size !== row.expectedChangedFiles) {
+    throw new ActivityProcessingError(
+      "source_incomplete",
+      "GitHub returned an incomplete pull request file ledger."
+    );
+  }
+  return {
+    files: [...files.values()].toSorted((left, right) =>
+      compareCodeUnitStrings(left.filename, right.filename)
+    ),
+  };
+};
+
+export const fetchGitHubPullRequestDiff = async (
+  row: GitHubPullRequestDiffReference,
+  options: GitHubProviderRequestOptions = {}
+) =>
+  await withGitHubTokenCandidate(
+    row.account,
+    async (token) =>
+      await fetchGitHubPullRequestDiffWithToken(row, token, options)
+  );
+
 const fetchAssociatedPullRequestsWithToken = async (
   row: GitHubActivityCommitReference,
   token: string,
@@ -1524,12 +1627,7 @@ const fetchAssociatedPullRequestsWithToken = async (
     token,
     options
   );
-  return resolved.toSorted((left, right) => {
-    if (left.createdAt !== right.createdAt) {
-      return left.createdAt < right.createdAt ? -1 : 1;
-    }
-    return left.number - right.number;
-  });
+  return resolved.toSorted(comparePullRequests);
 };
 
 export const fetchGitHubAssociatedPullRequests = async (
@@ -1576,12 +1674,7 @@ export const fetchGitHubAssociatedPullRequests = async (
           "No configured GitHub token can inspect associated pull requests."
         );
   }
-  return [...pullRequests.values()].toSorted((left, right) => {
-    if (left.createdAt !== right.createdAt) {
-      return left.createdAt < right.createdAt ? -1 : 1;
-    }
-    return left.number - right.number;
-  });
+  return [...pullRequests.values()].toSorted(comparePullRequests);
 };
 
 /**
@@ -1851,150 +1944,3 @@ export const fetchGitHubPullRequestMembership = async (
         options
       )
   );
-
-export const fetchGitHubPullRequestSource = async (
-  row: GitHubActivityPullRequestReference,
-  options: GitHubProviderRequestOptions = {}
-) => {
-  const snapshot = await fetchGitHubPullRequestSnapshot(row, options);
-  const membership = await fetchGitHubPullRequestMembership(
-    row,
-    snapshot.expectedCommitCount,
-    {
-      commitRepository:
-        snapshot.pullRequest.headRepository ??
-        snapshot.pullRequest.baseRepository,
-      deadlineAt: options.deadlineAt,
-      expectedBaseSha: snapshot.pullRequest.baseSha,
-      expectedHeadSha: snapshot.pullRequest.headSha,
-    }
-  );
-  return { ...membership, pullRequest: snapshot.pullRequest };
-};
-
-const directlyOwnedRepository = (source: GitHubActivityCommitSource) =>
-  trackedGitHubAccountFrom(source.repository.ownerLogin) !== null;
-
-const MAXIMUM_ABORT_SIGNAL_TIMEOUT_MS = 2_147_483_647;
-
-const abortSignalBefore = (deadlineAt: number) => {
-  const remaining = Math.floor(deadlineAt - Date.now());
-  if (!Number.isFinite(deadlineAt) || deadlineAt < 0 || remaining <= 0) {
-    return null;
-  }
-  return AbortSignal.timeout(
-    Math.min(remaining, MAXIMUM_ABORT_SIGNAL_TIMEOUT_MS)
-  );
-};
-
-const generateCommitSummary = async (
-  source: GitHubActivityCommitSource,
-  options: GitHubProviderRequestOptions
-) => {
-  const modelInput = await buildCommitPublicSummaryModelInput(source.commit, {
-    avatarUrl: source.repository.avatarUrl,
-    description: source.repository.description,
-    directlyOwned: directlyOwnedRepository(source),
-    fullName: source.repository.fullName,
-    homepageUrl: source.repository.homepageUrl,
-    ownerLogin: source.repository.ownerLogin,
-    ownerType: source.repository.ownerType,
-    private: source.repository.private,
-    topics: source.repository.topics,
-  });
-  const inputHash = createHash("sha256")
-    .update(PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT)
-    .update("\n")
-    .update(modelInput)
-    .digest("hex");
-  const { deadlineAt } = options;
-  const abortSignal =
-    deadlineAt === undefined ? null : abortSignalBefore(deadlineAt);
-  if (deadlineAt !== undefined && abortSignal === null) {
-    throw new ActivityProcessingError(
-      "worker_deadline",
-      "The activity-summary deadline was reached."
-    );
-  }
-  const result = await generateText({
-    ...(abortSignal === null ? {} : { abortSignal }),
-    maxRetries: 0,
-    model: openai(GITHUB_ACTIVITY_SUMMARY_MODEL),
-    prompt: modelInput,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "minimal",
-        store: false,
-        textVerbosity: "low",
-      },
-    },
-    system: PUBLIC_COMMIT_SUMMARY_SYSTEM_PROMPT,
-  });
-  return { inputHash, text: result.text };
-};
-
-const conventionalCommitPrefix =
-  /^(?:revert:\s*)?(?:build|chore|ci|docs|feat|fix|perf|refactor|style|test)(?:\([^\r\n)]*\))?!?:\s*/iu;
-
-const deterministicCommitSummary = (source: GitHubActivityCommitSource) => {
-  const firstLine = source.commit.message.split(/\r?\n/u, 1)[0] ?? "";
-  const unprefixed = firstLine.replace(conventionalCommitPrefix, "").trim();
-  const normalized = (unprefixed || "Updated the repository")
-    .replaceAll(/\s+/gu, " ")
-    .slice(0, 240);
-  const headline = normalized.replace(/^([a-z])/u, (first) =>
-    first.toUpperCase()
-  );
-  const summary = formatPublicCommitSummaryMarkdown(
-    { headline, short: headline },
-    source.commit
-  );
-  const inputHash = createHash("sha256")
-    .update(GITHUB_ACTIVITY_FALLBACK_SUMMARY_RECIPE)
-    .update("\n")
-    .update(source.commit.sha)
-    .update("\n")
-    .update(source.commit.message)
-    .digest("hex");
-  return {
-    inputHash,
-    model: GITHUB_ACTIVITY_FALLBACK_SUMMARY_MODEL,
-    recipe: GITHUB_ACTIVITY_FALLBACK_SUMMARY_RECIPE,
-    summary,
-  };
-};
-
-export const generateValidatedGitHubActivitySummary = async (
-  source: GitHubActivityCommitSource,
-  options: GitHubProviderRequestOptions = {}
-) => {
-  // Private patches never leave the application. The deterministic path also
-  // keeps publication independent of optional model credentials and uptime.
-  if (
-    source.repository.private ||
-    (env.OPENAI_API_KEY?.trim().length ?? 0) === 0
-  ) {
-    return deterministicCommitSummary(source);
-  }
-  let generated: Awaited<ReturnType<typeof generateCommitSummary>>;
-  try {
-    generated = await generateCommitSummary(source, options);
-  } catch {
-    return deterministicCommitSummary(source);
-  }
-  let summary;
-  try {
-    summary = formatPublicCommitSummaryMarkdown(
-      parseCommitPublicSummary(generated.text),
-      source.commit
-    );
-  } catch {
-    return deterministicCommitSummary(source);
-  }
-  return {
-    inputHash: generated.inputHash,
-    model: GITHUB_ACTIVITY_SUMMARY_MODEL,
-    recipe: PUBLIC_COMMIT_SUMMARY_RECIPE,
-    summary,
-  };
-};

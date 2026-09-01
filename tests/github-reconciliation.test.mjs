@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import {
   collectAccessibleGitHubRepositories,
-  collectGitHubRepositoryRefs,
+  collectGitHubRepositoryRefPage,
 } from "../src/lib/github-reconciliation.ts";
 
 const originalFetch = globalThis.fetch;
@@ -12,6 +12,7 @@ afterEach(() => {
 });
 
 const repository = {
+  default_branch: "main",
   full_name: "example-org/example-repo",
   html_url: "https://github.com/example-org/example-repo",
   id: 123,
@@ -27,6 +28,7 @@ const repository = {
 };
 
 const repositoryFacts = {
+  defaultBranch: "main",
   fullName: "example-org/example-repo",
   htmlUrl: "https://github.com/example-org/example-repo",
   id: "123",
@@ -34,6 +36,7 @@ const repositoryFacts = {
   ownerId: "456",
   ownerLogin: "example-org",
   ownerType: "Organization",
+  pushedAt: "2026-08-20T00:00:00.000Z",
   visibility: "private",
 };
 
@@ -98,9 +101,25 @@ describe("GitHub repository reconciliation", () => {
     ).toEqual([repositoryFacts]);
   });
 
-  test("uses branch and repository-tag commit targets without tag peeling", async () => {
+  test("rejects a next inventory page that drops the access constraints", async () => {
+    let requests = 0;
+    globalThis.fetch = async () => {
+      requests += 1;
+      return Response.json([repository], {
+        headers: {
+          link: '<https://api.github.com/user/repos?page=2&per_page=100>; rel="next"',
+        },
+      });
+    };
+
+    await expect(
+      collectAccessibleGitHubRepositories("token")
+    ).rejects.toBeInstanceOf(TypeError);
+    expect(requests).toBe(1);
+  });
+
+  test("collects current heads without scanning tags", async () => {
     const headSha = "a".repeat(40);
-    const taggedCommitSha = "c".repeat(40);
     const paths = [];
     globalThis.fetch = async (input) => {
       const url =
@@ -114,30 +133,19 @@ describe("GitHub repository reconciliation", () => {
           },
         ]);
       }
-      if (url.pathname.endsWith("/tags")) {
-        return Response.json([
-          {
-            commit: { sha: taggedCommitSha },
-            name: "v1.0.0",
-          },
-        ]);
-      }
       throw new Error(`Unexpected GitHub path: ${url.pathname}`);
     };
 
-    expect(await collectGitHubRepositoryRefs(repositoryFacts, "token")).toEqual(
-      [
-        { headSha, kind: "head", refName: "refs/heads/main" },
-        {
-          headSha: taggedCommitSha,
-          kind: "tag",
-          refName: "refs/tags/v1.0.0",
-        },
-      ]
-    );
+    expect(
+      await collectGitHubRepositoryRefPage(repositoryFacts, "head", "token", {
+        page: 1,
+      })
+    ).toEqual({
+      nextPage: null,
+      refs: [{ headSha, kind: "head", refName: "refs/heads/main" }],
+    });
     expect(paths).toEqual([
       "/repos/example-org/example-repo/branches?per_page=100&page=1",
-      "/repos/example-org/example-repo/tags?per_page=100&page=1",
     ]);
   });
 
@@ -165,16 +173,31 @@ describe("GitHub repository reconciliation", () => {
       return Response.json([]);
     };
 
-    expect(await collectGitHubRepositoryRefs(repositoryFacts, "token")).toEqual(
-      [
-        { headSha: firstSha, kind: "head", refName: "refs/heads/first" },
-        { headSha: secondSha, kind: "head", refName: "refs/heads/second" },
-      ]
+    const first = await collectGitHubRepositoryRefPage(
+      repositoryFacts,
+      "head",
+      "token",
+      { page: 1 }
     );
+    const second = await collectGitHubRepositoryRefPage(
+      repositoryFacts,
+      "head",
+      "token",
+      { page: 2 }
+    );
+    expect(first).toEqual({
+      nextPage: 2,
+      refs: [{ headSha: firstSha, kind: "head", refName: "refs/heads/first" }],
+    });
+    expect(second).toEqual({
+      nextPage: null,
+      refs: [
+        { headSha: secondSha, kind: "head", refName: "refs/heads/second" },
+      ],
+    });
     expect(pages).toEqual([
       "/repos/example-org/example-repo/branches:1",
       "/repos/example-org/example-repo/branches:2",
-      "/repos/example-org/example-repo/tags:1",
     ]);
   });
 });

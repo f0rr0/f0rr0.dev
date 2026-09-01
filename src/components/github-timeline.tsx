@@ -1,4 +1,8 @@
 import { GitHubActivityDays } from "@/components/github-activity-days";
+import {
+  GitHubActivityLiveProvider,
+  GitHubActivityStatus,
+} from "@/components/github-activity-status";
 import { GitHubTimelinePager } from "@/components/github-timeline-pager";
 import type { PublicGitHubActivityPage } from "@/lib/github-activity-types";
 
@@ -26,22 +30,28 @@ export function GitHubTimeline({
         </p>
       </div>
 
-      {initialPage.days.length === 0 ? (
-        <p className="mt-8 border-y border-border py-5 text-sm leading-relaxed text-muted-foreground">
-          The activity feed is being prepared. Projects and writing remain
-          available below.
-        </p>
-      ) : (
-        <div className="mt-[clamp(2.25rem,5vw,3.5rem)] grid gap-[clamp(2.75rem,6vw,4.5rem)]">
-          <GitHubActivityDays days={initialPage.days} />
-          {initialPage.nextCursor === null ? null : (
-            <GitHubTimelinePager
-              initialCursor={initialPage.nextCursor}
-              snapshotAt={initialPage.snapshotAt}
-            />
-          )}
-        </div>
-      )}
+      <GitHubActivityLiveProvider
+        feedRevision={initialPage.head.feedRevision}
+        orderingRevision={initialPage.orderingRevision}
+      >
+        <GitHubActivityStatus initialHead={initialPage.head} />
+        {initialPage.days.length === 0 ? (
+          <p className="mt-8 border-y border-border py-5 text-sm leading-relaxed text-muted-foreground">
+            No public work is currently visible.
+          </p>
+        ) : (
+          <div className="mt-[clamp(2.25rem,5vw,3.5rem)] grid gap-[clamp(2.75rem,6vw,4.5rem)]">
+            <GitHubActivityDays days={initialPage.days} />
+            {initialPage.nextCursor === null ? null : (
+              <GitHubTimelinePager
+                initialCursor={initialPage.nextCursor}
+                key={`${initialPage.head.feedRevision}:${initialPage.orderingRevision}`}
+                orderingRevision={initialPage.orderingRevision}
+              />
+            )}
+          </div>
+        )}
+      </GitHubActivityLiveProvider>
     </section>
   );
 }

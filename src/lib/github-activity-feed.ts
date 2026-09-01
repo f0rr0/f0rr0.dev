@@ -1,43 +1,22 @@
 import "server-only";
-import { unstable_cache } from "next/cache";
-
-import { isDatabaseConfigured } from "@/db/client";
 import type { GitHubActivityCursor } from "@/lib/github-activity-cursor";
 import {
   PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE,
+  readPublicGitHubActivityHead,
   readPublicGitHubActivityPage,
 } from "@/lib/github-activity-store";
-import type { PublicGitHubActivityPage } from "@/lib/github-activity-types";
 
-const emptyPage = (): PublicGitHubActivityPage => ({
-  days: [],
-  nextCursor: null,
-  snapshotAt: new Date().toISOString(),
-});
-
-const readCachedActivity = unstable_cache(
-  async (cursor: GitHubActivityCursor) =>
-    await readPublicGitHubActivityPage(
-      cursor,
-      PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
-    ),
-  ["public-github-activity-v14"],
-  { revalidate: 900, tags: ["github-activity"] }
-);
-
-export const getInitialGitHubActivity = async () => {
-  if (!isDatabaseConfigured()) {
-    return emptyPage();
-  }
-  return await readPublicGitHubActivityPage(
+export const getInitialGitHubActivity = async () =>
+  await readPublicGitHubActivityPage(
     null,
     PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
   );
-};
 
-export const getGitHubActivityPage = async (cursor: GitHubActivityCursor) => {
-  if (!isDatabaseConfigured()) {
-    return emptyPage();
-  }
-  return await readCachedActivity(cursor);
-};
+export const getGitHubActivityPage = async (cursor: GitHubActivityCursor) =>
+  await readPublicGitHubActivityPage(
+    cursor,
+    PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
+  );
+
+export const getGitHubActivityHead = async () =>
+  await readPublicGitHubActivityHead();

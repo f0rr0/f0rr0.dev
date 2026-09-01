@@ -1,449 +1,563 @@
 import { describe, expect, test } from "bun:test";
-import { setTimeout as delay } from "node:timers/promises";
 
 import {
   backfillArgumentsFrom,
-  backfillRetryWaitMillisecondsFrom,
   requireBackfillEnvironment,
-  runBeforeDeadline,
+  runGitHubBackfillFactualDrain,
+  runGitHubBackfillDiscovery,
 } from "../scripts/backfill-github-activity.ts";
 import {
-  GITHUB_BACKFILL_WORKER_BATCH_SIZE,
-  githubBackfillCompletionFrom,
-  githubBackfillDiscoveryCompleteFrom,
-  githubBackfillExitCodeFrom,
-  githubBackfillOutcomeFrom,
-  githubBackfillProcessingMadeProgress,
-  githubBackfillProcessingCountsFrom,
+  githubBackfillDiscoveryReportFrom,
   githubBackfillRequestFrom,
 } from "../src/lib/github-backfill-core.ts";
 
 const now = new Date("2026-08-29T15:00:00.000Z");
 
-const discoveryInventory = (overrides = {}) => ({
-  direct: { complete: true, unavailableRepositories: 0 },
-  pullRequests: { complete: true, unavailablePullRequests: 0 },
+const request = githubBackfillRequestFrom(
+  {
+    account: "f0rr0",
+    endDate: "2026-08-29",
+    repositoryId: "",
+    startDate: "2026-08-01",
+  },
+  now
+);
+
+if (request === null) {
+  throw new Error("The test backfill request is invalid.");
+}
+
+const completePullRequests = (overrides = {}) => ({
+  complete: true,
+  retryAt: null,
+  stopReason: "complete",
+  unavailablePullRequests: 0,
   ...overrides,
 });
 
-const auditResult = (status, earliestRetryAt) => ({
-  pipeline: { earliestRetryAt },
-  status,
+const completeRepositoryInventory = (overrides = {}) => ({
+  complete: true,
+  retryAt: null,
+  stopReason: "complete",
+  ...overrides,
 });
 
-describe("GitHub history backfill requests", () => {
-  test("fails before discovery when cursor signing is not configured", () => {
-    const input = backfillArgumentsFrom([
-      "--account",
-      "f0rr0",
-      "--start-date",
-      "2026-08-01",
-      "--end-date",
-      "2026-08-29",
-      "--repository-id",
-      "",
-      "--maximum-minutes",
-      "60",
-    ]);
-    const configured = {
-      CRON_SECRET: "c".repeat(32),
-      DATABASE_URL: "postgresql://activity.example/database",
-      GITHUB_F0RR0_TOKEN: "token",
-    };
+const completeCurrentHeads = (overrides = {}) => ({
+  claimedRefs: 0,
+  complete: true,
+  completedGenerations: 0,
+  deferredRefs: 0,
+  deletedGenerations: 0,
+  insertedCommits: 0,
+  memberCommits: 0,
+  remainingRefs: 0,
+  retryAt: null,
+  staleRefs: 0,
+  stopReason: "complete",
+  ...overrides,
+});
+
+const emptyPendingFactualWork = (overrides = {}) => ({
+  commitEnrichment: 0,
+  commitPullRequests: 0,
+  pullRequestReconciliation: 0,
+  pullRequestSignals: 0,
+  pushObservations: 0,
+  total: 0,
+  ...overrides,
+});
+
+const completeFactualDrain = (overrides = {}) => ({
+  claimed: 0,
+  complete: true,
+  completed: 0,
+  passes: 0,
+  pending: emptyPendingFactualWork(),
+  projectionRuns: 1,
+  retryAt: null,
+  stopReason: "complete",
+  unavailable: 0,
+  ...overrides,
+});
+
+const emptyWorkerStage = (overrides = {}) => ({
+  claimed: 0,
+  completed: 0,
+  deferred: 0,
+  failed: 0,
+  unavailable: 0,
+  ...overrides,
+});
+
+const workerResult = (overrides = {}) => ({
+  commits: emptyWorkerStage(),
+  deadlineReached: false,
+  observations: emptyWorkerStage(),
+  projection: null,
+  pullRequests: emptyWorkerStage(),
+  pullRequestDiscovery: emptyWorkerStage(),
+  pullRequestSignals: emptyWorkerStage(),
+  refs: emptyWorkerStage(),
+  summaries: emptyWorkerStage(),
+  ...overrides,
+});
+
+const accountInventory = (overrides = {}) => ({
+  account: "f0rr0",
+  identity: { complete: true, retryAt: null, stopReason: "complete" },
+  pullRequests: completePullRequests(),
+  repositoryInventory: completeRepositoryInventory(),
+  ...overrides,
+});
+
+const inventory = (overrides = {}) => ({
+  accounts: [accountInventory()],
+  currentHeads: completeCurrentHeads(),
+  factualDrain: completeFactualDrain(),
+  ...overrides,
+});
+
+const command = [
+  "--account",
+  "f0rr0",
+  "--start-date",
+  "2026-08-01",
+  "--end-date",
+  "2026-08-29",
+];
+
+describe("GitHub factual history backfill", () => {
+  test("defaults to the hard 30-minute cap and rejects larger budgets", () => {
+    expect(backfillArgumentsFrom(command).maximumMinutes).toBe(30);
+    expect(
+      backfillArgumentsFrom([...command, "--maximum-minutes", "30"])
+        .maximumMinutes
+    ).toBe(30);
+    expect(() =>
+      backfillArgumentsFrom([...command, "--maximum-minutes", "31"])
+    ).toThrow(RangeError);
+  });
+
+  test("keeps command and environment validation minimal", () => {
+    expect(() =>
+      backfillArgumentsFrom([...command, "--account", "f0rr0"])
+    ).toThrow(TypeError);
     expect(() => {
-      requireBackfillEnvironment(input, configured);
+      requireBackfillEnvironment(request, {
+        DATABASE_URL: "postgresql://activity.example/database",
+        GITHUB_F0RR0_TOKEN: "token",
+      });
     }).not.toThrow();
     expect(() => {
-      requireBackfillEnvironment(input, {
-        ...configured,
-        CRON_SECRET: undefined,
+      requireBackfillEnvironment(request, {
+        DATABASE_URL: "postgresql://activity.example/database",
       });
-    }).toThrow("CRON_SECRET must contain at least 32 characters");
-    expect(() => {
-      requireBackfillEnvironment(input, {
-        ...configured,
-        CRON_SECRET: `  ${"c".repeat(31)}  `,
-      });
-    }).toThrow("CRON_SECRET must contain at least 32 characters");
+    }).toThrow();
   });
 
-  test("rejects duplicate and unknown command arguments", () => {
-    expect(() =>
-      backfillArgumentsFrom(["--account", "f0rr0", "--account", "f0rr0"])
-    ).toThrow("arguments are invalid");
-    expect(() => backfillArgumentsFrom(["--unexpected", "value"])).toThrow(
-      "arguments are invalid"
-    );
-  });
-
-  test("uses the maximum batch size accepted by every configurable worker stage", () => {
-    expect(GITHUB_BACKFILL_WORKER_BATCH_SIZE).toBe(8);
-  });
-
-  test("exits successfully only after discovery and every scoped audit settle", () => {
-    const complete = githubBackfillCompletionFrom({
-      auditStatuses: [
-        "stored_projection_verified",
-        "stored_projection_verified",
-      ],
-      boundedDiscoveryComplete: true,
-    });
-    expect(complete).toEqual({ complete: true, pipelineSettled: true });
-    expect(githubBackfillExitCodeFrom(complete)).toBe(0);
-
-    for (const incomplete of [
-      githubBackfillCompletionFrom({
-        auditStatuses: ["stored_projection_verified"],
-        boundedDiscoveryComplete: false,
-      }),
-      ...["pipeline_incomplete", "mismatch", "inconclusive"].map((status) =>
-        githubBackfillCompletionFrom({
-          auditStatuses: ["stored_projection_verified", status],
-          boundedDiscoveryComplete: true,
-        })
-      ),
-      githubBackfillCompletionFrom({
-        auditStatuses: [],
-        boundedDiscoveryComplete: true,
-      }),
-    ]) {
-      expect(incomplete.complete).toBe(false);
-      expect(githubBackfillExitCodeFrom(incomplete)).toBe(1);
-    }
-  });
-
-  test("distinguishes a finished traversal with explicit coverage gaps", () => {
-    const complete = { complete: true, pipelineSettled: true };
-    expect(githubBackfillOutcomeFrom(complete, 0)).toBe("complete");
-    expect(githubBackfillOutcomeFrom(complete, 2)).toBe("completed_with_gaps");
-    expect(
-      githubBackfillOutcomeFrom({ complete: false, pipelineSettled: false }, 2)
-    ).toBe("incomplete");
-    expect(() => githubBackfillOutcomeFrom(complete, -1)).toThrow(
-      "coverage gap count"
-    );
-  });
-
-  test("reports traversal completion separately from explicit coverage gaps", () => {
-    expect(githubBackfillDiscoveryCompleteFrom([discoveryInventory()])).toBe(
-      true
-    );
-    expect(githubBackfillDiscoveryCompleteFrom([])).toBe(false);
-    expect(
-      githubBackfillDiscoveryCompleteFrom([
-        discoveryInventory({ direct: null }),
-      ])
-    ).toBe(false);
-    expect(
-      githubBackfillDiscoveryCompleteFrom([
-        discoveryInventory({
-          direct: { complete: true, unavailableRepositories: 1 },
-        }),
-      ])
-    ).toBe(true);
-    expect(
-      githubBackfillDiscoveryCompleteFrom([
-        discoveryInventory({
-          pullRequests: { complete: true, unavailablePullRequests: 1 },
-        }),
-      ])
-    ).toBe(true);
-    expect(
-      githubBackfillDiscoveryCompleteFrom([
-        discoveryInventory({ direct: { complete: false } }),
-      ])
-    ).toBe(false);
-    expect(
-      githubBackfillDiscoveryCompleteFrom([
-        discoveryInventory({ pullRequests: { complete: false } }),
-      ])
-    ).toBe(false);
-  });
-
-  test("reports disjoint outcomes across every stage including PR reconciliation", () => {
-    expect(
-      githubBackfillProcessingCountsFrom({
-        aliases: 7,
-        canonicalizationAttempts: 9,
-        canonicalized: 8,
-        commits: {
-          claimed: 4,
-          completed: 1,
-          deferred: 1,
-          failed: 3,
-          unavailable: 1,
-        },
-        observations: {
-          claimed: 2,
-          completed: 2,
-          deferred: 0,
-          failed: 0,
-          unavailable: 0,
-        },
-        pullRequestDiscovery: {
-          claimed: 3,
-          completed: 1,
-          deferred: 2,
-          failed: 2,
-          unavailable: 0,
-        },
-        pullRequests: {
-          claimed: 5,
-          completed: 2,
-          deferred: 1,
-          failed: 3,
-          unavailable: 1,
-        },
-        pullRequestSignals: {
-          claimed: 2,
-          completed: 1,
-          deferred: 0,
-          failed: 0,
-          unavailable: 0,
-        },
-        summaries: {
-          claimed: 4,
-          completed: 2,
-          deferred: 1,
-          failed: 2,
-          unavailable: 0,
-        },
-      })
-    ).toEqual({
-      aliases: 7,
-      canonicalizationAttempts: 9,
-      canonicalized: 8,
-      claimed: 20,
-      deferred: 5,
-      failed: 3,
-      processed: 9,
-      unavailable: 2,
-    });
-  });
-
-  test("keeps draining when canonicalization progresses without queue claims", () => {
-    expect(
-      githubBackfillProcessingMadeProgress({
-        canonicalizationAttempts: 1,
-        claimed: 0,
-      })
-    ).toBe(true);
-    expect(
-      githubBackfillProcessingMadeProgress({
-        canonicalizationAttempts: 0,
-        claimed: 1,
-      })
-    ).toBe(true);
-    expect(
-      githubBackfillProcessingMadeProgress({
-        canonicalizationAttempts: 0,
-        claimed: 0,
-      })
-    ).toBe(false);
-  });
-
-  test("waits for a scoped retry only when it fits inside the hard budget", () => {
-    const nowAt = Date.parse("2026-08-30T00:00:00.000Z");
-    expect(
-      backfillRetryWaitMillisecondsFrom(
-        [auditResult("pipeline_incomplete", "2026-08-30T00:15:00.000Z")],
-        nowAt + 60 * 60 * 1000,
-        nowAt
-      )
-    ).toBe(15 * 60 * 1000);
-    expect(
-      backfillRetryWaitMillisecondsFrom(
-        [auditResult("pipeline_incomplete", "2026-08-29T23:59:00.000Z")],
-        nowAt + 60 * 60 * 1000,
-        nowAt
-      )
-    ).toBe(1000);
-    expect(
-      backfillRetryWaitMillisecondsFrom(
-        [auditResult("pipeline_incomplete", "2026-08-30T00:59:45.000Z")],
-        nowAt + 60 * 60 * 1000,
-        nowAt
-      )
-    ).toBeNull();
-    expect(
-      backfillRetryWaitMillisecondsFrom(
-        [auditResult("mismatch", "2026-08-30T00:15:00.000Z")],
-        nowAt + 60 * 60 * 1000,
-        nowAt
-      )
-    ).toBeNull();
-  });
-
-  test("retries an inconclusive projection read with bounded backoff", () => {
-    const nowAt = Date.parse("2026-08-30T00:00:00.000Z");
-    const audits = [auditResult("inconclusive", null)];
-    expect(
-      backfillRetryWaitMillisecondsFrom(audits, nowAt + 60_000, nowAt, 0)
-    ).toBe(2000);
-    expect(
-      backfillRetryWaitMillisecondsFrom(audits, nowAt + 60_000, nowAt, 1)
-    ).toBe(5000);
-    expect(
-      backfillRetryWaitMillisecondsFrom(audits, nowAt + 60_000, nowAt, 2)
-    ).toBe(10_000);
-    expect(
-      backfillRetryWaitMillisecondsFrom(audits, nowAt + 60_000, nowAt, 3)
-    ).toBeNull();
-  });
-
-  test("ends an in-flight stage at the selected wall-clock deadline", async () => {
-    const startedAt = Date.now();
-    await expect(
-      runBeforeDeadline(delay(1000), startedAt + 25)
-    ).rejects.toThrow("deadline");
-    expect(Date.now() - startedAt).toBeLessThan(500);
-  });
-
-  test("normalizes one bounded inclusive UTC range", () => {
-    const request = githubBackfillRequestFrom(
-      {
-        account: "all",
-        endDate: "2026-08-29",
-        repositoryId: "123456789",
-        startDate: "2026-08-01",
-      },
-      now
-    );
-
+  test("normalizes one bounded UTC scope and requires old runs to be sharded", () => {
     expect(request).toMatchObject({
-      accounts: ["f0rr0", "yuppiestechdev"],
+      accounts: ["f0rr0"],
       endDate: "2026-08-29",
-      repositoryId: "123456789",
+      repositoryId: null,
       startDate: "2026-08-01",
     });
-    expect(request?.sinceAt).toEqual(new Date("2026-08-01T00:00:00.000Z"));
-    expect(request?.untilAt).toEqual(new Date("2026-08-29T23:59:59.999Z"));
-  });
-
-  test("accepts one account and an unfiltered repository set", () => {
-    expect(
-      githubBackfillRequestFrom(
-        {
-          account: "f0rr0",
-          endDate: "2026-08-29",
-          repositoryId: "",
-          startDate: "2026-08-29",
-        },
-        now
-      )
-    ).toMatchObject({ accounts: ["f0rr0"], repositoryId: null });
-  });
-
-  test("accepts at most 31 commit days per invocation", () => {
-    expect(
-      githubBackfillRequestFrom(
-        {
-          account: "f0rr0",
-          endDate: "2026-08-31",
-          repositoryId: "",
-          startDate: "2026-08-01",
-        },
-        new Date("2026-08-31T15:00:00.000Z")
-      )
-    ).not.toBeNull();
-    expect(
-      githubBackfillRequestFrom(
-        {
-          account: "f0rr0",
-          endDate: "2026-08-29",
-          repositoryId: "",
-          startDate: "2024-01-01",
-        },
-        now
-      )
-    ).toBeNull();
-  });
-
-  test("bounds broad provider discovery while allowing older repository recovery", () => {
+    expect(request.sinceAt).toEqual(new Date("2026-08-01T00:00:00.000Z"));
+    expect(request.untilAt).toEqual(new Date("2026-08-29T23:59:59.999Z"));
     const oldScope = {
       account: "f0rr0",
       endDate: "2026-07-28",
       startDate: "2026-06-28",
     };
-
     expect(
       githubBackfillRequestFrom({ ...oldScope, repositoryId: "" }, now)
     ).toBeNull();
     expect(
       githubBackfillRequestFrom({ ...oldScope, repositoryId: "123456789" }, now)
-    ).toMatchObject({ repositoryId: "123456789" });
-    expect(
-      githubBackfillRequestFrom(
-        {
-          account: "f0rr0",
-          endDate: "2026-07-29",
-          repositoryId: "",
-          startDate: "2026-06-29",
-        },
-        now
-      )
     ).not.toBeNull();
   });
 
-  test("accepts GitHub's documented final timestamp day", () => {
+  test("reports complete traversal separately from explicit PR gaps", () => {
     expect(
-      githubBackfillRequestFrom(
-        {
-          account: "f0rr0",
-          endDate: "2099-12-31",
-          repositoryId: "",
-          startDate: "2099-12-31",
-        },
-        new Date("2100-01-01T00:00:00.000Z")
-      )
+      githubBackfillDiscoveryReportFrom({
+        deadlineAt: now.getTime(),
+        inventory: inventory(),
+      })
     ).toMatchObject({
-      sinceAt: new Date("2099-12-31T00:00:00.000Z"),
-      untilAt: new Date("2099-12-31T23:59:59.999Z"),
+      complete: true,
+      coverageGaps: { total: 0 },
+      interruptions: [],
+      outcome: "complete",
+    });
+
+    const withGaps = githubBackfillDiscoveryReportFrom({
+      deadlineAt: now.getTime(),
+      inventory: inventory({
+        accounts: [
+          accountInventory({
+            pullRequests: completePullRequests({
+              unavailablePullRequests: 2,
+            }),
+          }),
+        ],
+      }),
+    });
+    expect(withGaps).toMatchObject({
+      complete: true,
+      coverageGaps: { total: 2 },
+      outcome: "completed_with_gaps",
+    });
+
+    expect(
+      githubBackfillDiscoveryReportFrom({
+        deadlineAt: now.getTime(),
+        inventory: inventory({
+          factualDrain: completeFactualDrain({ unavailable: 2 }),
+        }),
+      })
+    ).toMatchObject({
+      complete: true,
+      coverageGaps: { factualWorker: 2, total: 2 },
+      outcome: "completed_with_gaps",
     });
   });
 
-  test("rejects malformed, future, and reversed ranges", () => {
-    const requests = [
-      { endDate: "2026-08-29", startDate: "2026-08-30" },
-      { endDate: "2026-08-30", startDate: "2026-08-29" },
-      { endDate: "2026-02-30", startDate: "2026-02-01" },
-    ];
-    for (const request of requests) {
-      expect(
-        githubBackfillRequestFrom(
-          {
-            account: "f0rr0",
-            repositoryId: "",
-            ...request,
-          },
-          now
-        )
-      ).toBeNull();
-    }
-  });
-
-  test("rejects unknown accounts and unsafe repository selectors", () => {
-    expect(
-      githubBackfillRequestFrom(
-        {
-          account: "octocat",
-          endDate: "2026-08-29",
-          repositoryId: "123",
-          startDate: "2026-08-01",
-        },
-        now
-      )
-    ).toBeNull();
-    expect(
-      githubBackfillRequestFrom(
+  test("reports account retries and global ref deferrals distinctly", () => {
+    const retryAt = new Date("2026-08-29T15:05:00.000Z");
+    const report = githubBackfillDiscoveryReportFrom({
+      deadlineAt: now.getTime() + 30 * 60_000,
+      inventory: inventory({
+        accounts: [
+          accountInventory({
+            pullRequests: completePullRequests({
+              complete: false,
+              retryAt,
+              stopReason: "provider_retry",
+            }),
+          }),
+        ],
+      }),
+    });
+    expect(report).toMatchObject({
+      complete: false,
+      interruptions: [
         {
           account: "f0rr0",
-          endDate: "2026-08-29",
-          repositoryId: "private/repository",
-          startDate: "2026-08-01",
+          retryAt: retryAt.toISOString(),
+          stage: "pull_requests",
+          stopReason: "provider_retry",
         },
-        now
-      )
-    ).toBeNull();
+      ],
+      outcome: "incomplete",
+    });
+
+    const deferredHeads = githubBackfillDiscoveryReportFrom({
+      deadlineAt: now.getTime() + 30 * 60_000,
+      inventory: inventory({
+        currentHeads: completeCurrentHeads({
+          complete: false,
+          remainingRefs: 1,
+          retryAt,
+          stopReason: "deferred",
+        }),
+      }),
+    });
+    expect(deferredHeads.interruptions).toEqual([
+      {
+        account: null,
+        retryAt: retryAt.toISOString(),
+        stage: "current_heads",
+        stopReason: "deferred",
+      },
+    ]);
+
+    const deferredFactualWork = githubBackfillDiscoveryReportFrom({
+      deadlineAt: now.getTime() + 30 * 60_000,
+      inventory: inventory({
+        factualDrain: completeFactualDrain({
+          complete: false,
+          pending: emptyPendingFactualWork({
+            commitPullRequests: 1,
+            total: 1,
+          }),
+          retryAt,
+          stopReason: "deferred",
+        }),
+      }),
+    });
+    expect(deferredFactualWork.interruptions).toEqual([
+      {
+        account: null,
+        retryAt: retryAt.toISOString(),
+        stage: "factual_drain",
+        stopReason: "deferred",
+      },
+    ]);
+  });
+
+  test("repairs current heads once before factual PR discovery", async () => {
+    const calls = [];
+    const discovered = await runGitHubBackfillDiscovery(
+      {
+        deadlineAt: now.getTime() + 30 * 60_000,
+        environment: { GITHUB_F0RR0_TOKEN: "token" },
+        request,
+      },
+      {
+        assertIdentity: async () => {
+          calls.push("identity");
+        },
+        discoverCurrentHeads: async () => {
+          calls.push("current_heads");
+          return completeCurrentHeads({ completedGenerations: 1 });
+        },
+        discoverPullRequests: async () => {
+          calls.push("pull_requests");
+          return completePullRequests();
+        },
+        drainFactual: async () => {
+          calls.push("factual_drain");
+          return completeFactualDrain();
+        },
+        loadRepositoryInventory: async () => {
+          calls.push("repository_inventory");
+          return [];
+        },
+        lowerRefCoverage: async (accounts, sinceAt) => {
+          calls.push("lower_ref_coverage");
+          expect(accounts).toEqual(["f0rr0"]);
+          expect(sinceAt).toEqual(request.sinceAt);
+        },
+      }
+    );
+
+    expect(calls).toEqual([
+      "identity",
+      "repository_inventory",
+      "lower_ref_coverage",
+      "current_heads",
+      "pull_requests",
+      "factual_drain",
+    ]);
+    expect(discovered.currentHeads?.completedGenerations).toBe(1);
+    expect(
+      githubBackfillDiscoveryReportFrom({
+        deadlineAt: now.getTime() + 30 * 60_000,
+        inventory: discovered,
+      }).outcome
+    ).toBe("complete");
+  });
+
+  test("does not let PR pagination starve unfinished current-head repair", async () => {
+    let pullRequestsCalled = false;
+    const discovered = await runGitHubBackfillDiscovery(
+      {
+        deadlineAt: now.getTime() + 30 * 60_000,
+        environment: { GITHUB_F0RR0_TOKEN: "token" },
+        request,
+      },
+      {
+        assertIdentity: async () => null,
+        discoverCurrentHeads: async () =>
+          completeCurrentHeads({
+            complete: false,
+            remainingRefs: 2,
+            stopReason: "deadline",
+          }),
+        discoverPullRequests: async () => {
+          pullRequestsCalled = true;
+          return completePullRequests();
+        },
+        drainFactual: async () => completeFactualDrain(),
+        loadRepositoryInventory: async () => [],
+        lowerRefCoverage: async () => null,
+      }
+    );
+
+    expect(pullRequestsCalled).toBe(false);
+    expect(discovered.accounts[0]?.pullRequests).toBeNull();
+    expect(discovered.currentHeads?.remainingRefs).toBe(2);
+  });
+
+  test("does not rerun ref repair after an incomplete PR traversal", async () => {
+    let refPasses = 0;
+    const discovered = await runGitHubBackfillDiscovery(
+      {
+        deadlineAt: now.getTime() + 30 * 60_000,
+        environment: { GITHUB_F0RR0_TOKEN: "token" },
+        request,
+      },
+      {
+        assertIdentity: async () => null,
+        discoverCurrentHeads: async () => {
+          refPasses += 1;
+          return completeCurrentHeads();
+        },
+        discoverPullRequests: async () =>
+          completePullRequests({
+            complete: false,
+            stopReason: "deadline",
+          }),
+        drainFactual: async () => completeFactualDrain(),
+        loadRepositoryInventory: async () => [],
+        lowerRefCoverage: async () => null,
+      }
+    );
+
+    expect(refPasses).toBe(1);
+    expect(discovered.accounts[0]?.pullRequests?.complete).toBe(false);
+  });
+
+  test("does not lower ref coverage until daily repository inventory is complete", async () => {
+    const unavailable = new Error("Inventory refresh is in progress.");
+    unavailable.name = "GitHubRepositoryInventoryUnavailableError";
+    let currentHeadsCalled = false;
+    let coverageLowered = false;
+    const discovered = await runGitHubBackfillDiscovery(
+      {
+        deadlineAt: now.getTime() + 30 * 60_000,
+        environment: { GITHUB_F0RR0_TOKEN: "token" },
+        request,
+      },
+      {
+        assertIdentity: async () => null,
+        discoverCurrentHeads: async () => {
+          currentHeadsCalled = true;
+          return completeCurrentHeads();
+        },
+        discoverPullRequests: async () => completePullRequests(),
+        drainFactual: async () => completeFactualDrain(),
+        loadRepositoryInventory: async () => {
+          throw unavailable;
+        },
+        lowerRefCoverage: async () => {
+          coverageLowered = true;
+        },
+      }
+    );
+
+    expect(currentHeadsCalled).toBe(false);
+    expect(coverageLowered).toBe(false);
+    expect(discovered.accounts[0]).toMatchObject({
+      pullRequests: null,
+      repositoryInventory: {
+        complete: false,
+        retryAt: null,
+        stopReason: "deferred",
+      },
+    });
+    expect(
+      githubBackfillDiscoveryReportFrom({
+        deadlineAt: now.getTime() + 30 * 60_000,
+        inventory: discovered,
+      }).interruptions
+    ).toEqual([
+      {
+        account: "f0rr0",
+        retryAt: null,
+        stage: "repository_inventory",
+        stopReason: "deferred",
+      },
+    ]);
+  });
+
+  test("drains facts without summaries, refs, or repeated projections", async () => {
+    const workerOptions = [];
+    let projectionRuns = 0;
+    const result = await runGitHubBackfillFactualDrain(
+      {
+        accounts: ["f0rr0"],
+        deadlineAt: Date.now() + 60_000,
+        request,
+      },
+      {
+        readBacklog: async () => ({
+          pending: emptyPendingFactualWork(),
+          retryAt: null,
+          unavailable: 0,
+        }),
+        refreshProjection: async () => {
+          projectionRuns += 1;
+          return {};
+        },
+        runWorker: async (options) => {
+          workerOptions.push(options);
+          return workerResult({
+            observations: emptyWorkerStage({ claimed: 1, completed: 1 }),
+          });
+        },
+      }
+    );
+
+    expect(result).toMatchObject({
+      claimed: 1,
+      complete: true,
+      completed: 1,
+      passes: 1,
+      projectionRuns: 1,
+      stopReason: "complete",
+    });
+    expect(projectionRuns).toBe(1);
+    expect(workerOptions).toHaveLength(1);
+    expect(workerOptions[0]).toMatchObject({
+      accounts: ["f0rr0"],
+      includeProjection: false,
+      includeRefs: false,
+      includeSummaries: false,
+      scope: {
+        repositoryId: null,
+        sinceAt: request.sinceAt,
+        untilAt: request.untilAt,
+      },
+    });
+  });
+
+  test("returns a durable factual deferral without sleeping or generating summaries", async () => {
+    const retryAt = new Date(Date.now() + 15 * 60_000);
+    let workerPasses = 0;
+    let projectionRuns = 0;
+    const result = await runGitHubBackfillFactualDrain(
+      {
+        accounts: ["f0rr0"],
+        deadlineAt: Date.now() + 60_000,
+        request,
+      },
+      {
+        readBacklog: async () => ({
+          pending: emptyPendingFactualWork({
+            commitEnrichment: 1,
+            total: 1,
+          }),
+          retryAt,
+          unavailable: 0,
+        }),
+        refreshProjection: async () => {
+          projectionRuns += 1;
+          return {};
+        },
+        runWorker: async (options) => {
+          workerPasses += 1;
+          expect(options.includeProjection).toBe(false);
+          expect(options.includeSummaries).toBe(false);
+          return workerResult({
+            commits: emptyWorkerStage({
+              claimed: 1,
+              deferred: 1,
+              failed: 1,
+            }),
+          });
+        },
+      }
+    );
+
+    expect(workerPasses).toBe(1);
+    expect(projectionRuns).toBe(0);
+    expect(result).toMatchObject({
+      claimed: 1,
+      complete: false,
+      pending: { commitEnrichment: 1, total: 1 },
+      retryAt,
+      stopReason: "deferred",
+    });
   });
 });

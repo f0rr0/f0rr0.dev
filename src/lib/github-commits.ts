@@ -34,6 +34,11 @@ const CHECKPOINT_ATTEMPTS = 3;
 const EVENT_PAGES = 3;
 const GITHUB_PAGE_SIZE = 100;
 
+interface FailedGitHubAccount {
+  account: TrackedGitHubAccount;
+  error: string;
+}
+
 export interface GitHubAccountSyncResult {
   account: TrackedGitHubAccount;
   checkpointChanged: boolean;
@@ -53,10 +58,7 @@ export interface GitHubSyncResult {
   checkpoints: number;
   deferred: number;
   events: number;
-  failedAccounts: readonly {
-    account: TrackedGitHubAccount;
-    error: string;
-  }[];
+  failedAccounts: readonly FailedGitHubAccount[];
   gaps: number;
   issues: number;
   knownCommits: number;
@@ -81,10 +83,7 @@ export interface GitHubAccountRefReconciliationResult {
 export interface GitHubRefReconciliationResult {
   accounts: number;
   complete: boolean;
-  failedAccounts: readonly {
-    account: TrackedGitHubAccount;
-    error: string;
-  }[];
+  failedAccounts: readonly FailedGitHubAccount[];
   knownCommits: number;
   kind: GitHubRepositoryRefKind;
   pages: number;
@@ -94,7 +93,7 @@ export interface GitHubRefReconciliationResult {
   repositories: number;
 }
 
-export class GitHubSyncConfigurationError extends Error {
+class GitHubSyncConfigurationError extends Error {
   constructor(variable: string) {
     super(`${variable} is not configured.`);
     this.name = "GitHubSyncConfigurationError";
@@ -113,6 +112,37 @@ const tokenFor = (account: TrackedGitHubAccount) => {
 interface GitHubCronRequestOptions {
   deadlineAt?: number;
 }
+
+const settleTrackedGitHubAccounts = async <Result>(
+  action: (account: TrackedGitHubAccount) => Promise<Result>
+): Promise<{
+  failedAccounts: readonly FailedGitHubAccount[];
+  results: readonly Result[];
+}> => {
+  const settled = await Promise.allSettled(TRACKED_GITHUB_ACCOUNTS.map(action));
+  const results: Result[] = [];
+  const failedAccounts: FailedGitHubAccount[] = [];
+
+  for (const [index, outcome] of settled.entries()) {
+    if (outcome.status === "fulfilled") {
+      results.push(outcome.value);
+      continue;
+    }
+    const account = TRACKED_GITHUB_ACCOUNTS[index];
+    if (account === undefined) {
+      throw new Error("A GitHub account result has no tracked account.");
+    }
+    failedAccounts.push({
+      account,
+      error:
+        outcome.reason instanceof Error
+          ? outcome.reason.name.slice(0, 80)
+          : "UnknownError",
+    });
+  }
+
+  return { failedAccounts, results };
+};
 
 const fetchJson = async (
   url: URL,
@@ -338,29 +368,9 @@ export const syncGitHubAccounts = async (
     throw new DatabaseConfigurationError();
   }
 
-  const settled = await Promise.allSettled(
-    TRACKED_GITHUB_ACCOUNTS.map(async (account) => ({
-      account,
-      result: await syncGitHubAccount(account, options),
-    }))
+  const { failedAccounts, results } = await settleTrackedGitHubAccounts(
+    async (account) => await syncGitHubAccount(account, options)
   );
-  const results = settled.flatMap((outcome) =>
-    outcome.status === "fulfilled" ? [outcome.value.result] : []
-  );
-  const failedAccounts = settled.flatMap((outcome, index) => {
-    if (outcome.status === "fulfilled") {
-      return [];
-    }
-    return [
-      {
-        account: TRACKED_GITHUB_ACCOUNTS[index],
-        error:
-          outcome.reason instanceof Error
-            ? outcome.reason.name.slice(0, 80)
-            : "UnknownError",
-      },
-    ];
-  });
 
   return {
     accounts: results.length,
@@ -388,6 +398,7 @@ export const reconcileGitHubAccountRefs = async (
   account: TrackedGitHubAccount,
   options: {
     deadlineAt: number;
+    forceInventoryRefresh?: boolean;
     kind: GitHubRepositoryRefKind;
     repositoryLimit: number;
   }
@@ -415,6 +426,7 @@ export const reconcileGitHubAccountRefs = async (
     ...(await reconcileGitHubRepositoryRefBatch({
       account,
       deadlineAt: options.deadlineAt,
+      forceInventoryRefresh: options.forceInventoryRefresh,
       kind: options.kind,
       repositoryLimit: options.repositoryLimit,
       token,
@@ -424,35 +436,16 @@ export const reconcileGitHubAccountRefs = async (
 
 export const reconcileGitHubRefs = async (options: {
   deadlineAt: number;
+  forceInventoryRefresh?: boolean;
   kind: GitHubRepositoryRefKind;
   repositoryLimit: number;
 }): Promise<GitHubRefReconciliationResult> => {
   if (!isDatabaseConfigured()) {
     throw new DatabaseConfigurationError();
   }
-  const settled = await Promise.allSettled(
-    TRACKED_GITHUB_ACCOUNTS.map(async (account) => ({
-      account,
-      result: await reconcileGitHubAccountRefs(account, options),
-    }))
+  const { failedAccounts, results } = await settleTrackedGitHubAccounts(
+    async (account) => await reconcileGitHubAccountRefs(account, options)
   );
-  const results = settled.flatMap((outcome) =>
-    outcome.status === "fulfilled" ? [outcome.value.result] : []
-  );
-  const failedAccounts = settled.flatMap((outcome, index) => {
-    if (outcome.status === "fulfilled") {
-      return [];
-    }
-    return [
-      {
-        account: TRACKED_GITHUB_ACCOUNTS[index],
-        error:
-          outcome.reason instanceof Error
-            ? outcome.reason.name.slice(0, 80)
-            : "UnknownError",
-      },
-    ];
-  });
   return {
     accounts: results.length,
     complete:

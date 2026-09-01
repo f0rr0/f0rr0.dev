@@ -1,16 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { setTimeout as delay } from "node:timers/promises";
 
 import { env } from "../src/env.ts";
 import {
   fetchGitHubActivityCommitSource,
   fetchGitHubAssociatedPullRequests,
+  fetchGitHubPullRequestMembership,
   fetchGitHubPullRequestSnapshot,
-  fetchGitHubPullRequestSource,
   fetchGitHubPullRequestMembershipWithToken,
   fetchGitHubPushObservationSource,
-  generateValidatedGitHubActivitySummary,
-  GITHUB_ACTIVITY_FALLBACK_SUMMARY_MODEL,
   resolveGitHubPullRequestMergeCommits,
 } from "../src/lib/github-activity-processor.ts";
 import { GitHubRequestDeadlineError } from "../src/lib/github-api.ts";
@@ -19,8 +16,6 @@ const originalFetch = globalThis.fetch;
 const originalF0rr0Token = env.GITHUB_F0RR0_TOKEN;
 const originalYuppiesTechDevToken = env.GITHUB_YUPPIESTECHDEV_TOKEN;
 const originalDefaultToken = env.GITHUB_TOKEN;
-const originalOpenAiKey = env.OPENAI_API_KEY;
-const originalProcessOpenAiKey = process.env.OPENAI_API_KEY;
 
 const pushCommitValue = (sha, login, id) => ({
   author: { id, login },
@@ -30,33 +25,6 @@ const pushCommitValue = (sha, login, id) => ({
   },
   html_url: `https://github.com/example-org/example-repo/commit/${sha}`,
   sha,
-});
-
-const summarySource = (isPrivate) => ({
-  authorUserId: "1",
-  authoredAt: "2026-08-28T12:00:00.000Z",
-  commit: {
-    committedAt: "2026-08-28T12:00:00.000Z",
-    files: [],
-    message: "feat(billing): add AI credit ledger",
-    parents: ["a".repeat(40)],
-    providerFileCapReached: false,
-    sha: "b".repeat(40),
-    stats: { additions: 0, deletions: 0, total: 0 },
-    treeSha: "c".repeat(40),
-  },
-  committerAt: "2026-08-28T12:00:00.000Z",
-  committerUserId: "1",
-  repository: {
-    avatarUrl: null,
-    description: null,
-    fullName: "private-owner/private-repo",
-    homepageUrl: null,
-    ownerLogin: "private-owner",
-    ownerType: "Organization",
-    private: isPrivate,
-    topics: [],
-  },
 });
 
 const restoreEnvironmentValue = (name, value, target = env) => {
@@ -71,7 +39,6 @@ beforeEach(() => {
   delete env.GITHUB_F0RR0_TOKEN;
   delete env.GITHUB_YUPPIESTECHDEV_TOKEN;
   delete env.GITHUB_TOKEN;
-  delete env.OPENAI_API_KEY;
 });
 
 afterEach(() => {
@@ -82,50 +49,6 @@ afterEach(() => {
     originalYuppiesTechDevToken
   );
   restoreEnvironmentValue("GITHUB_TOKEN", originalDefaultToken);
-  restoreEnvironmentValue("OPENAI_API_KEY", originalOpenAiKey);
-  restoreEnvironmentValue(
-    "OPENAI_API_KEY",
-    originalProcessOpenAiKey,
-    process.env
-  );
-});
-
-test("summarizes privately without sending source evidence to a model", async () => {
-  const summary = await generateValidatedGitHubActivitySummary(
-    summarySource(true)
-  );
-
-  expect(summary.model).toBe(GITHUB_ACTIVITY_FALLBACK_SUMMARY_MODEL);
-  expect(summary.summary).toEqual({
-    headline: "Add AI credit ledger",
-    short: "Add AI credit ledger",
-  });
-});
-
-test("bounds model summaries by the worker deadline and falls back deterministically", async () => {
-  env.OPENAI_API_KEY = "test-key";
-  process.env.OPENAI_API_KEY = "test-key";
-  let providerSignal;
-  globalThis.fetch = async (_input, init) => {
-    providerSignal = init.signal;
-    await delay(60_000, undefined, { signal: providerSignal });
-    return Response.json({});
-  };
-
-  const startedAt = Date.now();
-  const summary = await generateValidatedGitHubActivitySummary(
-    summarySource(false),
-    { deadlineAt: startedAt + 50 }
-  );
-
-  expect(providerSignal).toBeInstanceOf(AbortSignal);
-  expect(providerSignal.aborted).toBe(true);
-  expect(Date.now() - startedAt).toBeLessThan(1000);
-  expect(summary.model).toBe(GITHUB_ACTIVITY_FALLBACK_SUMMARY_MODEL);
-  expect(summary.summary).toEqual({
-    headline: "Add AI credit ledger",
-    short: "Add AI credit ledger",
-  });
 });
 
 describe("GitHub activity commit acquisition", () => {
@@ -168,7 +91,7 @@ describe("GitHub activity commit acquisition", () => {
       requestedPages.push(page);
       const offset = (page - 1) * 100;
       return Response.json({
-        author: { id: 100, login: "f0rr0" },
+        author: { id: 8_574_219, login: "f0rr0" },
         commit: {
           author: { date: "2026-08-28T12:00:00Z" },
           committer: { date: "2026-08-28T12:01:00Z" },
@@ -201,8 +124,7 @@ describe("GitHub activity commit acquisition", () => {
     expect(requestedPages).toEqual(Array.from({ length: 30 }, (_, i) => i + 1));
     expect(source.commit.files).toHaveLength(3000);
     expect(source.commit.providerFileCapReached).toBe(true);
-    expect(source.commit.treeSha).toBe("c".repeat(40));
-    expect(source.authorUserId).toBe("100");
+    expect(source.authorUserId).toBe("8574219");
     expect(source.authoredAt).toBe("2026-08-28T12:00:00.000Z");
     expect(source.committerAt).toBe("2026-08-28T12:01:00.000Z");
     expect(source.committerUserId).toBe("200");
@@ -239,7 +161,7 @@ describe("GitHub activity commit acquisition", () => {
       const parents = ancestryResponses[commitReads];
       commitReads += 1;
       return Response.json({
-        author: { id: 100, login: "f0rr0" },
+        author: { id: 8_574_219, login: "f0rr0" },
         commit: {
           author: { date: "2026-08-28T12:00:00Z" },
           committer: { date: "2026-08-28T12:01:00Z" },
@@ -288,7 +210,7 @@ describe("GitHub activity commit acquisition", () => {
         ahead_by: 2,
         total_commits: 2,
         commits: [
-          pushCommitValue(trackedSha, "f0rr0", 100),
+          pushCommitValue(trackedSha, "f0rr0", 8_574_219),
           pushCommitValue(foreignSha, "octocat", 200),
         ],
       });
@@ -327,13 +249,13 @@ describe("GitHub activity commit acquisition", () => {
           total_commits: 3,
           commits: [
             pushCommitValue(surplusSha, "octocat", 200),
-            pushCommitValue(firstSha, "f0rr0", 100),
-            pushCommitValue(afterSha, "f0rr0", 100),
+            pushCommitValue(firstSha, "f0rr0", 8_574_219),
+            pushCommitValue(afterSha, "f0rr0", 8_574_219),
           ],
         });
       }
       const sha = url.pathname.split("/").at(-1);
-      return Response.json(pushCommitValue(sha, "f0rr0", 100));
+      return Response.json(pushCommitValue(sha, "f0rr0", 8_574_219));
     };
 
     const source = await fetchGitHubPushObservationSource({
@@ -374,12 +296,12 @@ describe("GitHub activity commit acquisition", () => {
           total_commits: 2,
           commits: [
             pushCommitValue(otherSha, "octocat", 200),
-            pushCommitValue(afterSha, "f0rr0", 100),
+            pushCommitValue(afterSha, "f0rr0", 8_574_219),
           ],
         });
       }
       const sha = url.pathname.split("/").at(-1);
-      return Response.json(pushCommitValue(sha, "f0rr0", 100));
+      return Response.json(pushCommitValue(sha, "f0rr0", 8_574_219));
     };
 
     const source = await fetchGitHubPushObservationSource({
@@ -413,9 +335,9 @@ describe("GitHub activity commit acquisition", () => {
         ahead_by: 3,
         total_commits: 3,
         commits: [
-          pushCommitValue(firstSha, "f0rr0", 100),
+          pushCommitValue(firstSha, "f0rr0", 8_574_219),
           pushCommitValue(surplusSha, "octocat", 200),
-          pushCommitValue(afterSha, "f0rr0", 100),
+          pushCommitValue(afterSha, "f0rr0", 8_574_219),
         ],
       });
 
@@ -444,8 +366,8 @@ describe("GitHub activity commit acquisition", () => {
         ahead_by: 2,
         total_commits: 2,
         commits: [
-          pushCommitValue(firstSha, "f0rr0", 100),
-          pushCommitValue(afterSha, "f0rr0", 100),
+          pushCommitValue(firstSha, "f0rr0", 8_574_219),
+          pushCommitValue(afterSha, "f0rr0", 8_574_219),
         ],
       });
 
@@ -476,7 +398,7 @@ describe("GitHub activity commit acquisition", () => {
         commits: [
           { author: { login: "octocat" }, commit: null, sha: foreignSha },
           {
-            author: { login: "f0rr0" },
+            author: { id: 8_574_219, login: "f0rr0" },
             commit: {
               author: { date: "2026-08-28T12:01:00Z" },
               message: "",
@@ -518,7 +440,7 @@ describe("GitHub activity commit acquisition", () => {
         total_commits: 1,
         commits: [
           {
-            author: { login: "f0rr0" },
+            author: { id: 8_574_219, login: "f0rr0" },
             commit: { author: { date: "not-a-date" }, message: "change" },
             sha: afterSha,
           },
@@ -584,7 +506,7 @@ describe("GitHub activity commit acquisition", () => {
               history: {
                 nodes: [
                   {
-                    author: { user: { login: "f0rr0" } },
+                    author: { user: { databaseId: 8_574_219, login: "f0rr0" } },
                     authoredDate: "2026-08-28T12:00:00Z",
                     committedDate: "2026-08-28T12:01:00Z",
                     message: "head",
@@ -592,7 +514,7 @@ describe("GitHub activity commit acquisition", () => {
                     url: `https://github.com/example-org/example-repo/commit/${afterSha}`,
                   },
                   {
-                    author: { user: { login: "octocat" } },
+                    author: { user: { databaseId: 200, login: "octocat" } },
                     authoredDate: "2026-08-28T11:00:00Z",
                     committedDate: "2026-08-28T11:01:00Z",
                     message: "older",
@@ -644,7 +566,7 @@ describe("GitHub activity commit acquisition", () => {
       }
       expect(url.pathname).not.toBe("/graphql");
       const sha = url.pathname.split("/").at(-1);
-      return Response.json(pushCommitValue(sha, "f0rr0", 100));
+      return Response.json(pushCommitValue(sha, "f0rr0", 8_574_219));
     };
 
     const source = await fetchGitHubPushObservationSource({
@@ -719,7 +641,9 @@ describe("GitHub activity commit acquisition", () => {
       }
       return Response.json({
         ahead_by: knownShas.length,
-        commits: knownShas.map((sha) => pushCommitValue(sha, "f0rr0", 100)),
+        commits: knownShas.map((sha) =>
+          pushCommitValue(sha, "f0rr0", 8_574_219)
+        ),
         total_commits: knownShas.length,
       });
     };
@@ -831,7 +755,7 @@ describe("GitHub activity commit acquisition", () => {
               history: {
                 nodes: [
                   {
-                    author: { user: { login: "f0rr0" } },
+                    author: { user: { databaseId: 8_574_219, login: "f0rr0" } },
                     authoredDate: "2026-08-28T12:00:00Z",
                     committedDate: "2026-08-28T12:01:00Z",
                     message: "head",
@@ -839,7 +763,7 @@ describe("GitHub activity commit acquisition", () => {
                     url: `https://github.com/example-org/example-repo/commit/${afterSha}`,
                   },
                   {
-                    author: { user: { login: "octocat" } },
+                    author: { user: { databaseId: 200, login: "octocat" } },
                     authoredDate: "2026-08-28T11:00:00Z",
                     committedDate: "2026-08-28T11:01:00Z",
                     message: "older",
@@ -892,7 +816,7 @@ describe("GitHub activity commit acquisition", () => {
                 ? {
                     nodes: [
                       {
-                        author: { user: { login: "octocat" } },
+                        author: { user: { databaseId: 200, login: "octocat" } },
                         authoredDate: "2026-08-28T10:00:00Z",
                         committedDate: "2026-08-28T10:01:00Z",
                         message: "older",
@@ -905,7 +829,9 @@ describe("GitHub activity commit acquisition", () => {
                 : {
                     nodes: [
                       {
-                        author: { user: { login: "f0rr0" } },
+                        author: {
+                          user: { databaseId: 8_574_219, login: "f0rr0" },
+                        },
                         authoredDate: "2026-08-28T12:00:00Z",
                         committedDate: "2026-08-28T12:01:00Z",
                         message: "head",
@@ -913,7 +839,9 @@ describe("GitHub activity commit acquisition", () => {
                         url: `https://github.com/example-org/example-repo/commit/${afterSha}`,
                       },
                       {
-                        author: { user: { login: "f0rr0" } },
+                        author: {
+                          user: { databaseId: 8_574_219, login: "f0rr0" },
+                        },
                         authoredDate: "2026-08-28T11:00:00Z",
                         committedDate: "2026-08-28T11:01:00Z",
                         message: "middle",
@@ -964,7 +892,7 @@ describe("GitHub activity commit acquisition", () => {
               history: {
                 nodes: [
                   {
-                    author: { user: { login: "f0rr0" } },
+                    author: { user: { databaseId: 8_574_219, login: "f0rr0" } },
                     authoredDate: "2026-07-15T12:00:00Z",
                     committedDate: "2026-07-15T12:01:00Z",
                     message: "historical change",
@@ -1367,7 +1295,7 @@ describe("GitHub pull request acquisition", () => {
     globalThis.fetch = async () =>
       Response.json([
         {
-          author: { login: "f0rr0" },
+          author: { id: 8_574_219, login: "f0rr0" },
           commit: {
             author: { date: "2026-08-01T09:00:00Z" },
             committer: { date: "2026-08-01T12:00:00Z" },
@@ -1406,7 +1334,7 @@ describe("GitHub pull request acquisition", () => {
       const url = new URL(input instanceof Request ? input.url : input);
       const next = new URL(url);
       next.searchParams.set("page", String(calls + 1));
-      return Response.json([pushCommitValue(headSha, "f0rr0", 100)], {
+      return Response.json([pushCommitValue(headSha, "f0rr0", 8_574_219)], {
         headers: { link: `<${next.href}>; rel="next"` },
       });
     };
@@ -1531,15 +1459,27 @@ describe("GitHub pull request acquisition", () => {
     expect(associated[0]?.id).toBe("700");
     expect(associated[0]?.title).toBe("Build a durable activity worker");
 
-    const source = await fetchGitHubPullRequestSource({
+    const reference = {
       account: "f0rr0",
       number: 7,
       repository: "example-org/example-repo",
       repositoryId: "123",
-    });
-    expect(source.commitShas).toEqual(memberShas);
-    expect(source.membershipComplete).toBe(true);
-    expect(source.pullRequest.headSha).toBe(headSha);
+    };
+    const snapshot = await fetchGitHubPullRequestSnapshot(reference);
+    const membership = await fetchGitHubPullRequestMembership(
+      reference,
+      snapshot.expectedCommitCount,
+      {
+        commitRepository:
+          snapshot.pullRequest.headRepository ??
+          snapshot.pullRequest.baseRepository,
+        expectedBaseSha: snapshot.pullRequest.baseSha,
+        expectedHeadSha: snapshot.pullRequest.headSha,
+      }
+    );
+    expect(membership.commitShas).toEqual(memberShas);
+    expect(membership.membershipComplete).toBe(true);
+    expect(snapshot.pullRequest.headSha).toBe(headSha);
     expect(requestedPaths).toEqual([
       `/repos/${repository.full_name}/commits/${commitSha}/pulls`,
       `/repos/${repository.full_name}/pulls/7`,
@@ -1561,7 +1501,9 @@ describe("GitHub pull request acquisition", () => {
       ) {
         return Response.json({
           ahead_by: 2,
-          commits: memberShas.map((sha) => pushCommitValue(sha, "f0rr0", 100)),
+          commits: memberShas.map((sha) =>
+            pushCommitValue(sha, "f0rr0", 8_574_219)
+          ),
           total_commits: 2,
         });
       }
@@ -1612,7 +1554,7 @@ describe("GitHub pull request acquisition", () => {
               .toString(16)
               .padStart(40, "0"),
             "f0rr0",
-            100
+            8_574_219
           )
         );
         if (page === 4) {
@@ -1633,16 +1575,28 @@ describe("GitHub pull request acquisition", () => {
       return Response.json({ message: "not found" }, { status: 404 });
     };
 
-    const source = await fetchGitHubPullRequestSource({
+    const reference = {
       account: "f0rr0",
       number: 7,
       repository: "example-org/example-repo",
       repositoryId: "123",
-    });
-    expect(source.commitShas).toHaveLength(368);
-    expect(source.membershipComplete).toBe(true);
-    expect(source.commitShas.at(-1)).toBe(headSha);
-    expect(source.commits[0]?.committedAt).toBe("2026-08-28T12:00:00.000Z");
+    };
+    const snapshot = await fetchGitHubPullRequestSnapshot(reference);
+    const membership = await fetchGitHubPullRequestMembership(
+      reference,
+      snapshot.expectedCommitCount,
+      {
+        commitRepository:
+          snapshot.pullRequest.headRepository ??
+          snapshot.pullRequest.baseRepository,
+        expectedBaseSha: snapshot.pullRequest.baseSha,
+        expectedHeadSha: snapshot.pullRequest.headSha,
+      }
+    );
+    expect(membership.commitShas).toHaveLength(368);
+    expect(membership.membershipComplete).toBe(true);
+    expect(membership.commitShas.at(-1)).toBe(headSha);
+    expect(membership.commits[0]?.committedAt).toBe("2026-08-28T12:00:00.000Z");
     expect(comparePages).toEqual([1, 2, 3, 4]);
   });
 
@@ -1651,7 +1605,7 @@ describe("GitHub pull request acquisition", () => {
       pushCommitValue(
         (BigInt(index) + 20_000n).toString(16).padStart(40, "0"),
         "f0rr0",
-        100
+        8_574_219
       )
     );
     globalThis.fetch = async (input) => {
@@ -1686,7 +1640,7 @@ describe("GitHub pull request acquisition", () => {
       pushCommitValue(
         (BigInt(index) + 30_000n).toString(16).padStart(40, "0"),
         "f0rr0",
-        100
+        8_574_219
       )
     );
     globalThis.fetch = async () =>
@@ -1767,8 +1721,6 @@ describe("GitHub activity provider deadlines", () => {
           "test-token",
           { deadlineAt }
         ),
-      async () =>
-        await fetchGitHubPullRequestSource(pullRequest, { deadlineAt }),
     ];
     for (const call of callsWithDeadline) {
       await expect(call()).rejects.toBeInstanceOf(GitHubRequestDeadlineError);

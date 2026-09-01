@@ -3,12 +3,13 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "@/env";
 
 const CURSOR_MAX_LENGTH = 512;
-const CURSOR_VERSION = 1;
+const CURSOR_VERSION = 2;
 const UTC_DAY = /^\d{4}-\d{2}-\d{2}$/u;
+const REVISION = /^(?:0|[1-9]\d*)$/u;
 
 export interface GitHubActivityCursor {
   beforeDay: string;
-  snapshotAt: string;
+  orderingRevision: string;
   version: typeof CURSOR_VERSION;
 }
 
@@ -20,14 +21,6 @@ const validUtcDay = (value: unknown): value is string => {
   return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
 };
 
-const validIsoDate = (value: unknown): value is string => {
-  if (typeof value !== "string") {
-    return false;
-  }
-  const date = new Date(value);
-  return !Number.isNaN(date.getTime()) && date.toISOString() === value;
-};
-
 const validCursor = (value: unknown): value is GitHubActivityCursor => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
@@ -36,7 +29,9 @@ const validCursor = (value: unknown): value is GitHubActivityCursor => {
   return (
     candidate.version === CURSOR_VERSION &&
     validUtcDay(candidate.beforeDay) &&
-    validIsoDate(candidate.snapshotAt)
+    typeof candidate.orderingRevision === "string" &&
+    REVISION.test(candidate.orderingRevision) &&
+    Object.keys(candidate).length === 3
   );
 };
 
@@ -53,7 +48,7 @@ const signatureFor = (payload: string, secret: string) =>
 
 export const encodeGitHubActivityCursor = (
   cursor: GitHubActivityCursor,
-  secret = env.CRON_SECRET
+  secret = env.GITHUB_ACTIVITY_CURSOR_SECRET
 ) => {
   if (!validCursor(cursor)) {
     throw new TypeError("The GitHub activity cursor is invalid.");
@@ -66,7 +61,7 @@ export const encodeGitHubActivityCursor = (
 
 export const decodeGitHubActivityCursor = (
   value: string | null,
-  secret = env.CRON_SECRET
+  secret = env.GITHUB_ACTIVITY_CURSOR_SECRET
 ): GitHubActivityCursor | null => {
   if (value === null || value.length === 0) {
     return null;

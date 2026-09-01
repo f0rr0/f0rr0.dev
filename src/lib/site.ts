@@ -78,7 +78,7 @@ export const siteConfig = {
   url: resolveSiteUrl(),
 };
 
-export const absoluteUrl = (path: string, baseUrl = siteConfig.url) =>
+const absoluteUrl = (path: string, baseUrl = siteConfig.url) =>
   new URL(path, baseUrl).toString();
 
 export const publicUrl = (path: string) =>

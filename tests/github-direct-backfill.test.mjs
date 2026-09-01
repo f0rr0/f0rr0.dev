@@ -1,362 +1,219 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import {
-  backfillGitHubCommitsFromCurrentRefs,
-  collectGitHubCommitsFromHead,
-  distinctGitHubCurrentRefHeads,
-} from "../src/lib/github-direct-backfill.ts";
+  GitHubRequestDeadlineError,
+  GitHubResponseError,
+} from "../src/lib/github-api.ts";
+import { backfillGitHubCurrentRefGenerations } from "../src/lib/github-direct-backfill.ts";
 
-const originalFetch = globalThis.fetch;
+const sha = (character) => character.repeat(40);
+const retryAt = new Date("2026-09-01T00:15:00.000Z");
 
-afterEach(() => {
-  globalThis.fetch = originalFetch;
+const activeRepair = (overrides = {}) => ({
+  account: "f0rr0",
+  active: true,
+  attemptCount: 1,
+  branchLineageId: "10000000-0000-4000-8000-000000000001",
+  coverageSinceAt: new Date("2026-08-01T00:00:00.000Z"),
+  desiredHeadSha: sha("a"),
+  leaseToken: "20000000-0000-4000-8000-000000000001",
+  observedAt: new Date("2026-09-01T00:00:00.000Z"),
+  refName: "refs/heads/main",
+  repository: "f0rr0/example",
+  repositoryId: "1",
+  ...overrides,
 });
 
-const repository = {
-  fullName: "example-org/example-repo",
-  htmlUrl: "https://github.com/example-org/example-repo",
-  id: "123",
-  ownerAvatarUrl: null,
-  ownerId: "456",
-  ownerLogin: "example-org",
-  ownerType: "Organization",
-  visibility: "private",
+const deletedRepair = {
+  ...activeRepair({
+    branchLineageId: "10000000-0000-4000-8000-000000000002",
+    leaseToken: "20000000-0000-4000-8000-000000000002",
+    refName: "refs/heads/deleted",
+  }),
+  account: null,
+  active: false,
+  coverageSinceAt: null,
 };
 
-const rawRepository = {
-  full_name: repository.fullName,
-  html_url: repository.htmlUrl,
-  id: Number(repository.id),
-  owner: {
-    avatar_url: null,
-    id: Number(repository.ownerId),
-    login: repository.ownerLogin,
-    type: repository.ownerType,
-  },
-  private: true,
-  pushed_at: "2026-08-20T00:00:00Z",
-  visibility: repository.visibility,
-};
-
-const commitValue = (sha, authoredAt, committedAt) => ({
-  author: { login: "f0rr0" },
-  commit: {
-    author: { date: authoredAt },
-    committer: { date: committedAt },
-    message: `feat: discover ${sha.slice(0, 4)}\n\nbody`,
-  },
-  sha,
+const source = (reference) => ({
+  commitShas: [reference.headSha],
+  commits: [
+    {
+      author: "f0rr0",
+      committedAt: "2026-08-20T00:00:00.000Z",
+      message: "Implement ref repair",
+      repository: reference.repository,
+      repositoryId: reference.repositoryId,
+      sha: reference.headSha,
+      url: `https://github.com/${reference.repository}/commit/${reference.headSha}`,
+    },
+  ],
 });
 
-describe("direct GitHub ref backfill", () => {
-  test("orders heads before tags and deduplicates their target SHAs", () => {
-    const sharedSha = "a".repeat(40);
-    const tagOnlySha = "b".repeat(40);
-    expect(
-      distinctGitHubCurrentRefHeads([
-        {
-          headSha: tagOnlySha,
-          kind: "tag",
-          refName: "refs/tags/v2",
+const dependencies = (overrides = {}) => ({
+  claim: async () => [],
+  completeActive: async () => ({
+    generation: 1,
+    insertedCommits: 1,
+    memberCount: 1,
+    stale: false,
+  }),
+  completeDeleted: async () => ({ stale: false }),
+  defer: async () => retryAt,
+  fetch: async (reference) => source(reference),
+  readBacklog: async () => ({ remaining: 0, retryAt: null }),
+  release: async () => null,
+  ...overrides,
+});
+
+describe("GitHub current-head generation backfill", () => {
+  test("drains only claimed desired generations and checkpoints each result", async () => {
+    const claims = [[activeRepair(), deletedRepair], []];
+    const completed = [];
+    const deleted = [];
+    const result = await backfillGitHubCurrentRefGenerations(
+      {
+        deadlineAt: Date.now() + 60_000,
+        repositoryId: null,
+      },
+      dependencies({
+        claim: async () => claims.shift() ?? [],
+        completeActive: async (repair, membership) => {
+          completed.push([repair.refName, membership.commitShas]);
+          return {
+            generation: 4,
+            insertedCommits: 1,
+            memberCount: 1,
+            stale: false,
+          };
         },
-        {
-          headSha: sharedSha,
-          kind: "tag",
-          refName: "refs/tags/v1",
+        completeDeleted: async (repair) => {
+          deleted.push(repair.refName);
+          return { stale: false };
         },
-        {
-          headSha: sharedSha,
-          kind: "head",
-          refName: "refs/heads/main",
-        },
-      ])
-    ).toEqual([
-      { headSha: sharedSha, refName: "refs/heads/main" },
-      { headSha: tagOnlySha, refName: "refs/tags/v2" },
-    ]);
-  });
-
-  test("uses one author-filtered inclusive range and committer timestamps", async () => {
-    const headSha = "c".repeat(40);
-    const firstSha = "d".repeat(40);
-    const lastSha = "e".repeat(40);
-    const sinceAt = new Date("2024-01-01T00:00:00.000Z");
-    const untilAt = new Date("2026-08-29T23:59:59.999Z");
-    const requests = [];
-    globalThis.fetch = async (input) => {
-      const url = new URL(input instanceof Request ? input.url : input);
-      requests.push(url);
-      const page = Number(url.searchParams.get("page"));
-      if (page === 1) {
-        const next = new URL(url);
-        next.searchParams.set("page", "2");
-        return Response.json(
-          [
-            commitValue(
-              firstSha,
-              "2023-12-01T00:00:00Z",
-              sinceAt.toISOString()
-            ),
-          ],
-          { headers: { link: `<${next.href}>; rel="next"` } }
-        );
-      }
-      return Response.json([
-        commitValue(lastSha, "2026-08-01T00:00:00Z", untilAt.toISOString()),
-      ]);
-    };
-
-    const result = await collectGitHubCommitsFromHead({
-      account: "f0rr0",
-      deadlineAt: Date.now() + 120_000,
-      headSha,
-      repository,
-      sinceAt,
-      token: "test-token",
-      untilAt,
-    });
-
-    expect(result.pages).toBe(2);
-    expect(
-      result.commits.map(({ committedAt, sha }) => ({ committedAt, sha }))
-    ).toEqual([
-      { committedAt: sinceAt.toISOString(), sha: firstSha },
-      { committedAt: untilAt.toISOString(), sha: lastSha },
-    ]);
-    expect(requests).toHaveLength(2);
-    for (const [index, url] of requests.entries()) {
-      expect(url.pathname).toBe("/repos/example-org/example-repo/commits");
-      expect(url.searchParams.get("author")).toBe("f0rr0");
-      expect(url.searchParams.get("page")).toBe(String(index + 1));
-      expect(url.searchParams.get("per_page")).toBe("100");
-      expect(url.searchParams.get("sha")).toBe(headSha);
-      expect(url.searchParams.get("since")).toBe(sinceAt.toISOString());
-      expect(url.searchParams.get("until")).toBe(untilAt.toISOString());
-    }
-  });
-
-  test("rejects pagination that drops an inventory constraint", async () => {
-    const headSha = "f".repeat(40);
-    globalThis.fetch = async (input) => {
-      const next = new URL(input instanceof Request ? input.url : input);
-      next.searchParams.delete("author");
-      next.searchParams.set("page", "2");
-      return Response.json([], {
-        headers: { link: `<${next.href}>; rel="next"` },
-      });
-    };
-
-    await expect(
-      collectGitHubCommitsFromHead({
-        account: "f0rr0",
-        deadlineAt: Date.now() + 120_000,
-        headSha,
-        repository,
-        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
-        token: "test-token",
-        untilAt: new Date("2026-08-29T23:59:59.999Z"),
       })
-    ).rejects.toThrow("invalid commit pagination");
-  });
-
-  test("given listed repositories disappear or deny access, records gaps and continues", async () => {
-    const requestedPaths = [];
-    const forbiddenRepository = {
-      ...rawRepository,
-      full_name: "forbidden-org/forbidden-repo",
-      html_url: "https://github.com/forbidden-org/forbidden-repo",
-      id: 125,
-      owner: {
-        ...rawRepository.owner,
-        id: 458,
-        login: "forbidden-org",
-      },
-    };
-    const laterRepository = {
-      ...rawRepository,
-      full_name: "later-org/later-repo",
-      html_url: "https://github.com/later-org/later-repo",
-      id: 124,
-      owner: {
-        ...rawRepository.owner,
-        id: 457,
-        login: "later-org",
-      },
-    };
-    globalThis.fetch = async (input) => {
-      const url = new URL(input instanceof Request ? input.url : input);
-      requestedPaths.push(url.pathname);
-      if (url.pathname === "/user/repos") {
-        return Response.json([
-          laterRepository,
-          rawRepository,
-          forbiddenRepository,
-        ]);
-      }
-      if (url.pathname === "/repos/example-org/example-repo/branches") {
-        return Response.json({ message: "Not Found" }, { status: 404 });
-      }
-      if (url.pathname === "/repos/forbidden-org/forbidden-repo/branches") {
-        return Response.json({ message: "Forbidden" }, { status: 403 });
-      }
-      if (
-        url.pathname === "/repos/later-org/later-repo/branches" ||
-        url.pathname === "/repos/later-org/later-repo/tags"
-      ) {
-        return Response.json([]);
-      }
-      throw new Error(`Unexpected GitHub request: ${url.href}`);
-    };
-
-    const result = await backfillGitHubCommitsFromCurrentRefs({
-      account: "f0rr0",
-      deadlineAt: Date.now() + 120_000,
-      repositoryId: null,
-      sinceAt: new Date("2026-08-01T00:00:00.000Z"),
-      token: "test-token",
-      untilAt: new Date("2026-08-31T23:59:59.999Z"),
-    });
+    );
 
     expect(result).toMatchObject({
+      claimedRefs: 2,
       complete: true,
-      repositories: 1,
+      completedGenerations: 1,
+      deletedGenerations: 1,
+      insertedCommits: 1,
+      memberCommits: 1,
+      remainingRefs: 0,
       stopReason: "complete",
-      unavailableRepositories: 2,
     });
-    expect(requestedPaths).toEqual([
-      "/user/repos",
-      "/repos/example-org/example-repo/branches",
-      "/repos/forbidden-org/forbidden-repo/branches",
-      "/repos/later-org/later-repo/branches",
-      "/repos/later-org/later-repo/tags",
+    expect(completed).toEqual([
+      ["refs/heads/main", [activeRepair().desiredHeadSha]],
     ]);
+    expect(deleted).toEqual(["refs/heads/deleted"]);
   });
 
-  test("given one current head disappears, records the repository gap and scans the next head", async () => {
-    const unavailableHeadSha = "1".repeat(40);
-    const laterHeadSha = "2".repeat(40);
-    const requestedHeads = [];
-    globalThis.fetch = async (input) => {
-      const url = new URL(input instanceof Request ? input.url : input);
-      if (url.pathname === "/user/repos") {
-        return Response.json([rawRepository]);
-      }
-      if (url.pathname === "/repos/example-org/example-repo/branches") {
-        return Response.json([
-          { commit: { sha: unavailableHeadSha }, name: "first" },
-          { commit: { sha: laterHeadSha }, name: "later" },
-        ]);
-      }
-      if (url.pathname === "/repos/example-org/example-repo/tags") {
-        return Response.json([]);
-      }
-      if (url.pathname === "/repos/example-org/example-repo/commits") {
-        const headSha = url.searchParams.get("sha");
-        requestedHeads.push(headSha);
-        return headSha === unavailableHeadSha
-          ? Response.json({ message: "Gone" }, { status: 410 })
-          : Response.json([]);
-      }
-      throw new Error(`Unexpected GitHub request: ${url.href}`);
-    };
-
-    expect(
-      await backfillGitHubCommitsFromCurrentRefs({
-        account: "f0rr0",
-        deadlineAt: Date.now() + 120_000,
-        repositoryId: null,
-        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
-        token: "test-token",
-        untilAt: new Date("2026-08-31T23:59:59.999Z"),
-      })
-    ).toMatchObject({
-      complete: true,
-      heads: 1,
-      repositories: 1,
-      stopReason: "complete",
-      unavailableRepositories: 1,
+  test("persists provider deferral and releases unstarted claims immediately", async () => {
+    const first = activeRepair();
+    const second = activeRepair({
+      desiredHeadSha: sha("b"),
+      leaseToken: "20000000-0000-4000-8000-000000000003",
+      refName: "refs/heads/next",
     });
-    expect(requestedHeads).toEqual([unavailableHeadSha, laterHeadSha]);
-  });
-
-  test("given current-head hydration is rate limited, leaves traversal incomplete without a gap", async () => {
-    const headSha = "3".repeat(40);
-    globalThis.fetch = async (input) => {
-      const url = new URL(input instanceof Request ? input.url : input);
-      if (url.pathname === "/user/repos") {
-        return Response.json([rawRepository]);
-      }
-      if (url.pathname === "/repos/example-org/example-repo/branches") {
-        return Response.json([{ commit: { sha: headSha }, name: "main" }]);
-      }
-      if (url.pathname === "/repos/example-org/example-repo/tags") {
-        return Response.json([]);
-      }
-      if (url.pathname === "/repos/example-org/example-repo/commits") {
-        return Response.json(
-          { message: "rate limited" },
-          { headers: { "retry-after": "120" }, status: 429 }
-        );
-      }
-      throw new Error(`Unexpected GitHub request: ${url.href}`);
-    };
-
-    expect(
-      await backfillGitHubCommitsFromCurrentRefs({
-        account: "f0rr0",
+    const released = [];
+    const deferred = [];
+    const result = await backfillGitHubCurrentRefGenerations(
+      {
         deadlineAt: Date.now() + 60_000,
         repositoryId: null,
-        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
-        token: "test-token",
-        untilAt: new Date("2026-08-31T23:59:59.999Z"),
+      },
+      dependencies({
+        claim: async () => [first, second],
+        defer: async (repair, code, requestedRetryAt) => {
+          deferred.push([repair.refName, code, requestedRetryAt]);
+          return retryAt;
+        },
+        fetch: async () => {
+          throw new GitHubResponseError(429, {
+            retryable: true,
+            retryAt,
+          });
+        },
+        readBacklog: async () => ({ remaining: 2, retryAt }),
+        release: async (repair) => {
+          released.push(repair.refName);
+        },
       })
-    ).toMatchObject({
+    );
+
+    expect(result).toMatchObject({
+      claimedRefs: 2,
       complete: false,
+      deferredRefs: 1,
+      remainingRefs: 2,
+      retryAt,
       stopReason: "provider_retry",
-      unavailableRepositories: 0,
     });
+    expect(deferred).toEqual([["refs/heads/main", "github_429", retryAt]]);
+    expect(released).toEqual(["refs/heads/next"]);
   });
 
-  test("keeps retryable provider failures and deadlines incomplete", async () => {
-    globalThis.fetch = async (input) => {
-      const url = new URL(input instanceof Request ? input.url : input);
-      if (url.pathname === "/user/repos") {
-        return Response.json([rawRepository]);
-      }
-      return Response.json(
-        { message: "rate limited" },
-        { headers: { "retry-after": "120" }, status: 429 }
-      );
-    };
-
-    expect(
-      await backfillGitHubCommitsFromCurrentRefs({
-        account: "f0rr0",
+  test("releases the current batch when one ref reaches the deadline", async () => {
+    const first = activeRepair();
+    const second = activeRepair({
+      leaseToken: "20000000-0000-4000-8000-000000000004",
+      refName: "refs/heads/next",
+    });
+    const released = [];
+    const result = await backfillGitHubCurrentRefGenerations(
+      {
         deadlineAt: Date.now() + 60_000,
         repositoryId: null,
-        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
-        token: "test-token",
-        untilAt: new Date("2026-08-31T23:59:59.999Z"),
+      },
+      dependencies({
+        claim: async () => [first, second],
+        fetch: async () => {
+          throw new GitHubRequestDeadlineError();
+        },
+        readBacklog: async () => ({ remaining: 2, retryAt: null }),
+        release: async (repair) => {
+          released.push(repair.refName);
+        },
       })
-    ).toMatchObject({
-      complete: false,
-      stopReason: "provider_retry",
-      unavailableRepositories: 0,
-    });
+    );
 
-    expect(
-      await backfillGitHubCommitsFromCurrentRefs({
-        account: "f0rr0",
-        deadlineAt: Date.now() + 1,
-        repositoryId: null,
-        sinceAt: new Date("2026-08-01T00:00:00.000Z"),
-        token: "test-token",
-        untilAt: new Date("2026-08-31T23:59:59.999Z"),
-      })
-    ).toMatchObject({
+    expect(result).toMatchObject({
       complete: false,
+      remainingRefs: 2,
       stopReason: "deadline",
-      unavailableRepositories: 0,
+    });
+    expect(released).toEqual(["refs/heads/main", "refs/heads/next"]);
+  });
+
+  test("does not spin when all remaining generations are durably deferred", async () => {
+    let claims = 0;
+    const result = await backfillGitHubCurrentRefGenerations(
+      {
+        deadlineAt: Date.now() + 60_000,
+        repositoryId: "1",
+      },
+      dependencies({
+        claim: async (input) => {
+          claims += 1;
+          expect(input.repositoryId).toBe("1");
+          return [];
+        },
+        readBacklog: async (input) => {
+          expect(input.repositoryId).toBe("1");
+          return { remaining: 1, retryAt };
+        },
+      })
+    );
+
+    expect(claims).toBe(1);
+    expect(result).toMatchObject({
+      claimedRefs: 0,
+      complete: false,
+      remainingRefs: 1,
+      retryAt,
+      stopReason: "deferred",
     });
   });
 });

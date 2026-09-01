@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -10,17 +12,20 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
 
-import type { PublicCommitLanguage } from "@/lib/github-activity-public-summary";
+import type {
+  GitHubLanguageFact,
+  GitHubWorkUnitFileFact,
+} from "@/lib/github-change-evidence";
 
 export const githubCommits = pgTable(
   "github_commits",
   {
-    activityPublicId: uuid("activity_public_id"),
     additions: integer("additions"),
     author: varchar("author_login", { length: 39 }).notNull(),
     authoredAt: timestamp("authored_at", {
@@ -28,12 +33,7 @@ export const githubCommits = pgTable(
       withTimezone: true,
     }),
     authorUserId: varchar("author_user_id", { length: 32 }),
-    canonicalizedAt: timestamp("canonicalized_at", {
-      mode: "date",
-      withTimezone: true,
-    }),
     changedFiles: integer("changed_files"),
-    changeFingerprint: varchar("change_fingerprint", { length: 64 }),
     committedAt: timestamp("committed_at", {
       mode: "date",
       withTimezone: true,
@@ -56,17 +56,14 @@ export const githubCommits = pgTable(
     enrichmentState: varchar("enrichment_state", { length: 16 })
       .default("pending")
       .notNull(),
-    fingerprintComplete: boolean("fingerprint_complete")
-      .default(false)
-      .notNull(),
+    fileFacts: jsonb("file_facts").$type<readonly GitHubWorkUnitFileFact[]>(),
+    fileFactsComplete: boolean("file_facts_complete").default(false).notNull(),
     firstObservedAt: timestamp("first_observed_at", {
       mode: "date",
       withTimezone: true,
     })
       .defaultNow()
       .notNull(),
-    fullMessage: text("full_message"),
-    languages: jsonb("languages").$type<readonly PublicCommitLanguage[]>(),
     message: text("message").notNull(),
     parentShas: jsonb("parent_shas").$type<readonly string[]>(),
     providerFileCapReached: boolean("provider_file_cap_reached")
@@ -91,68 +88,32 @@ export const githubCommits = pgTable(
     repositoryOwnerType: varchar("repository_owner_type", { length: 12 }),
     repositoryPrivate: boolean("repository_private"),
     sha: varchar("sha", { length: 40 }).notNull(),
-    substantiveLoc: integer("substantive_loc"),
-    summaryAttemptedAt: timestamp("summary_attempted_at", {
-      mode: "date",
-      withTimezone: true,
-    }),
-    summaryError: varchar("summary_error", { length: 80 }),
-    summaryHeadline: text("summary_headline"),
-    summaryInputHash: varchar("summary_input_hash", { length: 64 }),
-    summaryModel: varchar("summary_model", { length: 64 }),
-    summaryRecipe: varchar("summary_recipe", { length: 100 }),
-    summaryShort: text("summary_short"),
-    treeSha: varchar("tree_sha", { length: 40 }),
   },
   (table) => [
     primaryKey({ columns: [table.repositoryId, table.sha] }),
-    uniqueIndex("github_commits_activity_public_id_unique").on(
-      table.activityPublicId
-    ),
-    index("github_commits_activity_cursor_idx").on(
-      table.committedAt,
-      table.activityPublicId
-    ),
     index("github_commits_committed_at_idx").on(table.committedAt),
-    index("github_commits_summary_pending_idx").on(
-      table.summaryAttemptedAt,
-      table.committedAt
-    ),
     index("github_commits_enrichment_pending_idx").on(
       table.enrichmentState,
       table.enrichmentLeaseUntil,
       table.committedAt
-    ),
-    index("github_commits_canonicalization_pending_idx").on(
-      table.canonicalizedAt,
-      table.firstObservedAt
     ),
     index("github_commits_pr_discovery_pending_idx").on(
       table.pullRequestDiscoveryState,
       table.pullRequestDiscoveryLeaseUntil,
       table.firstObservedAt
     ),
-    index("github_commits_exact_authored_change_idx")
-      .on(table.repositoryId, table.changeFingerprint, table.authorUserId)
-      .where(
-        sql`${table.fingerprintComplete} AND ${table.changeFingerprint} IS NOT NULL AND ${table.authorUserId} IS NOT NULL`
-      ),
     check("github_commits_sha_shape", sql`${table.sha} ~ '^[a-f0-9]{40}$'`),
-    check(
-      "github_commits_tree_sha_shape",
-      sql`${table.treeSha} IS NULL OR ${table.treeSha} ~ '^[a-f0-9]{40}$'`
-    ),
-    check(
-      "github_commits_fingerprint_shape",
-      sql`${table.changeFingerprint} IS NULL OR ${table.changeFingerprint} ~ '^[a-f0-9]{64}$'`
-    ),
-    check(
-      "github_commits_fingerprint_completeness",
-      sql`NOT ${table.fingerprintComplete} OR ${table.changeFingerprint} IS NOT NULL`
-    ),
     check(
       "github_commits_parent_shas_array",
       sql`${table.parentShas} IS NULL OR jsonb_typeof(${table.parentShas}) = 'array'`
+    ),
+    check(
+      "github_commits_file_facts_array",
+      sql`${table.fileFacts} IS NULL OR jsonb_typeof(${table.fileFacts}) = 'array'`
+    ),
+    check(
+      "github_commits_file_facts_completeness",
+      sql`NOT ${table.fileFactsComplete} OR (${table.fileFacts} IS NOT NULL AND NOT ${table.providerFileCapReached})`
     ),
     check(
       "github_commits_enrichment_state",
@@ -176,7 +137,7 @@ export const githubCommits = pgTable(
     ),
     check(
       "github_commits_nonnegative_activity_counts",
-      sql`(${table.changedFiles} IS NULL OR ${table.changedFiles} >= 0) AND (${table.additions} IS NULL OR ${table.additions} >= 0) AND (${table.deletions} IS NULL OR ${table.deletions} >= 0) AND (${table.substantiveLoc} IS NULL OR ${table.substantiveLoc} >= 0)`
+      sql`(${table.changedFiles} IS NULL OR ${table.changedFiles} >= 0) AND (${table.additions} IS NULL OR ${table.additions} >= 0) AND (${table.deletions} IS NULL OR ${table.deletions} >= 0)`
     ),
     check(
       "github_commits_nonnegative_attempts",
@@ -185,14 +146,6 @@ export const githubCommits = pgTable(
     check(
       "github_commits_owner_type",
       sql`${table.repositoryOwnerType} IS NULL OR ${table.repositoryOwnerType} IN ('Organization', 'User')`
-    ),
-    check(
-      "github_commits_summary_hash_shape",
-      sql`${table.summaryInputHash} IS NULL OR ${table.summaryInputHash} ~ '^[a-f0-9]{64}$'`
-    ),
-    check(
-      "github_commits_summary_pair",
-      sql`(${table.summaryHeadline} IS NULL) = (${table.summaryShort} IS NULL)`
     ),
   ]
 ).enableRLS();
@@ -325,6 +278,10 @@ export const githubRepositories = pgTable(
     })
       .defaultNow()
       .notNull(),
+    factsVerifiedAt: timestamp("facts_verified_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
     fullName: varchar("full_name", { length: 200 }).notNull(),
     homepageUrl: text("homepage_url"),
     headsLastReconciledAt: timestamp("heads_last_reconciled_at", {
@@ -343,6 +300,10 @@ export const githubRepositories = pgTable(
     ownerId: varchar("owner_id", { length: 32 }),
     ownerLogin: varchar("owner_login", { length: 39 }),
     ownerType: varchar("owner_type", { length: 12 }),
+    pushedAt: timestamp("pushed_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
     topics: jsonb("topics").$type<readonly string[]>(),
     tagsLastReconciledAt: timestamp("tags_last_reconciled_at", {
       mode: "date",
@@ -371,10 +332,13 @@ export const githubRepositories = pgTable(
   ]
 ).enableRLS();
 
+// This legacy table is the desired tip signal. A tip is not current
+// reachability until githubRefGenerations has completed that exact head.
 export const githubRepositoryRefs = pgTable(
   "github_repository_refs",
   {
     active: boolean("active").default(true).notNull(),
+    branchLineageId: uuid("branch_lineage_id"),
     firstObservedAt: timestamp("first_observed_at", {
       mode: "date",
       withTimezone: true,
@@ -389,7 +353,15 @@ export const githubRepositoryRefs = pgTable(
     })
       .defaultNow()
       .notNull(),
+    projectionRelevant: boolean("projection_relevant").default(false).notNull(),
     refName: text("ref_name").notNull(),
+    repairAttempts: integer("repair_attempts").default(0).notNull(),
+    repairError: varchar("repair_error", { length: 80 }),
+    repairLeaseToken: uuid("repair_lease_token"),
+    repairLeaseUntil: timestamp("repair_lease_until", {
+      mode: "date",
+      withTimezone: true,
+    }),
     repositoryId: varchar("repository_id", { length: 32 }).notNull(),
   },
   (table) => [
@@ -397,6 +369,11 @@ export const githubRepositoryRefs = pgTable(
     index("github_repository_refs_active_idx").on(
       table.repositoryId,
       table.active
+    ),
+    index("github_repository_refs_projection_idx").on(
+      table.projectionRelevant,
+      table.active,
+      table.lastObservedAt
     ),
     foreignKey({
       columns: [table.repositoryId],
@@ -409,12 +386,28 @@ export const githubRepositoryRefs = pgTable(
       sql`(${table.kind} = 'head' AND ${table.refName} LIKE 'refs/heads/%') OR (${table.kind} = 'tag' AND ${table.refName} LIKE 'refs/tags/%')`
     ),
     check(
+      "github_repository_refs_lineage",
+      sql`(${table.kind} = 'head') = (${table.branchLineageId} IS NOT NULL)`
+    ),
+    check(
+      "github_repository_refs_projection_relevance",
+      sql`NOT ${table.projectionRelevant} OR ${table.kind} = 'head'`
+    ),
+    check(
       "github_repository_refs_sha_shape",
       sql`${table.headSha} ~ '^[a-f0-9]{40}$'`
     ),
     check(
       "github_repository_refs_observation_order",
       sql`${table.lastObservedAt} >= ${table.firstObservedAt}`
+    ),
+    check(
+      "github_repository_refs_repair_lease",
+      sql`(${table.repairLeaseToken} IS NULL) = (${table.repairLeaseUntil} IS NULL) AND (${table.repairLeaseToken} IS NULL OR ${table.kind} = 'head')`
+    ),
+    check(
+      "github_repository_refs_repair_attempts",
+      sql`${table.repairAttempts} >= 0`
     ),
   ]
 ).enableRLS();
@@ -798,6 +791,8 @@ export const githubPullRequestVersions = pgTable(
     baseRepositoryId: varchar("base_repository_id", { length: 32 }),
     baseSha: varchar("base_sha", { length: 40 }).notNull(),
     commitCount: integer("commit_count"),
+    fileFacts: jsonb("file_facts").$type<readonly GitHubWorkUnitFileFact[]>(),
+    fileFactsComplete: boolean("file_facts_complete").default(false).notNull(),
     headRefName: text("head_ref_name"),
     headRepositoryId: varchar("head_repository_id", { length: 32 }),
     headSha: varchar("head_sha", { length: 40 }).notNull(),
@@ -839,6 +834,14 @@ export const githubPullRequestVersions = pgTable(
     check(
       "github_pull_request_versions_nonnegative_count",
       sql`${table.commitCount} IS NULL OR ${table.commitCount} >= 0`
+    ),
+    check(
+      "github_pull_request_versions_file_facts_array",
+      sql`${table.fileFacts} IS NULL OR jsonb_typeof(${table.fileFacts}) = 'array'`
+    ),
+    check(
+      "github_pull_request_versions_file_facts_complete",
+      sql`NOT ${table.fileFactsComplete} OR ${table.fileFacts} IS NOT NULL`
     ),
   ]
 ).enableRLS();
@@ -883,6 +886,46 @@ export const githubPullRequestMemberships = pgTable(
   ]
 ).enableRLS();
 
+// Current provider-reported PR associations for a commit. Discovery replaces
+// this set atomically, so an empty set plus complete discovery is an explicit
+// negative; it is not inferred from patch equality or legacy aliases.
+export const githubCommitPullRequestAssociations = pgTable(
+  "github_commit_pull_request_associations",
+  {
+    commitRepositoryId: varchar("commit_repository_id", {
+      length: 32,
+    }).notNull(),
+    commitSha: varchar("commit_sha", { length: 40 }).notNull(),
+    pullRequestNodeId: varchar("pull_request_node_id", {
+      length: 128,
+    }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.commitRepositoryId,
+        table.commitSha,
+        table.pullRequestNodeId,
+      ],
+      name: "gh_commit_pr_associations_pk",
+    }),
+    foreignKey({
+      columns: [table.commitRepositoryId, table.commitSha],
+      foreignColumns: [githubCommits.repositoryId, githubCommits.sha],
+      name: "gh_commit_pr_associations_commit_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.pullRequestNodeId],
+      foreignColumns: [githubPullRequests.nodeId],
+      name: "gh_commit_pr_associations_pr_fk",
+    }).onDelete("cascade"),
+    check(
+      "gh_commit_pr_associations_sha_shape",
+      sql`${table.commitSha} ~ '^[a-f0-9]{40}$'`
+    ),
+  ]
+).enableRLS();
+
 export const githubIssues = pgTable(
   "github_issues",
   {
@@ -921,81 +964,350 @@ export const githubIssues = pgTable(
   ]
 ).enableRLS();
 
-export const githubPublicActivities = pgTable(
-  "github_public_activities",
+export const githubRepositoryInventoryHeads = pgTable(
+  "github_repository_inventory_heads",
   {
-    aliasEvidence:
-      jsonb("alias_evidence").$type<Readonly<Record<string, unknown>>>(),
-    aliasReason: varchar("alias_reason", { length: 64 }),
-    canonicalPublicId: uuid("canonical_public_id"),
-    createdAt: timestamp("created_at", {
+    accountLogin: varchar("account_login", { length: 39 }).notNull(),
+    accountUserId: varchar("account_user_id", { length: 32 }).primaryKey(),
+    completedAt: timestamp("completed_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    generation: bigint("generation", { mode: "number" }).default(0).notNull(),
+    updatedAt: timestamp("updated_at", {
       mode: "date",
       withTimezone: true,
     })
       .defaultNow()
       .notNull(),
-    hiddenAt: timestamp("hidden_at", {
-      mode: "date",
-      withTimezone: true,
-    }),
-    kind: varchar("kind", { length: 16 }).notNull(),
-    occurredAt: timestamp("occurred_at", {
-      mode: "date",
-      withTimezone: true,
-    }).notNull(),
-    publicId: uuid("public_id").defaultRandom().primaryKey(),
-    publishedAt: timestamp("published_at", {
-      mode: "date",
-      withTimezone: true,
-    }),
-    repositoryId: varchar("repository_id", { length: 32 }).notNull(),
-    revision: integer("revision").default(1).notNull(),
-    sourceNodeId: text("source_node_id").notNull(),
   },
   (table) => [
-    uniqueIndex("github_public_activities_source_unique").on(
-      table.kind,
-      table.repositoryId,
-      table.sourceNodeId
-    ),
-    index("github_public_activities_cursor_idx").on(
-      table.occurredAt,
-      table.publicId
-    ),
-    index("github_public_activities_canonical_idx").on(table.canonicalPublicId),
-    foreignKey({
-      columns: [table.canonicalPublicId],
-      foreignColumns: [table.publicId],
-      name: "github_public_activities_canonical_fk",
-    }),
     check(
-      "github_public_activities_kind",
-      sql`${table.kind} IN ('commit', 'pull_request', 'issue')`
+      "gh_repo_inventory_head_account_id",
+      sql`${table.accountUserId} ~ '^[0-9]{1,32}$'`
     ),
     check(
-      "github_public_activities_not_self_canonical",
-      sql`${table.canonicalPublicId} IS NULL OR ${table.canonicalPublicId} <> ${table.publicId}`
-    ),
-    check(
-      "github_public_activities_positive_revision",
-      sql`${table.revision} > 0`
-    ),
-    check(
-      "github_public_activities_alias_audit",
-      sql`(${table.canonicalPublicId} IS NULL AND ${table.aliasReason} IS NULL AND ${table.aliasEvidence} IS NULL) OR (${table.canonicalPublicId} IS NOT NULL AND ${table.aliasReason} IS NOT NULL)`
+      "gh_repo_inventory_head_generation",
+      sql`(${table.generation} = 0 AND ${table.completedAt} IS NULL) OR (${table.generation} > 0 AND ${table.completedAt} IS NOT NULL)`
     ),
   ]
 ).enableRLS();
 
-export const githubSummaryAttempts = pgTable(
-  "github_summary_attempts",
+export const githubAccountRepositoryCatalogs = pgTable(
+  "github_account_repository_catalogs",
   {
-    activityPublicId: uuid("activity_public_id").notNull(),
-    attemptCount: integer("attempt_count").default(0).notNull(),
-    attemptedAt: timestamp("attempted_at", {
+    accountUserId: varchar("account_user_id", { length: 32 }).notNull(),
+    activeAccess: boolean("active_access").default(true).notNull(),
+    inventoryGeneration: bigint("inventory_generation", {
+      mode: "number",
+    }).notNull(),
+    observedAt: timestamp("observed_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+    repositoryId: varchar("repository_id", { length: 32 }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.accountUserId, table.repositoryId],
+      name: "gh_account_repo_catalogs_pk",
+    }),
+    index("gh_account_repo_catalogs_current_idx").on(
+      table.accountUserId,
+      table.inventoryGeneration,
+      table.activeAccess
+    ),
+    foreignKey({
+      columns: [table.accountUserId],
+      foreignColumns: [githubRepositoryInventoryHeads.accountUserId],
+      name: "gh_account_repo_catalogs_account_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.repositoryId],
+      foreignColumns: [githubRepositories.id],
+      name: "gh_account_repo_catalogs_repository_fk",
+    }).onDelete("cascade"),
+    check(
+      "gh_account_repo_catalogs_generation",
+      sql`${table.inventoryGeneration} > 0`
+    ),
+  ]
+).enableRLS();
+
+// One row is the last complete traversal for a head. A differing desired tip
+// in githubRepositoryRefs is therefore a small, deterministic traversal queue.
+export const githubRefGenerations = pgTable(
+  "github_ref_generations",
+  {
+    branchLineageId: uuid("branch_lineage_id").defaultRandom().notNull(),
+    completedAt: timestamp("completed_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    coverageSinceAt: timestamp("coverage_since_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    generation: bigint("generation", { mode: "number" }).notNull(),
+    headSha: varchar("head_sha", { length: 40 }).notNull(),
+    refName: text("ref_name").notNull(),
+    repositoryId: varchar("repository_id", { length: 32 }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.repositoryId, table.refName],
+      name: "gh_ref_generations_pk",
+    }),
+    unique("gh_ref_generations_version_unique").on(
+      table.repositoryId,
+      table.refName,
+      table.generation
+    ),
+    index("gh_ref_generations_lineage_idx").on(
+      table.repositoryId,
+      table.branchLineageId
+    ),
+    foreignKey({
+      columns: [table.repositoryId],
+      foreignColumns: [githubRepositories.id],
+      name: "gh_ref_generations_repository_fk",
+    }).onDelete("cascade"),
+    check(
+      "gh_ref_generations_head_name",
+      sql`${table.refName} LIKE 'refs/heads/%'`
+    ),
+    check(
+      "gh_ref_generations_sha_shape",
+      sql`${table.headSha} ~ '^[a-f0-9]{40}$'`
+    ),
+    check("gh_ref_generations_positive", sql`${table.generation} > 0`),
+  ]
+).enableRLS();
+
+export const githubRefMemberships = pgTable(
+  "github_ref_memberships",
+  {
+    commitRepositoryId: varchar("commit_repository_id", {
+      length: 32,
+    }).notNull(),
+    commitSha: varchar("commit_sha", { length: 40 }).notNull(),
+    generation: bigint("generation", { mode: "number" }).notNull(),
+    position: integer("position").notNull(),
+    refName: text("ref_name").notNull(),
+    repositoryId: varchar("repository_id", { length: 32 }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.repositoryId,
+        table.refName,
+        table.commitRepositoryId,
+        table.commitSha,
+      ],
+      name: "gh_ref_memberships_pk",
+    }),
+    uniqueIndex("gh_ref_memberships_position_unique").on(
+      table.repositoryId,
+      table.refName,
+      table.position
+    ),
+    index("gh_ref_memberships_commit_idx").on(
+      table.commitRepositoryId,
+      table.commitSha
+    ),
+    foreignKey({
+      columns: [table.repositoryId, table.refName, table.generation],
+      foreignColumns: [
+        githubRefGenerations.repositoryId,
+        githubRefGenerations.refName,
+        githubRefGenerations.generation,
+      ],
+      name: "gh_ref_memberships_generation_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.commitRepositoryId, table.commitSha],
+      foreignColumns: [githubCommits.repositoryId, githubCommits.sha],
+      name: "gh_ref_memberships_commit_fk",
+    }).onDelete("cascade"),
+    check(
+      "gh_ref_memberships_values",
+      sql`${table.generation} > 0 AND ${table.position} >= 0 AND ${table.commitSha} ~ '^[a-f0-9]{40}$'`
+    ),
+  ]
+).enableRLS();
+
+export const githubWorkUnits = pgTable(
+  "github_work_units",
+  {
+    activityAnchorAt: timestamp("activity_anchor_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    activityAt: timestamp("activity_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    activityDay: date("activity_day", { mode: "string" }).notNull(),
+    additions: integer("additions").notNull(),
+    attributionMode: varchar("attribution_mode", { length: 32 }).notNull(),
+    branchLineageId: uuid("branch_lineage_id"),
+    contentObservedAt: timestamp("content_observed_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    deletions: integer("deletions").notNull(),
+    factsDigest: varchar("facts_digest", { length: 64 }).notNull(),
+    fileCount: integer("file_count").notNull(),
+    firstActivityAt: timestamp("first_activity_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    id: uuid("id").defaultRandom().primaryKey(),
+    identityKey: varchar("identity_key", { length: 180 }).notNull(),
+    kind: varchar("kind", { length: 16 }).notNull(),
+    languages: jsonb("languages").$type<readonly GitHubLanguageFact[]>(),
+    lastActivityAt: timestamp("last_activity_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    memberCount: integer("member_count").notNull(),
+    membershipDigest: varchar("membership_digest", { length: 64 }).notNull(),
+    newestCommitRepositoryId: varchar("newest_commit_repository_id", {
+      length: 32,
+    }).notNull(),
+    newestCommitSha: varchar("newest_commit_sha", { length: 40 }).notNull(),
+    outcomeDigest: varchar("outcome_digest", { length: 64 }),
+    pullRequestNodeId: varchar("pull_request_node_id", { length: 128 }),
+    repositoryId: varchar("repository_id", { length: 32 }).notNull(),
+    revision: integer("revision").default(1).notNull(),
+    summaryInputDigest: varchar("summary_input_digest", { length: 64 }),
+    visibility: varchar("visibility", { length: 8 }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("gh_work_units_identity_unique").on(table.identityKey),
+    uniqueIndex("gh_work_units_pr_unique")
+      .on(table.pullRequestNodeId)
+      .where(sql`${table.kind} = 'pull_request'`),
+    uniqueIndex("gh_work_units_canonical_day_unique")
+      .on(table.repositoryId, table.activityDay)
+      .where(sql`${table.kind} = 'canonical_day'`),
+    uniqueIndex("gh_work_units_branch_unique")
+      .on(table.branchLineageId)
+      .where(sql`${table.kind} = 'branch'`),
+    index("gh_work_units_feed_idx").on(
+      table.visibility,
+      table.activityDay,
+      table.activityAt,
+      table.id
+    ),
+    foreignKey({
+      columns: [table.repositoryId],
+      foreignColumns: [githubRepositories.id],
+      name: "gh_work_units_repository_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.pullRequestNodeId],
+      foreignColumns: [githubPullRequests.nodeId],
+      name: "gh_work_units_pull_request_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.newestCommitRepositoryId, table.newestCommitSha],
+      foreignColumns: [githubCommits.repositoryId, githubCommits.sha],
+      name: "gh_work_units_newest_commit_fk",
+    }),
+    check(
+      "gh_work_units_kind",
+      sql`${table.kind} IN ('pull_request', 'canonical_day', 'branch')`
+    ),
+    check(
+      "gh_work_units_owner_shape",
+      sql`(${table.kind} = 'pull_request' AND ${table.pullRequestNodeId} IS NOT NULL AND ${table.branchLineageId} IS NULL) OR (${table.kind} = 'canonical_day' AND ${table.pullRequestNodeId} IS NULL AND ${table.branchLineageId} IS NULL) OR (${table.kind} = 'branch' AND ${table.pullRequestNodeId} IS NULL AND ${table.branchLineageId} IS NOT NULL)`
+    ),
+    check(
+      "gh_work_units_identity",
+      sql`(${table.kind} = 'pull_request' AND ${table.identityKey} = 'pr:' || ${table.pullRequestNodeId}) OR (${table.kind} = 'canonical_day' AND ${table.identityKey} = 'canonical:' || ${table.repositoryId} || ':' || ${table.activityDay}::text) OR (${table.kind} = 'branch' AND ${table.identityKey} = 'branch:' || ${table.branchLineageId}::text)`
+    ),
+    check(
+      "gh_work_units_attribution_mode",
+      sql`${table.attributionMode} IN ('tracked_authored_pr', 'foreign_pr_contribution', 'canonical_owned_composite', 'branch_owned_composite')`
+    ),
+    check(
+      "gh_work_units_kind_attribution",
+      sql`(${table.kind} = 'pull_request' AND ${table.attributionMode} IN ('tracked_authored_pr', 'foreign_pr_contribution')) OR (${table.kind} = 'canonical_day' AND ${table.attributionMode} = 'canonical_owned_composite') OR (${table.kind} = 'branch' AND ${table.attributionMode} = 'branch_owned_composite')`
+    ),
+    check(
+      "gh_work_units_visibility",
+      sql`${table.visibility} IN ('public', 'private')`
+    ),
+    check(
+      "gh_work_units_nonnegative_facts",
+      sql`${table.memberCount} > 0 AND ${table.fileCount} >= 0 AND ${table.additions} >= 0 AND ${table.deletions} >= 0 AND ${table.revision} > 0`
+    ),
+    check(
+      "gh_work_units_activity_order",
+      sql`${table.firstActivityAt} <= ${table.lastActivityAt} AND ${table.activityDay} = (${table.activityAt} AT TIME ZONE 'UTC')::date`
+    ),
+    check(
+      "gh_work_units_digest_shapes",
+      sql`${table.factsDigest} ~ '^[a-f0-9]{64}$' AND ${table.membershipDigest} ~ '^[a-f0-9]{64}$' AND (${table.outcomeDigest} IS NULL OR ${table.outcomeDigest} ~ '^[a-f0-9]{64}$') AND (${table.summaryInputDigest} IS NULL OR ${table.summaryInputDigest} ~ '^[a-f0-9]{64}$')`
+    ),
+    check(
+      "gh_work_units_languages_array",
+      sql`${table.languages} IS NULL OR jsonb_typeof(${table.languages}) = 'array'`
+    ),
+  ]
+).enableRLS();
+
+export const githubWorkUnitMemberships = pgTable(
+  "github_work_unit_memberships",
+  {
+    logicalRepositoryId: varchar("logical_repository_id", {
+      length: 32,
+    }).notNull(),
+    logicalSha: varchar("logical_sha", { length: 40 }).notNull(),
+    position: integer("position").notNull(),
+    workUnitId: uuid("work_unit_id").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.workUnitId, table.logicalRepositoryId, table.logicalSha],
+      name: "gh_work_unit_memberships_pk",
+    }),
+    uniqueIndex("gh_work_unit_memberships_position_unique").on(
+      table.workUnitId,
+      table.position
+    ),
+    uniqueIndex("gh_work_unit_memberships_commit_unique").on(
+      table.logicalRepositoryId,
+      table.logicalSha
+    ),
+    foreignKey({
+      columns: [table.workUnitId],
+      foreignColumns: [githubWorkUnits.id],
+      name: "gh_work_unit_memberships_unit_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.logicalRepositoryId, table.logicalSha],
+      foreignColumns: [githubCommits.repositoryId, githubCommits.sha],
+      name: "gh_work_unit_memberships_commit_fk",
+    }),
+    check(
+      "gh_work_unit_memberships_values",
+      sql`${table.position} >= 0 AND ${table.logicalSha} ~ '^[a-f0-9]{40}$'`
+    ),
+  ]
+).enableRLS();
+
+export const githubWorkUnitSummaryAttempts = pgTable(
+  "github_work_unit_summary_attempts",
+  {
+    acceptedAt: timestamp("accepted_at", {
       mode: "date",
       withTimezone: true,
     }),
+    attributionMode: varchar("attribution_mode", { length: 32 }).notNull(),
     completedAt: timestamp("completed_at", {
       mode: "date",
       withTimezone: true,
@@ -1006,57 +1318,137 @@ export const githubSummaryAttempts = pgTable(
     })
       .defaultNow()
       .notNull(),
-    errorCode: varchar("error_code", { length: 80 }),
-    inputHash: varchar("input_hash", { length: 64 }),
+    debounceUntil: timestamp("debounce_until", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    inputTokens: integer("input_tokens"),
+    lastStartedAt: timestamp("last_started_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    latencyMs: integer("latency_ms"),
     leaseToken: uuid("lease_token"),
     leaseUntil: timestamp("lease_until", {
       mode: "date",
       withTimezone: true,
     }),
     model: varchar("model", { length: 64 }),
-    recipe: varchar("recipe", { length: 100 }),
+    outcome: text("outcome"),
+    outcomeDigest: varchar("outcome_digest", { length: 64 }).notNull(),
+    outputTokens: integer("output_tokens"),
+    recipe: varchar("recipe", { length: 100 }).notNull(),
+    requestPayload: text("request_payload"),
     revision: integer("revision").notNull(),
+    startedRequests: integer("started_requests").default(0).notNull(),
     state: varchar("state", { length: 16 }).default("pending").notNull(),
-    summaryHeadline: text("summary_headline"),
-    summaryShort: text("summary_short"),
+    summaryInputDigest: varchar("summary_input_digest", {
+      length: 64,
+    }).notNull(),
+    unitRevision: integer("unit_revision").notNull(),
+    workUnitId: uuid("work_unit_id").notNull(),
   },
   (table) => [
     primaryKey({
-      columns: [table.activityPublicId, table.revision],
-      name: "gh_summary_attempts_pk",
+      columns: [table.workUnitId, table.revision],
+      name: "gh_work_unit_summary_attempts_pk",
     }),
-    index("github_summary_attempts_pending_idx").on(
+    uniqueIndex("gh_work_unit_summary_input_unique").on(
+      table.workUnitId,
+      table.summaryInputDigest,
+      table.recipe
+    ),
+    index("gh_work_unit_summary_claim_idx").on(
       table.state,
+      table.debounceUntil,
       table.createdAt
     ),
     foreignKey({
-      columns: [table.activityPublicId],
-      foreignColumns: [githubPublicActivities.publicId],
-      name: "gh_summary_attempts_activity_fk",
+      columns: [table.workUnitId],
+      foreignColumns: [githubWorkUnits.id],
+      name: "gh_work_unit_summary_attempts_unit_fk",
     }).onDelete("cascade"),
     check(
-      "github_summary_attempts_state",
-      sql`${table.state} IN ('pending', 'processing', 'complete', 'failed', 'indeterminate')`
+      "gh_work_unit_summary_state",
+      sql`${table.state} IN ('pending', 'processing', 'retryable', 'accepted', 'terminal')`
     ),
     check(
-      "github_summary_attempts_positive_revision",
-      sql`${table.revision} > 0 AND ${table.attemptCount} >= 0`
+      "gh_work_unit_summary_digests",
+      sql`${table.outcomeDigest} ~ '^[a-f0-9]{64}$' AND ${table.summaryInputDigest} ~ '^[a-f0-9]{64}$'`
     ),
     check(
-      "github_summary_attempts_input_hash_shape",
-      sql`${table.inputHash} IS NULL OR ${table.inputHash} ~ '^[a-f0-9]{64}$'`
+      "gh_work_unit_summary_attribution",
+      sql`${table.attributionMode} IN ('tracked_authored_pr', 'foreign_pr_contribution', 'canonical_owned_composite', 'branch_owned_composite')`
     ),
     check(
-      "github_summary_attempts_summary_pair",
-      sql`(${table.summaryHeadline} IS NULL) = (${table.summaryShort} IS NULL)`
+      "gh_work_unit_summary_revisions",
+      sql`${table.revision} > 0 AND ${table.unitRevision} > 0 AND ${table.startedRequests} BETWEEN 0 AND 2`
     ),
     check(
-      "github_summary_attempts_complete_output",
-      sql`${table.state} <> 'complete' OR (${table.summaryHeadline} IS NOT NULL AND ${table.completedAt} IS NOT NULL)`
+      "gh_work_unit_summary_lease",
+      sql`(${table.leaseToken} IS NULL) = (${table.leaseUntil} IS NULL) AND (${table.state} = 'processing') = (${table.leaseToken} IS NOT NULL) AND (${table.state} <> 'processing' OR (${table.startedRequests} > 0 AND ${table.requestPayload} IS NOT NULL))`
     ),
     check(
-      "github_summary_attempts_lease",
-      sql`(${table.state} = 'processing') = (${table.leaseToken} IS NOT NULL) AND (${table.state} <> 'processing' OR ${table.leaseUntil} IS NOT NULL)`
+      "gh_work_unit_summary_terminal_payload",
+      sql`${table.state} NOT IN ('accepted', 'terminal') OR ${table.requestPayload} IS NULL`
+    ),
+    check(
+      "gh_work_unit_summary_accepted_output",
+      sql`(${table.state} = 'accepted' AND ${table.outcome} IS NOT NULL AND ${table.acceptedAt} IS NOT NULL AND ${table.completedAt} IS NOT NULL) OR (${table.state} <> 'accepted' AND ${table.outcome} IS NULL AND ${table.acceptedAt} IS NULL AND (${table.state} <> 'terminal' OR ${table.completedAt} IS NOT NULL))`
+    ),
+    check(
+      "gh_work_unit_summary_started",
+      sql`(${table.startedRequests} = 0) = (${table.lastStartedAt} IS NULL) AND (${table.state} <> 'retryable' OR ${table.requestPayload} IS NOT NULL)`
+    ),
+    check(
+      "gh_work_unit_summary_request_cap",
+      sql`${table.requestPayload} IS NULL OR octet_length(${table.requestPayload}) <= 393216`
+    ),
+    check(
+      "gh_work_unit_summary_metrics",
+      sql`(${table.inputTokens} IS NULL OR ${table.inputTokens} >= 0) AND (${table.outputTokens} IS NULL OR ${table.outputTokens} >= 0) AND (${table.latencyMs} IS NULL OR ${table.latencyMs} >= 0)`
+    ),
+  ]
+).enableRLS();
+
+export const githubWorkUnitSummaryDailyUsage = pgTable(
+  "github_work_unit_summary_daily_usage",
+  {
+    day: date("day", { mode: "string" }).primaryKey(),
+    startedRequests: integer("started_requests").default(0).notNull(),
+  },
+  (table) => [
+    check(
+      "gh_work_unit_summary_daily_usage_cap",
+      sql`${table.startedRequests} BETWEEN 0 AND 12`
+    ),
+  ]
+).enableRLS();
+
+export const githubPublicFeedHead = pgTable(
+  "github_public_feed_head",
+  {
+    feedRevision: bigint("feed_revision", { mode: "number" })
+      .default(0)
+      .notNull(),
+    headContentRevision: bigint("head_content_revision", { mode: "number" })
+      .default(0)
+      .notNull(),
+    id: boolean("id").default(true).primaryKey(),
+    lastPublishedAt: timestamp("last_published_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    orderingRevision: bigint("ordering_revision", { mode: "number" })
+      .default(0)
+      .notNull(),
+    summarizing: boolean("summarizing").default(false).notNull(),
+  },
+  (table) => [
+    check("gh_public_feed_head_singleton", sql`${table.id}`),
+    check(
+      "gh_public_feed_head_revisions",
+      sql`${table.feedRevision} >= 0 AND ${table.headContentRevision} >= 0 AND ${table.orderingRevision} >= 0`
     ),
   ]
 ).enableRLS();

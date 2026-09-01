@@ -7,9 +7,8 @@ import {
   GITHUB_EVENTS_CRON_JOB,
   GITHUB_HEAD_REFS_CRON_JOB,
   GITHUB_REF_REPOSITORY_BATCH_SIZE,
-  GITHUB_TAG_REFS_CRON_JOB,
+  GITHUB_ROUTINE_MAX_DURATION_SECONDS,
   GITHUB_WORKER_CRON_JOB,
-  githubRefKindFrom,
   githubRefRepositoryLimitFrom,
 } from "../src/lib/github-cron-config.ts";
 import {
@@ -20,39 +19,47 @@ import {
 } from "../src/lib/github-ref-reconciliation-batch.ts";
 import vercelConfig from "../vercel.json";
 
+const minutesFrom = (schedule) => {
+  const [minute] = schedule.split(" ", 1);
+  if (minute === "*/5") {
+    return Array.from({ length: 12 }, (_, index) => index * 5);
+  }
+  const range = /^(\d+)-(\d+)\/(\d+)$/.exec(minute);
+  if (range !== null) {
+    const [, start, end, step] = range.map(Number);
+    const minutes = [];
+    for (let value = start; value <= end; value += step) {
+      minutes.push(value);
+    }
+    return minutes;
+  }
+  return minute.split(",").map(Number);
+};
+
 describe("GitHub cron configuration", () => {
-  test("staggered schedules keep routine jobs from starting together", () => {
-    expect(GITHUB_EVENTS_CRON_JOB).toEqual({
-      name: "github-events-every-five-minutes",
-      schedule: "*/5 * * * *",
-    });
-    expect(GITHUB_WORKER_CRON_JOB).toEqual({
-      name: "github-activity-worker-every-five-minutes",
-      schedule: "2-57/5 * * * *",
-    });
-    expect(GITHUB_HEAD_REFS_CRON_JOB).toEqual({
-      name: "github-head-refs-every-fifteen-minutes",
-      schedule: "4,19,34,49 * * * *",
-    });
-    expect(GITHUB_TAG_REFS_CRON_JOB).toEqual({
-      name: "github-tag-refs-every-fifteen-minutes",
-      schedule: "9,24,39,54 * * * *",
-    });
+  test("staggered routine jobs never start in the same minute", () => {
+    const jobs = [
+      GITHUB_EVENTS_CRON_JOB,
+      GITHUB_WORKER_CRON_JOB,
+      GITHUB_HEAD_REFS_CRON_JOB,
+    ];
+    const allMinutes = jobs.flatMap((job) => minutesFrom(job.schedule));
+    expect(new Set(jobs.map((job) => job.name)).size).toBe(jobs.length);
+    expect(new Set(allMinutes).size).toBe(allMinutes.length);
   });
 
   test("bounds scheduled repository reconciliation", () => {
     expect(GITHUB_REF_REPOSITORY_BATCH_SIZE).toBe(8);
-    expect(GITHUB_CRON_EXECUTION_DURATION_MS).toBe(90_000);
+    expect(GITHUB_ROUTINE_MAX_DURATION_SECONDS).toBe(15);
+    expect(GITHUB_CRON_EXECUTION_DURATION_MS).toBe(
+      GITHUB_ROUTINE_MAX_DURATION_SECONDS * 1000
+    );
     expect(githubRefRepositoryLimitFrom(null)).toBe(8);
     expect(githubRefRepositoryLimitFrom("1")).toBe(1);
     expect(githubRefRepositoryLimitFrom("8")).toBe(8);
     for (const invalid of ["", "0", "9", "01", "4.0", "all"]) {
       expect(githubRefRepositoryLimitFrom(invalid)).toBeNull();
     }
-    expect(githubRefKindFrom(null)).toBe("head");
-    expect(githubRefKindFrom("head")).toBe("head");
-    expect(githubRefKindFrom("tag")).toBe("tag");
-    expect(githubRefKindFrom("all")).toBeNull();
   });
 
   test("fails before claiming a ref lease when the shared deadline is exhausted", async () => {

@@ -15,6 +15,7 @@ export const env = createEnv({
     CRON_SECRET: z.string().min(32).optional(),
     DATABASE_URL: z.url().optional(),
     DATABASE_URL_UNPOOLED: z.url().optional(),
+    GITHUB_ACTIVITY_CURSOR_SECRET: z.string().min(32).optional(),
     GH_TOKEN: optionalString,
     GITHUB_F0RR0_TOKEN: optionalString,
     GITHUB_TOKEN: optionalString,

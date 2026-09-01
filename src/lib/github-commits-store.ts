@@ -4,7 +4,6 @@ import {
   and,
   asc,
   eq,
-  gt,
   inArray,
   isNull,
   lt,
@@ -19,18 +18,19 @@ import {
   githubAccountCheckpoints,
   githubCommits,
   githubIssues,
-  githubPublicActivities,
+  githubPublicFeedHead,
   githubPullRequests,
   githubPullRequestSignals,
-  githubPullRequestVersions,
   githubPushObservationCommits,
   githubPushObservations,
   githubRepositories,
   githubRepositoryRefs,
   githubWebhookDeliveries,
 } from "@/db/schema";
-import { invalidateGitHubPullRequestDerivedAliases } from "@/lib/github-activity-alias-store";
-import { trackedGitHubAccountFrom } from "@/lib/github-commits-core";
+import {
+  planGitHubBranchLineages,
+  trackedGitHubAccountFrom,
+} from "@/lib/github-commits-core";
 import type {
   GitHubCommit,
   GitHubEvent,
@@ -40,8 +40,11 @@ import type {
   GitHubPush,
   GitHubRepository,
   GitHubRepositoryFacts,
+  GitHubHeadSignal,
   TrackedGitHubAccount,
 } from "@/lib/github-commits-core";
+import { persistPullRequestSnapshotInTransaction } from "@/lib/github-pull-request-store";
+import { upsertGitHubRepository } from "@/lib/github-repository-store";
 
 export class CheckpointConflictError extends Error {
   constructor() {
@@ -181,49 +184,12 @@ export const beginGitHubEventPoll = async (
     return { checkpoint, shouldPoll: false };
   });
 
-const upsertRepository = async (
-  transaction: DatabaseTransaction,
-  repository: GitHubRepository,
-  observedAt: Date
-) => {
-  const facts =
-    "ownerLogin" in repository ? (repository as GitHubRepositoryFacts) : null;
-  await transaction
-    .insert(githubRepositories)
-    .values({
-      firstObservedAt: observedAt,
-      fullName: repository.fullName,
-      htmlUrl: facts?.htmlUrl ?? null,
-      id: repository.id,
-      lastObservedAt: observedAt,
-      ownerAvatarUrl: facts?.ownerAvatarUrl ?? null,
-      ownerId: facts?.ownerId ?? null,
-      ownerLogin: facts?.ownerLogin ?? null,
-      ownerType: facts?.ownerType ?? null,
-      visibility: facts?.visibility ?? null,
-    })
-    .onConflictDoUpdate({
-      set: {
-        fullName: repository.fullName,
-        htmlUrl: sql`coalesce(excluded.html_url, ${githubRepositories.htmlUrl})`,
-        lastObservedAt: observedAt,
-        ownerAvatarUrl: sql`coalesce(excluded.owner_avatar_url, ${githubRepositories.ownerAvatarUrl})`,
-        ownerId: sql`coalesce(excluded.owner_id, ${githubRepositories.ownerId})`,
-        ownerLogin: sql`coalesce(excluded.owner_login, ${githubRepositories.ownerLogin})`,
-        ownerType: sql`coalesce(excluded.owner_type, ${githubRepositories.ownerType})`,
-        visibility: sql`coalesce(excluded.visibility, ${githubRepositories.visibility})`,
-      },
-      setWhere: lte(githubRepositories.lastObservedAt, observedAt),
-      target: githubRepositories.id,
-    });
-};
-
 const persistIssue = async (
   transaction: DatabaseTransaction,
   issue: GitHubIssue,
   observedAt: Date
 ) => {
-  await upsertRepository(transaction, issue.repository, observedAt);
+  await upsertGitHubRepository(transaction, issue.repository, observedAt);
   const [insertedIssue] = await transaction
     .insert(githubIssues)
     .values({
@@ -244,18 +210,20 @@ const persistIssue = async (
     return false;
   }
 
-  const [activity] = await transaction
-    .insert(githubPublicActivities)
-    .values({
-      kind: "issue",
-      occurredAt: new Date(issue.createdAt),
-      publishedAt: observedAt,
-      repositoryId: issue.repository.id,
-      sourceNodeId: issue.nodeId,
-    })
-    .returning({ publicId: githubPublicActivities.publicId });
-  if (activity === undefined) {
-    throw new Error("The GitHub issue activity could not be persisted.");
+  if (issue.repository.visibility !== null) {
+    const [head] = await transaction
+      .update(githubPublicFeedHead)
+      .set({
+        feedRevision: sql`${githubPublicFeedHead.feedRevision} + 1`,
+        headContentRevision: sql`${githubPublicFeedHead.headContentRevision} + 1`,
+        lastPublishedAt: observedAt,
+        orderingRevision: sql`${githubPublicFeedHead.orderingRevision} + 1`,
+      })
+      .where(eq(githubPublicFeedHead.id, true))
+      .returning({ id: githubPublicFeedHead.id });
+    if (head === undefined) {
+      throw new Error("The GitHub public feed head is unavailable.");
+    }
   }
   return true;
 };
@@ -269,7 +237,7 @@ interface PushObservationInput {
 }
 
 // oxlint-disable-next-line eslint/max-classes-per-file -- Durable intake exposes distinct optimistic-lock and evidence errors.
-export class GitHubPushObservationEvidenceConflictError extends Error {
+class GitHubPushObservationEvidenceConflictError extends Error {
   constructor() {
     super("Conflicting GitHub push evidence was observed.");
     this.name = "GitHubPushObservationEvidenceConflictError";
@@ -363,7 +331,7 @@ export const persistGitHubCommitReferences = async (input: {
       });
     }
     for (const repository of repositories.values()) {
-      await upsertRepository(transaction, repository, observedAt);
+      await upsertGitHubRepository(transaction, repository, observedAt);
     }
 
     let inserted = 0;
@@ -671,7 +639,7 @@ const refObservationSourceId = (input: {
     .digest("hex")}`;
 
 // oxlint-disable-next-line eslint/max-classes-per-file -- Lease loss is recoverable and must remain distinguishable by callers.
-export class GitHubRefReconciliationLeaseLostError extends Error {
+class GitHubRefReconciliationLeaseLostError extends Error {
   constructor() {
     super("The GitHub ref reconciliation lease was lost.");
     this.name = "GitHubRefReconciliationLeaseLostError";
@@ -827,6 +795,22 @@ const refKindRepositoryColumn = (kind: GitHubRepositoryRefKind) =>
     ? githubRepositories.headsLastReconciledAt
     : githubRepositories.tagsLastReconciledAt;
 
+const canonicalHeadRefName = (defaultBranch: string | null) =>
+  defaultBranch === null ? null : `refs/heads/${defaultBranch}`;
+
+const initialRefProjectionRelevance = (
+  ref: GitHubRepositoryRefSnapshot,
+  canonicalRefName: string | null,
+  establishingBaseline: boolean
+) =>
+  ref.kind === "head" &&
+  (ref.refName === canonicalRefName || !establishingBaseline);
+
+const incomingCanonicalRefCondition = (canonicalRefName: string | null) =>
+  canonicalRefName === null
+    ? sql`false`
+    : sql`excluded.ref_name = ${canonicalRefName}`;
+
 export const persistGitHubRepositoryRefPage = async (input: {
   account: TrackedGitHubAccount;
   complete: boolean;
@@ -851,7 +835,37 @@ export const persistGitHubRepositoryRefPage = async (input: {
   }
 
   return await getDatabase().transaction(async (transaction) => {
-    await upsertRepository(transaction, input.repository, input.observedAt);
+    await upsertGitHubRepository(
+      transaction,
+      input.repository,
+      input.observedAt
+    );
+    const existingHeadLineages =
+      input.kind === "head"
+        ? await transaction
+            .select({
+              active: githubRepositoryRefs.active,
+              branchLineageId: githubRepositoryRefs.branchLineageId,
+              headSha: githubRepositoryRefs.headSha,
+              refName: githubRepositoryRefs.refName,
+            })
+            .from(githubRepositoryRefs)
+            .where(
+              and(
+                eq(githubRepositoryRefs.repositoryId, input.repository.id),
+                eq(githubRepositoryRefs.kind, "head")
+              )
+            )
+        : [];
+    const plannedLineages = planGitHubBranchLineages(
+      existingHeadLineages.flatMap((ref) =>
+        ref.branchLineageId === null
+          ? []
+          : [{ ...ref, branchLineageId: ref.branchLineageId }]
+      ),
+      input.kind === "head" ? input.refs : [],
+      randomUUID
+    );
     const [repositoryState] = await transaction
       .select({
         lastReconciledAt: refKindRepositoryColumn(input.kind),
@@ -896,6 +910,11 @@ export const persistGitHubRepositoryRefPage = async (input: {
             );
     const existingByName = new Map(existing.map((ref) => [ref.refName, ref]));
     const knownActiveHeads = new Set(knownHeads.map((ref) => ref.headSha));
+    const canonicalRefName = canonicalHeadRefName(
+      input.repository.defaultBranch
+    );
+    const isCanonicalIncomingRef =
+      incomingCanonicalRefCondition(canonicalRefName);
     const observedRanges = new Set<string>();
     const observations: PushObservationInput[] = [];
     for (const ref of input.refs) {
@@ -947,10 +966,22 @@ export const persistGitHubRepositoryRefPage = async (input: {
         .values(
           input.refs.map((ref) => ({
             active: true,
+            branchLineageId:
+              ref.kind === "head"
+                ? (plannedLineages.get(ref.refName) ??
+                  (() => {
+                    throw new Error("A GitHub head lineage was not planned.");
+                  })())
+                : null,
             firstObservedAt: input.scanStartedAt,
             headSha: ref.headSha,
             kind: ref.kind,
             lastObservedAt: input.scanStartedAt,
+            projectionRelevant: initialRefProjectionRelevance(
+              ref,
+              canonicalRefName,
+              establishingBaseline
+            ),
             refName: ref.refName,
             repositoryId: input.repository.id,
           }))
@@ -958,9 +989,39 @@ export const persistGitHubRepositoryRefPage = async (input: {
         .onConflictDoUpdate({
           set: {
             active: true,
+            branchLineageId: sql`excluded.branch_lineage_id`,
             headSha: sql`excluded.head_sha`,
             kind: sql`excluded.kind`,
             lastObservedAt: input.scanStartedAt,
+            projectionRelevant: sql`CASE
+              WHEN excluded.kind <> 'head' THEN false
+              WHEN ${githubRepositoryRefs.projectionRelevant} THEN true
+              WHEN NOT ${githubRepositoryRefs.active}
+                OR ${githubRepositoryRefs.headSha} <> excluded.head_sha
+              THEN true
+              WHEN ${isCanonicalIncomingRef} THEN true
+              ELSE false
+            END`,
+            repairLeaseToken: sql`CASE
+              WHEN excluded.kind = 'head'
+                AND (
+                  NOT ${githubRepositoryRefs.active}
+                  OR ${githubRepositoryRefs.headSha} <> excluded.head_sha
+                  OR ${githubRepositoryRefs.branchLineageId} IS DISTINCT FROM excluded.branch_lineage_id
+                )
+              THEN NULL
+              ELSE ${githubRepositoryRefs.repairLeaseToken}
+            END`,
+            repairLeaseUntil: sql`CASE
+              WHEN excluded.kind = 'head'
+                AND (
+                  NOT ${githubRepositoryRefs.active}
+                  OR ${githubRepositoryRefs.headSha} <> excluded.head_sha
+                  OR ${githubRepositoryRefs.branchLineageId} IS DISTINCT FROM excluded.branch_lineage_id
+                )
+              THEN NULL
+              ELSE ${githubRepositoryRefs.repairLeaseUntil}
+            END`,
           },
           setWhere: lte(
             githubRepositoryRefs.lastObservedAt,
@@ -975,7 +1036,12 @@ export const persistGitHubRepositoryRefPage = async (input: {
     if (input.complete) {
       await transaction
         .update(githubRepositoryRefs)
-        .set({ active: false, lastObservedAt: input.scanStartedAt })
+        .set({
+          active: false,
+          lastObservedAt: input.scanStartedAt,
+          repairLeaseToken: null,
+          repairLeaseUntil: null,
+        })
         .where(
           and(
             eq(githubRepositoryRefs.repositoryId, input.repository.id),
@@ -1093,22 +1159,6 @@ export const releaseGitHubRefReconciliationLease = async (input: {
     );
 };
 
-const insertPushObservation = async (
-  transaction: DatabaseTransaction,
-  input: PushObservationInput
-): Promise<GitHubWebhookIntakeResult> => {
-  const result = await insertPushObservations(transaction, [input]);
-  return {
-    duplicate: result.duplicates === 1,
-    ignored: false,
-    issues: 0,
-    knownCommits: result.knownCommits,
-    paused: false,
-    pullRequests: 0,
-    pushes: result.pushes,
-  };
-};
-
 export interface WebhookDeliveryInput {
   account: TrackedGitHubAccount | null;
   action: string | null;
@@ -1163,272 +1213,20 @@ const markWebhookDeliveryAccepted = async (
     .where(eq(githubWebhookDeliveries.deliveryId, input.deliveryId));
 };
 
-const pullRequestState = (pullRequest: GitHubPullRequest) =>
-  pullRequest.merged ? ("merged" as const) : pullRequest.state;
-
-const pullRequestTerminalTimestamp = (
-  pullRequest: GitHubPullRequest,
-  state: "closed" | "merged" | "open"
-) => {
-  if (state === "merged") {
-    return pullRequest.mergedAt;
-  }
-  return state === "closed" ? pullRequest.closedAt : null;
-};
-
-const pullRequestAliasEvidenceChanged = (
-  existing: Readonly<{
-    headRepositoryId: string | null;
-    headSha: string | null;
-    providerUpdatedAt: Date;
-    repositoryId: string;
-    state: string;
-  }>,
-  pullRequest: GitHubPullRequest,
-  providerUpdatedAt: Date,
-  state: "closed" | "merged" | "open"
-) =>
-  providerUpdatedAt >= existing.providerUpdatedAt &&
-  (pullRequest.headSha !== existing.headSha ||
-    (pullRequest.headRepository !== null &&
-      pullRequest.headRepository.id !== existing.headRepositoryId) ||
-    pullRequest.repository.id !== existing.repositoryId ||
-    state !== existing.state);
-
-const invalidateChangedPullRequestAliases = async (
-  transaction: DatabaseTransaction,
-  existing:
-    | Readonly<{
-        headRepositoryId: string | null;
-        headSha: string | null;
-        providerUpdatedAt: Date;
-        repositoryId: string;
-        state: string;
-      }>
-    | undefined,
-  pullRequest: GitHubPullRequest,
-  providerUpdatedAt: Date,
-  state: "closed" | "merged" | "open"
-) => {
-  if (
-    existing === undefined ||
-    !pullRequestAliasEvidenceChanged(
-      existing,
-      pullRequest,
-      providerUpdatedAt,
-      state
-    )
-  ) {
-    return;
-  }
-  await invalidateGitHubPullRequestDerivedAliases(
-    transaction,
-    pullRequest.nodeId
-  );
-};
-
 const upsertPullRequest = async (
   transaction: DatabaseTransaction,
   account: TrackedGitHubAccount,
   pullRequest: GitHubPullRequest,
   observedAt: Date
 ) => {
-  await upsertRepository(transaction, pullRequest.repository, observedAt);
-  if (pullRequest.headRepository !== null) {
-    await upsertRepository(transaction, pullRequest.headRepository, observedAt);
-  }
-
-  const providerUpdatedAt = new Date(pullRequest.providerUpdatedAt);
-  const state = pullRequestState(pullRequest);
-  const [existing] = await transaction
-    .select({
-      headRepositoryId: githubPullRequests.headRepositoryId,
-      headSha: githubPullRequests.headSha,
-      providerUpdatedAt: githubPullRequests.providerUpdatedAt,
-      repositoryId: githubPullRequests.repositoryId,
-      state: githubPullRequests.state,
-    })
-    .from(githubPullRequests)
-    .where(eq(githubPullRequests.nodeId, pullRequest.nodeId))
-    .for("update");
-  await invalidateChangedPullRequestAliases(
+  const stored = await persistPullRequestSnapshotInTransaction(
     transaction,
-    existing,
+    account,
     pullRequest,
-    providerUpdatedAt,
-    state
+    { authority: "observed" },
+    observedAt
   );
-  const terminalTimestamp = pullRequestTerminalTimestamp(pullRequest, state);
-  if (state !== "open" && terminalTimestamp === null) {
-    throw new Error("A terminal GitHub pull request has no terminal time.");
-  }
-  const terminalAt =
-    terminalTimestamp === null ? null : new Date(terminalTimestamp);
-  const mutableValues = {
-    additions: pullRequest.additions,
-    baseRefName: pullRequest.baseRef,
-    baseRepositoryId: pullRequest.baseRepository.id,
-    baseSha: pullRequest.baseSha,
-    body: pullRequest.body,
-    changedFiles: pullRequest.changedFiles,
-    closedAt:
-      pullRequest.closedAt === null ? null : new Date(pullRequest.closedAt),
-    commitCount: pullRequest.commitCount,
-    deletions: pullRequest.deletions,
-    draft: pullRequest.draft,
-    headRefName: pullRequest.headRef,
-    headRepositoryId: pullRequest.headRepository?.id ?? null,
-    headSha: pullRequest.headSha,
-    mergedAt:
-      pullRequest.mergedAt === null ? null : new Date(pullRequest.mergedAt),
-    // REST and webhook PR representations are state signals only. GitHub's
-    // GraphQL PullRequest.mergeCommit is the sole merge-SHA authority.
-    mergeSha: null,
-    mergeShaVerifiedAt: null,
-    nextReconcileAt: observedAt,
-    providerUpdatedAt,
-    state,
-    terminalAt,
-    title: pullRequest.title,
-    url: pullRequest.url,
-  } as const;
-  const [changed] = await transaction
-    .insert(githubPullRequests)
-    .values({
-      ...mutableValues,
-      account,
-      authorLogin: pullRequest.author,
-      authorUserId: pullRequest.authorUserId,
-      bodySnapshot: pullRequest.body,
-      createdAt: new Date(pullRequest.createdAt),
-      nodeId: pullRequest.nodeId,
-      number: pullRequest.number,
-      repositoryId: pullRequest.repository.id,
-      titleSnapshot: pullRequest.title,
-    })
-    .onConflictDoUpdate({
-      set: {
-        ...mutableValues,
-        additions: sql`coalesce(excluded.additions, ${githubPullRequests.additions})`,
-        changedFiles: sql`coalesce(excluded.changed_files, ${githubPullRequests.changedFiles})`,
-        commitCount: sql`coalesce(excluded.commit_count, ${githubPullRequests.commitCount})`,
-        deletions: sql`coalesce(excluded.deletions, ${githubPullRequests.deletions})`,
-        headRepositoryId: sql`coalesce(excluded.head_repository_id, ${githubPullRequests.headRepositoryId})`,
-        mergeSha:
-          state === "merged"
-            ? sql`CASE WHEN ${githubPullRequests.mergeShaVerifiedAt} IS NOT NULL THEN ${githubPullRequests.mergeSha} ELSE NULL END`
-            : null,
-        mergeShaVerifiedAt:
-          state === "merged" ? githubPullRequests.mergeShaVerifiedAt : null,
-        reconcileAttempts: 0,
-        reconcileError: null,
-      },
-      setWhere: lt(githubPullRequests.providerUpdatedAt, providerUpdatedAt),
-      target: githubPullRequests.nodeId,
-    })
-    .returning({ nodeId: githubPullRequests.nodeId });
-  if (changed === undefined) {
-    if (state !== "open") {
-      const promotableStoredState =
-        state === "merged"
-          ? or(
-              eq(githubPullRequests.state, "open"),
-              eq(githubPullRequests.state, "closed")
-            )
-          : eq(githubPullRequests.state, "open");
-      const [promoted] = await transaction
-        .update(githubPullRequests)
-        .set({
-          closedAt: mutableValues.closedAt,
-          mergedAt: mutableValues.mergedAt,
-          mergeSha:
-            state === "merged"
-              ? sql`CASE WHEN ${githubPullRequests.mergeShaVerifiedAt} IS NOT NULL THEN ${githubPullRequests.mergeSha} ELSE NULL END`
-              : null,
-          mergeShaVerifiedAt:
-            state === "merged" ? githubPullRequests.mergeShaVerifiedAt : null,
-          nextReconcileAt: observedAt,
-          reconcileAttempts: 0,
-          reconcileError: null,
-          state,
-          terminalAt,
-        })
-        .where(
-          and(
-            eq(githubPullRequests.nodeId, pullRequest.nodeId),
-            eq(githubPullRequests.providerUpdatedAt, providerUpdatedAt),
-            promotableStoredState
-          )
-        )
-        .returning({ nodeId: githubPullRequests.nodeId });
-      if (promoted !== undefined) {
-        return true;
-      }
-    }
-    await transaction
-      .update(githubPullRequests)
-      .set({ nextReconcileAt: observedAt })
-      .where(
-        and(
-          eq(githubPullRequests.nodeId, pullRequest.nodeId),
-          eq(githubPullRequests.providerUpdatedAt, providerUpdatedAt),
-          or(
-            isNull(githubPullRequests.nextReconcileAt),
-            gt(
-              githubPullRequests.nextReconcileAt,
-              new Date(observedAt.getTime() + 5 * 60 * 1000)
-            )
-          )
-        )
-      );
-    return false;
-  }
-
-  await transaction
-    .update(githubPullRequestVersions)
-    .set({ isCurrent: false })
-    .where(
-      and(
-        eq(githubPullRequestVersions.pullRequestNodeId, pullRequest.nodeId),
-        eq(githubPullRequestVersions.isCurrent, true),
-        ne(githubPullRequestVersions.headSha, pullRequest.headSha)
-      )
-    );
-  await transaction
-    .insert(githubPullRequestVersions)
-    .values({
-      baseRefName: pullRequest.baseRef,
-      baseRepositoryId: pullRequest.baseRepository.id,
-      baseSha: pullRequest.baseSha,
-      commitCount: pullRequest.commitCount,
-      headRefName: pullRequest.headRef,
-      headRepositoryId: pullRequest.headRepository?.id ?? null,
-      headSha: pullRequest.headSha,
-      isCurrent: true,
-      mergeSnapshot: pullRequest.merged,
-      observedAt,
-      providerUpdatedAt,
-      pullRequestNodeId: pullRequest.nodeId,
-    })
-    .onConflictDoUpdate({
-      set: {
-        baseRefName: pullRequest.baseRef,
-        baseRepositoryId: pullRequest.baseRepository.id,
-        baseSha: pullRequest.baseSha,
-        commitCount: sql`coalesce(excluded.commit_count, ${githubPullRequestVersions.commitCount})`,
-        headRefName: pullRequest.headRef,
-        headRepositoryId: sql`coalesce(excluded.head_repository_id, ${githubPullRequestVersions.headRepositoryId})`,
-        isCurrent: true,
-        mergeSnapshot: pullRequest.merged,
-        observedAt,
-        providerUpdatedAt,
-      },
-      target: [
-        githubPullRequestVersions.pullRequestNodeId,
-        githubPullRequestVersions.headSha,
-      ],
-    });
-  return true;
+  return stored?.snapshotChanged ?? false;
 };
 
 const TERMINAL_PULL_REQUEST_EVENT_ACTIONS = new Set(["closed", "merged"]);
@@ -1442,7 +1240,6 @@ const signalKnownPullRequestReconciliation = async (
 ) => {
   const [known] = await transaction
     .select({
-      headRepositoryId: githubPullRequests.headRepositoryId,
       nodeId: githubPullRequests.nodeId,
       providerUpdatedAt: githubPullRequests.providerUpdatedAt,
       repositoryId: githubPullRequests.repositoryId,
@@ -1470,9 +1267,6 @@ const signalKnownPullRequestReconciliation = async (
   const retryEvidenceImproved =
     occurredAt > known.providerUpdatedAt ||
     TERMINAL_PULL_REQUEST_EVENT_ACTIONS.has(signal.action);
-  if (promoteToProvisionalClosed) {
-    await invalidateGitHubPullRequestDerivedAliases(transaction, known.nodeId);
-  }
   await transaction
     .update(githubPullRequests)
     .set({
@@ -1576,42 +1370,123 @@ export const persistIgnoredGitHubWebhookDelivery = async (
       : duplicateWebhookResult(receipt.accepted);
   });
 
-export const persistGitHubWebhookPush = async (
+export const persistGitHubWebhookHeadSignal = async (
   deliveryId: string,
-  push: GitHubPush
+  signal: GitHubHeadSignal
 ): Promise<GitHubWebhookIntakeResult> =>
   await getDatabase().transaction(async (transaction) => {
     const delivery = {
-      account: push.pushedBy,
-      action: null,
+      account: null,
+      action: signal.operation,
       deliveryId,
       event: "push",
-      repositoryId: push.repository.id,
+      repositoryId: signal.repository.id,
     } as const;
     const receipt = await insertWebhookDelivery(transaction, delivery);
     if (!receipt.inserted) {
       return duplicateWebhookResult(receipt.accepted);
     }
-    if (await lockWebhookAccount(transaction, push.pushedBy)) {
-      return {
-        duplicate: false,
-        ignored: true,
-        issues: 0,
-        knownCommits: 0,
-        paused: true,
-        pullRequests: 0,
-        pushes: 0,
-      };
+
+    const observedAt = new Date();
+    await upsertGitHubRepository(transaction, signal.repository, observedAt);
+    if (signal.operation === "delete") {
+      await transaction
+        .update(githubRepositoryRefs)
+        .set({
+          active: false,
+          lastObservedAt: observedAt,
+          repairLeaseToken: null,
+          repairLeaseUntil: null,
+        })
+        .where(
+          and(
+            eq(githubRepositoryRefs.repositoryId, signal.repository.id),
+            eq(githubRepositoryRefs.refName, signal.refName),
+            eq(githubRepositoryRefs.kind, "head")
+          )
+        );
+    } else {
+      const headSha = signal.afterSha;
+      if (headSha === null) {
+        throw new Error("An active GitHub head signal has no head SHA.");
+      }
+      const existingHeadLineages = await transaction
+        .select({
+          active: githubRepositoryRefs.active,
+          branchLineageId: githubRepositoryRefs.branchLineageId,
+          headSha: githubRepositoryRefs.headSha,
+          refName: githubRepositoryRefs.refName,
+        })
+        .from(githubRepositoryRefs)
+        .where(
+          and(
+            eq(githubRepositoryRefs.repositoryId, signal.repository.id),
+            eq(githubRepositoryRefs.kind, "head")
+          )
+        );
+      const branchLineageId = planGitHubBranchLineages(
+        existingHeadLineages.flatMap((ref) =>
+          ref.branchLineageId === null
+            ? []
+            : [{ ...ref, branchLineageId: ref.branchLineageId }]
+        ),
+        [{ headSha, refName: signal.refName }],
+        randomUUID
+      ).get(signal.refName);
+      if (branchLineageId === undefined) {
+        throw new Error("A GitHub webhook head lineage was not planned.");
+      }
+      await transaction
+        .insert(githubRepositoryRefs)
+        .values({
+          active: true,
+          branchLineageId,
+          firstObservedAt: observedAt,
+          headSha,
+          kind: "head",
+          lastObservedAt: observedAt,
+          projectionRelevant: true,
+          refName: signal.refName,
+          repositoryId: signal.repository.id,
+        })
+        .onConflictDoUpdate({
+          set: {
+            active: true,
+            branchLineageId,
+            headSha,
+            lastObservedAt: observedAt,
+            projectionRelevant: true,
+            repairLeaseToken: sql`CASE
+              WHEN NOT ${githubRepositoryRefs.active}
+                OR ${githubRepositoryRefs.headSha} <> ${headSha}
+                OR ${githubRepositoryRefs.branchLineageId} IS DISTINCT FROM ${branchLineageId}
+              THEN NULL
+              ELSE ${githubRepositoryRefs.repairLeaseToken}
+            END`,
+            repairLeaseUntil: sql`CASE
+              WHEN NOT ${githubRepositoryRefs.active}
+                OR ${githubRepositoryRefs.headSha} <> ${headSha}
+                OR ${githubRepositoryRefs.branchLineageId} IS DISTINCT FROM ${branchLineageId}
+              THEN NULL
+              ELSE ${githubRepositoryRefs.repairLeaseUntil}
+            END`,
+          },
+          target: [
+            githubRepositoryRefs.repositoryId,
+            githubRepositoryRefs.refName,
+          ],
+        });
     }
-    const persisted = await insertPushObservation(transaction, {
-      observedAt: new Date(),
-      providerCreatedAt: null,
-      push,
-      source: "webhook",
-      sourceId: deliveryId,
-    });
     await markWebhookDeliveryAccepted(transaction, delivery, true);
-    return { ...persisted, duplicate: false };
+    return {
+      duplicate: false,
+      ignored: false,
+      issues: 0,
+      knownCommits: 0,
+      paused: false,
+      pullRequests: 0,
+      pushes: 1,
+    };
   });
 
 export const persistGitHubWebhookIssue = async (

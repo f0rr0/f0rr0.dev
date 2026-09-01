@@ -7,7 +7,7 @@ import {
   githubAccountCheckpoints,
   githubCommits,
   githubIssues,
-  githubPublicActivities,
+  githubPublicFeedHead,
   githubPullRequestMemberships,
   githubPullRequests,
   githubPullRequestSignals,
@@ -16,8 +16,11 @@ import {
   githubPushObservations,
   githubRepositories,
   githubRepositoryRefs,
-  githubSummaryAttempts,
   githubWebhookDeliveries,
+  githubWorkUnitMemberships,
+  githubWorkUnitSummaryAttempts,
+  githubWorkUnitSummaryDailyUsage,
+  githubWorkUnits,
 } from "../src/db/schema.ts";
 
 const config = (table) => getTableConfig(table);
@@ -26,23 +29,15 @@ const indexNames = (table) =>
   config(table).indexes.map((item) => item.config.name);
 
 describe("GitHub activity persistence schema", () => {
-  test("keeps legacy commit identity while adding durable enrichment state", () => {
+  test("keeps compact commit identity and durable enrichment state", () => {
     expect(getTableName(githubCommits)).toBe("github_commits");
     expect(githubCommits.repositoryId.primary).toBe(false);
     expect(githubCommits.enrichmentState.default).toBe("pending");
     expect(githubCommits.enrichmentState.notNull).toBe(true);
     expect(githubCommits.pullRequestDiscoveryState.default).toBe("pending");
-    expect(githubCommits.fingerprintComplete.default).toBe(false);
-    expect(githubCommits.canonicalizedAt.name).toBe("canonicalized_at");
-    expect(githubCommits.fullMessage.name).toBe("full_message");
-    expect(githubCommits.treeSha.name).toBe("tree_sha");
     expect(githubCommits.parentShas.name).toBe("parent_shas");
-    expect(indexNames(githubCommits)).toContain(
-      "github_commits_canonicalization_pending_idx"
-    );
-    expect(indexNames(githubCommits)).toContain(
-      "github_commits_exact_authored_change_idx"
-    );
+    expect(githubCommits.fileFacts.name).toBe("file_facts");
+    expect(githubCommits.fileFactsComplete.default).toBe(false);
     expect(indexNames(githubCommits)).toContain(
       "github_commits_pr_discovery_pending_idx"
     );
@@ -50,7 +45,7 @@ describe("GitHub activity persistence schema", () => {
       expect.arrayContaining([
         "github_commits_enrichment_state",
         "github_commits_enrichment_lease",
-        "github_commits_fingerprint_completeness",
+        "github_commits_file_facts_completeness",
         "github_commits_pr_discovery_lease",
         "github_commits_pr_discovery_state",
       ])
@@ -119,7 +114,7 @@ describe("GitHub activity persistence schema", () => {
     );
   });
 
-  test("deduplicates webhook deliveries without retaining payloads", () => {
+  test("deduplicates webhook deliveries", () => {
     expect(getTableName(githubWebhookDeliveries)).toBe(
       "github_webhook_deliveries"
     );
@@ -127,7 +122,6 @@ describe("GitHub activity persistence schema", () => {
     expect(githubWebhookDeliveries.accepted.notNull).toBe(true);
     expect(githubWebhookDeliveries.observedAt.hasDefault).toBe(true);
     expect(githubWebhookDeliveries.repositoryId.notNull).toBe(false);
-    expect(Object.hasOwn(githubWebhookDeliveries, "payload")).toBe(false);
     expect(checkNames(githubWebhookDeliveries)).toEqual(
       expect.arrayContaining([
         "github_webhook_deliveries_id_shape",
@@ -148,7 +142,6 @@ describe("GitHub activity persistence schema", () => {
     expect(githubPullRequests.mergeShaVerifiedAt.name).toBe(
       "merge_sha_verified_at"
     );
-    expect(githubPullRequests.reconcileUntil).toBeUndefined();
     expect(indexNames(githubPullRequests)).toContain(
       "github_pull_requests_reconciliation_idx"
     );
@@ -182,26 +175,33 @@ describe("GitHub activity persistence schema", () => {
     );
     expect(config(githubPullRequestMemberships).foreignKeys).toHaveLength(1);
     expect(githubPullRequestMemberships.isHead.default).toBe(false);
-    expect(githubPullRequestMemberships.isPrimary).toBeUndefined();
   });
 
-  test("provides stable revisioned public identities and one-shot summaries", () => {
-    expect(getTableName(githubPublicActivities)).toBe(
-      "github_public_activities"
+  test("stores only active work-unit summaries, daily usage, and feed head", () => {
+    expect(getTableName(githubWorkUnits)).toBe("github_work_units");
+    expect(indexNames(githubWorkUnitMemberships)).toContain(
+      "gh_work_unit_memberships_commit_unique"
     );
-    expect(githubPublicActivities.revision.default).toBe(1);
-    expect(
-      config(githubPublicActivities).foreignKeys.map((item) => item.getName())
-    ).toContain("github_public_activities_canonical_fk");
-    expect(getTableName(githubSummaryAttempts)).toBe("github_summary_attempts");
-    expect(githubSummaryAttempts.state.default).toBe("pending");
-    expect(checkNames(githubSummaryAttempts)).toEqual(
+    expect(getTableName(githubWorkUnitSummaryAttempts)).toBe(
+      "github_work_unit_summary_attempts"
+    );
+    expect(githubWorkUnitSummaryAttempts.state.default).toBe("pending");
+    expect(checkNames(githubWorkUnitSummaryAttempts)).toEqual(
       expect.arrayContaining([
-        "github_summary_attempts_state",
-        "github_summary_attempts_complete_output",
-        "github_summary_attempts_lease",
+        "gh_work_unit_summary_state",
+        "gh_work_unit_summary_accepted_output",
+        "gh_work_unit_summary_lease",
       ])
     );
+    expect(getTableName(githubWorkUnitSummaryDailyUsage)).toBe(
+      "github_work_unit_summary_daily_usage"
+    );
+    expect(githubWorkUnitSummaryDailyUsage.day.primary).toBe(true);
+    expect(githubWorkUnitSummaryDailyUsage.startedRequests.default).toBe(0);
+    expect(checkNames(githubWorkUnitSummaryDailyUsage)).toContain(
+      "gh_work_unit_summary_daily_usage_cap"
+    );
+    expect(githubPublicFeedHead.summarizing.default).toBe(false);
   });
 
   test("stores authored issue milestones as first-observed snapshots", () => {
@@ -226,8 +226,10 @@ describe("GitHub activity persistence schema", () => {
       githubPullRequestVersions,
       githubPullRequestMemberships,
       githubIssues,
-      githubPublicActivities,
-      githubSummaryAttempts,
+      githubWorkUnits,
+      githubWorkUnitSummaryAttempts,
+      githubWorkUnitSummaryDailyUsage,
+      githubPublicFeedHead,
     ];
 
     for (const table of tables) {

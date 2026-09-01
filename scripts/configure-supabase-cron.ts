@@ -2,24 +2,24 @@ import postgres from "postgres";
 
 import { env } from "../src/env";
 import {
+  GITHUB_CRON_EXECUTION_DURATION_MS,
   GITHUB_EVENTS_CRON_JOB,
   GITHUB_HEAD_REFS_CRON_JOB,
   GITHUB_REF_REPOSITORY_BATCH_SIZE,
-  GITHUB_TAG_REFS_CRON_JOB,
   GITHUB_WORKER_CRON_JOB,
 } from "../src/lib/github-cron-config";
 import { CANONICAL_SITE_URL } from "../src/lib/site-url";
 import { shouldApplyProductionMigrations } from "./migrate-production-database";
 
-const CRON_HTTP_TIMEOUT_MS = 120_000;
+const CRON_HTTP_TIMEOUT_MS = GITHUB_CRON_EXECUTION_DURATION_MS;
 const SECRET_DESCRIPTION = "Vercel GitHub sync cron configuration";
 const SECRET_NAME = "github_sync_bearer_secret";
 const URL_NAME = "github_sync_url";
 const HEAD_REFS_URL_NAME = "github_head_refs_url";
-const TAG_REFS_URL_NAME = "github_tag_refs_url";
 const WORKER_URL_NAME = "github_worker_url";
 const LEGACY_JOB_NAME = "github-sync-every-three-hours";
 const LEGACY_REFS_JOB_NAME = "github-refs-every-fifteen-minutes";
+const LEGACY_TAG_REFS_JOB_NAME = "github-tag-refs-every-fifteen-minutes";
 const CRON_CONFIGURATION_LOCK_NAME = "f0rr0.dev:supabase-cron";
 
 interface SupabaseCronEnvironment {
@@ -59,19 +59,14 @@ export const supabaseCronUrlsFrom = (configuredSiteUrl: string) => {
     );
   }
   const events = new URL("/api/cron/github-sync", siteUrl).toString();
-  const ref = (kind: "head" | "tag") => {
-    const url = new URL("/api/cron/github-refs", siteUrl);
-    url.searchParams.set("kind", kind);
-    url.searchParams.set(
-      "repositories",
-      String(GITHUB_REF_REPOSITORY_BATCH_SIZE)
-    );
-    return url.toString();
-  };
+  const headRefs = new URL("/api/cron/github-refs", siteUrl);
+  headRefs.searchParams.set(
+    "repositories",
+    String(GITHUB_REF_REPOSITORY_BATCH_SIZE)
+  );
   return {
     events,
-    headRefs: ref("head"),
-    tagRefs: ref("tag"),
+    headRefs: headRefs.toString(),
     worker: new URL("/api/cron/github-worker", siteUrl).toString(),
   };
 };
@@ -178,10 +173,6 @@ export const configureSupabaseCron = async (
         value: urls.headRefs,
       });
       await upsertVaultSecret(transaction, {
-        name: TAG_REFS_URL_NAME,
-        value: urls.tagRefs,
-      });
-      await upsertVaultSecret(transaction, {
         name: WORKER_URL_NAME,
         value: urls.worker,
       });
@@ -196,9 +187,9 @@ export const configureSupabaseCron = async (
         where jobname in (
           ${LEGACY_JOB_NAME},
           ${LEGACY_REFS_JOB_NAME},
+          ${LEGACY_TAG_REFS_JOB_NAME},
           ${GITHUB_EVENTS_CRON_JOB.name},
           ${GITHUB_HEAD_REFS_CRON_JOB.name},
-          ${GITHUB_TAG_REFS_CRON_JOB.name},
           ${GITHUB_WORKER_CRON_JOB.name}
         )
       `;
@@ -217,13 +208,6 @@ export const configureSupabaseCron = async (
           ${cronHttpPostCommand(HEAD_REFS_URL_NAME)}
         ) as "jobId"
       `;
-      const [tagRefsJob] = await transaction<{ jobId: number }[]>`
-        select cron.schedule(
-          ${GITHUB_TAG_REFS_CRON_JOB.name},
-          ${GITHUB_TAG_REFS_CRON_JOB.schedule},
-          ${cronHttpPostCommand(TAG_REFS_URL_NAME)}
-        ) as "jobId"
-      `;
       const [workerJob] = await transaction<{ jobId: number }[]>`
         select cron.schedule(
           ${GITHUB_WORKER_CRON_JOB.name},
@@ -234,16 +218,15 @@ export const configureSupabaseCron = async (
       if (
         eventsJob === undefined ||
         headRefsJob === undefined ||
-        tagRefsJob === undefined ||
         workerJob === undefined
       ) {
         throw new Error("Supabase did not return every scheduled cron job.");
       }
-      return { eventsJob, headRefsJob, tagRefsJob, workerJob };
+      return { eventsJob, headRefsJob, workerJob };
     });
 
     process.stdout.write(
-      `Configured Supabase cron jobs ${String(jobs.eventsJob.jobId)}, ${String(jobs.headRefsJob.jobId)}, ${String(jobs.tagRefsJob.jobId)}, and ${String(jobs.workerJob.jobId)} for GitHub intake, head refs, tag refs, and processing.\n`
+      `Configured Supabase cron jobs ${String(jobs.eventsJob.jobId)}, ${String(jobs.headRefsJob.jobId)}, and ${String(jobs.workerJob.jobId)} for GitHub intake, head refs, and processing.\n`
     );
     return jobs;
   } finally {

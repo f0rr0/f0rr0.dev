@@ -9,16 +9,16 @@ import {
 } from "../src/lib/github-api.ts";
 import {
   authenticatedGitHubAccountFrom,
-  commitFromGitHub,
   githubDeliveryIdFrom,
   githubEventFrom,
+  githubWebhookRefSignalFrom,
   issueActionFromWebhook,
   issueFromGitHub,
   issueFromWebhook,
+  planGitHubBranchLineages,
   pullRequestFromGitHub,
   pullRequestFromWebhook,
   pullRequestObservationFromWebhook,
-  pushFromWebhook,
   repositoryFactsFrom,
   repositoryFrom,
 } from "../src/lib/github-commits-core.ts";
@@ -37,6 +37,12 @@ const accountEvent = (id) => ({
 });
 const githubEventResponse = (events) =>
   Response.json(events, { headers: { "X-Poll-Interval": "60" } });
+const branchLineageRef = (
+  refName,
+  headSha,
+  branchLineageId,
+  active = true
+) => ({ active, branchLineageId, headSha, refName });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -45,20 +51,13 @@ afterEach(() => {
 const sha = "a".repeat(40);
 const before = "b".repeat(40);
 const repository = {
+  default_branch: "main",
   full_name: "another-org/private-repo",
   id: 123,
   private: true,
+  pushed_at: "2026-08-26T12:00:00Z",
 };
 
-const apiCommit = {
-  author: { login: "yuppiestechdev" },
-  commit: {
-    author: { date: "2026-08-26T12:00:00Z" },
-    message: "feat: persist one commit\n\nLonger body",
-  },
-  html_url: `https://github.com/another-org/private-repo/commit/${sha}`,
-  sha,
-};
 const pullRequest = {
   additions: 120,
   base: { ref: "main", repo: repository, sha: before },
@@ -80,7 +79,7 @@ const pullRequest = {
   state: "open",
   title: "Persist webhook facts exactly",
   updated_at: "2026-08-26T12:02:00Z",
-  user: { id: 456, login: "f0rr0" },
+  user: { id: 8_574_219, login: "f0rr0" },
 };
 const sparsePullRequest = {
   base: {
@@ -129,7 +128,7 @@ const issue = {
   node_id: "I_kwDOExample",
   number: 91,
   title: "Make event intake durable",
-  user: { id: 456, login: "f0rr0" },
+  user: { id: 8_574_219, login: "f0rr0" },
 };
 const webhookRepository = {
   ...repository,
@@ -144,7 +143,7 @@ const webhookRepository = {
   visibility: "private",
 };
 
-describe("GitHub commit normalization", () => {
+describe("GitHub repository normalization", () => {
   test("accepts an accessible repository regardless of owner or visibility", () => {
     expect(repositoryFrom(repository)).toEqual({
       fullName: "another-org/private-repo",
@@ -154,82 +153,6 @@ describe("GitHub commit normalization", () => {
       fullName: "f0rr0/public-repo",
       id: "456",
     });
-  });
-
-  test("admits a commit based on its GitHub author", () => {
-    const normalizedRepository = repositoryFrom(repository);
-    expect(normalizedRepository).not.toBeNull();
-    expect(commitFromGitHub(apiCommit, normalizedRepository)).toEqual({
-      author: "yuppiestechdev",
-      committedAt: "2026-08-26T12:00:00.000Z",
-      message: "feat: persist one commit",
-      repository: "another-org/private-repo",
-      repositoryId: "123",
-      sha,
-      url: apiCommit.html_url,
-    });
-  });
-
-  test("uses committer time for activity ordering", () => {
-    const normalizedRepository = repositoryFrom(repository);
-    expect(normalizedRepository).not.toBeNull();
-    const commit = commitFromGitHub(
-      {
-        ...apiCommit,
-        commit: {
-          ...apiCommit.commit,
-          committer: { date: "2026-08-27T09:30:00Z" },
-        },
-      },
-      normalizedRepository
-    );
-    expect(commit?.committedAt).toBe("2026-08-27T09:30:00.000Z");
-  });
-
-  test("accepts Git's valid empty commit message", () => {
-    const normalizedRepository = repositoryFrom(repository);
-    expect(normalizedRepository).not.toBeNull();
-    expect(
-      commitFromGitHub(
-        { ...apiCommit, commit: { ...apiCommit.commit, message: "" } },
-        normalizedRepository
-      )?.message
-    ).toBe("");
-  });
-
-  test("excludes commits with null or foreign GitHub authors", () => {
-    const normalizedRepository = repositoryFrom(repository);
-    expect(normalizedRepository).not.toBeNull();
-    expect(
-      commitFromGitHub({ ...apiCommit, author: null }, normalizedRepository)
-    ).toBeNull();
-    expect(
-      commitFromGitHub(
-        { ...apiCommit, author: { login: "somebody-else" } },
-        normalizedRepository
-      )
-    ).toBeNull();
-  });
-
-  test("rejects malformed commit data and forged URLs", () => {
-    const normalizedRepository = repositoryFrom(repository);
-    expect(normalizedRepository).not.toBeNull();
-    expect(() =>
-      commitFromGitHub(
-        { ...apiCommit, html_url: "https://example.com/commit/a" },
-        normalizedRepository
-      )
-    ).toThrow("invalid commit response");
-    expect(() =>
-      commitFromGitHub(
-        {
-          ...apiCommit,
-          author: { login: "somebody-else" },
-          html_url: "https://example.com/commit/a",
-        },
-        normalizedRepository
-      )
-    ).toThrow("invalid commit response");
   });
 });
 
@@ -365,7 +288,7 @@ describe("authenticated user events", () => {
       id: "123456794",
       issue: {
         account: "f0rr0",
-        authorUserId: "456",
+        authorUserId: "8574219",
         createdAt: "2026-08-26T10:00:00.000Z",
         nodeId: "I_kwDOExample",
         number: 91,
@@ -433,102 +356,144 @@ describe("authenticated user events", () => {
 });
 
 describe("push webhook routing", () => {
-  test("uses the push actor only to discover commit references", () => {
+  test("normalizes a head update independently of the push actor", () => {
     expect(
-      pushFromWebhook({
+      githubWebhookRefSignalFrom({
         after: sha,
         before,
-        commits: [
-          {
-            id: sha,
-            message: "fix: private dependency\n\nbody",
-            timestamp: "2026-08-26T12:00:00Z",
-          },
-        ],
+        created: false,
         deleted: false,
+        forced: false,
         ref: "refs/heads/feature",
         repository,
-        sender: { login: "yuppiestechdev" },
+        sender: { login: "somebody-else" },
       })
     ).toEqual({
-      before,
-      commitShas: [sha],
-      head: sha,
-      pushedBy: "yuppiestechdev",
-      ref: "refs/heads/feature",
+      afterSha: sha,
+      beforeSha: before,
+      forced: false,
+      kind: "head",
+      operation: "update",
+      refName: "refs/heads/feature",
       repository: {
+        defaultBranch: "main",
         fullName: "another-org/private-repo",
+        htmlUrl: null,
         id: "123",
+        ownerAvatarUrl: null,
+        ownerId: null,
+        ownerLogin: "another-org",
+        ownerType: null,
+        pushedAt: "2026-08-26T12:00:00.000Z",
+        visibility: "private",
       },
-      size: 1,
     });
   });
 
-  test("ignores pushes by other accounts and deleted refs", () => {
+  test("normalizes head creation, forced update, and deletion", () => {
+    const basePayload = {
+      created: false,
+      deleted: false,
+      forced: false,
+      ref: "refs/heads/main",
+      repository,
+    };
+    expect(
+      githubWebhookRefSignalFrom({
+        ...basePayload,
+        after: sha,
+        before: "0".repeat(40),
+        created: true,
+      })
+    ).toMatchObject({
+      afterSha: sha,
+      beforeSha: null,
+      forced: false,
+      kind: "head",
+      operation: "create",
+    });
+    expect(
+      githubWebhookRefSignalFrom({
+        ...basePayload,
+        after: sha,
+        before,
+        forced: true,
+      })
+    ).toMatchObject({
+      afterSha: sha,
+      beforeSha: before,
+      forced: true,
+      kind: "head",
+      operation: "update",
+    });
+    expect(
+      githubWebhookRefSignalFrom({
+        ...basePayload,
+        after: "0".repeat(40),
+        before,
+        deleted: true,
+      })
+    ).toMatchObject({
+      afterSha: null,
+      beforeSha: before,
+      forced: false,
+      kind: "head",
+      operation: "delete",
+    });
+  });
+
+  test("normalizes tags as audit-only signals without commit membership", () => {
+    const signal = githubWebhookRefSignalFrom({
+      after: sha,
+      before: "0".repeat(40),
+      commits: [{ id: sha }],
+      created: true,
+      deleted: false,
+      forced: false,
+      ref: "refs/tags/v1.0.0",
+      repository,
+      sender: { login: "somebody-else" },
+    });
+    expect(signal).toMatchObject({
+      afterSha: sha,
+      beforeSha: null,
+      kind: "tag",
+      operation: "create",
+      refName: "refs/tags/v1.0.0",
+    });
+    expect(signal).not.toHaveProperty("commitShas");
+  });
+
+  test("rejects inconsistent or unsupported ref transitions", () => {
     const payload = {
       after: sha,
       before,
-      commits: [],
+      created: false,
       deleted: false,
+      forced: false,
       ref: "refs/heads/main",
       repository,
-      sender: { login: "someone" },
     };
-    expect(pushFromWebhook(payload)).toBeNull();
     expect(
-      pushFromWebhook({
-        ...payload,
-        pusher: { name: "f0rr0" },
-      })
+      githubWebhookRefSignalFrom({ ...payload, deleted: true })
     ).toBeNull();
     expect(
-      pushFromWebhook({
-        ...payload,
-        deleted: true,
-        sender: { login: "f0rr0" },
-      })
+      githubWebhookRefSignalFrom({ ...payload, ref: "refs/pulls/1/head" })
     ).toBeNull();
     expect(
-      pushFromWebhook({
+      githubWebhookRefSignalFrom({
         ...payload,
-        ref: "refs/tags/v1.0.0",
-        sender: { login: "f0rr0" },
+        after: "0".repeat(40),
+        before: "0".repeat(40),
       })
     ).toBeNull();
-    expect(
-      pushFromWebhook({
-        ...payload,
-        commits: [{ id: sha }],
-        sender: { login: "f0rr0" },
-        size: 0,
-      })
-    ).toBeNull();
-  });
-
-  test("expands a webhook payload at GitHub's commit-array limit", () => {
-    const commits = Array.from({ length: 2048 }, (_, index) => ({
-      id: index.toString(16).padStart(40, "0"),
-      message: `commit ${index}`,
-      timestamp: "2026-08-26T12:00:00Z",
-    }));
-    const push = pushFromWebhook({
-      after: sha,
-      before,
-      commits,
-      deleted: false,
-      ref: "refs/heads/main",
-      repository,
-      sender: { login: "f0rr0" },
-    });
-
-    expect(push?.commitShas).toHaveLength(2048);
-    expect(push?.size).toBeNull();
   });
 });
 
 describe("issue observation normalization", () => {
   test("reuses safe webhook repository identity and presentation facts", () => {
     expect(repositoryFactsFrom(webhookRepository)).toEqual({
+      defaultBranch: "main",
       fullName: "another-org/private-repo",
       htmlUrl: "https://github.com/another-org/private-repo",
       id: "123",
@@ -536,6 +501,7 @@ describe("issue observation normalization", () => {
       ownerId: "321",
       ownerLogin: "another-org",
       ownerType: "Organization",
+      pushedAt: "2026-08-26T12:00:00.000Z",
       visibility: "private",
     });
     expect(
@@ -553,7 +519,7 @@ describe("issue observation normalization", () => {
     expect(issueFromGitHub(issue, facts)).toEqual({
       account: "f0rr0",
       authorLogin: "f0rr0",
-      authorUserId: "456",
+      authorUserId: "8574219",
       createdAt: "2026-08-26T10:00:00.000Z",
       nodeId: "I_kwDOExample",
       number: 91,
@@ -612,9 +578,10 @@ describe("pull request observation normalization", () => {
       additions: 120,
       author: "f0rr0",
       authorAccount: "f0rr0",
-      authorUserId: "456",
+      authorUserId: "8574219",
       baseRef: "main",
       baseRepository: {
+        defaultBranch: "main",
         fullName: "another-org/private-repo",
         htmlUrl: null,
         id: "123",
@@ -622,6 +589,7 @@ describe("pull request observation normalization", () => {
         ownerId: null,
         ownerLogin: "another-org",
         ownerType: null,
+        pushedAt: "2026-08-26T12:00:00.000Z",
         visibility: "private",
       },
       baseSha: before,
@@ -634,6 +602,7 @@ describe("pull request observation normalization", () => {
       deletions: 35,
       headRef: "durable-intake",
       headRepository: {
+        defaultBranch: "main",
         fullName: "another-org/private-repo",
         htmlUrl: null,
         id: "123",
@@ -641,6 +610,7 @@ describe("pull request observation normalization", () => {
         ownerId: null,
         ownerLogin: "another-org",
         ownerType: null,
+        pushedAt: "2026-08-26T12:00:00.000Z",
         visibility: "private",
       },
       headSha: sha,
@@ -652,6 +622,7 @@ describe("pull request observation normalization", () => {
       number: 42,
       providerUpdatedAt: "2026-08-26T12:02:00.000Z",
       repository: {
+        defaultBranch: "main",
         fullName: "another-org/private-repo",
         htmlUrl: null,
         id: "123",
@@ -659,6 +630,7 @@ describe("pull request observation normalization", () => {
         ownerId: null,
         ownerLogin: "another-org",
         ownerType: null,
+        pushedAt: "2026-08-26T12:00:00.000Z",
         visibility: "private",
       },
       state: "open",
@@ -950,13 +922,48 @@ describe("GitHub delivery identity", () => {
   });
 });
 
-describe("token identity", () => {
-  test("recognizes only the two configured GitHub accounts", () => {
-    expect(authenticatedGitHubAccountFrom({ login: "F0RR0" })).toBe("f0rr0");
-    expect(authenticatedGitHubAccountFrom({ login: "yuppiestechdev" })).toBe(
-      "yuppiestechdev"
+describe("GitHub branch lineage planning", () => {
+  const lineageA = "10000000-0000-4000-8000-000000000001";
+  const lineageB = "10000000-0000-4000-8000-000000000002";
+
+  test("retains identity across a rename observed in either order", () => {
+    const oldRef = branchLineageRef("refs/heads/old", before, lineageA, false);
+    const planned = planGitHubBranchLineages(
+      [oldRef],
+      [{ headSha: before, refName: "refs/heads/new" }],
+      () => lineageB
     );
-    expect(authenticatedGitHubAccountFrom({ login: "someone" })).toBeNull();
+    expect(planned.get("refs/heads/new")).toBe(lineageA);
+  });
+
+  test("splits a shared lineage when one ref diverges", () => {
+    const planned = planGitHubBranchLineages(
+      [
+        branchLineageRef("refs/heads/one", before, lineageA),
+        branchLineageRef("refs/heads/two", before, lineageA),
+      ],
+      [{ headSha: sha, refName: "refs/heads/one" }],
+      () => lineageB
+    );
+    expect(planned.get("refs/heads/one")).toBe(lineageB);
+  });
+});
+
+describe("token identity", () => {
+  test("recognizes immutable user ids rather than mutable logins", () => {
+    expect(
+      authenticatedGitHubAccountFrom({
+        id: 8_574_219,
+        login: "renamed-account",
+      })
+    ).toBe("f0rr0");
+    expect(
+      authenticatedGitHubAccountFrom({ id: "99666891", login: "another-name" })
+    ).toBe("yuppiestechdev");
+    expect(
+      authenticatedGitHubAccountFrom({ id: 123_456, login: "f0rr0" })
+    ).toBeNull();
+    expect(authenticatedGitHubAccountFrom({ login: "f0rr0" })).toBeNull();
   });
 
   test("verifies the authenticated account before an inventory scan", async () => {
@@ -965,7 +972,7 @@ describe("token identity", () => {
       expect(new Headers(init?.headers).get("authorization")).toBe(
         "Bearer token"
       );
-      return Response.json({ login: "F0RR0" });
+      return Response.json({ id: 8_574_219, login: "renamed-account" });
     };
 
     await expect(
@@ -974,7 +981,8 @@ describe("token identity", () => {
   });
 
   test("rejects a token authenticated as the wrong account", async () => {
-    globalThis.fetch = async () => Response.json({ login: "someone-else" });
+    globalThis.fetch = async () =>
+      Response.json({ id: 123_456, login: "f0rr0" });
 
     await expect(assertGitHubTokenIdentity("f0rr0", "token")).rejects.toThrow(
       "GITHUB_F0RR0_TOKEN is not authenticated as f0rr0"

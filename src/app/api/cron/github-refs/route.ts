@@ -1,16 +1,17 @@
 import { env } from "@/env";
 import { reconcileGitHubRefs } from "@/lib/github-commits";
+import type { GITHUB_ROUTINE_MAX_DURATION_SECONDS } from "@/lib/github-cron-config";
 import {
   GITHUB_CRON_EXECUTION_DURATION_MS,
   githubCronStatusFromFailedAccounts,
-  githubRefKindFrom,
   githubRefRepositoryLimitFrom,
 } from "@/lib/github-cron-config";
 import { reportOperationalError } from "@/lib/operational-error";
 import { hasBearerSecret } from "@/lib/request-auth";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration =
+  15 satisfies typeof GITHUB_ROUTINE_MAX_DURATION_SECONDS;
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
@@ -18,11 +19,16 @@ export async function POST(request: Request) {
     return Response.json({ ok: false }, { status: 401 });
   }
   const { searchParams } = new URL(request.url);
-  const kind = githubRefKindFrom(searchParams.get("kind"));
+  const inventory = searchParams.get("inventory");
+  const requestedKind = searchParams.get("kind");
   const repositoryLimit = githubRefRepositoryLimitFrom(
     searchParams.get("repositories")
   );
-  if (kind === null || repositoryLimit === null) {
+  if (
+    (requestedKind !== null && requestedKind !== "head") ||
+    (inventory !== null && inventory !== "refresh") ||
+    repositoryLimit === null
+  ) {
     return Response.json({ ok: false }, { status: 400 });
   }
 
@@ -30,7 +36,8 @@ export async function POST(request: Request) {
   try {
     const result = await reconcileGitHubRefs({
       deadlineAt,
-      kind,
+      forceInventoryRefresh: inventory === "refresh",
+      kind: "head",
       repositoryLimit,
     });
     const status = githubCronStatusFromFailedAccounts(result.failedAccounts);

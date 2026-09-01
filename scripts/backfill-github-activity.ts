@@ -1,38 +1,35 @@
-import { setTimeout as delay } from "node:timers/promises";
-
 import { closeDatabase } from "../src/db/client";
 import { env } from "../src/env";
-import {
-  githubActivityAuditRequestFrom,
-  runGitHubActivityAudit,
-} from "../src/lib/github-activity-audit";
-import type { GitHubActivityAuditReport } from "../src/lib/github-activity-audit";
 import { runGitHubActivityWorker } from "../src/lib/github-activity-worker";
-import { ensureGitHubEvidenceIntegrity } from "../src/lib/github-activity-worker-store";
-import { GitHubRequestDeadlineError } from "../src/lib/github-api";
+import type { GitHubActivityWorkerResult } from "../src/lib/github-activity-worker";
 import {
-  GITHUB_BACKFILL_WORKER_BATCH_SIZE,
-  githubBackfillCompletionFrom,
-  githubBackfillDiscoveryCompleteFrom,
-  githubBackfillExitCodeFrom,
-  githubBackfillOutcomeFrom,
-  githubBackfillProcessingCountsFrom,
-  githubBackfillProcessingMadeProgress,
+  GitHubRequestDeadlineError,
+  GitHubResponseError,
+} from "../src/lib/github-api";
+import {
+  githubBackfillDiscoveryReportFrom,
   githubBackfillRequestFrom,
 } from "../src/lib/github-backfill-core";
 import type {
-  GitHubBackfillProcessingCounts,
+  GitHubBackfillFactualDrainResult,
+  GitHubBackfillIdentityResult,
+  GitHubBackfillInventory,
   GitHubBackfillRequest,
 } from "../src/lib/github-backfill-core";
+import { readGitHubFactualWorkerBacklog } from "../src/lib/github-backfill-store";
 import { assertGitHubTokenIdentity } from "../src/lib/github-commits";
 import type { TrackedGitHubAccount } from "../src/lib/github-commits-core";
-import { backfillGitHubCommitsFromCurrentRefs } from "../src/lib/github-direct-backfill";
+import { backfillGitHubCurrentRefGenerations } from "../src/lib/github-direct-backfill";
 import { backfillGitHubPullRequests } from "../src/lib/github-pull-request-backfill";
+import { lowerGitHubRefBackfillSinceAt } from "../src/lib/github-ref-membership-store";
+import { loadGitHubRepositoryInventory } from "../src/lib/github-repository-inventory";
+import { refreshGitHubWorkUnitProjection } from "../src/lib/github-work-unit-store";
 
-const MAXIMUM_ACTION_MINUTES = 330;
-const INCONCLUSIVE_AUDIT_RETRY_DELAYS_MS = [2000, 5000, 10_000] as const;
-const WORKER_CLEANUP_MARGIN_MS = 30_000;
-const WORKER_PASS_DURATION_MS = 240_000;
+const DEFAULT_MAXIMUM_MINUTES = 30;
+const MAXIMUM_ACTION_MINUTES = 30;
+const DEADLINE_MARGIN_MS = 30_000;
+const FACTUAL_WORKER_BATCH_LIMIT = 8;
+const FACTUAL_WORKER_MAXIMUM_DURATION_MS = 90_000;
 
 interface BackfillArguments {
   account: string;
@@ -43,11 +40,31 @@ interface BackfillArguments {
 }
 
 interface BackfillEnvironment {
-  CRON_SECRET?: string;
   DATABASE_URL?: string;
   GITHUB_F0RR0_TOKEN?: string;
   GITHUB_YUPPIESTECHDEV_TOKEN?: string;
 }
+
+type GitHubBackfillProgressStage =
+  | "identity"
+  | "repository_inventory"
+  | "current_heads"
+  | "pull_requests"
+  | "factual_drain";
+
+interface GitHubBackfillProgressEvent {
+  account: TrackedGitHubAccount | null;
+  complete?: boolean;
+  completed?: number;
+  pending?: number;
+  phase: "started" | "progress" | "finished";
+  stage: GitHubBackfillProgressStage;
+  total?: number;
+}
+
+type GitHubBackfillProgressReporter = (
+  event: Readonly<GitHubBackfillProgressEvent>
+) => void;
 
 const argumentValues = (arguments_: readonly string[]) => {
   const allowed = new Set([
@@ -90,7 +107,8 @@ export const backfillArgumentsFrom = (
   arguments_: readonly string[]
 ): BackfillArguments => {
   const values = argumentValues(arguments_);
-  const maximumMinutesValue = requiredArgument(values, "maximum-minutes");
+  const maximumMinutesValue =
+    values.get("maximum-minutes")?.trim() ?? String(DEFAULT_MAXIMUM_MINUTES);
   if (!/^\d+$/.test(maximumMinutesValue)) {
     throw new TypeError("--maximum-minutes must be an integer.");
   }
@@ -101,7 +119,7 @@ export const backfillArgumentsFrom = (
     maximumMinutes > MAXIMUM_ACTION_MINUTES
   ) {
     throw new RangeError(
-      `--maximum-minutes must be from 1 through ${MAXIMUM_ACTION_MINUTES}.`
+      `--maximum-minutes must be from 1 through ${String(MAXIMUM_ACTION_MINUTES)}.`
     );
   }
   return {
@@ -114,29 +132,465 @@ export const backfillArgumentsFrom = (
 };
 
 export const requireBackfillEnvironment = (
-  input: BackfillArguments,
+  request: Pick<GitHubBackfillRequest, "accounts">,
   environment: BackfillEnvironment = env
 ) => {
   if (environment.DATABASE_URL === undefined) {
     throw new Error("DATABASE_URL is not configured.");
   }
-  if ((environment.CRON_SECRET?.trim().length ?? 0) < 32) {
-    throw new Error("CRON_SECRET must contain at least 32 characters.");
-  }
-  const accounts =
-    input.account === "all" ? ["f0rr0", "yuppiestechdev"] : [input.account];
   if (
-    accounts.includes("f0rr0") &&
+    request.accounts.includes("f0rr0") &&
     environment.GITHUB_F0RR0_TOKEN === undefined
   ) {
     throw new Error("GITHUB_F0RR0_TOKEN is not configured.");
   }
   if (
-    accounts.includes("yuppiestechdev") &&
+    request.accounts.includes("yuppiestechdev") &&
     environment.GITHUB_YUPPIESTECHDEV_TOKEN === undefined
   ) {
     throw new Error("GITHUB_YUPPIESTECHDEV_TOKEN is not configured.");
   }
+};
+
+const tokenFor = (
+  account: TrackedGitHubAccount,
+  environment: BackfillEnvironment
+) => {
+  const token =
+    account === "f0rr0"
+      ? environment.GITHUB_F0RR0_TOKEN
+      : environment.GITHUB_YUPPIESTECHDEV_TOKEN;
+  if (token === undefined) {
+    throw new Error(`The GitHub token for ${account} is not configured.`);
+  }
+  return token;
+};
+
+interface GitHubBackfillFactualDrainDependencies {
+  readBacklog: typeof readGitHubFactualWorkerBacklog;
+  refreshProjection: typeof refreshGitHubWorkUnitProjection;
+  runWorker: typeof runGitHubActivityWorker;
+}
+
+const productionFactualDrainDependencies: GitHubBackfillFactualDrainDependencies =
+  {
+    readBacklog: readGitHubFactualWorkerBacklog,
+    refreshProjection: refreshGitHubWorkUnitProjection,
+    runWorker: runGitHubActivityWorker,
+  };
+
+const factualStagesFrom = (result: GitHubActivityWorkerResult) => [
+  result.observations,
+  result.pullRequestSignals,
+  result.commits,
+  result.pullRequestDiscovery,
+  result.pullRequests,
+];
+
+const factualDrainResult = (): GitHubBackfillFactualDrainResult => ({
+  claimed: 0,
+  complete: false,
+  completed: 0,
+  passes: 0,
+  pending: {
+    commitEnrichment: 0,
+    commitPullRequests: 0,
+    pullRequestReconciliation: 0,
+    pullRequestSignals: 0,
+    pushObservations: 0,
+    total: 0,
+  },
+  projectionRuns: 0,
+  retryAt: null,
+  stopReason: "deferred",
+  unavailable: 0,
+});
+
+const stoppedFactualDrain = (
+  result: GitHubBackfillFactualDrainResult,
+  input: {
+    retryAt?: Date | null;
+    stopReason: Exclude<
+      GitHubBackfillFactualDrainResult["stopReason"],
+      "complete"
+    >;
+  }
+): GitHubBackfillFactualDrainResult => ({
+  ...result,
+  complete: false,
+  retryAt: input.retryAt ?? null,
+  stopReason: input.stopReason,
+});
+
+/**
+ * Drains factual worker claims for one historical scope. A provider deferral is
+ * returned immediately; the caller never sleeps or retries a deferred claim in
+ * process. Summary generation and ref repair remain outside this drain.
+ */
+export const runGitHubBackfillFactualDrain = async (
+  input: {
+    accounts: readonly TrackedGitHubAccount[];
+    deadlineAt: number;
+    onProgress?: (result: Readonly<GitHubBackfillFactualDrainResult>) => void;
+    request: Pick<
+      GitHubBackfillRequest,
+      "repositoryId" | "sinceAt" | "untilAt"
+    >;
+  },
+  dependencies: GitHubBackfillFactualDrainDependencies = productionFactualDrainDependencies
+): Promise<GitHubBackfillFactualDrainResult> => {
+  if (!Number.isFinite(input.deadlineAt)) {
+    throw new RangeError("The GitHub factual drain deadline is invalid.");
+  }
+  const result = factualDrainResult();
+  const scope = {
+    repositoryId: input.request.repositoryId,
+    sinceAt: input.request.sinceAt,
+    untilAt: input.request.untilAt,
+  };
+
+  while (Date.now() + DEADLINE_MARGIN_MS < input.deadlineAt) {
+    const maximumDurationMs = Math.min(
+      FACTUAL_WORKER_MAXIMUM_DURATION_MS,
+      input.deadlineAt - Date.now() - DEADLINE_MARGIN_MS
+    );
+    const pass = await dependencies.runWorker({
+      accounts: input.accounts,
+      commitLimit: FACTUAL_WORKER_BATCH_LIMIT,
+      includeProjection: false,
+      includeRefs: false,
+      includeSummaries: false,
+      maximumDurationMs,
+      observationLimit: FACTUAL_WORKER_BATCH_LIMIT,
+      pullRequestDiscoveryLimit: FACTUAL_WORKER_BATCH_LIMIT,
+      pullRequestLimit: FACTUAL_WORKER_BATCH_LIMIT,
+      pullRequestSignalLimit: FACTUAL_WORKER_BATCH_LIMIT,
+      scope,
+    });
+    const stages = factualStagesFrom(pass);
+    const claimed = stages.reduce((sum, stage) => sum + stage.claimed, 0);
+    const completed = stages.reduce((sum, stage) => sum + stage.completed, 0);
+    const deferred = stages.reduce((sum, stage) => sum + stage.deferred, 0);
+    result.claimed += claimed;
+    result.completed += completed;
+    result.passes += 1;
+    result.projectionRuns += pass.projection === null ? 0 : 1;
+
+    const backlog = await dependencies.readBacklog({
+      accounts: input.accounts,
+      scope,
+    });
+    result.pending = backlog.pending;
+    result.retryAt = backlog.retryAt;
+    result.unavailable = backlog.unavailable;
+    input.onProgress?.({ ...result, pending: { ...result.pending } });
+
+    if (backlog.pending.total === 0) {
+      if (Date.now() + DEADLINE_MARGIN_MS >= input.deadlineAt) {
+        return stoppedFactualDrain(result, { stopReason: "deadline" });
+      }
+      await dependencies.refreshProjection(new Date());
+      result.projectionRuns += 1;
+      return {
+        ...result,
+        complete: true,
+        retryAt: null,
+        stopReason: "complete",
+      };
+    }
+    if (
+      pass.deadlineReached ||
+      Date.now() + DEADLINE_MARGIN_MS >= input.deadlineAt
+    ) {
+      return stoppedFactualDrain(result, { stopReason: "deadline" });
+    }
+    if (deferred > 0 || claimed === 0) {
+      return stoppedFactualDrain(result, {
+        retryAt: backlog.retryAt,
+        stopReason: "deferred",
+      });
+    }
+  }
+
+  const backlog = await dependencies.readBacklog({
+    accounts: input.accounts,
+    scope,
+  });
+  result.pending = backlog.pending;
+  result.retryAt = backlog.retryAt;
+  result.unavailable = backlog.unavailable;
+  return stoppedFactualDrain(result, { stopReason: "deadline" });
+};
+
+interface GitHubBackfillDiscoveryDependencies {
+  assertIdentity: typeof assertGitHubTokenIdentity;
+  discoverCurrentHeads: typeof backfillGitHubCurrentRefGenerations;
+  discoverPullRequests: typeof backfillGitHubPullRequests;
+  drainFactual: typeof runGitHubBackfillFactualDrain;
+  loadRepositoryInventory: typeof loadGitHubRepositoryInventory;
+  lowerRefCoverage: typeof lowerGitHubRefBackfillSinceAt;
+}
+
+const productionDependencies: GitHubBackfillDiscoveryDependencies = {
+  assertIdentity: assertGitHubTokenIdentity,
+  discoverCurrentHeads: backfillGitHubCurrentRefGenerations,
+  discoverPullRequests: backfillGitHubPullRequests,
+  drainFactual: runGitHubBackfillFactualDrain,
+  loadRepositoryInventory: loadGitHubRepositoryInventory,
+  lowerRefCoverage: lowerGitHubRefBackfillSinceAt,
+};
+
+const discoveryInterruptionFrom = (
+  error: unknown
+): GitHubBackfillIdentityResult | null => {
+  if (error instanceof GitHubRequestDeadlineError) {
+    return { complete: false, retryAt: null, stopReason: "deadline" };
+  }
+  if (error instanceof GitHubResponseError && error.retryable) {
+    return {
+      complete: false,
+      retryAt: error.retryAt,
+      stopReason: "provider_retry",
+    };
+  }
+  if (
+    error instanceof Error &&
+    (error.name === "GitHubRepositoryInventoryClaimLostError" ||
+      error.name === "GitHubRepositoryInventoryUnavailableError")
+  ) {
+    return { complete: false, retryAt: null, stopReason: "deferred" };
+  }
+  return null;
+};
+
+export const runGitHubBackfillDiscovery = async (
+  input: {
+    deadlineAt: number;
+    environment: BackfillEnvironment;
+    onProgress?: GitHubBackfillProgressReporter;
+    request: GitHubBackfillRequest;
+  },
+  dependencies: GitHubBackfillDiscoveryDependencies = productionDependencies
+): Promise<GitHubBackfillInventory> => {
+  const identities = await Promise.all(
+    input.request.accounts.map(async (account) => {
+      const token = tokenFor(account, input.environment);
+      input.onProgress?.({
+        account,
+        phase: "started",
+        stage: "identity",
+      });
+      try {
+        await dependencies.assertIdentity(account, token, {
+          deadlineAt: input.deadlineAt,
+        });
+        input.onProgress?.({
+          account,
+          complete: true,
+          phase: "finished",
+          stage: "identity",
+        });
+        return {
+          account,
+          identity: {
+            complete: true,
+            retryAt: null,
+            stopReason: "complete",
+          } satisfies GitHubBackfillIdentityResult,
+          token,
+        };
+      } catch (error) {
+        const interruption = discoveryInterruptionFrom(error);
+        if (interruption === null) {
+          throw error;
+        }
+        input.onProgress?.({
+          account,
+          complete: false,
+          phase: "finished",
+          stage: "identity",
+        });
+        return { account, identity: interruption, token };
+      }
+    })
+  );
+
+  const accounts = identities.map(({ account, identity }) => ({
+    account,
+    identity,
+    pullRequests: null,
+    repositoryInventory: null,
+  }));
+  if (identities.some(({ identity }) => !identity.complete)) {
+    return { accounts, currentHeads: null, factualDrain: null };
+  }
+
+  const inventoriedIdentities = await Promise.all(
+    identities.map(async ({ account, identity, token }) => {
+      input.onProgress?.({
+        account,
+        phase: "started",
+        stage: "repository_inventory",
+      });
+      try {
+        await dependencies.loadRepositoryInventory({
+          account,
+          deadlineAt: input.deadlineAt,
+          token,
+        });
+        input.onProgress?.({
+          account,
+          complete: true,
+          phase: "finished",
+          stage: "repository_inventory",
+        });
+        return {
+          account,
+          identity,
+          repositoryInventory: {
+            complete: true,
+            retryAt: null,
+            stopReason: "complete",
+          } satisfies GitHubBackfillIdentityResult,
+          token,
+        };
+      } catch (error) {
+        const interruption = discoveryInterruptionFrom(error);
+        if (interruption === null) {
+          throw error;
+        }
+        input.onProgress?.({
+          account,
+          complete: false,
+          phase: "finished",
+          stage: "repository_inventory",
+        });
+        return { account, identity, repositoryInventory: interruption, token };
+      }
+    })
+  );
+  const inventoriedAccounts = inventoriedIdentities.map(
+    ({ account, identity, repositoryInventory }) => ({
+      account,
+      identity,
+      pullRequests: null,
+      repositoryInventory,
+    })
+  );
+  if (
+    inventoriedIdentities.some(
+      ({ repositoryInventory }) => !repositoryInventory.complete
+    )
+  ) {
+    return {
+      accounts: inventoriedAccounts,
+      currentHeads: null,
+      factualDrain: null,
+    };
+  }
+
+  await dependencies.lowerRefCoverage(
+    input.request.accounts,
+    input.request.sinceAt
+  );
+
+  input.onProgress?.({
+    account: null,
+    phase: "started",
+    stage: "current_heads",
+  });
+  const currentHeads = await dependencies.discoverCurrentHeads({
+    deadlineAt: input.deadlineAt,
+    repositoryId: input.request.repositoryId,
+  });
+  input.onProgress?.({
+    account: null,
+    complete: currentHeads.complete,
+    completed: currentHeads.completedGenerations,
+    pending: currentHeads.remainingRefs,
+    phase: "finished",
+    stage: "current_heads",
+  });
+  if (!currentHeads.complete) {
+    return {
+      accounts: inventoriedAccounts,
+      currentHeads,
+      factualDrain: null,
+    };
+  }
+
+  const discoveredAccounts = await Promise.all(
+    inventoriedIdentities.map(
+      async ({ account, identity, repositoryInventory, token }) => {
+        input.onProgress?.({
+          account,
+          phase: "started",
+          stage: "pull_requests",
+        });
+        const pullRequests = await dependencies.discoverPullRequests({
+          account,
+          deadlineAt: input.deadlineAt,
+          onProgress: (progress) => {
+            input.onProgress?.({
+              account,
+              completed: progress.scannedPullRequests,
+              phase: "progress",
+              stage: "pull_requests",
+              total: progress.selectedAuthoredPullRequests,
+            });
+          },
+          repositoryId: input.request.repositoryId,
+          sinceAt: input.request.sinceAt,
+          token,
+          untilAt: input.request.untilAt,
+        });
+        input.onProgress?.({
+          account,
+          complete: pullRequests.complete,
+          completed: pullRequests.scannedPullRequests,
+          phase: "finished",
+          stage: "pull_requests",
+          total: pullRequests.selectedAuthoredPullRequests,
+        });
+        return { account, identity, pullRequests, repositoryInventory };
+      }
+    )
+  );
+  if (discoveredAccounts.some(({ pullRequests }) => !pullRequests.complete)) {
+    return {
+      accounts: discoveredAccounts,
+      currentHeads,
+      factualDrain: null,
+    };
+  }
+  input.onProgress?.({
+    account: null,
+    phase: "started",
+    stage: "factual_drain",
+  });
+  const factualDrain = await dependencies.drainFactual({
+    accounts: input.request.accounts,
+    deadlineAt: input.deadlineAt,
+    onProgress: (progress) => {
+      input.onProgress?.({
+        account: null,
+        completed: progress.completed,
+        pending: progress.pending.total,
+        phase: "progress",
+        stage: "factual_drain",
+      });
+    },
+    request: input.request,
+  });
+  input.onProgress?.({
+    account: null,
+    complete: factualDrain.complete,
+    completed: factualDrain.completed,
+    pending: factualDrain.pending.total,
+    phase: "finished",
+    stage: "factual_drain",
+  });
+  return { accounts: discoveredAccounts, currentHeads, factualDrain };
 };
 
 const requestValue = (input: BackfillArguments) => ({
@@ -146,400 +600,32 @@ const requestValue = (input: BackfillArguments) => ({
   startDate: input.startDate,
 });
 
-interface BackfillProcessingTotals extends GitHubBackfillProcessingCounts {
-  passes: number;
-  stopReason:
-    | "audit_failed"
-    | "no_immediately_claimable_work"
-    | "pipeline_stalled"
-    | "retry_outside_budget"
-    | "time_budget";
-}
-
-const emptyProcessingCounts = (): GitHubBackfillProcessingCounts => ({
-  aliases: 0,
-  canonicalizationAttempts: 0,
-  canonicalized: 0,
-  claimed: 0,
-  deferred: 0,
-  failed: 0,
-  processed: 0,
-  unavailable: 0,
-});
-
-const addProcessingCounts = (
-  totals: GitHubBackfillProcessingCounts,
-  counts: GitHubBackfillProcessingCounts
-) => {
-  totals.aliases += counts.aliases;
-  totals.canonicalizationAttempts += counts.canonicalizationAttempts;
-  totals.canonicalized += counts.canonicalized;
-  totals.claimed += counts.claimed;
-  totals.deferred += counts.deferred;
-  totals.failed += counts.failed;
-  totals.processed += counts.processed;
-  totals.unavailable += counts.unavailable;
-};
-
-const deadlineErrorAfter = async (
-  milliseconds: number,
-  signal: AbortSignal
-): Promise<never> => {
-  await delay(milliseconds, undefined, { signal });
-  throw new GitHubRequestDeadlineError();
-};
-
-export const runBeforeDeadline = async <Value>(
-  operation: Promise<Value>,
-  deadlineAt: number
-): Promise<Value> => {
-  const remainingMilliseconds = Math.floor(deadlineAt - Date.now());
-  if (remainingMilliseconds < 1) {
-    throw new GitHubRequestDeadlineError();
-  }
-  const abortController = new AbortController();
-  const timeout = deadlineErrorAfter(
-    remainingMilliseconds,
-    abortController.signal
-  );
-  try {
-    return await Promise.race([operation, timeout]);
-  } finally {
-    abortController.abort();
-  }
-};
-
-const processQueue = async (
-  deadlineAt: number,
-  request: GitHubBackfillRequest,
-  completedPasses = 0
-): Promise<BackfillProcessingTotals> => {
-  let passes = 0;
-  const totals = emptyProcessingCounts();
-  while (Date.now() + WORKER_CLEANUP_MARGIN_MS < deadlineAt) {
-    const maximumDurationMs = Math.min(
-      WORKER_PASS_DURATION_MS,
-      deadlineAt - Date.now() - WORKER_CLEANUP_MARGIN_MS
-    );
-    if (maximumDurationMs < 1) {
-      break;
-    }
-    const result = await runBeforeDeadline(
-      runGitHubActivityWorker({
-        accounts: request.accounts,
-        commitLimit: GITHUB_BACKFILL_WORKER_BATCH_SIZE,
-        maximumDurationMs,
-        observationLimit: GITHUB_BACKFILL_WORKER_BATCH_SIZE,
-        pullRequestDiscoveryLimit: GITHUB_BACKFILL_WORKER_BATCH_SIZE,
-        pullRequestLimit: GITHUB_BACKFILL_WORKER_BATCH_SIZE,
-        pullRequestSignalLimit: GITHUB_BACKFILL_WORKER_BATCH_SIZE,
-        scope: {
-          repositoryId: request.repositoryId,
-          sinceAt: request.sinceAt,
-          untilAt: request.untilAt,
-        },
-        summaryLimit: GITHUB_BACKFILL_WORKER_BATCH_SIZE,
-      }),
-      deadlineAt
-    );
-    const counts = githubBackfillProcessingCountsFrom(result);
-    passes += 1;
-    addProcessingCounts(totals, counts);
-    process.stdout.write(
-      `Worker pass ${String(completedPasses + passes)}: claimed ${String(counts.claimed)}, processed ${String(counts.processed)}, deferred ${String(counts.deferred)}, unavailable ${String(counts.unavailable)}, failed ${String(counts.failed)}, canonicalized ${String(counts.canonicalized)}/${String(counts.canonicalizationAttempts)}, aliases ${String(counts.aliases)}.\n`
-    );
-    if (!githubBackfillProcessingMadeProgress(counts)) {
-      return {
-        ...totals,
-        passes,
-        stopReason: "no_immediately_claimable_work",
-      };
-    }
-  }
-  return { ...totals, passes, stopReason: "time_budget" };
-};
-
-const combineProcessingTotals = (
-  total: BackfillProcessingTotals,
-  next: BackfillProcessingTotals
-): BackfillProcessingTotals => {
-  addProcessingCounts(total, next);
-  total.passes += next.passes;
-  total.stopReason = next.stopReason;
-  return total;
-};
-
-export const backfillRetryWaitMillisecondsFrom = (
-  audits: readonly Pick<GitHubActivityAuditReport, "pipeline" | "status">[],
-  deadlineAt: number,
-  now = Date.now(),
-  inconclusiveRetries = 0
-) => {
-  if (
-    audits.length === 0 ||
-    audits.some(
-      ({ status }) =>
-        status !== "inconclusive" &&
-        status !== "pipeline_incomplete" &&
-        status !== "stored_projection_verified"
-    )
-  ) {
-    return null;
-  }
-  if (audits.some(({ status }) => status === "inconclusive")) {
-    const retryDelay = INCONCLUSIVE_AUDIT_RETRY_DELAYS_MS[inconclusiveRetries];
-    return retryDelay !== undefined &&
-      now + retryDelay + WORKER_CLEANUP_MARGIN_MS < deadlineAt
-      ? retryDelay
-      : null;
-  }
-  const retryTimes = audits.flatMap(({ pipeline, status }) => {
-    if (status !== "pipeline_incomplete" || pipeline.earliestRetryAt === null) {
-      return [];
-    }
-    const timestamp = new Date(pipeline.earliestRetryAt).getTime();
-    if (!Number.isFinite(timestamp)) {
-      throw new TypeError("The GitHub audit retry timestamp is invalid.");
-    }
-    return [timestamp];
-  });
-  if (retryTimes.length === 0) {
-    return null;
-  }
-  const waitMilliseconds = Math.max(1000, Math.min(...retryTimes) - now);
-  return now + waitMilliseconds + WORKER_CLEANUP_MARGIN_MS < deadlineAt
-    ? waitMilliseconds
-    : null;
-};
-
-const tokenFor = (account: TrackedGitHubAccount) => {
-  const token =
-    account === "f0rr0"
-      ? env.GITHUB_F0RR0_TOKEN
-      : env.GITHUB_YUPPIESTECHDEV_TOKEN;
-  if (token === undefined) {
-    throw new Error(`The GitHub token for ${account} is not configured.`);
-  }
-  return token;
-};
-
-const logAccount = (account: TrackedGitHubAccount, message: string) => {
-  process.stdout.write(`[${account}] ${message}\n`);
-};
-
-const runScopedAudits = async (
-  request: GitHubBackfillRequest,
-  deadlineAt: number
-) => {
-  // Provider discovery can keep this process alive for minutes. Give each
-  // strict projection audit a fresh connection instead of reusing a client
-  // that may have crossed a pooler/network idle boundary.
-  await closeDatabase();
-  const auditNow = new Date();
-  return await runBeforeDeadline(
-    Promise.all(
-      request.accounts.map(async (account) => {
-        const auditRequest = githubActivityAuditRequestFrom(
-          {
-            account,
-            endDate: request.endDate,
-            repositoryId: request.repositoryId,
-            startDate: request.startDate,
-          },
-          auditNow
-        );
-        if (auditRequest === null) {
-          throw new Error("The completed backfill audit scope is invalid.");
-        }
-        return await runGitHubActivityAudit(auditRequest);
-      })
-    ),
-    deadlineAt
-  );
-};
-
 const main = async () => {
   const input = backfillArgumentsFrom(process.argv.slice(2));
-  requireBackfillEnvironment(input);
   const request = githubBackfillRequestFrom(requestValue(input));
   if (request === null) {
     throw new TypeError(
-      "The backfill input is invalid: use an inclusive UTC range of at most 31 days, with YYYY-MM-DD dates ending today or earlier and a tracked account. Broad runs must start within the last 62 UTC days; use a numeric repository ID for older recovery."
+      "The backfill scope must be a tracked account and an inclusive UTC range of at most 31 days. Broad runs must start within the last 62 days; older runs require a numeric repository ID."
     );
   }
-  const { sinceAt, untilAt } = request;
+  requireBackfillEnvironment(request);
   const deadlineAt = Date.now() + input.maximumMinutes * 60_000;
   try {
-    const evidenceRecovery = await runBeforeDeadline(
-      ensureGitHubEvidenceIntegrity(new Date(), { deadlineAt }),
-      deadlineAt
-    );
-    const inventories = await runBeforeDeadline(
-      Promise.all(
-        request.accounts.map(async (account) => {
-          const token = tokenFor(account);
-          await assertGitHubTokenIdentity(account, token, { deadlineAt });
-          logAccount(account, "authenticated token identity");
-          const pullRequests = await backfillGitHubPullRequests({
-            account,
-            deadlineAt,
-            onRateLimitWait: (retryAt) => {
-              logAccount(
-                account,
-                `PR rate limit resets at ${retryAt.toISOString()}; waiting within budget`
-              );
-            },
-            repositoryId: request.repositoryId,
-            sinceAt,
-            token,
-            untilAt,
-          });
-          logAccount(
-            account,
-            `authored pull requests: selected ${String(pullRequests.selectedAuthoredPullRequests)} updated in the window from ${String(pullRequests.authoredPullRequestsLifetime)} lifetime rows across ${String(pullRequests.authoredPullRequestPages)} pages`
-          );
-          logAccount(
-            account,
-            `pull requests: ${String(pullRequests.pullRequests)} persisted, ${String(pullRequests.skippedPullRequests)} outside the work window, ${String(pullRequests.unavailablePullRequests)} unavailable PRs and ${String(pullRequests.unavailableRepositories)} unavailable repositories after ${String(pullRequests.scannedPullRequests)} candidates (${pullRequests.stopReason})`
-          );
-          if (Date.now() + WORKER_CLEANUP_MARGIN_MS >= deadlineAt) {
-            return { account, direct: null, pullRequests };
-          }
-          const direct = await backfillGitHubCommitsFromCurrentRefs({
-            account,
-            deadlineAt,
-            onRateLimitWait: (retryAt) => {
-              logAccount(
-                account,
-                `current-ref rate limit resets at ${retryAt.toISOString()}; waiting within budget`
-              );
-            },
-            repositoryId: request.repositoryId,
-            sinceAt,
-            token,
-            untilAt,
-          });
-          logAccount(
-            account,
-            `current refs: ${String(direct.uniqueCommits)} unique commits from ${String(direct.heads)} distinct heads, ${String(direct.unavailableRepositories)} unavailable repositories (${direct.stopReason})`
-          );
-          return { account, direct, pullRequests };
-        })
-      ),
-      deadlineAt
-    );
-    const boundedDiscoveryComplete =
-      githubBackfillDiscoveryCompleteFrom(inventories);
-    const worker: BackfillProcessingTotals = {
-      ...emptyProcessingCounts(),
-      passes: 0,
-      stopReason: "no_immediately_claimable_work",
-    };
-    let audits: readonly GitHubActivityAuditReport[] = [];
-    let inconclusiveAuditRetries = 0;
-    let completion = githubBackfillCompletionFrom({
-      auditStatuses: [],
-      boundedDiscoveryComplete,
+    const inventory = await runGitHubBackfillDiscovery({
+      deadlineAt,
+      environment: env,
+      onProgress: (progress) => {
+        process.stdout.write(`${JSON.stringify({ progress })}\n`);
+      },
+      request,
     });
-    while (true) {
-      const pass = await processQueue(deadlineAt, request, worker.passes);
-      combineProcessingTotals(worker, pass);
-      audits = await runScopedAudits(request, deadlineAt);
-      completion = githubBackfillCompletionFrom({
-        auditStatuses: audits.map(({ status }) => status),
-        boundedDiscoveryComplete,
-      });
-      if (completion.complete || !boundedDiscoveryComplete) {
-        break;
-      }
-      if (pass.stopReason === "time_budget") {
-        worker.stopReason = "time_budget";
-        break;
-      }
-      const hasInconclusiveAudit = audits.some(
-        ({ status }) => status === "inconclusive"
-      );
-      const retryWait = backfillRetryWaitMillisecondsFrom(
-        audits,
-        deadlineAt,
-        Date.now(),
-        inconclusiveAuditRetries
-      );
-      if (retryWait === null) {
-        if (
-          audits.some(
-            ({ status }) => status === "inconclusive" || status === "mismatch"
-          )
-        ) {
-          worker.stopReason = "audit_failed";
-        } else if (
-          audits.some(({ pipeline }) => pipeline.earliestRetryAt !== null)
-        ) {
-          worker.stopReason = "retry_outside_budget";
-        } else {
-          worker.stopReason = "pipeline_stalled";
-        }
-        break;
-      }
-      inconclusiveAuditRetries = hasInconclusiveAudit
-        ? inconclusiveAuditRetries + 1
-        : 0;
-      process.stdout.write(
-        `No scoped work is claimable; waiting ${String(Math.ceil(retryWait / 1000))} seconds for the next durable retry within the Action budget.\n`
-      );
-      await delay(retryWait);
-    }
-    const coverageGaps = {
-      providerPullRequests: inventories.reduce(
-        (total, { pullRequests }) =>
-          total + pullRequests.unavailablePullRequests,
-        0
-      ),
-      providerRepositories: inventories.reduce(
-        (total, { direct, pullRequests }) =>
-          total +
-          (direct?.unavailableRepositories ?? 0) +
-          pullRequests.unavailableRepositories,
-        0
-      ),
-      storedPipeline: audits.reduce(
-        (total, audit) => total + audit.coverage.gaps.total,
-        0
-      ),
-    };
-    const totalCoverageGaps =
-      coverageGaps.providerPullRequests +
-      coverageGaps.providerRepositories +
-      coverageGaps.storedPipeline;
-    const outcome = githubBackfillOutcomeFrom(completion, totalCoverageGaps);
-    process.stdout.write(
-      `${JSON.stringify({ audits, boundedDiscoveryComplete, complete: completion.complete, coverageGaps: { ...coverageGaps, total: totalCoverageGaps }, discoveryCoverage: request.repositoryId === null ? "repositories_pushed_and_pull_requests_updated_since_window_start" : "explicit_repository", evidenceRecovery: evidenceRecovery.status, inventories, outcome, pipelineSettled: completion.pipelineSettled, processing: worker })}\n`
-    );
-    process.stdout.write(
-      "Processing totals cover the requested account, date window, and optional repository scope; boundedDiscoveryComplete reports discovery and pipelineSettled reports scoped stored projection readiness.\n"
-    );
-    if (completion.complete && totalCoverageGaps > 0) {
-      process.stdout.write(
-        `The bounded backfill completed with ${String(totalCoverageGaps)} explicit coverage gaps; inspect coverageGaps and audit coverage before interpreting totals.\n`
-      );
-    } else if (worker.stopReason === "time_budget") {
-      process.stdout.write(
-        "The Action time budget ended with scoped work still unsettled.\n"
-      );
-    } else if (!completion.complete) {
-      process.stdout.write(
-        `The scoped pipeline stopped as ${worker.stopReason}; its audit and earliestRetryAt fields describe the remaining work.\n`
-      );
-    }
-    if (githubBackfillExitCodeFrom(completion) !== 0) {
-      if (boundedDiscoveryComplete) {
-        throw new Error(
-          `The bounded discovery finished, but the stored pipeline/projection is not settled for every requested scope (${audits.map(({ scope, status }) => `${scope.account}:${status}`).join(", ")}; stop reason: ${worker.stopReason}). Durable evidence is safe; inspect each audit's earliestRetryAt and failed checks before rerunning.`
-        );
-      }
-      throw new Error(
-        "The bounded GitHub discovery did not finish within the provider/time budget. Persisted evidence is safe; rerun the same inputs idempotently. If one recently active repository dominates the run, dispatch its numeric --repository-id separately."
-      );
+    const report = githubBackfillDiscoveryReportFrom({
+      deadlineAt,
+      inventory,
+    });
+    process.stdout.write(`${JSON.stringify(report)}\n`);
+    if (!report.complete) {
+      process.exitCode = 1;
     }
   } finally {
     await closeDatabase();

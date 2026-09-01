@@ -1,140 +1,9 @@
-import { createHash } from "node:crypto";
-
-import type { PublicCommitEvidence } from "@/lib/github-activity-public-summary";
-
-export const GITHUB_EXACT_DIFF_DIGEST_RECIPE = "github-exact-diff-v2";
 export const DEFAULT_GITHUB_ACTIVITY_WORKER_BATCH_SIZE = 4;
 export const MAXIMUM_GITHUB_ACTIVITY_WORKER_BATCH_SIZE = 8;
 export const GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS = Number.POSITIVE_INFINITY;
 
 const DEFAULT_RETRY_DELAY_MS = 15 * 60 * 1000;
 const MAXIMUM_RETRY_DELAY_MS = 24 * 60 * 60 * 1000;
-
-export interface GitHubExactDiffDigest {
-  complete: boolean;
-  digest: string;
-  recipe: typeof GITHUB_EXACT_DIFF_DIGEST_RECIPE;
-}
-
-interface StablePatchLines {
-  additions: number;
-  deletions: number;
-  lines: readonly string[];
-}
-
-const compareCodeUnitStrings = (left: string, right: string) => {
-  if (left === right) {
-    return 0;
-  }
-  return left < right ? -1 : 1;
-};
-
-const stablePatchLines = (patch: string): StablePatchLines => {
-  const lines: string[] = [];
-  let additions = 0;
-  let deletions = 0;
-  let inHunk = false;
-  let previousWasChange = false;
-
-  for (const line of patch.split("\n")) {
-    if (line.startsWith("@@")) {
-      inHunk = true;
-      previousWasChange = false;
-      const suffix = /^@@[^@]*@@(.*)$/u.exec(line)?.[1] ?? "";
-      lines.push(`@@${suffix}`);
-      continue;
-    }
-    if (!inHunk) {
-      continue;
-    }
-    if (line.startsWith("+")) {
-      additions += 1;
-      lines.push(line);
-      previousWasChange = true;
-      continue;
-    }
-    if (line.startsWith("-")) {
-      deletions += 1;
-      lines.push(line);
-      previousWasChange = true;
-      continue;
-    }
-    if (line === "\\ No newline at end of file" && previousWasChange) {
-      lines.push(line);
-      continue;
-    }
-    if (line.startsWith(" ")) {
-      lines.push(line);
-    }
-    previousWasChange = false;
-  }
-
-  return { additions, deletions, lines };
-};
-
-/**
- * Hashes stable hunk bodies and per-file change metadata. Numeric hunk ranges
- * are excluded because rebases move them; hunk labels, unchanged context, and
- * changed lines are preserved so identical edits in different code contexts do
- * not become false aliases. Commit identity and repository context are omitted.
- * An incomplete digest remains useful for auditing but must never be used as
- * proof that two commits are aliases.
- */
-export const exactGitHubDiffDigest = (
-  commit: PublicCommitEvidence
-): GitHubExactDiffDigest => {
-  const files = commit.files
-    .map((file) => {
-      const changes = file.patch === null ? null : stablePatchLines(file.patch);
-      return {
-        additions: file.additions,
-        changes: changes?.lines ?? null,
-        changesMatchCounters:
-          changes !== null &&
-          changes.additions === file.additions &&
-          changes.deletions === file.deletions,
-        deletions: file.deletions,
-        filename: file.filename,
-        previousFilename: file.previousFilename,
-        status: file.status,
-      };
-    })
-    .toSorted((left, right) => {
-      const byFilename = compareCodeUnitStrings(left.filename, right.filename);
-      if (byFilename !== 0) {
-        return byFilename;
-      }
-      return compareCodeUnitStrings(
-        left.previousFilename ?? "",
-        right.previousFilename ?? ""
-      );
-    });
-  const additions = files.reduce((total, file) => total + file.additions, 0);
-  const deletions = files.reduce((total, file) => total + file.deletions, 0);
-  const complete =
-    !commit.providerFileCapReached &&
-    files.length > 0 &&
-    files.every((file) => file.changesMatchCounters) &&
-    additions === commit.stats.additions &&
-    deletions === commit.stats.deletions;
-  const canonical = JSON.stringify({
-    files: files.map((file) => ({
-      additions: file.additions,
-      changes: file.changes,
-      deletions: file.deletions,
-      filename: file.filename,
-      previousFilename: file.previousFilename,
-      status: file.status,
-    })),
-    recipe: GITHUB_EXACT_DIFF_DIGEST_RECIPE,
-  });
-
-  return {
-    complete,
-    digest: createHash("sha256").update(canonical).digest("hex"),
-    recipe: GITHUB_EXACT_DIFF_DIGEST_RECIPE,
-  };
-};
 
 export const boundedWorkerLimit = (
   value: number | undefined,
@@ -215,16 +84,6 @@ export const workerDeadlineReached = (
   return now - startedAt >= maximumDurationMs;
 };
 
-export const githubCommitActivityOccurredAt = (source: {
-  committerAt: string;
-}) => {
-  const occurredAt = new Date(source.committerAt);
-  if (Number.isNaN(occurredAt.getTime())) {
-    throw new TypeError("The GitHub commit committer time is invalid.");
-  }
-  return occurredAt;
-};
-
 export const nextGitHubPullRequestReconciliationAt = (
   state: "closed" | "merged" | "open",
   now: Date,
@@ -248,18 +107,6 @@ export const nextGitHubPullRequestReconciliationAt = (
         : 7 * 24 * 60 * 60 * 1000;
   return new Date(now.getTime() + intervalMs);
 };
-
-export const githubSummaryCanPublish = (input: {
-  activityRevision: number;
-  attemptRevision: number;
-  canonicalized: boolean;
-  canonicalPublicId: string | null;
-  hidden: boolean;
-}) =>
-  input.activityRevision === input.attemptRevision &&
-  input.canonicalized &&
-  input.canonicalPublicId === null &&
-  !input.hidden;
 
 export const githubPullRequestSnapshotDisposition = (
   storedProviderUpdatedAt: Date,
