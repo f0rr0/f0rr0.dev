@@ -252,6 +252,15 @@ const optionalRepositoryDate = (value: unknown) => {
   if (value === null || value === undefined) {
     return { valid: true, value: null } as const;
   }
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      return { valid: false, value: null } as const;
+    }
+    const date = new Date(value * 1000);
+    return Number.isNaN(date.getTime())
+      ? ({ valid: false, value: null } as const)
+      : ({ valid: true, value: date.toISOString() } as const);
+  }
   const date = normalizedDate(value);
   return { valid: date !== null, value: date } as const;
 };
