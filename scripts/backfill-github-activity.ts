@@ -223,9 +223,8 @@ const stoppedFactualDrain = (
 });
 
 /**
- * Drains factual worker claims for one historical scope. A provider deferral is
- * returned immediately; the caller never sleeps or retries a deferred claim in
- * process. Summary generation and ref repair remain outside this drain.
+ * Drains ready factual worker claims for one historical scope without sleeping
+ * on future-deferred work. Summary generation and ref repair stay outside it.
  */
 export const runGitHubBackfillFactualDrain = async (
   input: {
@@ -270,7 +269,6 @@ export const runGitHubBackfillFactualDrain = async (
     const stages = factualStagesFrom(pass);
     const claimed = stages.reduce((sum, stage) => sum + stage.claimed, 0);
     const completed = stages.reduce((sum, stage) => sum + stage.completed, 0);
-    const deferred = stages.reduce((sum, stage) => sum + stage.deferred, 0);
     result.claimed += claimed;
     result.completed += completed;
     result.passes += 1;
@@ -304,7 +302,7 @@ export const runGitHubBackfillFactualDrain = async (
     ) {
       return stoppedFactualDrain(result, { stopReason: "deadline" });
     }
-    if (deferred > 0 || claimed === 0) {
+    if (claimed === 0 || backlog.retryAt !== null) {
       return stoppedFactualDrain(result, {
         retryAt: backlog.retryAt,
         stopReason: "deferred",
@@ -533,7 +531,8 @@ export const runGitHubBackfillDiscovery = async (
           onProgress: (progress) => {
             input.onProgress?.({
               account,
-              completed: progress.scannedPullRequests,
+              completed:
+                progress.scannedPullRequests + progress.reusedPullRequests,
               phase: "progress",
               stage: "pull_requests",
               total: progress.selectedAuthoredPullRequests,
@@ -547,7 +546,8 @@ export const runGitHubBackfillDiscovery = async (
         input.onProgress?.({
           account,
           complete: pullRequests.complete,
-          completed: pullRequests.scannedPullRequests,
+          completed:
+            pullRequests.scannedPullRequests + pullRequests.reusedPullRequests,
           phase: "finished",
           stage: "pull_requests",
           total: pullRequests.selectedAuthoredPullRequests,

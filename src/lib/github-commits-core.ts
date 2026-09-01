@@ -35,6 +35,13 @@ export interface GitHubRepositoryFacts extends GitHubRepository {
   visibility: "internal" | "private" | "public" | null;
 }
 
+/** Complete summary context available only from a repository inventory. */
+export interface GitHubRepositoryInventoryFacts extends GitHubRepositoryFacts {
+  description: string | null;
+  homepageUrl: string | null;
+  topics: readonly string[];
+}
+
 interface GitHubRefSignal {
   afterSha: string | null;
   beforeSha: string | null;
@@ -500,6 +507,61 @@ export const repositoryFactsFrom = (
     ...owner,
     pushedAt: pushedAt.value,
     visibility: visibility.visibility,
+  };
+};
+
+const inventoryTextFrom = (value: unknown, maximumLength: number) => {
+  if (value === null) {
+    return { valid: true, value: null } as const;
+  }
+  if (typeof value !== "string" || value.length > maximumLength) {
+    return { valid: false, value: null } as const;
+  }
+  return { valid: true, value: normalizedText(value, maximumLength) } as const;
+};
+
+const inventoryTopicsFrom = (value: unknown) => {
+  if (!Array.isArray(value) || value.length > 20) {
+    return null;
+  }
+  const topics = new Set<string>();
+  for (const topic of value) {
+    if (typeof topic !== "string" || topic.length > 50) {
+      return null;
+    }
+    const normalized = normalizedText(topic, 50);
+    if (normalized === null || normalized !== topic) {
+      return null;
+    }
+    topics.add(normalized);
+  }
+  return [...topics].toSorted();
+};
+
+/** Parses the complete repository shape returned by GitHub inventory APIs. */
+export const repositoryInventoryFactsFrom = (
+  value: unknown
+): GitHubRepositoryInventoryFacts | null => {
+  if (!isObject(value)) {
+    return null;
+  }
+  const repository = repositoryFactsFrom(value);
+  const description = inventoryTextFrom(value.description, 1000);
+  const homepageUrl = inventoryTextFrom(value.homepage, 2000);
+  const topics = inventoryTopicsFrom(value.topics);
+  if (
+    repository === null ||
+    !description.valid ||
+    !homepageUrl.valid ||
+    topics === null
+  ) {
+    return null;
+  }
+  return {
+    ...repository,
+    description: description.value,
+    homepageUrl: homepageUrl.value,
+    topics,
   };
 };
 

@@ -68,22 +68,6 @@ describe("GitHub activity commit acquisition", () => {
     globalThis.fetch = async (input) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
-      if (url.pathname === "/repos/example-org/example-repo") {
-        return Response.json({
-          description: "Example repository",
-          full_name: "example-org/example-repo",
-          homepage: null,
-          id: 123,
-          owner: {
-            avatar_url: "https://avatars.githubusercontent.com/u/123?v=4",
-            login: "example-org",
-            type: "Organization",
-          },
-          private: false,
-          topics: [],
-        });
-      }
-
       expect(url.pathname).toBe(
         `/repos/example-org/example-repo/commits/${sha}`
       );
@@ -141,23 +125,9 @@ describe("GitHub activity commit acquisition", () => {
     globalThis.fetch = async (input) => {
       const url =
         input instanceof Request ? new URL(input.url) : new URL(input);
-      if (url.pathname === "/repos/example-org/example-repo") {
-        return Response.json({
-          description: null,
-          full_name: "example-org/example-repo",
-          homepage: null,
-          id: 123,
-          owner: {
-            avatar_url: "https://avatars.githubusercontent.com/u/123?v=4",
-            id: 123,
-            login: "example-org",
-            type: "Organization",
-          },
-          private: false,
-          topics: [],
-          visibility: "public",
-        });
-      }
+      expect(url.pathname).toBe(
+        `/repos/example-org/example-repo/commits/${sha}`
+      );
       const parents = ancestryResponses[commitReads];
       commitReads += 1;
       return Response.json({

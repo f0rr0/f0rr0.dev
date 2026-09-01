@@ -4,8 +4,14 @@ import {
   githubApiUrl,
   nextGitHubPage,
 } from "@/lib/github-api";
-import { commitShaFrom, repositoryFactsFrom } from "@/lib/github-commits-core";
-import type { GitHubRepositoryFacts } from "@/lib/github-commits-core";
+import {
+  commitShaFrom,
+  repositoryInventoryFactsFrom,
+} from "@/lib/github-commits-core";
+import type {
+  GitHubRepositoryFacts,
+  GitHubRepositoryInventoryFacts,
+} from "@/lib/github-commits-core";
 import type { GitHubRepositoryRefSnapshot } from "@/lib/github-commits-store";
 
 const GITHUB_PAGE_SIZE = 100;
@@ -104,7 +110,7 @@ export const collectAccessibleGitHubRepositories = async (
       token,
       options
     );
-    const facts = repositoryFactsFrom(payload);
+    const facts = repositoryInventoryFactsFrom(payload);
     if (facts === null) {
       throw new TypeError("GitHub returned an invalid repository response.");
     }
@@ -118,9 +124,9 @@ export const collectAccessibleGitHubRepositories = async (
   url.searchParams.set("sort", "full_name");
   url.searchParams.set("visibility", "all");
   const values = await fetchRepositoryInventory(url, token, options);
-  const repositories = new Map<string, GitHubRepositoryFacts>();
+  const repositories = new Map<string, GitHubRepositoryInventoryFacts>();
   for (const value of values) {
-    const repository = repositoryFactsFrom(value);
+    const repository = repositoryInventoryFactsFrom(value);
     if (repository === null) {
       throw new TypeError("GitHub returned an invalid repository response.");
     }

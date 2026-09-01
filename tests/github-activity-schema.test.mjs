@@ -32,6 +32,7 @@ describe("GitHub activity persistence schema", () => {
   test("keeps compact commit identity and durable enrichment state", () => {
     expect(getTableName(githubCommits)).toBe("github_commits");
     expect(githubCommits.repositoryId.primary).toBe(false);
+    expect(githubCommits.repository.notNull).toBe(false);
     expect(githubCommits.enrichmentState.default).toBe("pending");
     expect(githubCommits.enrichmentState.notNull).toBe(true);
     expect(githubCommits.pullRequestDiscoveryState.default).toBe("pending");
@@ -50,6 +51,9 @@ describe("GitHub activity persistence schema", () => {
         "github_commits_pr_discovery_state",
       ])
     );
+    expect(
+      config(githubCommits).foreignKeys.map((item) => item.getName())
+    ).toContain("github_commits_repository_fk");
   });
 
   test("records checkpoint gaps and idempotent push discovery before hydration", () => {
@@ -66,10 +70,14 @@ describe("GitHub activity persistence schema", () => {
     expect(githubAccountCheckpoints.tagRefNextPage.name).toBe(
       "tag_ref_next_page"
     );
+    expect(githubAccountCheckpoints.pullRequestBackfillDigest.name).toBe(
+      "pull_request_backfill_digest"
+    );
     expect(checkNames(githubAccountCheckpoints)).toEqual(
       expect.arrayContaining([
         "github_account_checkpoints_ref_leases",
         "github_account_checkpoints_ref_scans",
+        "github_account_checkpoints_pr_backfill_digest",
       ])
     );
     expect(getTableName(githubRepositories)).toBe("github_repositories");

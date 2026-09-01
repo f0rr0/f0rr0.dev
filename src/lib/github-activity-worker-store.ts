@@ -51,10 +51,6 @@ import {
 } from "@/lib/github-pull-request-store";
 import type { StoredPullRequestSnapshot } from "@/lib/github-pull-request-store";
 
-type DatabaseTransaction = Parameters<
-  Parameters<ReturnType<typeof getDatabase>["transaction"]>[0]
->[0];
-
 const DEFAULT_LEASE_MS = 5 * 60 * 1000;
 
 const commitIdentity = (commit: { repositoryId: string; sha: string }) =>
@@ -434,7 +430,6 @@ export const completeGitHubPushObservation = async (
                 committedAt: new Date(commit.committedAt),
                 firstObservedAt: observation.observedAt,
                 message: commit.message,
-                repository: commit.repository,
                 repositoryId: commit.repositoryId,
                 sha: commit.sha,
               }))
@@ -551,12 +546,16 @@ export const claimGitHubCommitsForEnrichment = async (
         errorCode: githubCommits.enrichmentError,
         leaseUntil: githubCommits.enrichmentLeaseUntil,
         message: githubCommits.message,
-        repository: githubCommits.repository,
+        repository: githubRepositories.fullName,
         repositoryId: githubCommits.repositoryId,
         sha: githubCommits.sha,
         state: githubCommits.enrichmentState,
       })
       .from(githubCommits)
+      .innerJoin(
+        githubRepositories,
+        eq(githubRepositories.id, githubCommits.repositoryId)
+      )
       .where(
         and(
           inArray(githubCommits.author, [...activeAccounts]),
@@ -629,109 +628,42 @@ export const claimGitHubCommitsForEnrichment = async (
   });
 };
 
-const persistRepositoryEvidence = async (
-  transaction: DatabaseTransaction,
-  source: GitHubActivityCommitSource,
-  repositoryId: string,
-  now: Date
-) => {
-  await transaction
-    .insert(githubRepositories)
-    .values({
-      description: source.repository.description,
-      factsVerifiedAt: now,
-      firstObservedAt: now,
-      fullName: source.repository.fullName,
-      homepageUrl: source.repository.homepageUrl,
-      htmlUrl: `https://github.com/${source.repository.fullName}`,
-      id: repositoryId,
-      lastObservedAt: now,
-      ownerAvatarUrl: source.repository.avatarUrl,
-      ownerLogin: source.repository.ownerLogin,
-      ownerType: source.repository.ownerType,
-      topics: source.repository.topics,
-      visibility: source.repository.private ? "private" : "public",
-    })
-    .onConflictDoUpdate({
-      set: {
-        description: source.repository.description,
-        factsVerifiedAt: now,
-        fullName: source.repository.fullName,
-        homepageUrl: source.repository.homepageUrl,
-        htmlUrl: `https://github.com/${source.repository.fullName}`,
-        lastObservedAt: now,
-        ownerAvatarUrl: source.repository.avatarUrl,
-        ownerLogin: source.repository.ownerLogin,
-        ownerType: source.repository.ownerType,
-        topics: source.repository.topics,
-        visibility: source.repository.private ? "private" : "public",
-      },
-      target: githubRepositories.id,
-    });
-};
-
 export const completeGitHubCommitEnrichment = async (
   commit: ClaimedGitHubCommit,
-  source: GitHubActivityCommitSource,
-  now = new Date()
-): Promise<boolean> =>
-  await getDatabase().transaction(async (transaction) => {
-    const [locked] = await transaction
-      .select({ repositoryId: githubCommits.repositoryId })
-      .from(githubCommits)
-      .where(
-        and(
-          commitIdentity(commit),
-          eq(githubCommits.enrichmentState, "processing"),
-          eq(githubCommits.enrichmentLeaseToken, commit.leaseToken)
-        )
+  source: GitHubActivityCommitSource
+): Promise<boolean> => {
+  const fileFacts = githubWorkUnitFileFactsFrom(source.commit.files);
+  const [updated] = await getDatabase()
+    .update(githubCommits)
+    .set({
+      additions: source.commit.stats.additions,
+      authoredAt: new Date(source.authoredAt),
+      authorUserId: source.authorUserId,
+      changedFiles: source.commit.files.length,
+      committerAt: new Date(source.committerAt),
+      committerUserId: source.committerUserId,
+      committedAt: new Date(source.committerAt),
+      deletions: source.commit.stats.deletions,
+      enrichmentError: null,
+      enrichmentLeaseToken: null,
+      enrichmentLeaseUntil: null,
+      enrichmentState: "complete",
+      fileFacts,
+      fileFactsComplete: !source.commit.providerFileCapReached,
+      message: source.commit.message,
+      parentShas: source.commit.parents,
+      providerFileCapReached: source.commit.providerFileCapReached,
+    })
+    .where(
+      and(
+        commitIdentity(commit),
+        eq(githubCommits.enrichmentState, "processing"),
+        eq(githubCommits.enrichmentLeaseToken, commit.leaseToken)
       )
-      .for("update");
-    if (locked === undefined) {
-      return false;
-    }
-    await persistRepositoryEvidence(
-      transaction,
-      source,
-      commit.repositoryId,
-      now
-    );
-    const fileFacts = githubWorkUnitFileFactsFrom(source.commit.files);
-    await transaction
-      .update(githubCommits)
-      .set({
-        additions: source.commit.stats.additions,
-        authoredAt: new Date(source.authoredAt),
-        authorUserId: source.authorUserId,
-        changedFiles: source.commit.files.length,
-        committerAt: new Date(source.committerAt),
-        committerUserId: source.committerUserId,
-        committedAt: new Date(source.committerAt),
-        deletions: source.commit.stats.deletions,
-        enrichmentError: null,
-        enrichmentLeaseToken: null,
-        enrichmentLeaseUntil: null,
-        enrichmentState: "complete",
-        fileFacts,
-        fileFactsComplete: !source.commit.providerFileCapReached,
-        message: source.commit.message,
-        parentShas: source.commit.parents,
-        providerFileCapReached: source.commit.providerFileCapReached,
-        repository: source.repository.fullName,
-        repositoryOwnerAvatarUrl: source.repository.avatarUrl,
-        repositoryOwnerLogin: source.repository.ownerLogin,
-        repositoryOwnerType: source.repository.ownerType,
-        repositoryPrivate: source.repository.private,
-      })
-      .where(
-        and(
-          commitIdentity(commit),
-          eq(githubCommits.enrichmentState, "processing"),
-          eq(githubCommits.enrichmentLeaseToken, commit.leaseToken)
-        )
-      );
-    return true;
-  });
+    )
+    .returning({ sha: githubCommits.sha });
+  return updated !== undefined;
+};
 
 export const deferGitHubCommitEnrichment = async (
   commit: ClaimedGitHubCommit,
@@ -819,12 +751,16 @@ export const claimGitHubCommitsForPullRequestDiscovery = async (
         errorCode: githubCommits.pullRequestDiscoveryError,
         leaseUntil: githubCommits.pullRequestDiscoveryLeaseUntil,
         message: githubCommits.message,
-        repository: githubCommits.repository,
+        repository: githubRepositories.fullName,
         repositoryId: githubCommits.repositoryId,
         sha: githubCommits.sha,
         state: githubCommits.pullRequestDiscoveryState,
       })
       .from(githubCommits)
+      .innerJoin(
+        githubRepositories,
+        eq(githubRepositories.id, githubCommits.repositoryId)
+      )
       .where(
         and(
           inArray(githubCommits.author, [...activeAccounts]),
@@ -1141,6 +1077,7 @@ export const persistGitHubPullRequestSnapshot = async (
   account: TrackedGitHubAccount,
   pullRequest: GitHubPullRequest,
   options: {
+    existingOnly?: boolean;
     reconciliationLeaseUntil?: Date;
     refreshMembership?: boolean;
   } = {},
@@ -1154,6 +1091,7 @@ export const persistGitHubPullRequestSnapshot = async (
         pullRequest,
         {
           authority: "authoritative",
+          existingOnly: options.existingOnly,
           reconciliationLeaseUntil: options.reconciliationLeaseUntil,
           refreshMembership: options.refreshMembership === true,
         },
@@ -1353,14 +1291,27 @@ export const persistGitHubPullRequestMembership = async (
   await getDatabase().transaction(async (transaction) => {
     const [version] = await transaction
       .select({
+        baseRepositoryId: githubPullRequestVersions.baseRepositoryId,
+        baseSha: githubPullRequestVersions.baseSha,
         commitCount: githubPullRequestVersions.commitCount,
         headSha: githubPullRequestVersions.headSha,
+        headRepositoryId: githubPullRequestVersions.headRepositoryId,
         id: githubPullRequestVersions.id,
+        isCurrent: githubPullRequestVersions.isCurrent,
+        pullRequestNodeId: githubPullRequestVersions.pullRequestNodeId,
       })
       .from(githubPullRequestVersions)
       .where(eq(githubPullRequestVersions.id, stored.versionId))
       .for("update");
-    if (version === undefined) {
+    if (
+      version === undefined ||
+      !version.isCurrent ||
+      version.pullRequestNodeId !== stored.pullRequestNodeId ||
+      version.baseRepositoryId !== stored.baseRepositoryId ||
+      version.baseSha !== stored.baseSha ||
+      (version.headRepositoryId ?? version.baseRepositoryId) !==
+        stored.commitRepositoryId
+    ) {
       return false;
     }
     const completeMembershipIsValid =

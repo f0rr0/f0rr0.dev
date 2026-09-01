@@ -32,24 +32,12 @@ const ZERO_SHA = "0".repeat(40);
 
 type JsonObject = Record<string, unknown>;
 
-export interface GitHubActivityRepositoryEvidence {
-  avatarUrl: string | null;
-  description: string | null;
-  fullName: string;
-  homepageUrl: string | null;
-  ownerLogin: string;
-  ownerType: "Organization" | "User";
-  private: boolean;
-  topics: readonly string[];
-}
-
 export interface GitHubActivityCommitSource {
   authorUserId: string;
   authoredAt: string;
   commit: GitHubCommitChangeEvidence;
   committerAt: string;
   committerUserId: string | null;
-  repository: GitHubActivityRepositoryEvidence;
 }
 
 export interface GitHubActivityCommitReference {
@@ -651,62 +639,6 @@ const withAuthoritativeMergeCommits = async (
   });
 };
 
-const safeAvatarUrl = (value: unknown) => {
-  if (typeof value !== "string") {
-    return null;
-  }
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" &&
-      url.hostname === "avatars.githubusercontent.com"
-      ? url.toString()
-      : null;
-  } catch {
-    return null;
-  }
-};
-
-const repositoryEvidenceFrom = (
-  value: unknown,
-  expectedRepositoryId: string
-): GitHubActivityRepositoryEvidence => {
-  if (!isObject(value) || !isObject(value.owner)) {
-    throw new ActivityProcessingError(
-      "source_invalid",
-      "GitHub returned invalid repository evidence."
-    );
-  }
-  const repository = repositoryFrom(value);
-  const ownerLogin = requiredString(value.owner.login, "repository owner");
-  const ownerType = value.owner.type;
-  if (
-    repository === null ||
-    repository.id !== expectedRepositoryId ||
-    typeof value.private !== "boolean" ||
-    (ownerType !== "Organization" && ownerType !== "User")
-  ) {
-    throw new ActivityProcessingError(
-      "source_invalid",
-      "GitHub returned inconsistent repository evidence."
-    );
-  }
-  return {
-    avatarUrl: safeAvatarUrl(value.owner.avatar_url),
-    description: optionalString(value.description),
-    fullName: repository.fullName,
-    homepageUrl: optionalString(value.homepage),
-    ownerLogin,
-    ownerType,
-    private: value.private,
-    topics: Array.isArray(value.topics)
-      ? value.topics.filter(
-          (topic): topic is string =>
-            typeof topic === "string" && topic.length > 0
-        )
-      : [],
-  };
-};
-
 const fileEvidenceFrom = (value: unknown): GitHubFileChangeEvidence => {
   if (!isObject(value)) {
     throw new ActivityProcessingError(
@@ -812,22 +744,13 @@ const fetchCommitSourceWithToken = async (
   token: string,
   options: GitHubProviderRequestOptions = {}
 ): Promise<GitHubActivityCommitSource> => {
-  const repositoryPayload = await fetchJson(
-    repositoryApiPath(row.repository),
-    token,
-    options
-  );
-  const repository = repositoryEvidenceFrom(
-    repositoryPayload,
-    row.repositoryId
-  );
   const files = new Map<string, GitHubFileChangeEvidence>();
   let root: JsonObject | null = null;
   let providerFileCapReached = false;
   for (let page = 1; page <= MAXIMUM_GITHUB_FILE_PAGES; page += 1) {
     const value = await fetchJson(
       repositoryApiPath(
-        repository.fullName,
+        row.repository,
         `/commits/${encodeURIComponent(row.sha)}?per_page=${GITHUB_FILE_PAGE_SIZE}&page=${page}`
       ),
       token,
@@ -887,7 +810,6 @@ const fetchCommitSourceWithToken = async (
       root.committer === null
         ? null
         : optionalProviderId(root.committer.id, "commit committer ID"),
-    repository,
   };
 };
 

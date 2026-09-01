@@ -12,6 +12,7 @@ import {
 
 import { getDatabase } from "@/db/client";
 import {
+  githubAccountCheckpoints,
   githubCommits,
   githubPullRequests,
   githubPullRequestSignals,
@@ -30,6 +31,33 @@ import {
 } from "@/lib/github-activity-worker-store";
 import type { GitHubActivityWorkerScope } from "@/lib/github-activity-worker-store";
 import type { TrackedGitHubAccount } from "@/lib/github-commits-core";
+
+export const readGitHubPullRequestBackfillDigest = async (
+  account: TrackedGitHubAccount
+) => {
+  const [checkpoint] = await getDatabase()
+    .select({ digest: githubAccountCheckpoints.pullRequestBackfillDigest })
+    .from(githubAccountCheckpoints)
+    .where(eq(githubAccountCheckpoints.account, account))
+    .limit(1);
+  return checkpoint?.digest ?? null;
+};
+
+export const persistGitHubPullRequestBackfillDigest = async (input: {
+  account: TrackedGitHubAccount;
+  digest: string;
+}) => {
+  await getDatabase()
+    .insert(githubAccountCheckpoints)
+    .values({
+      account: input.account,
+      pullRequestBackfillDigest: input.digest,
+    })
+    .onConflictDoUpdate({
+      set: { pullRequestBackfillDigest: input.digest },
+      target: githubAccountCheckpoints.account,
+    });
+};
 
 export interface GitHubFactualWorkerBacklog {
   pending: {

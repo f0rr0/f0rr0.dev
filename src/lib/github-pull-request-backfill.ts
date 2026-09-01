@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   ActivityProcessingError,
   fetchGitHubPullRequestMembershipWithToken,
@@ -21,12 +23,16 @@ import {
   GitHubResponseError,
   githubApiUrl,
 } from "@/lib/github-api";
+import {
+  persistGitHubPullRequestBackfillDigest,
+  readGitHubPullRequestBackfillDigest,
+} from "@/lib/github-backfill-store";
 import type {
   GitHubCommit,
-  GitHubPullRequest,
   TrackedGitHubAccount,
 } from "@/lib/github-commits-core";
 import {
+  commitShaFrom,
   repositoryFullNameFrom,
   repositoryIdFrom,
 } from "@/lib/github-commits-core";
@@ -37,6 +43,7 @@ const PULL_REQUEST_PROCESSING_BATCH_SIZE = 10;
 const DEADLINE_MARGIN_MS = 30_000;
 const AUTHORED_PULL_REQUEST_PAGE_SIZE = 100;
 const PERMANENT_RESOURCE_STATUSES = new Set([403, 404, 410, 422]);
+const PULL_REQUEST_BACKFILL_RECIPE = "authored-pull-requests-v1";
 
 const AUTHORED_PULL_REQUESTS_QUERY = `query AuthoredPullRequests($login: String!, $cursor: String, $pageSize: Int!) {
   user(login: $login) {
@@ -48,8 +55,12 @@ const AUTHORED_PULL_REQUESTS_QUERY = `query AuthoredPullRequests($login: String!
     ) {
       totalCount
       nodes {
+        baseRefOid
+        commits { totalCount }
+        headRefOid
         id
         number
+        state
         updatedAt
         url
         author { login }
@@ -92,8 +103,12 @@ const providerRetryFrom = (error: unknown) => {
 };
 
 export interface GitHubPullRequestBackfillCandidate extends GitHubActivityPullRequestReference {
+  baseSha: string;
+  commitCount: number;
+  headSha: string;
   nodeId: string;
   providerUpdatedAt: string;
+  state: "closed" | "merged" | "open";
 }
 
 export interface GitHubAuthoredPullRequestBackfillCandidateCollection {
@@ -101,6 +116,33 @@ export interface GitHubAuthoredPullRequestBackfillCandidateCollection {
   pullRequests: readonly GitHubPullRequestBackfillCandidate[];
   totalCount: number;
 }
+
+const pullRequestNodeIdFrom = (value: unknown) =>
+  typeof value === "string" &&
+  value.length > 0 &&
+  value.length <= 100 &&
+  !/\s/u.test(value)
+    ? value
+    : null;
+
+const pullRequestStateFrom = (
+  value: unknown
+): GitHubPullRequestBackfillCandidate["state"] | null => {
+  switch (value) {
+    case "CLOSED": {
+      return "closed";
+    }
+    case "MERGED": {
+      return "merged";
+    }
+    case "OPEN": {
+      return "open";
+    }
+    default: {
+      return null;
+    }
+  }
+};
 
 const authoredPullRequestCandidateFrom = (
   value: unknown,
@@ -116,17 +158,17 @@ const authoredPullRequestCandidateFrom = (
   const repositoryId = repositoryIdFrom(value.repository.databaseId);
   const repository = repositoryFullNameFrom(value.repository.nameWithOwner);
   const number = positiveIntegerFrom(value.number);
-  const nodeId =
-    typeof value.id === "string" &&
-    value.id.length > 0 &&
-    value.id.length <= 100 &&
-    !/\s/u.test(value.id)
-      ? value.id
-      : null;
+  const nodeId = pullRequestNodeIdFrom(value.id);
   const providerUpdatedAt =
     typeof value.updatedAt === "string"
       ? new Date(value.updatedAt)
       : new Date(Number.NaN);
+  const baseSha = commitShaFrom(value.baseRefOid);
+  const headSha = commitShaFrom(value.headRefOid);
+  const commitCount = isObject(value.commits)
+    ? nonNegativeIntegerFrom(value.commits.totalCount)
+    : null;
+  const state = pullRequestStateFrom(value.state);
   if (
     typeof value.author.login !== "string" ||
     value.author.login.toLowerCase() !== account ||
@@ -134,6 +176,10 @@ const authoredPullRequestCandidateFrom = (
     repository === null ||
     number === null ||
     nodeId === null ||
+    baseSha === null ||
+    headSha === null ||
+    commitCount === null ||
+    state === null ||
     Number.isNaN(providerUpdatedAt.getTime()) ||
     value.url !== `https://github.com/${repository}/pull/${String(number)}`
   ) {
@@ -141,44 +187,16 @@ const authoredPullRequestCandidateFrom = (
   }
   return {
     account,
+    baseSha,
+    commitCount,
+    headSha,
     nodeId,
     number,
     providerUpdatedAt: providerUpdatedAt.toISOString(),
     repository,
     repositoryId,
+    state,
   } satisfies GitHubPullRequestBackfillCandidate;
-};
-
-const samePullRequestIdentity = (
-  left: GitHubPullRequestBackfillCandidate,
-  right: GitHubPullRequestBackfillCandidate
-) =>
-  left.account === right.account &&
-  left.nodeId === right.nodeId &&
-  left.number === right.number &&
-  left.repository === right.repository &&
-  left.repositoryId === right.repositoryId;
-
-const mergeGitHubPullRequestBackfillCandidates = (
-  candidates: Map<string, GitHubPullRequestBackfillCandidate>,
-  incoming: readonly GitHubPullRequestBackfillCandidate[]
-) => {
-  for (const candidate of incoming) {
-    const existing = candidates.get(candidate.nodeId);
-    if (
-      existing !== undefined &&
-      !samePullRequestIdentity(existing, candidate)
-    ) {
-      throw new TypeError("GitHub returned conflicting pull requests.");
-    }
-    if (
-      existing === undefined ||
-      candidate.providerUpdatedAt > existing.providerUpdatedAt
-    ) {
-      candidates.set(candidate.nodeId, candidate);
-    }
-  }
-  return candidates;
 };
 
 /**
@@ -202,6 +220,7 @@ export const collectGitHubAuthoredPullRequestBackfillCandidates =
       );
     }
     const candidates = new Map<string, GitHubPullRequestBackfillCandidate>();
+    const observedNodeIds = new Set<string>();
     const visitedCursors = new Set<string>();
     let cursor: string | null = null;
     let expectedTotal: number | null = null;
@@ -251,12 +270,17 @@ export const collectGitHubAuthoredPullRequestBackfillCandidates =
         );
       }
       expectedTotal ??= totalCount;
-      const previousSize = candidates.size;
       const pageCandidates = nodes.map((node) =>
         authoredPullRequestCandidateFrom(node, input.account)
       );
       let reachedCutoff = false;
       for (const candidate of pageCandidates) {
+        if (observedNodeIds.has(candidate.nodeId)) {
+          throw new TypeError(
+            "GitHub returned invalid authored pull request pagination."
+          );
+        }
+        observedNodeIds.add(candidate.nodeId);
         const updatedAt = new Date(candidate.providerUpdatedAt).getTime();
         if (updatedAt > previousUpdatedAt) {
           throw new TypeError(
@@ -268,7 +292,7 @@ export const collectGitHubAuthoredPullRequestBackfillCandidates =
           reachedCutoff = true;
           continue;
         }
-        mergeGitHubPullRequestBackfillCandidates(candidates, [candidate]);
+        candidates.set(candidate.nodeId, candidate);
       }
       observedNodes += nodes.length;
       pages += 1;
@@ -300,7 +324,6 @@ export const collectGitHubAuthoredPullRequestBackfillCandidates =
       const nextCursor = pageInfo.endCursor;
       if (
         nodes.length === 0 ||
-        candidates.size === previousSize ||
         typeof nextCursor !== "string" ||
         nextCursor.length === 0 ||
         nextCursor.length > 2048 ||
@@ -330,6 +353,7 @@ export interface GitHubPullRequestBackfillResult {
   memberships: number;
   pullRequests: number;
   repositories: number;
+  reusedPullRequests: number;
   retryAt: Date | null;
   scannedPullRequests: number;
   selectedAuthoredPullRequests: number;
@@ -340,6 +364,7 @@ export interface GitHubPullRequestBackfillResult {
 
 interface PreparedPullRequest {
   commits: readonly GitHubCommit[];
+  inWindow: boolean;
   membership: GitHubActivityPullRequestMembershipSource;
   snapshot: GitHubActivityPullRequestSnapshot;
 }
@@ -353,6 +378,7 @@ const emptyResult = (): GitHubPullRequestBackfillResult => ({
   memberships: 0,
   pullRequests: 0,
   repositories: 0,
+  reusedPullRequests: 0,
   retryAt: null,
   scannedPullRequests: 0,
   selectedAuthoredPullRequests: 0,
@@ -394,7 +420,6 @@ const withinInclusiveWindow = (
 export const githubPullRequestBelongsInBackfillWindow = (input: {
   account: TrackedGitHubAccount;
   commits: readonly GitHubCommit[];
-  pullRequest: Pick<GitHubPullRequest, "authorAccount" | "mergedAt">;
   sinceAt: Date;
   untilAt: Date;
 }) =>
@@ -471,15 +496,15 @@ const persistPreparedPullRequests = async (
     const stored = await persistGitHubPullRequestSnapshot(
       account,
       item.snapshot.pullRequest,
-      { refreshMembership: true }
+      { existingOnly: !item.inWindow, refreshMembership: true }
     );
     if (stored === null) {
       result.skippedPullRequests += 1;
       continue;
     }
-    const commits = await persistGitHubCommitReferences({
-      commits: item.commits,
-    });
+    const commits = item.inWindow
+      ? await persistGitHubCommitReferences({ commits: item.commits })
+      : { duplicates: 0, inserted: 0 };
     const membership = await persistGitHubPullRequestBackfillMembership({
       commitShas: item.membership.commitShas,
       headSha: item.snapshot.pullRequest.headSha,
@@ -492,12 +517,16 @@ const persistPreparedPullRequests = async (
         "GitHub pull request membership was not persisted completely."
       );
     }
-    result.commits += commits.inserted;
-    result.duplicateCommits += commits.duplicates;
     if (membership.refreshed) {
       result.memberships += 1;
     }
-    result.pullRequests += 1;
+    if (item.inWindow) {
+      result.commits += commits.inserted;
+      result.duplicateCommits += commits.duplicates;
+      result.pullRequests += 1;
+    } else {
+      result.skippedPullRequests += 1;
+    }
   }
 };
 
@@ -526,14 +555,33 @@ const preparePullRequest = async (input: {
   sinceAt: Date;
   token: string;
   untilAt: Date;
-}): Promise<PreparedPullRequest | null> => {
+}): Promise<PreparedPullRequest> => {
   const snapshot = await fetchGitHubPullRequestRestSnapshotWithToken(
     input.candidate,
     input.token,
     { deadlineAt: input.deadlineAt }
   );
+  const { pullRequest } = snapshot;
+  const state: GitHubPullRequestBackfillCandidate["state"] = pullRequest.merged
+    ? "merged"
+    : pullRequest.state;
+  if (
+    pullRequest.baseSha !== input.candidate.baseSha ||
+    pullRequest.commitCount !== input.candidate.commitCount ||
+    pullRequest.headSha !== input.candidate.headSha ||
+    pullRequest.nodeId !== input.candidate.nodeId ||
+    pullRequest.number !== input.candidate.number ||
+    pullRequest.providerUpdatedAt !== input.candidate.providerUpdatedAt ||
+    pullRequest.repository.fullName !== input.candidate.repository ||
+    pullRequest.repository.id !== input.candidate.repositoryId ||
+    state !== input.candidate.state
+  ) {
+    throw new GitHubGraphQlResponseError("partial_response", {
+      retryable: true,
+    });
+  }
   const commitRepository =
-    snapshot.pullRequest.headRepository ?? snapshot.pullRequest.baseRepository;
+    pullRequest.headRepository ?? pullRequest.baseRepository;
   const membership = await fetchGitHubPullRequestMembershipWithToken(
     input.candidate,
     snapshot.expectedCommitCount,
@@ -541,8 +589,8 @@ const preparePullRequest = async (input: {
     {
       commitRepository,
       deadlineAt: input.deadlineAt,
-      expectedBaseSha: snapshot.pullRequest.baseSha,
-      expectedHeadSha: snapshot.pullRequest.headSha,
+      expectedBaseSha: pullRequest.baseSha,
+      expectedHeadSha: pullRequest.headSha,
     }
   );
   if (!membership.membershipComplete) {
@@ -556,15 +604,17 @@ const preparePullRequest = async (input: {
       commit.author === input.account &&
       withinInclusiveWindow(commit, input.sinceAt, input.untilAt)
   );
-  return githubPullRequestBelongsInBackfillWindow({
-    account: input.account,
+  return {
     commits,
-    pullRequest: snapshot.pullRequest,
-    sinceAt: input.sinceAt,
-    untilAt: input.untilAt,
-  })
-    ? { commits, membership, snapshot }
-    : null;
+    inWindow: githubPullRequestBelongsInBackfillWindow({
+      account: input.account,
+      commits,
+      sinceAt: input.sinceAt,
+      untilAt: input.untilAt,
+    }),
+    membership,
+    snapshot,
+  };
 };
 
 const stop = (
@@ -604,12 +654,45 @@ const comparePullRequestCandidates = (
   return left.nodeId < right.nodeId ? -1 : left.nodeId > right.nodeId ? 1 : 0;
 };
 
+export const githubPullRequestBackfillDigestFrom = (input: {
+  account: TrackedGitHubAccount;
+  candidates: readonly GitHubPullRequestBackfillCandidate[];
+  repositoryId: string | null;
+  sinceAt: Date;
+  untilAt: Date;
+}) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify({
+        account: input.account,
+        candidates: input.candidates
+          .toSorted(comparePullRequestCandidates)
+          .map((candidate) => [
+            candidate.nodeId,
+            candidate.repositoryId,
+            candidate.repository,
+            candidate.number,
+            candidate.providerUpdatedAt,
+            candidate.baseSha,
+            candidate.headSha,
+            candidate.commitCount,
+            candidate.state,
+          ]),
+        recipe: PULL_REQUEST_BACKFILL_RECIPE,
+        repositoryId: input.repositoryId,
+        sinceAt: input.sinceAt.toISOString(),
+        untilAt: input.untilAt.toISOString(),
+      })
+    )
+    .digest("hex");
+
 const processPullRequestCandidates = async (
   candidates: readonly GitHubPullRequestBackfillCandidate[],
   input: {
     account: TrackedGitHubAccount;
     deadlineAt: number;
     onProgress: GitHubPullRequestBackfillProgressReporter;
+    persistPrepared: typeof persistPreparedPullRequestsWithGaps;
     sinceAt: Date;
     token: string;
     untilAt: Date;
@@ -641,11 +724,7 @@ const processPullRequestCandidates = async (
           token: input.token,
           untilAt: input.untilAt,
         });
-        if (value === null) {
-          result.skippedPullRequests += 1;
-        } else {
-          prepared.push(value);
-        }
+        prepared.push(value);
       } catch (error) {
         if (isDeadlineError(error)) {
           interrupted = { reason: "deadline", retryAt: null };
@@ -670,13 +749,15 @@ const processPullRequestCandidates = async (
     const unmerged = prepared.filter(
       ({ snapshot }) => !snapshot.pullRequest.merged
     );
-    await persistPreparedPullRequestsWithGaps(unmerged, input.account, result);
+    if (unmerged.length > 0) {
+      await input.persistPrepared(unmerged, input.account, result);
+    }
     const merged = prepared.filter(
       ({ snapshot }) => snapshot.pullRequest.merged
     );
     if (merged.length > 0) {
       try {
-        await persistPreparedPullRequestsWithGaps(
+        await input.persistPrepared(
           await withResolvedMergeCommits(merged, input.token, input.deadlineAt),
           input.account,
           result
@@ -688,7 +769,7 @@ const processPullRequestCandidates = async (
         if (pullRequestEvidenceIsUnavailable(error)) {
           for (const item of merged) {
             try {
-              await persistPreparedPullRequestsWithGaps(
+              await input.persistPrepared(
                 await withResolvedMergeCommits(
                   [item],
                   input.token,
@@ -734,15 +815,30 @@ const processPullRequestCandidates = async (
 };
 
 /** Discovers only authored PRs; current-head commits find associated PRs later. */
-export const backfillGitHubPullRequests = async (input: {
-  account: TrackedGitHubAccount;
-  deadlineAt: number;
-  onProgress?: GitHubPullRequestBackfillProgressReporter;
-  repositoryId: string | null;
-  sinceAt: Date;
-  token: string;
-  untilAt: Date;
-}): Promise<GitHubPullRequestBackfillResult> => {
+interface GitHubPullRequestBackfillDependencies {
+  persistDigest: typeof persistGitHubPullRequestBackfillDigest;
+  persistPrepared: typeof persistPreparedPullRequestsWithGaps;
+  readDigest: typeof readGitHubPullRequestBackfillDigest;
+}
+
+const productionBackfillDependencies: GitHubPullRequestBackfillDependencies = {
+  persistDigest: persistGitHubPullRequestBackfillDigest,
+  persistPrepared: persistPreparedPullRequestsWithGaps,
+  readDigest: readGitHubPullRequestBackfillDigest,
+};
+
+export const backfillGitHubPullRequests = async (
+  input: {
+    account: TrackedGitHubAccount;
+    deadlineAt: number;
+    onProgress?: GitHubPullRequestBackfillProgressReporter;
+    repositoryId: string | null;
+    sinceAt: Date;
+    token: string;
+    untilAt: Date;
+  },
+  dependencies: GitHubPullRequestBackfillDependencies = productionBackfillDependencies
+): Promise<GitHubPullRequestBackfillResult> => {
   if (
     !Number.isFinite(input.deadlineAt) ||
     Number.isNaN(input.sinceAt.getTime()) ||
@@ -785,13 +881,28 @@ export const backfillGitHubPullRequests = async (input: {
     candidates.map((candidate) => candidate.repositoryId)
   ).size;
   onProgress({ ...result });
+  if (candidates.length === 0) {
+    return result;
+  }
+  const digest = githubPullRequestBackfillDigestFrom({
+    ...input,
+    candidates,
+  });
+  if ((await dependencies.readDigest(input.account)) === digest) {
+    result.reusedPullRequests = candidates.length;
+    onProgress({ ...result });
+    return result;
+  }
   const interrupted = await processPullRequestCandidates(
     candidates,
-    { ...input, onProgress },
+    { ...input, onProgress, persistPrepared: dependencies.persistPrepared },
     result
   );
   if (interrupted !== null) {
     return stop(result, interrupted.reason, interrupted.retryAt);
+  }
+  if (result.unavailablePullRequests === 0) {
+    await dependencies.persistDigest({ account: input.account, digest });
   }
   return result;
 };

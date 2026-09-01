@@ -44,7 +44,10 @@ import type {
   TrackedGitHubAccount,
 } from "@/lib/github-commits-core";
 import { persistPullRequestSnapshotInTransaction } from "@/lib/github-pull-request-store";
-import { upsertGitHubRepository } from "@/lib/github-repository-store";
+import {
+  upsertGitHubRepositories,
+  upsertGitHubRepository,
+} from "@/lib/github-repository-store";
 
 export class CheckpointConflictError extends Error {
   constructor() {
@@ -330,9 +333,11 @@ export const persistGitHubCommitReferences = async (input: {
         id: commit.repositoryId,
       });
     }
-    for (const repository of repositories.values()) {
-      await upsertGitHubRepository(transaction, repository, observedAt);
-    }
+    await upsertGitHubRepositories(
+      transaction,
+      [...repositories.values()],
+      observedAt
+    );
 
     let inserted = 0;
     const values = [...commits.values()];
@@ -351,7 +356,6 @@ export const persistGitHubCommitReferences = async (input: {
               committedAt: new Date(commit.committedAt),
               firstObservedAt: observedAt,
               message: commit.message,
-              repository: commit.repository,
               repositoryId: commit.repositoryId,
               sha: commit.sha,
             }))

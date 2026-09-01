@@ -19,11 +19,11 @@ import {
 } from "@/db/schema";
 import { TRACKED_GITHUB_USER_IDS } from "@/lib/github-commits-core";
 import type {
-  GitHubRepositoryFacts,
+  GitHubRepositoryInventoryFacts,
   TrackedGitHubAccount,
 } from "@/lib/github-commits-core";
 import { collectAccessibleGitHubRepositories } from "@/lib/github-reconciliation";
-import { upsertGitHubRepositories } from "@/lib/github-repository-store";
+import { upsertGitHubRepositoryInventory } from "@/lib/github-repository-store";
 
 const INVENTORY_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const INVENTORY_RETRY_INTERVAL_MS = 15 * 60 * 1000;
@@ -124,9 +124,9 @@ const releaseGitHubRepositoryInventoryRefresh = async (
 
 const publishGitHubRepositoryInventory = async (
   claim: GitHubRepositoryInventoryClaim,
-  repositories: readonly GitHubRepositoryFacts[]
+  repositories: readonly GitHubRepositoryInventoryFacts[]
 ) => {
-  const repositoriesById = new Map<string, GitHubRepositoryFacts>();
+  const repositoriesById = new Map<string, GitHubRepositoryInventoryFacts>();
   for (const repository of repositories) {
     const existing = repositoriesById.get(repository.id);
     if (existing !== undefined && existing.fullName !== repository.fullName) {
@@ -173,7 +173,7 @@ const publishGitHubRepositoryInventory = async (
     }
 
     const currentRepositories = [...repositoriesById.values()];
-    await upsertGitHubRepositories(
+    await upsertGitHubRepositoryInventory(
       transaction,
       currentRepositories,
       claim.startedAt
@@ -233,7 +233,7 @@ const publishGitHubRepositoryInventory = async (
 
 const readCurrentGitHubRepositoryInventory = async (
   account: TrackedGitHubAccount
-): Promise<readonly GitHubRepositoryFacts[] | null> => {
+): Promise<readonly GitHubRepositoryInventoryFacts[] | null> => {
   const accountUserId = TRACKED_GITHUB_USER_IDS[account];
   return await getDatabase().transaction(
     async (transaction) => {
@@ -257,14 +257,18 @@ const readCurrentGitHubRepositoryInventory = async (
       const rows = await transaction
         .select({
           defaultBranch: githubRepositories.defaultBranch,
+          description: githubRepositories.description,
           fullName: githubRepositories.fullName,
+          homepageUrl: githubRepositories.homepageUrl,
           htmlUrl: githubRepositories.htmlUrl,
           id: githubRepositories.id,
+          inventoryVerifiedAt: githubRepositories.inventoryVerifiedAt,
           ownerAvatarUrl: githubRepositories.ownerAvatarUrl,
           ownerId: githubRepositories.ownerId,
           ownerLogin: githubRepositories.ownerLogin,
           ownerType: githubRepositories.ownerType,
           pushedAt: githubRepositories.pushedAt,
+          topics: githubRepositories.topics,
           visibility: githubRepositories.visibility,
         })
         .from(githubAccountRepositoryCatalogs)
@@ -286,7 +290,11 @@ const readCurrentGitHubRepositoryInventory = async (
           )
         );
 
-      return rows.map((row) => {
+      const repositories: GitHubRepositoryInventoryFacts[] = [];
+      for (const row of rows) {
+        if (row.inventoryVerifiedAt === null || row.topics === null) {
+          return null;
+        }
         if (
           row.ownerLogin === null ||
           (row.ownerType !== null &&
@@ -301,9 +309,11 @@ const readCurrentGitHubRepositoryInventory = async (
             "The current GitHub repository inventory is inconsistent."
           );
         }
-        return {
+        repositories.push({
           defaultBranch: row.defaultBranch,
+          description: row.description,
           fullName: row.fullName,
+          homepageUrl: row.homepageUrl,
           htmlUrl: row.htmlUrl,
           id: row.id,
           ownerAvatarUrl: row.ownerAvatarUrl,
@@ -311,9 +321,11 @@ const readCurrentGitHubRepositoryInventory = async (
           ownerLogin: row.ownerLogin,
           ownerType: row.ownerType,
           pushedAt: row.pushedAt?.toISOString() ?? null,
+          topics: row.topics,
           visibility: row.visibility,
-        };
-      });
+        });
+      }
+      return repositories;
     },
     { accessMode: "read only", isolationLevel: "repeatable read" }
   );
@@ -329,7 +341,7 @@ export const loadGitHubRepositoryInventory = async (input: {
   forceRefresh?: boolean;
   now?: Date;
   token: string;
-}): Promise<readonly GitHubRepositoryFacts[]> => {
+}): Promise<readonly GitHubRepositoryInventoryFacts[]> => {
   const now = validatedInventoryTime(input.now ?? new Date());
   const claim = await claimGitHubRepositoryInventoryRefresh({
     account: input.account,
