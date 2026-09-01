@@ -13,9 +13,9 @@ const change = ({
   character,
   deletions = 0,
   enrichmentComplete = true,
-  mergedPullRequestLanding = false,
   parentCount = 1,
   repositoryId = "1",
+  verifiedMergeLanding = false,
 }) => {
   const fileFacts =
     additions + deletions === 0
@@ -40,7 +40,6 @@ const change = ({
     enrichmentComplete,
     fileFacts,
     fileFactsComplete: true,
-    mergedPullRequestLanding,
     logicalActivityAt: activityAt,
     logicalRepositoryId: repositoryId,
     logicalSha: sha(character),
@@ -51,6 +50,7 @@ const change = ({
     repositoryId,
     sha: sha(character),
     summaryFileFacts: fileFacts,
+    verifiedMergeLanding,
   };
 };
 
@@ -138,8 +138,8 @@ const snapshot = () => {
     change({ character: "6", repositoryId: "1" }),
     change({
       character: "7",
-      mergedPullRequestLanding: true,
       repositoryId: "1",
+      verifiedMergeLanding: true,
     }),
     change({ character: "8", repositoryId: "4" }),
     change({ character: "9", repositoryId: "2" }),
@@ -285,9 +285,14 @@ describe("GitHub work-unit crosswalk", () => {
       "branch:lineage-3",
     ]);
     expect(report.categories.projectedOwnedChanges.count).toBe(4);
-    expect(report.categories.associatedOrRemovedUnreachableChanges.ids).toEqual(
-      [logicalKey("1", "6"), logicalKey("1", "7")]
-    );
+    expect(report.categories.verifiedMergeLandingOwnershipViolations).toEqual({
+      count: 0,
+      ids: [],
+    });
+    expect(report.categories.policyExcludedChanges.ids).toEqual([
+      logicalKey("1", "6"),
+      logicalKey("1", "7"),
+    ]);
     expect(
       report.categories.authoredPullRequestsWithoutOwnedCurrentMember
     ).toEqual({ count: 1, ids: ["PR_2"] });
@@ -327,7 +332,54 @@ describe("GitHub work-unit crosswalk", () => {
       ],
       passed: false,
     });
-    expect(report.version).toBe(3);
+    expect(report.version).toBe(4);
+  });
+
+  test("fails if a verified merge landing is projected as ref-owned work", () => {
+    const evidence = snapshot();
+    const landingKey = logicalKey("1", "7");
+    evidence.units.push(
+      unit({
+        identityKey: "canonical:1:2026-08-03",
+        kind: "canonical_day",
+        members: [landingKey],
+      })
+    );
+
+    const report = buildGitHubWorkUnitCrosswalk(evidence, {
+      since: "2026-08-01",
+      until: "2026-08-08",
+    });
+
+    expect(report.categories.verifiedMergeLandingOwnershipViolations).toEqual({
+      count: 1,
+      ids: [landingKey],
+    });
+    expect(report.invariants).toMatchObject({
+      failures: expect.arrayContaining(["verified_merge_landing_owned"]),
+      passed: false,
+    });
+  });
+
+  test("allows a verified merge landing in its effective PR unit", () => {
+    const evidence = snapshot();
+    evidence.input.changes[0] = {
+      ...evidence.input.changes[0],
+      verifiedMergeLanding: true,
+    };
+
+    const report = buildGitHubWorkUnitCrosswalk(evidence, {
+      since: "2026-08-01",
+      until: "2026-08-08",
+    });
+
+    expect(report.categories.verifiedMergeLandingOwnershipViolations).toEqual({
+      count: 0,
+      ids: [],
+    });
+    expect(report.invariants.failures).not.toContain(
+      "verified_merge_landing_owned"
+    );
   });
 
   test("treats deterministic policy exclusions as complete coverage", () => {

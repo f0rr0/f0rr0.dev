@@ -45,7 +45,6 @@ const change = (character, overrides = {}) => {
     enrichmentComplete: true,
     fileFacts,
     fileFactsComplete: true,
-    mergedPullRequestLanding: false,
     logicalActivityAt: "2026-08-30T12:00:00.000Z",
     logicalRepositoryId: "1",
     logicalSha: sha(character),
@@ -56,6 +55,7 @@ const change = (character, overrides = {}) => {
     repositoryId: "1",
     sha: sha(character),
     summaryFileFacts: fileFacts,
+    verifiedMergeLanding: false,
     ...overrides,
   };
 };
@@ -289,7 +289,7 @@ describe("deterministic GitHub work ownership", () => {
   });
 
   test("gives a removed PR member to a complete current side ref", () => {
-    const work = change("c", { mergedPullRequestLanding: true });
+    const work = change("c");
     const key = logicalKeyFrom(work);
 
     const units = projection({
@@ -304,8 +304,8 @@ describe("deterministic GitHub work ownership", () => {
     });
   });
 
-  test("gives a removed member with only an unmerged PR association to canonical work", () => {
-    const work = change("c", { mergedPullRequestLanding: false });
+  test("gives a removed PR member to complete current canonical work", () => {
+    const work = change("c");
     const key = logicalKeyFrom(work);
 
     const units = projection({
@@ -320,16 +320,34 @@ describe("deterministic GitHub work ownership", () => {
     });
   });
 
-  test("withholds a same-repository merged-PR landing from canonical work", () => {
-    const work = change("c", { mergedPullRequestLanding: true });
+  test("withholds a verified merge landing from canonical and side refs", () => {
+    const work = change("c", { verifiedMergeLanding: true });
     const key = logicalKeyFrom(work);
 
     expect(
       projection({
         changes: [work],
-        refs: [ref("refs/heads/main", [key])],
+        refs: [
+          ref("refs/heads/main", [key]),
+          ref("refs/heads/topic", [key], {
+            branchLineageId: "22222222-2222-4222-8222-222222222222",
+          }),
+        ],
       })
     ).toEqual([]);
+  });
+
+  test("keeps effective PR membership ahead of merge-landing suppression", () => {
+    const work = change("c", { verifiedMergeLanding: true });
+    const key = logicalKeyFrom(work);
+    const units = projection({
+      changes: [work],
+      pullRequests: [pullRequest("PR_verified_landing", [key])],
+      refs: [ref("refs/heads/main", [key])],
+    });
+
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({ kind: "pull_request" });
   });
 
   test("keeps partition-independent PR prose identity and activity anchor across a rewrite", () => {

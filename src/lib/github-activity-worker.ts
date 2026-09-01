@@ -1,4 +1,3 @@
-import { env } from "@/env";
 import {
   ActivityProcessingError,
   fetchGitHubActivityCommitSource,
@@ -13,7 +12,6 @@ import {
 import {
   boundedWorkerLimit,
   GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS,
-  githubSummaryCanStart,
   workerDeadlineReached,
 } from "@/lib/github-activity-worker-core";
 import {
@@ -75,24 +73,11 @@ import {
 import { ensureGitHubWorkUnitProjectionRequest } from "@/lib/github-work-unit-projection-state";
 import { refreshGitHubWorkUnitProjection } from "@/lib/github-work-unit-store";
 import type { GitHubWorkUnitProjectionRefreshResult } from "@/lib/github-work-unit-store";
-import {
-  GitHubWorkUnitSummaryInvalidInputError,
-  GitHubWorkUnitSummaryInvalidOutputError,
-  generateGitHubWorkUnitSummary,
-} from "@/lib/github-work-unit-summary-provider";
-import {
-  claimGitHubWorkUnitSummary,
-  completeGitHubWorkUnitSummary,
-  deferGitHubWorkUnitSummary,
-  reconcileGitHubWorkUnitSummaryStatus,
-  terminalGitHubWorkUnitSummary,
-} from "@/lib/github-work-unit-summary-store";
+import { reconcileGitHubWorkUnitSummaryStatus } from "@/lib/github-work-unit-summary-store";
 
 const DEFAULT_WORKER_MAXIMUM_DURATION_MS = 90_000;
 const MAXIMUM_PUBLICATION_RESERVE_MS = 30_000;
 const MINIMUM_FACTUAL_PROCESSING_MS = 8000;
-const SUMMARY_SETTLEMENT_RESERVE_MS = 3000;
-const SUMMARY_RETRY_DELAY_MS = 15 * 60_000;
 const TERMINAL_GITHUB_STATUSES = new Set([403, 404, 410, 422]);
 const TERMINAL_ACTIVITY_PROCESSING_CODES = new Set([
   "membership_incomplete",
@@ -130,7 +115,6 @@ export interface GitHubActivityWorkerResult {
   pullRequestDiscovery: StageResult;
   pullRequestSignals: StageResult;
   refs: StageResult;
-  summaries: StageResult;
 }
 
 export interface GitHubActivityWorkerOptions {
@@ -601,62 +585,6 @@ const processPullRequests = async (
   result.failed = result.deferred + result.unavailable;
 };
 
-const processSummary = async (context: WorkerContext, result: StageResult) => {
-  if (
-    context.deadlineReached() ||
-    !githubSummaryCanStart(context.deadlineAt) ||
-    (env.OPENAI_API_KEY?.trim().length ?? 0) === 0
-  ) {
-    return;
-  }
-  const claim = await claimGitHubWorkUnitSummary({ now: new Date() });
-  if (claim === null) {
-    return;
-  }
-  result.claimed = 1;
-  try {
-    const generated = await generateGitHubWorkUnitSummary({
-      deadlineAt: context.deadlineAt,
-      serializedInput: claim.serializedInput,
-    });
-    const completion = await completeGitHubWorkUnitSummary(
-      claim,
-      generated,
-      new Date()
-    );
-    if (completion.accepted) {
-      result.completed = 1;
-    } else {
-      result.failed = 1;
-    }
-  } catch (error) {
-    if (
-      error instanceof GitHubWorkUnitSummaryInvalidInputError ||
-      error instanceof GitHubWorkUnitSummaryInvalidOutputError
-    ) {
-      if (await terminalGitHubWorkUnitSummary(claim, new Date())) {
-        result.unavailable = 1;
-      } else {
-        result.failed = 1;
-      }
-      return;
-    }
-    const deferredAt = new Date();
-    const disposition = await deferGitHubWorkUnitSummary(
-      claim,
-      new Date(deferredAt.getTime() + SUMMARY_RETRY_DELAY_MS),
-      deferredAt
-    );
-    if (disposition === "deferred") {
-      result.deferred = 1;
-    } else if (disposition === "terminal") {
-      result.unavailable = 1;
-    } else {
-      result.failed = 1;
-    }
-  }
-};
-
 const checkedWorkerAccounts = (
   accounts: readonly TrackedGitHubAccount[] | undefined
 ) => {
@@ -737,7 +665,6 @@ export const runGitHubActivityWorker = async (
   const pullRequestDiscovery = emptyStageResult();
   const pullRequestSignals = emptyStageResult();
   const refs = emptyStageResult();
-  const summaries = emptyStageResult();
   const activeAccounts = await activeTrackedAccounts(requestedAccounts);
   const context: WorkerContext = {
     activeAccounts,
@@ -747,9 +674,6 @@ export const runGitHubActivityWorker = async (
   };
   const overallDeadlineReached = () =>
     workerDeadlineReached(startedAt, maximumDurationMs);
-  const summaryDeadlineAt =
-    startedAt + Math.max(0, maximumDurationMs - SUMMARY_SETTLEMENT_RESERVE_MS);
-
   await processObservations(context, observationLimit, observations);
   await processPullRequestSignals(
     context,
@@ -772,16 +696,6 @@ export const runGitHubActivityWorker = async (
       ? await refreshGitHubWorkUnitProjection(new Date())
       : null;
   await reconcileGitHubWorkUnitSummaryStatus(new Date());
-  if (options.includeProjection !== false) {
-    await processSummary(
-      {
-        ...context,
-        deadlineAt: summaryDeadlineAt,
-        deadlineReached: () => Date.now() >= summaryDeadlineAt,
-      },
-      summaries
-    );
-  }
 
   return {
     commits,
@@ -792,6 +706,5 @@ export const runGitHubActivityWorker = async (
     pullRequestDiscovery,
     pullRequestSignals,
     refs,
-    summaries,
   };
 };

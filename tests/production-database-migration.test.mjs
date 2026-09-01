@@ -55,6 +55,7 @@ describe("production Supabase cron URLs", () => {
     expect(supabaseCronUrlsFrom("https://f0rr0.dev")).toEqual({
       events: "https://f0rr0.dev/api/cron/github-sync",
       headRefs: "https://f0rr0.dev/api/cron/github-refs?repositories=8",
+      summary: "https://f0rr0.dev/api/cron/github-summary",
       worker: "https://f0rr0.dev/api/cron/github-worker",
     });
     expect(() => supabaseCronUrlsFrom("http://localhost:3000")).toThrow(

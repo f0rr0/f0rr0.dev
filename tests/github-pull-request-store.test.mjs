@@ -250,6 +250,10 @@ describe.skipIf(!dockerAvailable)("GitHub pull request persistence", () => {
       mergeSnapshot: true,
     });
 
+    await admin`
+      update github_public_feed_head set projection_request_token = null
+      where id
+    `;
     await persistGitHubPullRequestSnapshot("f0rr0", terminalSignal);
     const [verified] = await database
       .select()
@@ -257,6 +261,12 @@ describe.skipIf(!dockerAvailable)("GitHub pull request persistence", () => {
       .where(eq(schema.githubPullRequests.nodeId, "PR_pr_store_8301"));
     expect(verified).toMatchObject({ mergeSha, state: "merged" });
     expect(verified.mergeShaVerifiedAt).not.toBeNull();
+    expect(
+      await admin`
+        select projection_request_token is not null as "projectionRequested"
+        from github_public_feed_head
+      `
+    ).toEqual([{ projectionRequested: true }]);
   });
 
   test("signals an equal-time terminal promotion despite a conflicting head", async () => {
