@@ -216,7 +216,7 @@
               gutter: 4pt,
               align: horizon,
               [#t(
-                "Lead Applied AI Engineer",
+                "Senior Full Stack Engineer",
                 fill: strong,
                 font: "Source Sans 3",
                 size: 10pt,
@@ -430,7 +430,7 @@
             gutter: 4pt,
             align: horizon,
             [#t(
-              "Lead Applied AI Engineer",
+              "Lead Full Stack Engineer",
               fill: strong,
               font: "Source Sans 3",
               size: 10pt,
