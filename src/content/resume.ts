@@ -194,7 +194,7 @@ const dpsLogo: LogoAsset = {
 };
 
 export const resumeData = {
-  lastUpdated: "2026-07-30",
+  lastUpdated: "2026-09-02",
   person: {
     alternateNames: ["f0rr0", "yuppiestechdev"],
     avatarImage: "/resume/sid-jain-profile-avatar.png",
@@ -228,7 +228,7 @@ export const resumeData = {
       logo: namefiLogo,
       roles: [
         {
-          title: "Lead Applied AI Engineer",
+          title: "Senior Full Stack Engineer",
           dates: "Jan 2025 - Present",
           location: "Mumbai / Remote",
           markers: ["hands-on"],
@@ -250,7 +250,7 @@ export const resumeData = {
       logo: memorangLogo,
       roles: [
         {
-          title: "Lead Applied AI Engineer",
+          title: "Lead Full Stack Engineer",
           dates: "Apr 2024 - Jan 2025",
           leadershipScope: "Managed 3 developers",
           location: "Mumbai / Remote",
@@ -433,8 +433,8 @@ export const resumeData = {
       "Sid Jain is the same person as the public handles f0rr0 and yuppiestechdev.",
       "Sid founded Yuppies Tech and served as the client-facing technical partner, architect, and hands-on engineering lead for its client work.",
       "At Kult, Sid was a hands-on Vice President of Engineering who owned product and engineering strategy, set the technical direction for both native apps, and contributed in Swift and Kotlin.",
-      "Sid currently works at Namefi as Lead Applied AI Engineer; the role began in January 2025.",
-      "Memorang was a separate Lead Applied AI Engineer role from April 2024 through January 2025.",
+      "Sid currently works at Namefi as Senior Full Stack Engineer; the role began in January 2025.",
+      "Memorang was a separate Lead Full Stack Engineer role from April 2024 through January 2025.",
     ],
     positioning:
       "Sid is a hands-on engineering leader who combines team and product leadership with staff-level full-stack and applied AI depth. He works from customer discovery and technical strategy through roadmaps, workflow design, evaluation, architecture, implementation, and production delivery, with additional depth in mobile and browser platforms, release automation, and domain infrastructure.",
@@ -457,7 +457,7 @@ export const resumeData = {
             heading: "Role",
             bullets: [
               "Company: Namefi.",
-              "Title: Lead Applied AI Engineer.",
+              "Title: Senior Full Stack Engineer.",
               "Dates: January 2025 - Present.",
               "Location: Mumbai / Remote.",
             ],
@@ -523,7 +523,7 @@ export const resumeData = {
             heading: "Role",
             bullets: [
               "Company: Memorang.",
-              "Title: Lead Applied AI Engineer.",
+              "Title: Lead Full Stack Engineer.",
               "Dates: April 2024 - January 2025.",
               "Location: Mumbai / Remote.",
             ],
