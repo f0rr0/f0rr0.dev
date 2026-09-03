@@ -151,17 +151,12 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
 
   return (
     <section aria-labelledby="codex-stats-title" className="home-section">
-      <div>
-        <p className="font-ui text-xs uppercase tracking-[0.14em] text-primary">
-          Building with AI
-        </p>
-        <h2
-          className="mt-2 font-serif text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
-          id="codex-stats-title"
-        >
-          Codex, in numbers
-        </h2>
-      </div>
+      <h2
+        className="font-serif text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
+        id="codex-stats-title"
+      >
+        AI, in numbers
+      </h2>
 
       <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-4">
         <Metric label="Lifetime tokens" metric={stats.totals.lifetimeTokens} />
