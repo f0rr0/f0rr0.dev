@@ -39,6 +39,7 @@ const change = (character, overrides = {}) => {
     fileFacts.reduce((total, item) => total + item.deletions, 0);
   return {
     additions,
+    associatedPullRequestNodeIds: [],
     authorUserId: "100",
     contentObservedAt: "2026-08-30T12:10:00.000Z",
     deletions,
@@ -216,25 +217,34 @@ describe("deterministic GitHub work ownership", () => {
     ).toBe("PR_tracked_open");
   });
 
-  test("owns an exact rewritten patch by its merged PR only once", () => {
+  test("suppresses only an associated landing for an exact merged-PR patch", () => {
     const fileFactsDigest = "1".repeat(64);
     const pullRequestChange = change("c", { fileFactsDigest });
     const rewrittenPullRequestChange = change("d", {
+      associatedPullRequestNodeIds: ["PR_rewritten_merge"],
       fileFacts: pullRequestChange.fileFacts,
       fileFactsDigest,
       logicalActivityAt: "2026-08-30T12:01:00.000Z",
     });
     const rewrittenLanding = change("e", {
+      associatedPullRequestNodeIds: ["PR_rewritten_merge"],
       fileFacts: pullRequestChange.fileFacts,
       fileFactsDigest,
       logicalActivityAt: "2026-08-30T12:02:00.000Z",
     });
+    const unrelatedRefChange = change("f", {
+      fileFacts: pullRequestChange.fileFacts,
+      fileFactsDigest,
+      logicalActivityAt: "2026-08-30T12:03:00.000Z",
+    });
     const pullRequestKey = logicalKeyFrom(pullRequestChange);
     const rewrittenPullRequestKey = logicalKeyFrom(rewrittenPullRequestChange);
     const landingKey = logicalKeyFrom(rewrittenLanding);
+    const unrelatedRefKey = logicalKeyFrom(unrelatedRefChange);
 
     const units = projection({
       changes: [
+        unrelatedRefChange,
         rewrittenLanding,
         rewrittenPullRequestChange,
         pullRequestChange,
@@ -246,16 +256,30 @@ describe("deterministic GitHub work ownership", () => {
         }),
         pullRequest("PR_rewritten_open", [rewrittenPullRequestKey]),
       ],
-      refs: [ref("refs/heads/main", [landingKey])],
+      refs: [ref("refs/heads/main", [landingKey, unrelatedRefKey])],
     });
 
-    expect(units).toHaveLength(1);
-    expect(units[0]).toMatchObject({
+    expect(units).toHaveLength(3);
+    const merged = units.find(
+      ({ identityKey }) => identityKey === "pr:PR_rewritten_merge"
+    );
+    const open = units.find(
+      ({ identityKey }) => identityKey === "pr:PR_rewritten_open"
+    );
+    expect(merged).toMatchObject({
       facts: { memberCount: 1 },
       identityKey: "pr:PR_rewritten_merge",
       kind: "pull_request",
     });
-    expect(units[0].members[0].logicalKey).toBe(pullRequestKey);
+    expect(merged.members[0].logicalKey).toBe(pullRequestKey);
+    expect(open).toMatchObject({
+      facts: { memberCount: 1 },
+      kind: "pull_request",
+    });
+    expect(open.members[0].logicalKey).toBe(rewrittenPullRequestKey);
+    const canonical = units.find(({ kind }) => kind === "canonical_day");
+    expect(canonical).toMatchObject({ facts: { memberCount: 1 } });
+    expect(canonical.members[0].logicalKey).toBe(unrelatedRefKey);
   });
 
   test("projects complete provider evidence when aggregate and file counters drift", () => {
@@ -467,7 +491,7 @@ describe("deterministic GitHub work ownership", () => {
     expect(after.activityAt).toBe(before.activityAt);
   });
 
-  test("keeps a branch outcome anchored when a shared lineage is replaced", () => {
+  test("does not reuse another branch identity's activity anchor", () => {
     const oldChange = change("8");
     const oldKey = logicalKeyFrom(oldChange);
     const [before] = projection({
@@ -484,10 +508,8 @@ describe("deterministic GitHub work ownership", () => {
       priorActivityAnchors: [
         {
           activityAnchorAt: before.activityAnchorAt,
-          attributionMode: before.attributionMode,
           identityKey: before.identityKey,
           outcomeDigest: before.outcomeDigest,
-          repositoryId: before.repositoryId,
         },
       ],
       refs: [
@@ -499,7 +521,7 @@ describe("deterministic GitHub work ownership", () => {
 
     expect(after.identityKey).not.toBe(before.identityKey);
     expect(after.outcomeDigest).toBe(before.outcomeDigest);
-    expect(after.activityAt).toBe(before.activityAt);
+    expect(after.activityAt).toBe(replacement.logicalActivityAt);
   });
 
   test("uses an explicitly cached outcome without conflating it with a missing cache entry", () => {

@@ -64,12 +64,13 @@ authored-PR count.
 A logical change normally remains the exact repository ID plus commit SHA.
 Messages and timestamps never infer aliases. One narrow exact-evidence rule
 prevents rewritten work from stacking: when a merged PR member and another SHA
-in the same repository have the same complete file-facts digest, the merged PR
-owns that patch once. A provider-verified merge SHA for a merged PR is also
-excluded from canonical and side-ref ownership when it is absent from effective
-PR membership. Both cases are reported as `merged_pr_landing` policy
-exclusions. Associations alone do not establish landing identity and never
-suppress current-ref ownership.
+in the same repository have the same complete file-facts digest, and that SHA
+is associated with the same merged PR, the merged PR owns that ref-reachable
+landing once. Another pull request is never suppressed by patch
+equivalence. A provider-verified merge SHA for a merged PR is also excluded from
+canonical and side-ref ownership when it is absent from effective PR
+membership. Both cases are reported as `merged_pr_landing` policy exclusions.
+Associations alone do not establish landing identity.
 
 ## Deterministic ownership
 
@@ -215,8 +216,8 @@ Valid output remains cacheable if its input becomes stale while the request
 runs. Exact current output is preferred, followed by the newest accepted
 same-attribution output for the identity, then by an exact same-repository
 branch outcome after lineage replacement. A force push with the same complete
-outcome can therefore reuse accepted prose without moving old work to the
-present.
+outcome can therefore reuse accepted prose without inventing ownership or
+changing the activity anchor.
 
 Claims are ordered by newest activity, then newest observed content:
 

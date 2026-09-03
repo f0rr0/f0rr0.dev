@@ -46,9 +46,11 @@ replacement is evaluated, queued, retried, or processed.
 Multi-parent merge commits and commits with neither file facts nor churn are not
 separate timeline work. A provider-verified same-repository merge SHA is
 excluded from canonical and side-ref ownership when it is absent from effective
-PR membership. An exact complete file-facts match to a merged PR is owned by
-that PR once, covering rewritten SHAs without message or timestamp heuristics.
-Associations alone do not suppress ref ownership.
+PR membership. A ref-reachable SHA associated with that merged PR and carrying
+an exact complete file-facts match to one of its members is owned by that PR
+once, covering rewritten landings without message or timestamp heuristics.
+Patch equivalence never suppresses another pull request, and associations alone
+do not suppress ref ownership.
 
 ## Projection and publication
 

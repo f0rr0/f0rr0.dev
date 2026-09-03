@@ -738,10 +738,11 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
     await refreshGitHubWorkUnitProjection(new Date("2026-08-30T13:02:00.000Z"));
   });
 
-  test("does not infer a landing from associations or another repository's verified SHA", async () => {
+  test("requires an association and exact patch to infer a rewritten landing", async () => {
     const secondObservedAt = new Date("2026-08-30T13:00:00.000Z");
     const foreignBaseRepositoryId = "7009";
     const foreignPullRequestNodeId = "PR_foreign_landing_7001";
+    const pullRequestVersionId = "70010000-0000-4000-8000-000000000071";
     await database.insert(schema.githubRepositories).values({
       factsVerifiedAt: secondObservedAt,
       firstObservedAt: secondObservedAt,
@@ -781,6 +782,27 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       title: "foreign associated",
       titleSnapshot: "foreign associated",
       url: "https://github.com/example/foreign-projection-store-test/pull/72",
+    });
+    await database.insert(schema.githubPullRequestVersions).values({
+      baseRepositoryId: repositoryId,
+      baseSha: "c".repeat(40),
+      commitCount: 1,
+      fileFacts: [fileFact("src/first.ts")],
+      fileFactsComplete: true,
+      headRepositoryId: repositoryId,
+      headSha: firstSha,
+      id: pullRequestVersionId,
+      membershipComplete: true,
+      mergeSnapshot: true,
+      observedAt: secondObservedAt,
+      providerUpdatedAt: secondObservedAt,
+      pullRequestNodeId,
+    });
+    await database.insert(schema.githubPullRequestMemberships).values({
+      commitRepositoryId: repositoryId,
+      commitSha: firstSha,
+      position: 0,
+      versionId: pullRequestVersionId,
     });
     await database.insert(schema.githubCommits).values({
       additions: 1,
@@ -846,9 +868,41 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
     ]);
 
     const result = await refreshGitHubWorkUnitProjection(secondObservedAt);
-    const [unit] = await database.select().from(schema.githubWorkUnits);
+    const units = await database.select().from(schema.githubWorkUnits);
     expect(result.exclusionReasonCounts.merged_pr_landing).toBe(0);
-    expect(unit).toMatchObject({ memberCount: 2 });
+    expect(units.reduce((total, unit) => total + unit.memberCount, 0)).toBe(2);
+
+    await database
+      .update(schema.githubCommits)
+      .set({ fileFacts: [fileFact("src/first.ts")] })
+      .where(
+        and(
+          eq(schema.githubCommits.repositoryId, repositoryId),
+          eq(schema.githubCommits.sha, secondSha)
+        )
+      );
+    const exactLanding = await refreshGitHubWorkUnitProjection(
+      new Date("2026-08-30T13:00:01.000Z")
+    );
+    const exactLandingUnits = await database
+      .select()
+      .from(schema.githubWorkUnits);
+    expect(exactLanding.exclusionReasonCounts.merged_pr_landing).toBe(1);
+    expect(exactLandingUnits).toHaveLength(1);
+    expect(exactLandingUnits[0]).toMatchObject({
+      memberCount: 1,
+      pullRequestNodeId,
+    });
+
+    await database
+      .update(schema.githubCommits)
+      .set({ fileFacts: [fileFact("src/second.ts")] })
+      .where(
+        and(
+          eq(schema.githubCommits.repositoryId, repositoryId),
+          eq(schema.githubCommits.sha, secondSha)
+        )
+      );
 
     await database
       .delete(schema.githubPullRequests)

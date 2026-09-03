@@ -2,6 +2,7 @@ import { and, asc, eq, exists, inArray, isNotNull, or, sql } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import {
+  githubCommitPullRequestAssociations,
   githubCommits,
   githubIssues,
   githubPublicFeedHead,
@@ -481,7 +482,7 @@ const excludedChangesFrom = (
             )?.fileFactsDigest;
             return digest === null || digest === undefined
               ? []
-              : [`${unit.repositoryId}\0${digest}`];
+              : [`${unit.repositoryId}\0${digest}\0${unit.pullRequestNodeId}`];
           })
         : []
     )
@@ -506,11 +507,14 @@ const excludedChangesFrom = (
       effectivePullRequest?.baseRepositoryId ?? change.repositoryId
     );
     let reason: GitHubWorkUnitProjectionExclusionReason;
-    const equivalentKey =
-      change.fileFactsDigest === null
-        ? null
-        : `${repository?.id ?? change.repositoryId}\0${change.fileFactsDigest}`;
-    if (equivalentKey !== null && publishedFileFacts.has(equivalentKey)) {
+    const representedByMergedPullRequest =
+      change.fileFactsDigest !== null &&
+      change.associatedPullRequestNodeIds.some((nodeId) =>
+        publishedFileFacts.has(
+          `${repository?.id ?? change.repositoryId}\0${change.fileFactsDigest}\0${nodeId}`
+        )
+      );
+    if (representedByMergedPullRequest) {
       reason = "merged_pr_landing";
     } else if (repository === undefined || repository.visibility === null) {
       reason = "repository_visibility_unknown";
@@ -903,6 +907,36 @@ const loadProjectionSnapshot = async (
     .from(githubCommits)
     .where(inArray(githubCommits.authorUserId, [...trackedAuthorUserIds]))
     .orderBy(asc(githubCommits.repositoryId), asc(githubCommits.sha));
+  const associationRows = await transaction
+    .select({
+      pullRequestNodeId: githubCommitPullRequestAssociations.pullRequestNodeId,
+      repositoryId: githubCommitPullRequestAssociations.commitRepositoryId,
+      sha: githubCommitPullRequestAssociations.commitSha,
+    })
+    .from(githubCommitPullRequestAssociations)
+    .innerJoin(
+      githubCommits,
+      and(
+        eq(
+          githubCommits.repositoryId,
+          githubCommitPullRequestAssociations.commitRepositoryId
+        ),
+        eq(githubCommits.sha, githubCommitPullRequestAssociations.commitSha)
+      )
+    )
+    .where(inArray(githubCommits.authorUserId, [...trackedAuthorUserIds]))
+    .orderBy(
+      asc(githubCommitPullRequestAssociations.commitRepositoryId),
+      asc(githubCommitPullRequestAssociations.commitSha),
+      asc(githubCommitPullRequestAssociations.pullRequestNodeId)
+    );
+  const associationsByLogicalKey = new Map<string, string[]>();
+  for (const association of associationRows) {
+    const key = logicalKeyFrom(association.repositoryId, association.sha);
+    const nodeIds = associationsByLogicalKey.get(key) ?? [];
+    nodeIds.push(association.pullRequestNodeId);
+    associationsByLogicalKey.set(key, nodeIds);
+  }
   const changes: GitHubLogicalChange[] = commitRows.map((row) => {
     const fileFacts = checkedCompactFileFacts(row.fileFacts);
     const parentShas = checkedParentShas(row.parentShas);
@@ -910,6 +944,10 @@ const loadProjectionSnapshot = async (
       row.pullRequestDiscoveryState === "complete";
     return {
       additions: row.additions ?? -1,
+      associatedPullRequestNodeIds:
+        associationsByLogicalKey.get(
+          logicalKeyFrom(row.repositoryId, row.sha)
+        ) ?? [],
       authorUserId: row.authorUserId,
       contentObservedAt: row.firstObservedAt.toISOString(),
       deletions: row.deletions ?? -1,
@@ -1128,10 +1166,8 @@ const loadProjectionSnapshot = async (
         : [
             {
               activityAnchorAt: unit.activityAnchorAt.toISOString(),
-              attributionMode: unit.attributionMode,
               identityKey: unit.identityKey,
               outcomeDigest: unit.outcomeDigest,
-              repositoryId: unit.repositoryId,
             },
           ]
     ),
