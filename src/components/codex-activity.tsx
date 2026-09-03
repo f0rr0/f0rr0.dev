@@ -74,15 +74,12 @@ const MonthAxis = ({
 
 const labels = {
   cumulative: {
-    caption: "Lifetime tokens through each date",
     day: (value: string) => `Through ${fullDay.format(date(value))}`,
   },
   daily: {
-    caption: "Daily tokens",
     day: (value: string) => fullDay.format(date(value)),
   },
   weekly: {
-    caption: "Tokens per week",
     day: (value: string) => `Week of ${fullDay.format(weekStart(value))}`,
   },
 } as const;
@@ -145,8 +142,8 @@ const ActivityHeatmap = ({
       </div>
       <MonthAxis calendarOffset={leadingDays} values={series.values} />
       <figcaption className="mt-1 flex items-center justify-between font-mono text-[0.625rem] uppercase tracking-wider text-muted-foreground">
-        <span>{series.partial ? "Partial history" : label.caption}</span>
-        <span className="flex items-center gap-1">
+        {series.partial ? <span>Partial history</span> : null}
+        <span className="ml-auto flex items-center gap-1">
           Less
           {[
             "bg-muted/60",
