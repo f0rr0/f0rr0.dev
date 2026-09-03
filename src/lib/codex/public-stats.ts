@@ -22,7 +22,7 @@ const readPublicCodexStats = async () => {
 
 const readCachedPublicCodexStats = unstable_cache(
   readPublicCodexStats,
-  ["public-codex-stats-v2"],
+  ["public-codex-stats-v3"],
   { revalidate: 900 }
 );
 

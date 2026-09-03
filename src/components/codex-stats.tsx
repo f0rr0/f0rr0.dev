@@ -81,6 +81,9 @@ const LimitBar = ({
 
 export function CodexStats({ stats }: { stats: PublicCodexStats }) {
   const peak = Math.max(1, ...stats.dailyUsage.map(({ tokens }) => tokens));
+  const leadingDays = new Date(
+    `${stats.dailyUsage[0]?.day ?? "1970-01-04"}T00:00:00.000Z`
+  ).getUTCDay();
   const highlights = [
     {
       label: "Current streak",
@@ -131,26 +134,37 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
 
       <figure className="mt-10">
         <div
-          className="flex h-32 items-end gap-1"
+          className="grid grid-flow-col grid-rows-7 auto-cols-fr gap-0.5 sm:gap-1"
           role="img"
-          aria-label="Combined token usage over the last 30 days"
+          aria-label="Combined daily token activity over the last year"
         >
-          {stats.dailyUsage.map(({ day: date, tokens }) => (
-            <div
-              className="flex-1 rounded-t-sm bg-primary/70"
-              key={date}
-              style={{
-                height:
-                  tokens === 0
-                    ? "0%"
-                    : `${String(Math.max(3, (tokens / peak) * 100))}%`,
-              }}
-              title={`${date}: ${number.format(tokens)} tokens`}
-            />
+          {Array.from({ length: leadingDays }, (_, index) => (
+            <span aria-hidden="true" key={`leading-${String(index)}`} />
           ))}
+          {stats.dailyUsage.map(({ day: date, tokens }) => {
+            const ratio = tokens / peak;
+            const color =
+              tokens === 0
+                ? "bg-muted/60"
+                : ratio < 0.25
+                  ? "bg-primary/25"
+                  : ratio < 0.5
+                    ? "bg-primary/45"
+                    : ratio < 0.75
+                      ? "bg-primary/70"
+                      : "bg-primary";
+            return (
+              <span
+                aria-hidden="true"
+                className={`aspect-square min-w-0 rounded-[0.2rem] ${color}`}
+                key={date}
+                title={`${date}: ${number.format(tokens)} tokens`}
+              />
+            );
+          })}
         </div>
         <figcaption className="mt-2 flex justify-between font-mono text-[0.625rem] uppercase tracking-wider text-muted-foreground">
-          <span>30 days ago</span>
+          <span>1 year ago</span>
           <span>Today</span>
         </figcaption>
         <ol className="sr-only">
@@ -163,24 +177,42 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
         </ol>
       </figure>
 
-      <div className="mt-6 flex flex-wrap gap-x-8 gap-y-2 border-y border-border py-4 text-sm text-muted-foreground">
-        <p>
-          Busiest day:{" "}
-          <strong className="font-medium text-foreground">
+      <dl className="mt-6 grid grid-cols-2 gap-4 border-y border-border py-4 text-sm sm:grid-cols-4">
+        <div>
+          <dt className="text-muted-foreground">Busiest day</dt>
+          <dd className="mt-1 font-mono text-foreground">
             {stats.busiestDay === null
               ? "—"
               : `${day.format(new Date(`${stats.busiestDay.day}T00:00:00.000Z`))} · ${compactNumber.format(stats.busiestDay.tokens)} tokens`}
             {stats.busiestDay?.partial === true ? " · partial" : ""}
-          </strong>
-        </p>
-        <p>
-          Longest turn:{" "}
-          <strong className="font-medium text-foreground">
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Longest chat</dt>
+          <dd className="mt-1 font-mono text-foreground">
             {formatDuration(stats.totals.longestRunningTurnSec.value)}
             {stats.totals.longestRunningTurnSec.partial ? " · partial" : ""}
-          </strong>
-        </p>
-      </div>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Total chats</dt>
+          <dd className="mt-1 font-mono text-foreground">
+            {stats.totals.totalThreads.value === null
+              ? "—"
+              : number.format(stats.totals.totalThreads.value)}
+            {stats.totals.totalThreads.partial ? " · partial" : ""}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Total skills used</dt>
+          <dd className="mt-1 font-mono text-foreground">
+            {stats.totals.totalSkillsUsed.value === null
+              ? "—"
+              : number.format(stats.totals.totalSkillsUsed.value)}
+            {stats.totals.totalSkillsUsed.partial ? " · partial" : ""}
+          </dd>
+        </div>
+      </dl>
 
       <article className="mt-8 rounded-lg border border-border p-5">
         <div>

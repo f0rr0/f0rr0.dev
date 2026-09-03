@@ -35,4 +35,7 @@ automatic token refresh. It then makes the same authenticated
 uses only the refreshed bearer token, ChatGPT account ID, and the exact Codex
 user agent returned during App Server initialization. The Profile endpoint is
 internal, so its response is validated and reduced to the existing public
-allowlist before storage.
+allowlist before storage. The public view sums token, chat, and skill-run totals,
+combines daily activity, and takes the highest streak, peak, and longest-chat
+values across accounts. Per-account identities and statistics that cannot be
+combined exactly are discarded.

@@ -27,6 +27,8 @@ const profileResponseSchema = z.object({
     longest_running_turn_sec: nullableSafeInteger.optional(),
     longest_streak_days: nullableSafeInteger.optional(),
     peak_daily_tokens: nullableSafeInteger.optional(),
+    total_skills_used: nullableSafeInteger.optional(),
+    total_threads: nullableSafeInteger.optional(),
   }),
 });
 
@@ -88,6 +90,8 @@ export interface CodexAccountSnapshot {
     longestRunningTurnSec: number | null;
     longestStreakDays: number | null;
     peakDailyTokens: number | null;
+    totalSkillsUsed: number | null;
+    totalThreads: number | null;
   };
 }
 
@@ -113,6 +117,8 @@ export interface PublicCodexStats {
     last7Days: PublicCodexMetric;
     lifetimeTokens: PublicCodexMetric;
     longestRunningTurnSec: PublicCodexMetric;
+    totalSkillsUsed: PublicCodexMetric;
+    totalThreads: PublicCodexMetric;
     todayTokens: PublicCodexMetric;
   };
 }
@@ -165,6 +171,8 @@ export const createCodexAccountSnapshot = (
       longestRunningTurnSec: stats.longest_running_turn_sec ?? null,
       longestStreakDays: stats.longest_streak_days ?? null,
       peakDailyTokens: stats.peak_daily_tokens ?? null,
+      totalSkillsUsed: stats.total_skills_used ?? null,
+      totalThreads: stats.total_threads ?? null,
     },
   };
 };
@@ -312,8 +320,8 @@ export const buildPublicCodexStats = (
       busiest === undefined
         ? null
         : { day: busiest[0], partial: dailyPartial, tokens: busiest[1] },
-    dailyUsage: Array.from({ length: 30 }, (_, index) => {
-      const day = utcDayOffset(today, index - 29);
+    dailyUsage: Array.from({ length: 365 }, (_, index) => {
+      const day = utcDayOffset(today, index - 364);
       return { day, tokens: combinedDaily.get(day) ?? 0 };
     }),
     highlights: {
@@ -358,6 +366,20 @@ export const buildPublicCodexStats = (
           ...missingValues,
         ],
         maximum
+      ),
+      totalSkillsUsed: metric(
+        [
+          ...records.map(({ snapshot }) => snapshot.summary.totalSkillsUsed),
+          ...missingValues,
+        ],
+        sum
+      ),
+      totalThreads: metric(
+        [
+          ...records.map(({ snapshot }) => snapshot.summary.totalThreads),
+          ...missingValues,
+        ],
+        sum
       ),
       todayTokens: {
         partial: dailyPartial,

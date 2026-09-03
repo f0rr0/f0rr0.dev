@@ -17,7 +17,8 @@ const profile = (lifetimeTokens, dailyUsageBuckets, stats = {}) => ({
     longest_running_turn_sec: 90,
     longest_streak_days: 8,
     peak_daily_tokens: 80,
-    total_threads: 999,
+    total_skills_used: 40,
+    total_threads: 10,
     top_invocations: [{ plugin_name: "must-not-survive" }],
     ...stats,
   },
@@ -54,6 +55,8 @@ describe("public Codex statistics", () => {
         current_streak_days: 5,
         longest_streak_days: 7,
         peak_daily_tokens: 100,
+        total_skills_used: 60,
+        total_threads: 20,
       }),
       {
         ...limits,
@@ -92,6 +95,16 @@ describe("public Codex statistics", () => {
       value: 300,
     });
     expect(stats?.totals.todayTokens.value).toBe(120);
+    expect(stats?.totals.totalSkillsUsed).toEqual({
+      partial: false,
+      value: 100,
+    });
+    expect(stats?.totals.totalThreads).toEqual({ partial: false, value: 30 });
+    expect(stats?.dailyUsage).toHaveLength(365);
+    expect(stats?.dailyUsage.at(-1)).toEqual({
+      day: "2026-01-30",
+      tokens: 120,
+    });
     expect(stats?.busiestDay).toEqual({
       day: "2026-01-30",
       partial: false,
