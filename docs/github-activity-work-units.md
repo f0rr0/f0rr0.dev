@@ -61,13 +61,16 @@ not automatically a work unit: it must contain at least one current eligible
 tracked-authored commit. This is why work-unit counts can differ from GitHub's
 authored-PR count.
 
-There is no patch-equality aliasing or inferred squash, rebase, or cherry-pick
-lineage. A logical change is the exact repository ID plus commit SHA. One narrow
-landing rule prevents duplication: a provider-verified merge SHA for a merged
-PR in the same repository is excluded from canonical and side-ref ownership
-when it is absent from effective PR membership. It is reported as a
-`merged_pr_landing` policy exclusion. Associations alone do not establish
-landing identity and never suppress current-ref ownership.
+A logical change normally remains the exact repository ID plus commit SHA.
+Messages and timestamps never infer aliases. One narrow exact-evidence rule
+prevents rewritten work from stacking: when a merged PR member and another SHA
+in the same repository have the same complete file-facts digest, and that SHA
+is associated with the same merged PR, the merged PR owns that ref-reachable
+landing once. Another pull request is never suppressed by patch
+equivalence. A provider-verified merge SHA for a merged PR is also excluded from
+canonical and side-ref ownership when it is absent from effective PR
+membership. Both cases are reported as `merged_pr_landing` policy exclusions.
+Associations alone do not establish landing identity.
 
 ## Deterministic ownership
 
@@ -165,9 +168,11 @@ The public feed reads at most five UTC days per page in a read-only repeatable
 read transaction. Pagination cursors are HMAC-signed and bound to the ordering
 revision. An ordering change returns `409`, prompting a fresh first page.
 
-Accepted summaries are read only when their recipe, outcome, input, and
-attribution digests still match the current unit. Stale attempts cannot
-leak into a new projection.
+The exact accepted summary is preferred. The newest accepted same-attribution
+summary remains a visible fallback while an identity is refreshed. Accepted
+output is also copied to durable storage without a work-unit foreign key, so a
+projection deletion cannot erase it; an exact same-repository outcome may reuse
+that prose after branch-lineage identity replacement.
 
 ## Outcome summaries
 
@@ -208,9 +213,11 @@ configuration do not invalidate prose. A five-minute debounce absorbs active
 rewrites. Up to eight newest-first inputs are deterministically evaluated per
 projection refresh. A separate bounded worker starts at most one provider claim.
 Valid output remains cacheable if its input becomes stale while the request
-runs; it is displayed only when the current unit's exact
-recipe, outcome, attribution, and summary-input keys match. A force push with
-the same complete PR net outcome can therefore reuse accepted prose.
+runs. Exact current output is preferred, followed by the newest accepted
+same-attribution output for the identity, then by an exact same-repository
+branch outcome after lineage replacement. A force push with the same complete
+outcome can therefore reuse accepted prose without inventing ownership or
+changing the activity anchor.
 
 Claims are ordered by newest activity, then newest observed content:
 

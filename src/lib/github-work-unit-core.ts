@@ -25,12 +25,14 @@ export type GitHubRepositoryVisibility =
 
 export interface GitHubLogicalChange {
   additions: number;
+  associatedPullRequestNodeIds: readonly string[];
   authorUserId: string | null;
   contentObservedAt: string;
   deletions: number;
   enrichmentComplete: boolean;
   fileFacts: readonly GitHubFileChangeStat[];
   fileFactsComplete: boolean;
+  fileFactsDigest: string | null;
   logicalActivityAt: string;
   logicalRepositoryId: string;
   logicalSha: string;
@@ -525,6 +527,24 @@ const identityKeyFrom = (owner: GitHubWorkOwner): string => {
   return `branch:${owner.ref.branchLineageId}`;
 };
 
+const repositoryIdFrom = (owner: GitHubWorkOwner): string =>
+  owner.kind === "pull_request"
+    ? owner.pullRequest.baseRepositoryId
+    : owner.repository.id;
+
+const attributionModeFrom = (
+  owner: GitHubWorkOwner,
+  trackedAuthorUserIds: ReadonlySet<string>
+): GitHubWorkUnitSummaryAttributionMode =>
+  owner.kind === "pull_request"
+    ? owner.pullRequest.authorUserId !== null &&
+      trackedAuthorUserIds.has(owner.pullRequest.authorUserId)
+      ? "tracked_authored_pr"
+      : "foreign_pr_contribution"
+    : owner.kind === "canonical_day"
+      ? "canonical_owned_composite"
+      : "branch_owned_composite";
+
 const visibilityFrom = (
   visibility: GitHubRepositoryVisibility
 ): "private" | "public" | null => {
@@ -709,6 +729,7 @@ const projectedUnitFrom = (
   const currentAnchor = maxInstant(
     orderedChanges.map((change) => change.logicalActivityAt)
   );
+  const attributionMode = attributionModeFrom(owner, trackedAuthorUserIds);
   const activityAnchorAt =
     owner.kind === "canonical_day" || outcomeDigest === null
       ? currentAnchor
@@ -734,15 +755,6 @@ const projectedUnitFrom = (
     unitKey: identityKey,
   });
   const { kind } = owner;
-  const attributionMode =
-    owner.kind === "pull_request"
-      ? owner.pullRequest.authorUserId !== null &&
-        trackedAuthorUserIds.has(owner.pullRequest.authorUserId)
-        ? ("tracked_authored_pr" as const)
-        : ("foreign_pr_contribution" as const)
-      : owner.kind === "canonical_day"
-        ? ("canonical_owned_composite" as const)
-        : ("branch_owned_composite" as const);
   const ownerFacts =
     owner.kind === "pull_request"
       ? {
@@ -802,6 +814,50 @@ const projectedUnitFrom = (
   };
 };
 
+const mergedPullRequestsByFileFactsFrom = (
+  changes: readonly GitHubLogicalChange[],
+  ownership: GitHubWorkUnitOwnershipIndex,
+  trackedAuthorUserIds: ReadonlySet<string>
+) => {
+  const result = new Map<string, Set<string>>();
+  for (const change of changes) {
+    if (change.fileFactsDigest === null) {
+      continue;
+    }
+    const owner = chooseOwnerFor(change, ownership, trackedAuthorUserIds);
+    if (
+      owner?.kind !== "pull_request" ||
+      owner.pullRequest.state !== "merged"
+    ) {
+      continue;
+    }
+    const key = `${repositoryIdFrom(owner)}\0${change.fileFactsDigest}`;
+    const pullRequests = result.get(key) ?? new Set<string>();
+    pullRequests.add(owner.pullRequest.nodeId);
+    result.set(key, pullRequests);
+  }
+  return result;
+};
+
+const isEquivalentMergedPullRequestLanding = (
+  change: GitHubLogicalChange,
+  owner: GitHubWorkOwner,
+  repositoryId: string,
+  mergedPullRequestsByFileFacts: ReadonlyMap<string, ReadonlySet<string>>
+) => {
+  if (change.fileFactsDigest === null || owner.kind === "pull_request") {
+    return false;
+  }
+  const key = `${repositoryId}\0${change.fileFactsDigest}`;
+  const mergedPullRequests = mergedPullRequestsByFileFacts.get(key);
+  return (
+    mergedPullRequests !== undefined &&
+    change.associatedPullRequestNodeIds.some((nodeId) =>
+      mergedPullRequests.has(nodeId)
+    )
+  );
+};
+
 export const projectGitHubWorkUnits = (
   input: GitHubWorkUnitProjectionInput,
   ownership = indexGitHubWorkUnitOwnershipEvidence(input),
@@ -823,10 +879,15 @@ export const projectGitHubWorkUnits = (
   >();
   const seenLogicalKeys = new Set<string>();
 
-  for (const change of input.changes) {
-    if (!isEligibleGitHubWorkChange(change, input.trackedAuthorUserIds)) {
-      continue;
-    }
+  const eligibleChanges = input.changes.filter((change) =>
+    isEligibleGitHubWorkChange(change, input.trackedAuthorUserIds)
+  );
+  const mergedPullRequestByFileFacts = mergedPullRequestsByFileFactsFrom(
+    eligibleChanges,
+    ownership,
+    input.trackedAuthorUserIds
+  );
+  for (const change of eligibleChanges) {
     const logicalKey = githubLogicalChangeKey(
       change.logicalRepositoryId,
       change.logicalSha
@@ -840,10 +901,17 @@ export const projectGitHubWorkUnits = (
     if (owner === null) {
       continue;
     }
-    const repositoryId =
-      owner.kind === "pull_request"
-        ? owner.pullRequest.baseRepositoryId
-        : owner.repository.id;
+    const repositoryId = repositoryIdFrom(owner);
+    if (
+      isEquivalentMergedPullRequestLanding(
+        change,
+        owner,
+        repositoryId,
+        mergedPullRequestByFileFacts
+      )
+    ) {
+      continue;
+    }
     const repository = ownership.repositoriesById.get(repositoryId);
     if (repository === undefined) {
       throw new Error(

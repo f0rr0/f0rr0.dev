@@ -2,6 +2,7 @@ import { and, asc, eq, exists, inArray, isNotNull, or, sql } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import {
+  githubCommitPullRequestAssociations,
   githubCommits,
   githubIssues,
   githubPublicFeedHead,
@@ -460,6 +461,32 @@ const excludedChangesFrom = (
   const published = new Set(
     units.flatMap((unit) => unit.members.map((member) => member.logicalKey))
   );
+  const changesByLogicalKey = new Map(
+    input.changes.map((change) => [
+      logicalKeyFrom(change.logicalRepositoryId, change.logicalSha),
+      change,
+    ])
+  );
+  const mergedPullRequestNodeIds = new Set(
+    input.pullRequests
+      .filter((pullRequest) => pullRequest.state === "merged")
+      .map((pullRequest) => pullRequest.nodeId)
+  );
+  const publishedFileFacts = new Set(
+    units.flatMap((unit) =>
+      unit.pullRequestNodeId !== null &&
+      mergedPullRequestNodeIds.has(unit.pullRequestNodeId)
+        ? unit.members.flatMap((member) => {
+            const digest = changesByLogicalKey.get(
+              member.logicalKey
+            )?.fileFactsDigest;
+            return digest === null || digest === undefined
+              ? []
+              : [`${unit.repositoryId}\0${digest}\0${unit.pullRequestNodeId}`];
+          })
+        : []
+    )
+  );
   const excludedChanges: GitHubWorkUnitProjectionExcludedChange[] = [];
   for (const change of input.changes) {
     if (!isEligibleGitHubWorkChange(change, input.trackedAuthorUserIds)) {
@@ -480,7 +507,16 @@ const excludedChangesFrom = (
       effectivePullRequest?.baseRepositoryId ?? change.repositoryId
     );
     let reason: GitHubWorkUnitProjectionExclusionReason;
-    if (repository === undefined || repository.visibility === null) {
+    const representedByMergedPullRequest =
+      change.fileFactsDigest !== null &&
+      change.associatedPullRequestNodeIds.some((nodeId) =>
+        publishedFileFacts.has(
+          `${repository?.id ?? change.repositoryId}\0${change.fileFactsDigest}\0${nodeId}`
+        )
+      );
+    if (representedByMergedPullRequest) {
+      reason = "merged_pr_landing";
+    } else if (repository === undefined || repository.visibility === null) {
       reason = "repository_visibility_unknown";
     } else if (effectivePullRequest !== null) {
       throw new Error(
@@ -871,6 +907,36 @@ const loadProjectionSnapshot = async (
     .from(githubCommits)
     .where(inArray(githubCommits.authorUserId, [...trackedAuthorUserIds]))
     .orderBy(asc(githubCommits.repositoryId), asc(githubCommits.sha));
+  const associationRows = await transaction
+    .select({
+      pullRequestNodeId: githubCommitPullRequestAssociations.pullRequestNodeId,
+      repositoryId: githubCommitPullRequestAssociations.commitRepositoryId,
+      sha: githubCommitPullRequestAssociations.commitSha,
+    })
+    .from(githubCommitPullRequestAssociations)
+    .innerJoin(
+      githubCommits,
+      and(
+        eq(
+          githubCommits.repositoryId,
+          githubCommitPullRequestAssociations.commitRepositoryId
+        ),
+        eq(githubCommits.sha, githubCommitPullRequestAssociations.commitSha)
+      )
+    )
+    .where(inArray(githubCommits.authorUserId, [...trackedAuthorUserIds]))
+    .orderBy(
+      asc(githubCommitPullRequestAssociations.commitRepositoryId),
+      asc(githubCommitPullRequestAssociations.commitSha),
+      asc(githubCommitPullRequestAssociations.pullRequestNodeId)
+    );
+  const associationsByLogicalKey = new Map<string, string[]>();
+  for (const association of associationRows) {
+    const key = logicalKeyFrom(association.repositoryId, association.sha);
+    const nodeIds = associationsByLogicalKey.get(key) ?? [];
+    nodeIds.push(association.pullRequestNodeId);
+    associationsByLogicalKey.set(key, nodeIds);
+  }
   const changes: GitHubLogicalChange[] = commitRows.map((row) => {
     const fileFacts = checkedCompactFileFacts(row.fileFacts);
     const parentShas = checkedParentShas(row.parentShas);
@@ -878,12 +944,17 @@ const loadProjectionSnapshot = async (
       row.pullRequestDiscoveryState === "complete";
     return {
       additions: row.additions ?? -1,
+      associatedPullRequestNodeIds:
+        associationsByLogicalKey.get(
+          logicalKeyFrom(row.repositoryId, row.sha)
+        ) ?? [],
       authorUserId: row.authorUserId,
       contentObservedAt: row.firstObservedAt.toISOString(),
       deletions: row.deletions ?? -1,
       enrichmentComplete: row.enrichmentState === "complete",
       fileFacts: fileFacts ?? [],
       fileFactsComplete: row.fileFactsComplete && fileFacts !== null,
+      fileFactsDigest: checkedDigest(row.fileFactsDigest),
       logicalActivityAt: (row.committerAt ?? row.committedAt).toISOString(),
       logicalRepositoryId: row.repositoryId,
       logicalSha: row.sha,

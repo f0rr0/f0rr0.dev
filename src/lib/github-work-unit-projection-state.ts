@@ -14,7 +14,7 @@ type DatabaseTransaction = Parameters<
 const PROJECTION_LOCK = "github-work-unit-projection-v1";
 // Bump whenever durable evidence maps to different work-unit ownership.
 const PROJECTION_POLICY =
-  "github-work-unit-projection-v3-visibility-neutral-processing";
+  "github-work-unit-projection-v4-merged-pr-file-equivalence";
 const PIPELINE_POLICY_DIGEST = createHash("sha256")
   .update(
     JSON.stringify({

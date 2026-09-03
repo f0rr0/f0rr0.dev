@@ -447,6 +447,49 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit feed projection", () => {
     });
   });
 
+  test("reads stale prose after its work-unit attempt history is gone", async () => {
+    await admin`
+      insert into github_work_unit_accepted_summaries (
+        accepted_at, attribution_mode, identity_key, outcome, outcome_digest,
+        recipe, repository_id, summary_input_digest
+      ) values (
+        '2026-08-30T12:08:00Z', 'branch_owned_composite',
+        'branch:10000000-0000-4000-8000-000000000299',
+        ${encodeGitHubWorkUnitSummary({
+          headline: "Retains accepted prose across projection replacement",
+          summary: "The durable cache keeps the accepted result available.",
+        })},
+        ${digest("c")}, ${GITHUB_WORK_UNIT_SUMMARY_RECIPE}, '201', ${digest("5")}
+      )
+    `;
+    await admin`
+      delete from github_work_unit_summary_attempts
+      where work_unit_id = '00000000-0000-4000-8000-000000000105'
+        and state = 'accepted'
+    `;
+    const durable = await admin`
+      select accepted.outcome
+      from github_work_unit_accepted_summaries as accepted
+      join github_work_units as work_unit
+        on accepted.attribution_mode = work_unit.attribution_mode
+       and accepted.repository_id = work_unit.repository_id
+       and accepted.outcome_digest = work_unit.outcome_digest
+      where work_unit.id = '00000000-0000-4000-8000-000000000105'
+    `;
+    expect(durable).toHaveLength(1);
+
+    const page = await readPublicGitHubActivityPage(null, 2);
+    const branch = page.days[0]?.repositories
+      .find(({ repository }) => repository.key === "201")
+      ?.items.find(({ kind }) => kind === "branch");
+
+    expect(branch).toMatchObject({
+      headline: "Retains accepted prose across projection replacement",
+      summarizing: false,
+      summary: "The durable cache keeps the accepted result available.",
+    });
+  });
+
   test("binds pagination to the ordered set and never splits a UTC day", async () => {
     const firstPage = await readPublicGitHubActivityPage(null, 2);
     expect(firstPage.nextCursor).not.toBeNull();

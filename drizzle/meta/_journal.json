@@ -134,6 +134,13 @@
       "when": 1788424334125,
       "tag": "0018_fancy_bulldozer",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788467778715,
+      "tag": "0019_wise_doorman",
+      "breakpoints": true
     }
   ]
 }
