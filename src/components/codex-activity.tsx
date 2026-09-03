@@ -144,26 +144,11 @@ const ActivityHeatmap = ({
         })}
       </div>
       <MonthAxis calendarOffset={leadingDays} values={series.values} />
-      <figcaption className="mt-1 flex items-center justify-between font-mono text-[0.625rem] uppercase tracking-wider text-muted-foreground">
-        {series.partial ? <span>Partial history</span> : null}
-        <span className="ml-auto flex items-center gap-1">
-          Less
-          {[
-            "bg-muted/60",
-            "bg-primary/25",
-            "bg-primary/45",
-            "bg-primary/70",
-            "bg-primary",
-          ].map((color) => (
-            <i
-              aria-hidden="true"
-              className={`size-2 rounded-[0.15rem] ${color}`}
-              key={color}
-            />
-          ))}
-          More
-        </span>
-      </figcaption>
+      {series.partial ? (
+        <figcaption className="mt-1 font-mono text-[0.625rem] uppercase tracking-wider text-muted-foreground">
+          Partial history
+        </figcaption>
+      ) : null}
     </figure>
   );
 };
