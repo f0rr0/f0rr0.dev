@@ -53,6 +53,7 @@ describe("production Supabase cron URLs", () => {
 
   test("builds every bounded production endpoint from the site URL", () => {
     expect(supabaseCronUrlsFrom("https://f0rr0.dev")).toEqual({
+      codexStats: "https://f0rr0.dev/api/cron/codex-stats",
       events: "https://f0rr0.dev/api/cron/github-sync",
       headRefs: "https://f0rr0.dev/api/cron/github-refs?repositories=8",
       summary: "https://f0rr0.dev/api/cron/github-summary",

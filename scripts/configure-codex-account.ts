@@ -5,15 +5,9 @@ import postgres from "postgres";
 
 import { validateCodexAuthJson } from "@/lib/codex/stats";
 
-const [id, rawLabel, codexHome] = process.argv.slice(2);
+const [id, codexHome] = process.argv.slice(2);
 if (id === undefined || !/^[a-z0-9][a-z0-9_-]{0,63}$/u.test(id)) {
-  throw new Error(
-    "Usage: bun run codex:account <id> <public-label> <codex-home>"
-  );
-}
-const label = rawLabel?.trim();
-if (label === undefined || label.length === 0 || label.length > 80) {
-  throw new Error("Public label must contain 1–80 characters.");
+  throw new Error("Usage: bun run codex:account <id> <codex-home>");
 }
 if (codexHome === undefined) {
   throw new Error("A dedicated Codex home is required.");
@@ -56,17 +50,12 @@ try {
       `);
 
   await sql`
-    insert into codex_accounts (id, public_label, auth_secret_name, enabled)
-    values (${id}, ${label}, ${secretName}, true)
+    insert into codex_accounts (id, enabled)
+    values (${id}, true)
     on conflict (id) do update set
-      public_label = excluded.public_label,
-      auth_secret_name = excluded.auth_secret_name,
       enabled = true,
       snapshot = null,
-      snapshot_at = null,
-      last_error_code = null,
-      sync_lease_token = null,
-      sync_lease_until = null
+      snapshot_at = null
   `;
   process.stdout.write(`Configured Codex stats account ${id}.\n`);
 } finally {

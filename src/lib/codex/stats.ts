@@ -36,60 +36,48 @@ const profileResponseSchema = z.object({
     total_skills_used: nullableSafeInteger.optional(),
     total_threads: nullableSafeInteger.optional(),
     unique_skills_used: nullableSafeInteger.optional(),
-    weekly_usage_buckets: usageBucketsSchema,
   }),
 });
 
-const rateLimitWindowSchema = z.object({
-  resetsAt: nullableSafeInteger,
-  usedPercent: z.number().nonnegative(),
-  windowDurationMins: nullableSafeInteger,
+const usageResponseSchema = z.object({
+  plan_type: z.string().max(80).nullable().optional(),
+  rate_limit: z
+    .object({
+      primary_window: z
+        .object({
+          limit_window_seconds: z.number().nonnegative().nullable().optional(),
+          used_percent: z.number().nonnegative().nullable().optional(),
+        })
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
 });
 
-const rateLimitSnapshotSchema = z.object({
-  limitId: z.string().max(80).nullable(),
-  limitName: z.string().max(120).nullable(),
-  planType: z.string().max(80).nullable(),
-  primary: rateLimitWindowSchema.nullable(),
-  secondary: rateLimitWindowSchema.nullable(),
-});
-
-const rateLimitsResponseSchema = z.object({
-  rateLimitResetCredits: z.object({ availableCount: safeInteger }).nullable(),
-  rateLimits: rateLimitSnapshotSchema,
-  rateLimitsByLimitId: z.record(z.string(), rateLimitSnapshotSchema).nullable(),
-});
-
-const authJsonSchema = z.object({
-  auth_mode: z.literal("chatgpt"),
-  tokens: z.object({
-    access_token: z.string().min(1),
-    account_id: z.string().min(1),
-    refresh_token: z.string().min(1),
-  }),
-});
-
-const CODEX_PROFILE_URL = "https://chatgpt.com/backend-api/wham/profiles/me";
-
-export interface CodexRateLimitWindow {
-  resetsAt: number | null;
-  usedPercent: number;
-  windowDurationMins: number | null;
-}
-
-export interface CodexRateLimit {
-  id: string;
-  name: string | null;
-  planType: string | null;
-  primary: CodexRateLimitWindow | null;
-  secondary: CodexRateLimitWindow | null;
-}
+const authJsonSchema = z
+  .object({
+    auth_mode: z.literal("chatgpt"),
+    last_refresh: z.string().optional(),
+    tokens: z
+      .object({
+        access_token: z.string().min(1),
+        account_id: z.string().min(1),
+        id_token: z.string().min(1).optional(),
+        refresh_token: z.string().min(1),
+      })
+      .loose(),
+  })
+  .loose();
 
 export interface CodexAccountSnapshot {
-  availableResetCredits: number | null;
   cumulativeDailyUsageBuckets: readonly CodexUsageBucket[] | null;
   dailyUsageBuckets: readonly CodexUsageBucket[] | null;
-  limits: readonly CodexRateLimit[];
+  primaryLimit: {
+    planType: string | null;
+    usedPercent: number;
+    windowDurationMins: number | null;
+  } | null;
   summary: {
     currentStreakDays: number | null;
     fastModeUsagePercent: number | null;
@@ -102,7 +90,6 @@ export interface CodexAccountSnapshot {
     totalThreads: number | null;
     uniqueSkillsUsed: number | null;
   };
-  weeklyUsageBuckets: readonly CodexUsageBucket[] | null;
 }
 
 export interface CodexUsageBucket {
@@ -144,7 +131,6 @@ export interface PublicCodexStats {
     skillsExplored: PublicCodexRange;
   };
   primaryLimit: {
-    planType: string | null;
     usedPercent: number;
   } | null;
   totals: {
@@ -162,17 +148,6 @@ export interface CodexSnapshotRecord {
   snapshot: CodexAccountSnapshot;
 }
 
-const sanitizeWindow = (
-  value: z.infer<typeof rateLimitWindowSchema> | null
-): CodexRateLimitWindow | null =>
-  value === null
-    ? null
-    : {
-        resetsAt: value.resetsAt,
-        usedPercent: value.usedPercent,
-        windowDurationMins: value.windowDurationMins,
-      };
-
 const sanitizeBuckets = (value: z.infer<typeof usageBucketsSchema>) =>
   value?.map((bucket) => ({
     startDate: bucket.start_date,
@@ -181,31 +156,30 @@ const sanitizeBuckets = (value: z.infer<typeof usageBucketsSchema>) =>
 
 export const createCodexAccountSnapshot = (
   rawProfile: unknown,
-  rawRateLimits: unknown
+  rawUsage: unknown
 ): CodexAccountSnapshot => {
   const profile = profileResponseSchema.parse(rawProfile);
-  const rateLimits = rateLimitsResponseSchema.parse(rawRateLimits);
+  const usage = usageResponseSchema.parse(rawUsage);
   const { stats } = profile;
-  const byId = rateLimits.rateLimitsByLimitId;
-  const entries: [string, z.infer<typeof rateLimitSnapshotSchema>][] =
-    byId !== null && Object.keys(byId).length > 0
-      ? Object.entries(byId)
-      : [[rateLimits.rateLimits.limitId ?? "default", rateLimits.rateLimits]];
+  const primary = usage.rate_limit?.primary_window;
 
   return {
-    availableResetCredits:
-      rateLimits.rateLimitResetCredits?.availableCount ?? null,
     cumulativeDailyUsageBuckets: sanitizeBuckets(
       stats.cumulative_daily_usage_buckets
     ),
     dailyUsageBuckets: sanitizeBuckets(stats.daily_usage_buckets),
-    limits: entries.map(([id, limit]) => ({
-      id,
-      name: limit.limitName,
-      planType: limit.planType,
-      primary: sanitizeWindow(limit.primary),
-      secondary: sanitizeWindow(limit.secondary),
-    })),
+    primaryLimit:
+      primary?.used_percent === null || primary?.used_percent === undefined
+        ? null
+        : {
+            planType: usage.plan_type ?? null,
+            usedPercent: primary.used_percent,
+            windowDurationMins:
+              primary.limit_window_seconds === null ||
+              primary.limit_window_seconds === undefined
+                ? null
+                : primary.limit_window_seconds / 60,
+          },
     summary: {
       currentStreakDays: stats.current_streak_days ?? null,
       fastModeUsagePercent: stats.fast_mode_usage_percentage ?? null,
@@ -218,7 +192,6 @@ export const createCodexAccountSnapshot = (
       totalThreads: stats.total_threads ?? null,
       uniqueSkillsUsed: stats.unique_skills_used ?? null,
     },
-    weeklyUsageBuckets: sanitizeBuckets(stats.weekly_usage_buckets),
   };
 };
 
@@ -233,25 +206,7 @@ export const validateCodexAuthJson = (value: string) => {
   if (!result.success) {
     throw new TypeError("Codex auth must contain managed ChatGPT credentials.");
   }
-  return {
-    accessToken: result.data.tokens.access_token,
-    accountId: result.data.tokens.account_id,
-  };
-};
-
-export const createCodexProfileRequest = (
-  authJson: string,
-  userAgent: string
-) => {
-  const { accessToken, accountId } = validateCodexAuthJson(authJson);
-  return new Request(CODEX_PROFILE_URL, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "ChatGPT-Account-Id": accountId,
-      "User-Agent": userAgent,
-    },
-    method: "GET",
-  });
+  return result.data;
 };
 
 const metric = (
@@ -389,15 +344,9 @@ const mainPrimaryLimit = (
     windowDurationMins: number | null;
   }[] = [];
   for (const { snapshot } of records) {
-    const limit = snapshot.limits.find(
-      (candidate) => candidate.id === "codex" && candidate.primary !== null
-    );
-    if (limit?.primary !== null && limit?.primary !== undefined) {
-      limits.push({
-        planType: limit.planType,
-        usedPercent: limit.primary.usedPercent,
-        windowDurationMins: limit.primary.windowDurationMins,
-      });
+    const limit = snapshot.primaryLimit;
+    if (limit !== null && limit !== undefined) {
+      limits.push(limit);
     }
   }
   const planTypes = new Set(limits.map((limit) => limit.planType));
@@ -412,7 +361,6 @@ const mainPrimaryLimit = (
     return null;
   }
   return {
-    planType: limits[0]?.planType ?? null,
     usedPercent: sum(limits.map((limit) => limit.usedPercent)) / limits.length,
   };
 };
@@ -435,9 +383,7 @@ export const buildPublicCodexStats = (
   const dailyPartial =
     records.some(({ snapshot }) => snapshot.dailyUsageBuckets === null) ||
     missingAccountCount > 0;
-  const weeklyPartial =
-    records.some(({ snapshot }) => snapshot.weeklyUsageBuckets === null) ||
-    missingAccountCount > 0;
+  const weeklyPartial = dailyPartial;
   const cumulativePartial =
     records.some(
       ({ snapshot }) => snapshot.cumulativeDailyUsageBuckets === null
@@ -449,10 +395,11 @@ export const buildPublicCodexStats = (
     records,
     (snapshot) => snapshot.dailyUsageBuckets
   );
-  const combinedWeekly = sumBuckets(
-    records,
-    (snapshot) => snapshot.weeklyUsageBuckets
-  );
+  const combinedWeekly = new Map<string, number>();
+  for (const [day, tokens] of combinedDaily) {
+    const week = utcWeekStart(day);
+    combinedWeekly.set(week, (combinedWeekly.get(week) ?? 0) + tokens);
+  }
   const dailyHistoryComplete =
     !dailyPartial &&
     records.every(({ snapshot }) => {

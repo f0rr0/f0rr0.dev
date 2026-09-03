@@ -4,9 +4,9 @@ import { activityIntensity } from "./src/components/codex-activity.tsx";
 import {
   buildPublicCodexStats,
   createCodexAccountSnapshot,
-  createCodexProfileRequest,
   validateCodexAuthJson,
 } from "./src/lib/codex/stats.ts";
+import { fetchCodexAccountSnapshot } from "./src/lib/codex/sync.ts";
 
 const profile = (lifetimeTokens, dailyUsageBuckets, stats = {}) => {
   let cumulativeTokens = 0;
@@ -30,30 +30,21 @@ const profile = (lifetimeTokens, dailyUsageBuckets, stats = {}) => {
       total_threads: 10,
       top_invocations: [{ plugin_name: "must-not-survive" }],
       unique_skills_used: 20,
-      weekly_usage_buckets: [
-        { start_date: "2026-01-26", tokens: lifetimeTokens },
-      ],
       ...stats,
     },
   };
 };
 
-const limits = {
-  rateLimitResetCredits: { availableCount: 2, internalId: "private" },
-  rateLimits: {
-    limitId: "codex",
-    limitName: "Codex",
-    planType: "pro",
-    primary: {
-      resetsAt: 1_800_000_000,
-      usedPercent: 25,
-      windowDurationMins: 300,
+const usage = (usedPercent = 25) => ({
+  internal: "must-not-survive",
+  plan_type: "pro",
+  rate_limit: {
+    primary_window: {
+      limit_window_seconds: 18_000,
+      used_percent: usedPercent,
     },
-    secondary: null,
   },
-  rateLimitsByLimitId: null,
-  upsell: "must-not-survive",
-};
+});
 
 const requireStats = (stats) => {
   if (stats === null) {
@@ -73,7 +64,7 @@ describe("public Codex statistics", () => {
         { start_date: "2026-01-29", tokens: 30 },
         { start_date: "2026-01-30", tokens: 50 },
       ]),
-      limits
+      usage()
     );
     const second = createCodexAccountSnapshot(
       profile(70, [{ start_date: "2026-01-30", tokens: 70 }], {
@@ -86,26 +77,11 @@ describe("public Codex statistics", () => {
         total_threads: 20,
         unique_skills_used: 12,
       }),
-      {
-        ...limits,
-        rateLimitsByLimitId: {
-          codex: {
-            ...limits.rateLimits,
-            primary: { ...limits.rateLimits.primary, usedPercent: 75 },
-          },
-          codex_bengalfox: {
-            ...limits.rateLimits,
-            limitId: "codex_bengalfox",
-            limitName: "GPT-5.3-Codex-Spark",
-            primary: { ...limits.rateLimits.primary, usedPercent: 99 },
-          },
-        },
-      }
+      usage(75)
     );
     const serialized = JSON.stringify(first);
     expect(serialized).not.toContain("must-not-survive");
-    expect(serialized).not.toContain("private");
-    expect(first.limits[0]?.name).toBe("Codex");
+    expect(serialized).not.toContain("internal");
 
     const stats = requireStats(
       buildPublicCodexStats(
@@ -163,7 +139,6 @@ describe("public Codex statistics", () => {
       skillsExplored: { maximum: 32, minimum: 20, partial: false },
     });
     expect(stats.primaryLimit).toEqual({
-      planType: "pro",
       usedPercent: 50,
     });
     expect(JSON.stringify(stats)).not.toContain("Spark");
@@ -192,7 +167,7 @@ describe("public Codex statistics", () => {
       ).highlights.currentStreakDays.value
     ).toBe(0);
 
-    const empty = createCodexAccountSnapshot(profile(0, []), limits);
+    const empty = createCodexAccountSnapshot(profile(0, []), usage());
     expect(
       requireStats(
         buildPublicCodexStats(
@@ -209,26 +184,71 @@ describe("public Codex statistics", () => {
     expect(() => {
       validateCodexAuthJson('{"OPENAI_API_KEY":"secret"}');
     }).toThrow();
+  });
 
-    const request = createCodexProfileRequest(
+  test("refreshes auth and retries the direct usage requests", async () => {
+    const calls = [];
+    const fetcher = async (url, init = {}) => {
+      const headers = new Headers(init.headers);
+      calls.push({
+        accountId: headers.get("chatgpt-account-id"),
+        authorization: headers.get("authorization"),
+        body: init.body,
+        url: String(url),
+        userAgent: headers.get("user-agent"),
+      });
+      if (String(url).endsWith("/oauth/token")) {
+        return Response.json({
+          access_token: "new-access",
+          id_token: "new-id",
+          refresh_token: "new-refresh",
+        });
+      }
+      if (headers.get("authorization") === "Bearer old-access") {
+        return new Response(null, { status: 401 });
+      }
+      return Response.json(
+        String(url).endsWith("/wham/usage")
+          ? usage(40)
+          : profile(10, [{ start_date: "2026-01-30", tokens: 10 }])
+      );
+    };
+    const result = await fetchCodexAccountSnapshot(
       JSON.stringify({
         auth_mode: "chatgpt",
+        last_refresh: "2026-01-01T00:00:00.000Z",
         tokens: {
-          access_token: "access-token",
+          access_token: "old-access",
           account_id: "account-id",
-          refresh_token: "refresh-token",
+          id_token: "old-id",
+          refresh_token: "old-refresh",
         },
       }),
-      "codex-user-agent"
+      fetcher,
+      new Date("2026-01-30T12:00:00.000Z")
     );
-    expect(request.method).toBe("GET");
-    expect(request.url).toBe(
-      "https://chatgpt.com/backend-api/wham/profiles/me"
+
+    expect(calls.map(({ url }) => url)).toEqual([
+      "https://chatgpt.com/backend-api/wham/usage",
+      "https://chatgpt.com/backend-api/wham/profiles/me",
+      "https://auth.openai.com/oauth/token",
+      "https://chatgpt.com/backend-api/wham/usage",
+      "https://chatgpt.com/backend-api/wham/profiles/me",
+    ]);
+    expect(calls.at(-1)?.authorization).toBe("Bearer new-access");
+    expect(calls.at(-1)?.accountId).toBe("account-id");
+    expect(calls.at(-1)?.userAgent).toBe("codex-cli/1.0.0");
+    expect(String(calls[2]?.body)).toBe(
+      "client_id=app_EMoamEEZ73f0CkXaXp7hrann&grant_type=refresh_token&refresh_token=old-refresh"
     );
-    expect(Object.fromEntries(request.headers)).toEqual({
-      authorization: "Bearer access-token",
-      "chatgpt-account-id": "account-id",
-      "user-agent": "codex-user-agent",
+    expect(JSON.parse(result.authJson)).toMatchObject({
+      last_refresh: "2026-01-30T12:00:00.000Z",
+      tokens: {
+        access_token: "new-access",
+        id_token: "new-id",
+        refresh_token: "new-refresh",
+      },
     });
+    expect(result.snapshot.primaryLimit?.usedPercent).toBe(40);
   });
 });
