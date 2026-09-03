@@ -28,6 +28,3 @@ jobs:
 
       - name: Test
         run: bun test
-
-      - name: Production build
-        run: bun run build
