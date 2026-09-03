@@ -1513,7 +1513,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
     expect(unchanged.summaryEvaluatedDigest).toBe(unit.summaryEvaluatedDigest);
   });
 
-  test("an idle worker drains a bounded recent-first summary batch without clearing a partial request", async () => {
+  test("an idle worker drains a bounded newest-first summary batch without clearing a partial request", async () => {
     const batchRepositoryId = "7092";
     const batchLineageId = "70920000-0000-4000-8000-000000000001";
     const completedAt = new Date("2026-09-10T12:00:00.000Z");

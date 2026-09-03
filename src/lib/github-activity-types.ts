@@ -35,6 +35,7 @@ export interface PublicGitHubWorkUnitActivity {
   id: string;
   kind: PublicGitHubWorkUnitKind;
   headline: string | null;
+  summarizing: boolean;
   summary: string | null;
 }
 

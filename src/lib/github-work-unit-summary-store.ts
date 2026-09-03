@@ -34,12 +34,9 @@ import type { GitHubWorkUnitSummaryProviderResult } from "@/lib/github-work-unit
 const SUMMARY_CLAIM_LOCK = "github-work-unit-summary-claim-v1";
 const DEFAULT_LEASE_DURATION_MS = 90_000;
 const MAXIMUM_LEASE_DURATION_MS = 15 * 60_000;
-const RECENT_WINDOW_MS = 30 * 24 * 60 * 60_000;
 const MAXIMUM_STARTED_REQUESTS = 2;
 const MAXIMUM_DAILY_STARTED_REQUESTS = GITHUB_SUMMARY_REQUEST_BUDGET.daily;
 const MAXIMUM_MONTHLY_STARTED_REQUESTS = GITHUB_SUMMARY_REQUEST_BUDGET.monthly;
-const RESERVED_RECENT_REQUESTS_PER_FUTURE_DAY =
-  GITHUB_SUMMARY_REQUEST_BUDGET.recentReservePerRemainingDay;
 const DIGEST = /^[a-f0-9]{64}$/u;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -329,9 +326,7 @@ type ClaimCandidate = Awaited<ReturnType<typeof selectClaimCandidate>>;
 
 async function selectClaimCandidate(
   transaction: SummaryTransaction,
-  now: Date,
-  recentSince: Date,
-  lane: "historical" | "recent"
+  now: Date
 ) {
   const [candidate] = await transaction
     .select(claimSelection)
@@ -368,10 +363,7 @@ async function selectClaimCandidate(
         eq(
           githubWorkUnits.attributionMode,
           githubWorkUnitSummaryAttempts.attributionMode
-        ),
-        lane === "recent"
-          ? gte(githubWorkUnits.activityAt, recentSince)
-          : lt(githubWorkUnits.activityAt, recentSince)
+        )
       )
     )
     .orderBy(
@@ -390,7 +382,6 @@ const lockedUnit = async (
 ) => {
   const [unit] = await transaction
     .select({
-      activityAt: githubWorkUnits.activityAt,
       activityDay: githubWorkUnits.activityDay,
       attributionMode: githubWorkUnits.attributionMode,
       outcomeDigest: githubWorkUnits.outcomeDigest,
@@ -436,9 +427,7 @@ const candidateRemainsClaimable = (
   attempt: NonNullable<Awaited<ReturnType<typeof lockedAttempt>>>,
   unit: NonNullable<Awaited<ReturnType<typeof lockedUnit>>>,
   candidate: NonNullable<ClaimCandidate>,
-  now: Date,
-  recentSince: Date,
-  lane: "historical" | "recent"
+  now: Date
 ) =>
   attempt.state === candidate.state &&
   (attempt.state === "pending" || attempt.state === "retryable") &&
@@ -448,27 +437,15 @@ const candidateRemainsClaimable = (
   attempt.startedRequests < MAXIMUM_STARTED_REQUESTS &&
   candidate.debounceUntil.getTime() <= now.getTime() &&
   attempt.recipe === GITHUB_WORK_UNIT_SUMMARY_RECIPE &&
-  currentUnitMatchesAttempt(unit, attempt) &&
-  (lane === "recent"
-    ? unit.activityAt.getTime() >= recentSince.getTime()
-    : unit.activityAt.getTime() < recentSince.getTime());
-
-const utcDayBounds = (now: Date) => {
-  const start = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-  );
-  return { end: new Date(start.getTime() + 24 * 60 * 60_000), start };
-};
+  currentUnitMatchesAttempt(unit, attempt);
 
 const utcUsageWindow = (now: Date) => {
   const year = now.getUTCFullYear();
   const month = now.getUTCMonth();
   const monthStart = new Date(Date.UTC(year, month, 1));
   const nextMonthStart = new Date(Date.UTC(year, month + 1, 1));
-  const daysInMonth = new Date(nextMonthStart.getTime() - 1).getUTCDate();
   return {
     day: now.toISOString().slice(0, 10),
-    futureDays: daysInMonth - now.getUTCDate(),
     monthStart: monthStart.toISOString().slice(0, 10),
     nextMonthStart: nextMonthStart.toISOString().slice(0, 10),
   };
@@ -511,13 +488,6 @@ const hasRequestCapacity = (usage: SummaryUsage) =>
   usage.dailyStartedRequests < MAXIMUM_DAILY_STARTED_REQUESTS &&
   usage.monthlyStartedRequests < MAXIMUM_MONTHLY_STARTED_REQUESTS;
 
-const hasHistoricalRequestCapacity = (usage: SummaryUsage) =>
-  hasRequestCapacity(usage) &&
-  usage.monthlyStartedRequests +
-    1 +
-    usage.futureDays * RESERVED_RECENT_REQUESTS_PER_FUTURE_DAY <=
-    MAXIMUM_MONTHLY_STARTED_REQUESTS;
-
 const recordStartedRequest = async (
   transaction: SummaryTransaction,
   usage: SummaryUsage
@@ -539,35 +509,11 @@ const recordStartedRequest = async (
   }
 };
 
-const historicalStartExistsToday = async (
-  transaction: SummaryTransaction,
-  now: Date
-) => {
-  const { end, start } = utcDayBounds(now);
-  const [row] = await transaction
-    .select({ value: sql<number>`count(*)::integer` })
-    .from(githubWorkUnitSummaryAttempts)
-    .innerJoin(
-      githubWorkUnits,
-      eq(githubWorkUnitSummaryAttempts.workUnitId, githubWorkUnits.id)
-    )
-    .where(
-      and(
-        gte(githubWorkUnitSummaryAttempts.lastStartedAt, start),
-        lt(githubWorkUnitSummaryAttempts.lastStartedAt, end),
-        sql`${githubWorkUnits.activityAt} < ${githubWorkUnitSummaryAttempts.lastStartedAt} - interval '30 days'`
-      )
-    );
-  return (row?.value ?? 0) > 0;
-};
-
 const tryClaimCandidate = async (
   transaction: SummaryTransaction,
   candidate: NonNullable<ClaimCandidate>,
   now: Date,
   leaseDurationMs: number,
-  recentSince: Date,
-  lane: "historical" | "recent",
   usage: SummaryUsage
 ): Promise<GitHubWorkUnitSummaryClaim | null> => {
   // The projection store locks units before attempts. Keep the same order.
@@ -582,7 +528,7 @@ const tryClaimCandidate = async (
   );
   if (
     attempt === null ||
-    !candidateRemainsClaimable(attempt, unit, candidate, now, recentSince, lane)
+    !candidateRemainsClaimable(attempt, unit, candidate, now)
   ) {
     return null;
   }
@@ -749,10 +695,6 @@ async function hasCurrentInitialPageSummaryWork(
           "private",
           "internal",
         ]),
-        gte(
-          githubWorkUnits.activityAt,
-          new Date(now.getTime() - RECENT_WINDOW_MS)
-        ),
         inArray(githubWorkUnits.activityDay, [...initialPageDays]),
         or(
           and(
@@ -863,50 +805,21 @@ export const claimGitHubWorkUnitSummary = async (
 ): Promise<GitHubWorkUnitSummaryClaim | null> => {
   const now = checkedDate(options.now ?? new Date(), "claim timestamp");
   const leaseDurationMs = checkedLeaseDuration(options.leaseDurationMs);
-  const recentSince = new Date(now.getTime() - RECENT_WINDOW_MS);
   return await getDatabase().transaction(async (transaction) => {
     await acquireSummaryStateLocks(transaction);
     await recoverExpiredClaims(transaction, now);
     const usage = await readSummaryUsage(transaction, now);
     let claim: GitHubWorkUnitSummaryClaim | null = null;
     if (hasRequestCapacity(usage)) {
-      const recent = await selectClaimCandidate(
-        transaction,
-        now,
-        recentSince,
-        "recent"
-      );
-      if (recent !== null) {
+      const candidate = await selectClaimCandidate(transaction, now);
+      if (candidate !== null) {
         claim = await tryClaimCandidate(
           transaction,
-          recent,
+          candidate,
           now,
           leaseDurationMs,
-          recentSince,
-          "recent",
           usage
         );
-      } else if (
-        hasHistoricalRequestCapacity(usage) &&
-        !(await historicalStartExistsToday(transaction, now))
-      ) {
-        const historical = await selectClaimCandidate(
-          transaction,
-          now,
-          recentSince,
-          "historical"
-        );
-        if (historical !== null) {
-          claim = await tryClaimCandidate(
-            transaction,
-            historical,
-            now,
-            leaseDurationMs,
-            recentSince,
-            "historical",
-            usage
-          );
-        }
       }
     }
     const initialPageDays = await readInitialPageDays(transaction);

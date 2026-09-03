@@ -1,4 +1,10 @@
-import { ChevronRight, CircleDot, Code2, LockKeyhole } from "lucide-react";
+import {
+  ChevronRight,
+  CircleDot,
+  Code2,
+  LoaderCircle,
+  LockKeyhole,
+} from "lucide-react";
 import Image from "next/image";
 
 import {
@@ -158,10 +164,23 @@ function WorkUnitDetails({
           {headline}
         </span>
         <DiffCounters facts={item.facts} />
-        <ChevronRight
-          aria-hidden="true"
-          className="mt-[0.3125rem] size-4 text-muted-foreground transition-transform duration-150 group-open:rotate-90 motion-reduce:transition-none"
-        />
+        <span className="mt-[0.3125rem] inline-flex items-center gap-1 text-muted-foreground">
+          {item.summarizing ? (
+            <span
+              className="inline-flex size-4 items-center justify-center text-primary"
+              title="Refreshing summary"
+            >
+              <span aria-hidden="true" className="motion-safe:animate-spin">
+                <LoaderCircle className="size-3.5" />
+              </span>
+              <span className="sr-only">Refreshing summary</span>
+            </span>
+          ) : null}
+          <ChevronRight
+            aria-hidden="true"
+            className="size-4 transition-transform duration-150 group-open:rotate-90 motion-reduce:transition-none"
+          />
+        </span>
       </summary>
       <div className="mt-2 max-w-[50rem] ps-0 text-sm leading-relaxed text-muted-foreground">
         {item.summary === null ? null : (

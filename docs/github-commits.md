@@ -35,13 +35,13 @@ The worker leases small batches and can safely resume after a deadline. It:
    evidence, and complete PR net file facts;
 4. recomputes the current work-unit projection from durable evidence and swaps
    units, memberships, and public feed revisions atomically; and
-5. evaluates summary inputs in recent-first batches of eight.
+5. evaluates summary inputs in newest-first batches of eight.
 
 A separate bounded summary worker claims at most one eligible summary.
-Historical input reevaluation therefore cannot consume the provider request's
-runtime budget. Valid output can be cached after becoming stale;
-display still requires exact current recipe, outcome, attribution, and input
-digests.
+Claims are ordered by newest activity, then newest observed content. The newest
+accepted same-attribution summary remains visible after becoming stale until an
+exact current summary replaces it; the item is marked as refreshing while that
+replacement is evaluated, queued, retried, or processed.
 
 Multi-parent merge commits and commits with neither file facts nor churn are not
 separate timeline work. A provider-verified same-repository merge SHA is
@@ -75,9 +75,9 @@ the public feed head; replayed deliveries and unknown visibility do not.
 The public reader groups a repository once per UTC day and reads complete days
 against the current ordered-set revision. `github_public_feed_head` contains
 the monotone feed/content/order revisions, last publication time, a durable
-projection-request token, the applied pipeline-policy digest, and
-whether configured recent initial-page summary work is being evaluated, queued,
-retried, or processed. Evidence writers set the token transactionally;
+projection-request token, the applied pipeline-policy digest, and whether
+configured initial-page summary work is being evaluated, queued, retried, or
+processed. Evidence writers set the token transactionally;
 projection clears the observed token only after its bounded summary-evaluation
 backlog reaches zero. The stored pipeline-policy digest covers both projection
 ownership and summary semantics, so a new worker requests the required refresh

@@ -205,24 +205,17 @@ control/bidirectional characters, URLs, HTML, Markdown, and SHAs.
 Summary identity includes the semantic policy, recipe, prompt, normalized
 input, outcome digest, and attribution mode. Transport retries and storage
 configuration do not invalidate prose. A five-minute debounce absorbs active
-rewrites. Up to eight recent-first inputs are deterministically evaluated per
-projection refresh. A separate bounded worker starts at most one provider claim,
-so a historical evaluation backlog cannot consume the provider request's
-runtime window.
+rewrites. Up to eight newest-first inputs are deterministically evaluated per
+projection refresh. A separate bounded worker starts at most one provider claim.
 Valid output remains cacheable if its input becomes stale while the request
 runs; it is displayed only when the current unit's exact
 recipe, outcome, attribution, and summary-input keys match. A force push with
 the same complete PR net outcome can therefore reuse accepted prose.
 
-Claims are recent-first:
+Claims are ordered by newest activity, then newest observed content:
 
-- recent means activity within the last 30 days;
-- only when no recent claim is ready may one historical request start that UTC
-  day;
 - each attempt may start at most twice;
-- at most 30 requests may start per UTC day and 120 per UTC month; and
-- historical claims reserve two monthly requests for every remaining day in
-  the month.
+- at most 30 requests may start per UTC day and 120 per UTC month.
 
 These limits are application configuration; the database only records usage.
 Started requests count even when they fail. A transient failure waits 15
@@ -263,9 +256,9 @@ Supabase Cron invokes:
 
 The worker processes factual queues and current-ref repair before recomputing
 the projection and reconciling the minimal summary status. The separate summary
-worker may claim one provider request, so historical input reevaluation cannot
-consume its provider budget. Webhooks shorten discovery, but they do not render
-a page directly; publication still waits for the bounded factual worker.
+worker may claim one provider request, with newer work staying ahead of older
+backlog. Webhooks shorten discovery, but they do not render a page directly;
+publication still waits for the bounded factual worker.
 Timeline payloads are read from the current projection and are never held in a
 shared response cache.
 
@@ -323,8 +316,8 @@ paginated inventory can require more than one invocation.
 
 The status endpoint returns the feed revision, a monotone head revision, last
 feed publication time, and one boolean: whether the configured summary pipeline
-has a current, recent public evaluation, queued input, retry, or provider lease
-on the initial five-day page. The next worker reconciliation clears an expired
+has a current public evaluation, queued input, retry, or provider lease on the
+initial five-day page. The next worker reconciliation clears an expired
 abandoned lease. The UI renders only:
 
 - `Shaping the latest update` while that boolean is true;
@@ -335,8 +328,8 @@ abandoned lease. The UI renders only:
 Polling runs while the tab is visible, the browser is online, no refresh is
 pending, and the timeline is in view when the browser supports intersection
 observation. A settled page checks every five minutes at most three times.
-While shaping recent summary work, it checks every three minutes, subject to a total cap of 12
-requests. The private, revalidated endpoint supports ETags; polling budgets
+While shaping summary work, it checks every three minutes, subject to a total cap
+of 12 requests. The private, revalidated endpoint supports ETags; polling budgets
 reset after a successful feed refresh. New content is never inserted while the
 reader is moving through the page; the reader chooses `Show latest work` to
 refresh.
@@ -380,7 +373,7 @@ class names:
 | same-day repository rows                                                | one header and a count derived from final groups      |
 | summary budget/retry/expiry                                             | hard caps and facts-only terminal state               |
 | nine pending summary evaluations                                        | eight settle, then one on the next refresh            |
-| recent summary ready during historical policy reevaluation              | separate summary worker may claim it                  |
+| newer summary ready while older work is queued                          | separate summary worker claims newer work first       |
 | paid input A superseded by B then current again                         | count retained and debounce re-armed                  |
 
 Run the complete local gate with:
