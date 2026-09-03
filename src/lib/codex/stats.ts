@@ -150,7 +150,7 @@ export interface PublicCodexStats {
     reasoningEfforts: { partial: boolean; values: readonly string[] };
     reasoningEffortPercent: PublicCodexRange;
     skillsExplored: PublicCodexRange;
-    topTools: readonly (CodexInvocation & { partial: boolean })[];
+    topTools: readonly CodexInvocation[];
   };
   primaryLimit: {
     usedPercent: number;
@@ -408,18 +408,16 @@ const mainPrimaryLimit = (
 };
 
 const topTools = (
-  records: readonly CodexSnapshotRecord[],
-  expectedAccountCount: number
+  records: readonly CodexSnapshotRecord[]
 ): PublicCodexStats["insights"]["topTools"] => {
-  const tools = new Map<string, CodexInvocation & { accounts: Set<number> }>();
-  for (const [accountIndex, { snapshot }] of records.entries()) {
+  const tools = new Map<string, CodexInvocation>();
+  for (const { snapshot } of records) {
     for (const tool of snapshot.topInvocations ?? []) {
       const key = `${tool.kind}:${tool.name}`;
       const existing = tools.get(key);
       if (existing === undefined) {
-        tools.set(key, { ...tool, accounts: new Set([accountIndex]) });
+        tools.set(key, { ...tool });
       } else {
-        existing.accounts.add(accountIndex);
         existing.usageCount += tool.usageCount;
       }
     }
@@ -430,11 +428,7 @@ const topTools = (
         right.usageCount - left.usageCount ||
         left.name.localeCompare(right.name)
     )
-    .slice(0, 5)
-    .map(({ accounts, ...tool }) => ({
-      ...tool,
-      partial: accounts.size !== expectedAccountCount,
-    }));
+    .slice(0, 4);
 };
 
 export const buildPublicCodexStats = (
@@ -590,7 +584,7 @@ export const buildPublicCodexStats = (
       },
       reasoningEffortPercent: range(reasoningPercentValues, minimum, maximum),
       skillsExplored: range(skillsExploredValues, maximum, sum),
-      topTools: topTools(records, expectedAccountCount),
+      topTools: topTools(records),
     },
     primaryLimit: mainPrimaryLimit(records, expectedAccountCount),
     totals: {

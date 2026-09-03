@@ -33,6 +33,6 @@ When daily buckets reconcile exactly to lifetime totals, peak and streak
 statistics are rebuilt from the combined activity. Fast-mode and leading
 reasoning percentages are shown as observed ranges, while unique skills use the
 mathematically valid range between the largest account count and their sum. Top
-tool counts are combined by type and display name; `+` marks a lower bound when
-a tool is absent from an account's truncated top list. The primary limit is
-combined only when every account has the same plan and window.
+tool counts are combined by type and display name, then the top four are shown.
+The primary limit is combined only when every account has the same plan and
+window.

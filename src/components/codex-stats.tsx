@@ -1,4 +1,4 @@
-import { Info } from "lucide-react";
+import { Box, Info, Plug } from "lucide-react";
 
 import { CodexActivity } from "@/components/codex-activity";
 import {
@@ -57,6 +57,17 @@ const reasoningLabel = (value: string) =>
   value === "xhigh"
     ? "Extra high"
     : `${value.charAt(0).toUpperCase()}${value.slice(1).replaceAll("_", " ")}`;
+
+const GitHubMark = () => (
+  <svg
+    aria-hidden="true"
+    className="size-3.5"
+    fill="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path d="M12 .7a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.2.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0C15 4.9 16 5.2 16 5.2c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.8 5.4-5.5 5.7.4.4.8 1.1.8 2.2v3.2c0 .4.2.7.8.6A11.5 11.5 0 0 0 12 .7Z" />
+  </svg>
+);
 
 const Metric = ({
   label,
@@ -264,37 +275,33 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
           </dl>
           {stats.insights.topTools.length === 0 ? null : (
             <div className="mt-6 border-t border-border pt-5">
-              <h4 className="flex items-center gap-1 font-ui text-sm font-medium text-foreground">
+              <h4 className="font-ui text-sm font-medium text-foreground">
                 Top tools
-                {stats.insights.topTools.some(({ partial }) => partial) ? (
-                  <Tooltip>
-                    <TooltipTrigger
-                      aria-label="Top tools: some counts are minimums"
-                      className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground"
-                      type="button"
-                    >
-                      <Info aria-hidden="true" className="size-3" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Counts marked + are minimums; only top results are
-                      returned.
-                    </TooltipContent>
-                  </Tooltip>
-                ) : null}
               </h4>
               <ol className="mt-3 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
                 {stats.insights.topTools.map((tool) => (
                   <li
-                    className="flex min-w-0 items-baseline justify-between gap-3"
+                    className="flex min-w-0 items-center justify-between gap-3"
                     key={`${tool.kind}:${tool.name}`}
                   >
-                    <span className="truncate font-mono text-foreground">
-                      {tool.kind === "plugin" ? "@" : "$"}
-                      {tool.name}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span
+                        className={`inline-flex size-6 shrink-0 items-center justify-center rounded-md ${tool.kind === "plugin" && tool.name === "github" ? "bg-foreground text-background" : "bg-muted text-muted-foreground"}`}
+                      >
+                        {tool.kind === "skill" ? (
+                          <Box aria-hidden="true" className="size-3.5" />
+                        ) : tool.name === "github" ? (
+                          <GitHubMark />
+                        ) : (
+                          <Plug aria-hidden="true" className="size-3.5" />
+                        )}
+                      </span>
+                      <span className="truncate font-mono text-foreground">
+                        {tool.name}
+                      </span>
                     </span>
                     <span className="shrink-0 font-mono text-muted-foreground">
-                      {number.format(tool.usageCount)}
-                      {tool.partial ? "+" : ""} runs
+                      {number.format(tool.usageCount)} runs
                     </span>
                   </li>
                 ))}

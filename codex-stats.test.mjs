@@ -188,13 +188,11 @@ describe("public Codex statistics", () => {
         {
           kind: "plugin",
           name: "github",
-          partial: false,
           usageCount: 17,
         },
         {
           kind: "skill",
           name: "next-best-practices",
-          partial: true,
           usageCount: 9,
         },
       ],
