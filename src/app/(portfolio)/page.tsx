@@ -2,10 +2,12 @@ import { ArrowDown, ArrowUpRight, Star } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { CodexStats } from "@/components/codex-stats";
 import { GitHubTimeline } from "@/components/github-timeline";
 import { SiteShell } from "@/components/site-shell";
 import { featuredProjectNames, projectEditorial } from "@/content/home";
 import { getBlogPosts } from "@/lib/blog-utils";
+import { getPublicCodexStats } from "@/lib/codex/public-stats";
 import { formatDate } from "@/lib/date";
 import { getInitialGitHubActivity } from "@/lib/github-activity-feed";
 import { getGitHubProfile } from "@/lib/github-profile";
@@ -56,10 +58,11 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [github, posts, activity] = await Promise.all([
+  const [github, posts, activity, codexStats] = await Promise.all([
     getGitHubProfile(),
     getBlogPosts(),
     getInitialGitHubActivity(),
+    getPublicCodexStats(),
   ]);
   const projectByName = new Map(
     github.projects.map((project) => [project.name, project])
@@ -117,6 +120,8 @@ export default async function Home() {
         </section>
 
         <GitHubTimeline initialPage={activity} />
+
+        {codexStats === null ? null : <CodexStats stats={codexStats} />}
 
         <section
           aria-label="Selected work and recent writing"
