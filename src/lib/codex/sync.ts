@@ -7,6 +7,7 @@ import {
 import { readCodexAccounts, saveCodexAccount } from "@/lib/codex/store";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+const PLUGIN_SEARCH_URL = "https://chatgpt.com/backend-api/ps/plugins/search";
 const PROFILE_URL = "https://chatgpt.com/backend-api/wham/profiles/me";
 const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
@@ -18,9 +19,89 @@ const refreshResponseSchema = z.object({
   id_token: z.string().min(1).optional(),
   refresh_token: z.string().min(1).optional(),
 });
+const pluginSearchResponseSchema = z.object({
+  plugins: z.array(
+    z.object({
+      name: z.string(),
+      release: z
+        .object({
+          interface: z
+            .object({
+              logo_url: z.string().max(2048).nullish(),
+              logo_url_dark: z.string().max(2048).nullish(),
+            })
+            .nullish(),
+        })
+        .nullish(),
+    })
+  ),
+});
 
 type CodexAuth = ReturnType<typeof validateCodexAuthJson>;
 type Fetch = typeof globalThis.fetch;
+
+const openAiLogoUrl = (value: string | null | undefined) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const url = URL.parse(value);
+  return url?.protocol === "https:" && url.hostname === "files.openai.com"
+    ? url.toString()
+    : null;
+};
+
+const fetchPluginLogos = async (
+  names: readonly string[],
+  auth: CodexAuth,
+  fetcher: Fetch
+) => {
+  const headers = {
+    Authorization: `Bearer ${auth.tokens.access_token}`,
+    "ChatGPT-Account-Id": auth.tokens.account_id,
+    "OAI-Product-Sku": "codex",
+    "User-Agent": USER_AGENT,
+  };
+  const results = await Promise.all(
+    [...new Set(names)].map(async (name) => {
+      const url = new URL(PLUGIN_SEARCH_URL);
+      url.searchParams.set("q", name);
+      url.searchParams.set("scope", "GLOBAL");
+      url.searchParams.set("limit", "5");
+      try {
+        const response = await fetcher(url, {
+          headers,
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        });
+        if (!response.ok) {
+          return null;
+        }
+        const parsed = pluginSearchResponseSchema.safeParse(
+          await response.json()
+        );
+        const plugin = parsed.success
+          ? parsed.data.plugins.find((candidate) => candidate.name === name)
+          : undefined;
+        const logoUrl = openAiLogoUrl(plugin?.release?.interface?.logo_url);
+        const logoUrlDark = openAiLogoUrl(
+          plugin?.release?.interface?.logo_url_dark
+        );
+        const preferredLogoUrl = logoUrl ?? logoUrlDark;
+        return preferredLogoUrl === null
+          ? null
+          : ([
+              name,
+              {
+                logoUrl: preferredLogoUrl,
+                ...(logoUrlDark === null ? {} : { logoUrlDark }),
+              },
+            ] as const);
+      } catch {
+        return null;
+      }
+    })
+  );
+  return new Map(results.filter((result) => result !== null));
+};
 
 const fetchSections = async (auth: CodexAuth, fetcher: Fetch) => {
   const headers = {
@@ -89,9 +170,24 @@ export const fetchCodexAccountSnapshot = async (
     responses.usage.json(),
     responses.profile.json(),
   ]);
+  const snapshot = createCodexAccountSnapshot(profile, usage);
+  const logos = await fetchPluginLogos(
+    snapshot.topInvocations
+      ?.filter(({ kind }) => kind === "plugin")
+      .map(({ name }) => name) ?? [],
+    auth,
+    fetcher
+  );
   return {
     authJson: refreshed ? JSON.stringify(auth) : authJson,
-    snapshot: createCodexAccountSnapshot(profile, usage),
+    snapshot: {
+      ...snapshot,
+      topInvocations:
+        snapshot.topInvocations?.map((invocation) => ({
+          ...invocation,
+          ...logos.get(invocation.name),
+        })) ?? null,
+    },
   };
 };
 

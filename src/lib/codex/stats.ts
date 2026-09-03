@@ -108,6 +108,8 @@ export interface CodexAccountSnapshot {
 
 export interface CodexInvocation {
   kind: "plugin" | "skill";
+  logoUrl?: string;
+  logoUrlDark?: string;
   name: string;
   usageCount: number;
 }
@@ -419,6 +421,8 @@ const topTools = (
         tools.set(key, { ...tool });
       } else {
         existing.usageCount += tool.usageCount;
+        existing.logoUrl ??= tool.logoUrl;
+        existing.logoUrlDark ??= tool.logoUrlDark;
       }
     }
   }

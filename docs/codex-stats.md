@@ -20,15 +20,17 @@ Supabase cron calls a protected Vercel route every 15 minutes.
 4. Deploy to production. The existing Supabase cron setup schedules the sync.
 
 Account credentials stay encrypted in Supabase Vault; the table stores only
-internal account IDs, timestamps, and allowlisted usage fields. Prompts, emails,
+internal account IDs, timestamps, and allowlisted display fields. Prompts, emails,
 ChatGPT account IDs, raw API responses, and auth tokens are never copied into
 public snapshots.
 
 The sync refreshes OAuth credentials when needed, then calls the same
 `GET /backend-api/wham/usage` and `GET /backend-api/wham/profiles/me` endpoints
-used by Codex clients. Responses are validated and reduced to the public
-allowlist before storage. The public view sums token, chat, skill-run, daily,
-weekly, and cumulative totals on the Codex Desktop Sunday-based 52-week grid.
+used by Codex clients. It searches `GET /backend-api/ps/plugins/search` for any
+listed top plugins and keeps only their OpenAI-hosted light and dark logo URLs.
+Responses are validated and reduced to the public allowlist before storage. The
+public view sums token, chat, skill-run, daily, weekly, and cumulative totals on
+the Codex Desktop Sunday-based 52-week grid.
 When daily buckets reconcile exactly to lifetime totals, peak and streak
 statistics are rebuilt from the combined activity. Fast-mode and leading
 reasoning percentages are shown as observed ranges, while unique skills use the

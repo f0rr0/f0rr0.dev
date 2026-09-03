@@ -1,4 +1,5 @@
 import { Info, Plug } from "lucide-react";
+import Image from "next/image";
 
 import { CodexActivity } from "@/components/codex-activity";
 import {
@@ -311,13 +312,37 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-foreground">
-                        {tool.kind === "skill" ? (
-                          <SkillMark />
-                        ) : tool.name === "github" ? (
-                          <GitHubMark />
-                        ) : (
-                          <Plug aria-hidden="true" className="size-3.5" />
+                        {tool.logoUrl === undefined ? null : (
+                          <Image
+                            alt=""
+                            className={
+                              tool.logoUrlDark === undefined
+                                ? "size-3.5 object-contain"
+                                : "size-3.5 object-contain dark:hidden"
+                            }
+                            height={14}
+                            src={tool.logoUrl}
+                            width={14}
+                          />
                         )}
+                        {tool.logoUrlDark === undefined ? null : (
+                          <Image
+                            alt=""
+                            className="hidden size-3.5 object-contain dark:block"
+                            height={14}
+                            src={tool.logoUrlDark}
+                            width={14}
+                          />
+                        )}
+                        {tool.logoUrl === undefined ? (
+                          tool.kind === "skill" ? (
+                            <SkillMark />
+                          ) : tool.name === "github" ? (
+                            <GitHubMark />
+                          ) : (
+                            <Plug aria-hidden="true" className="size-3.5" />
+                          )
+                        ) : null}
                       </span>
                       <span className="truncate font-mono text-foreground">
                         {tool.name}

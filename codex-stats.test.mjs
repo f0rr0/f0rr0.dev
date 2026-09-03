@@ -55,6 +55,21 @@ const usage = (usedPercent = 25) => ({
   },
 });
 
+const pluginSearch = () => ({
+  pagination: { next_page_token: null },
+  plugins: [
+    {
+      name: "github",
+      release: {
+        interface: {
+          logo_url: "https://files.openai.com/content?id=github-light",
+          logo_url_dark: "https://files.openai.com/content?id=github-dark",
+        },
+      },
+    },
+  ],
+});
+
 const requireStats = (stats) => {
   if (stats === null) {
     throw new Error("Expected public Codex statistics.");
@@ -253,6 +268,7 @@ describe("public Codex statistics", () => {
         accountId: headers.get("chatgpt-account-id"),
         authorization: headers.get("authorization"),
         body: init.body,
+        productSku: headers.get("oai-product-sku"),
         url: String(url),
         userAgent: headers.get("user-agent"),
       });
@@ -265,6 +281,9 @@ describe("public Codex statistics", () => {
       }
       if (headers.get("authorization") === "Bearer old-access") {
         return new Response(null, { status: 401 });
+      }
+      if (String(url).includes("/ps/plugins/search")) {
+        return Response.json(pluginSearch());
       }
       return Response.json(
         String(url).endsWith("/wham/usage")
@@ -293,9 +312,11 @@ describe("public Codex statistics", () => {
       "https://auth.openai.com/oauth/token",
       "https://chatgpt.com/backend-api/wham/usage",
       "https://chatgpt.com/backend-api/wham/profiles/me",
+      "https://chatgpt.com/backend-api/ps/plugins/search?q=github&scope=GLOBAL&limit=5",
     ]);
     expect(calls.at(-1)?.authorization).toBe("Bearer new-access");
     expect(calls.at(-1)?.accountId).toBe("account-id");
+    expect(calls.at(-1)?.productSku).toBe("codex");
     expect(calls.at(-1)?.userAgent).toBe("codex-cli/1.0.0");
     expect(String(calls[2]?.body)).toBe(
       "client_id=app_EMoamEEZ73f0CkXaXp7hrann&grant_type=refresh_token&refresh_token=old-refresh"
@@ -309,5 +330,9 @@ describe("public Codex statistics", () => {
       },
     });
     expect(result.snapshot.primaryLimit?.usedPercent).toBe(40);
+    expect(result.snapshot.topInvocations?.[0]).toMatchObject({
+      logoUrl: "https://files.openai.com/content?id=github-light",
+      logoUrlDark: "https://files.openai.com/content?id=github-dark",
+    });
   });
 });
