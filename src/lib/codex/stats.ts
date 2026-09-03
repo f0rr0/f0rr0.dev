@@ -12,21 +12,21 @@ const validUtcDay = (value: string) => {
   return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
 };
 
-const usageResponseSchema = z.object({
-  dailyUsageBuckets: z
-    .array(
-      z.object({
-        startDate: z.string().refine(validUtcDay),
-        tokens: safeInteger,
-      })
-    )
-    .nullable(),
-  summary: z.object({
-    currentStreakDays: nullableSafeInteger,
-    lifetimeTokens: nullableSafeInteger,
-    longestRunningTurnSec: nullableSafeInteger,
-    longestStreakDays: nullableSafeInteger,
-    peakDailyTokens: nullableSafeInteger,
+const profileResponseSchema = z.object({
+  stats: z.object({
+    current_streak_days: nullableSafeInteger.optional(),
+    daily_usage_buckets: z
+      .array(
+        z.object({
+          start_date: z.string().refine(validUtcDay),
+          tokens: safeInteger,
+        })
+      )
+      .nullish(),
+    lifetime_tokens: nullableSafeInteger.optional(),
+    longest_running_turn_sec: nullableSafeInteger.optional(),
+    longest_streak_days: nullableSafeInteger.optional(),
+    peak_daily_tokens: nullableSafeInteger.optional(),
   }),
 });
 
@@ -51,8 +51,14 @@ const rateLimitsResponseSchema = z.object({
 
 const authJsonSchema = z.object({
   auth_mode: z.literal("chatgpt"),
-  tokens: z.object({ refresh_token: z.string().min(1) }),
+  tokens: z.object({
+    access_token: z.string().min(1),
+    account_id: z.string().min(1),
+    refresh_token: z.string().min(1),
+  }),
 });
+
+const CODEX_PROFILE_URL = "https://chatgpt.com/backend-api/wham/profiles/me";
 
 export interface CodexRateLimitWindow {
   resetsAt: number | null;
@@ -126,11 +132,12 @@ const sanitizeWindow = (
       };
 
 export const createCodexAccountSnapshot = (
-  rawUsage: unknown,
+  rawProfile: unknown,
   rawRateLimits: unknown
 ): CodexAccountSnapshot => {
-  const usage = usageResponseSchema.parse(rawUsage);
+  const profile = profileResponseSchema.parse(rawProfile);
   const rateLimits = rateLimitsResponseSchema.parse(rawRateLimits);
+  const { stats } = profile;
   const byId = rateLimits.rateLimitsByLimitId;
   const entries: [string, z.infer<typeof rateLimitSnapshotSchema>][] =
     byId !== null && Object.keys(byId).length > 0
@@ -140,7 +147,11 @@ export const createCodexAccountSnapshot = (
   return {
     availableResetCredits:
       rateLimits.rateLimitResetCredits?.availableCount ?? null,
-    dailyUsageBuckets: usage.dailyUsageBuckets,
+    dailyUsageBuckets:
+      stats.daily_usage_buckets?.map((bucket) => ({
+        startDate: bucket.start_date,
+        tokens: bucket.tokens,
+      })) ?? null,
     limits: entries.map(([id, limit]) => ({
       id,
       name: limit.limitName,
@@ -148,7 +159,13 @@ export const createCodexAccountSnapshot = (
       primary: sanitizeWindow(limit.primary),
       secondary: sanitizeWindow(limit.secondary),
     })),
-    summary: usage.summary,
+    summary: {
+      currentStreakDays: stats.current_streak_days ?? null,
+      lifetimeTokens: stats.lifetime_tokens ?? null,
+      longestRunningTurnSec: stats.longest_running_turn_sec ?? null,
+      longestStreakDays: stats.longest_streak_days ?? null,
+      peakDailyTokens: stats.peak_daily_tokens ?? null,
+    },
   };
 };
 
@@ -159,9 +176,29 @@ export const validateCodexAuthJson = (value: string) => {
   } catch (error) {
     throw new TypeError("Codex auth is not valid JSON.", { cause: error });
   }
-  if (!authJsonSchema.safeParse(parsed).success) {
+  const result = authJsonSchema.safeParse(parsed);
+  if (!result.success) {
     throw new TypeError("Codex auth must contain managed ChatGPT credentials.");
   }
+  return {
+    accessToken: result.data.tokens.access_token,
+    accountId: result.data.tokens.account_id,
+  };
+};
+
+export const createCodexProfileRequest = (
+  authJson: string,
+  userAgent: string
+) => {
+  const { accessToken, accountId } = validateCodexAuthJson(authJson);
+  return new Request(CODEX_PROFILE_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "ChatGPT-Account-Id": accountId,
+      "User-Agent": userAgent,
+    },
+    method: "GET",
+  });
 };
 
 const metric = (

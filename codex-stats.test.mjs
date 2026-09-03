@@ -3,19 +3,23 @@ import { describe, expect, test } from "bun:test";
 import {
   buildPublicCodexStats,
   createCodexAccountSnapshot,
+  createCodexProfileRequest,
   validateCodexAuthJson,
 } from "./src/lib/codex/stats.ts";
 
-const usage = (lifetimeTokens, dailyUsageBuckets, summary = {}) => ({
-  accountId: "must-not-survive",
-  dailyUsageBuckets,
-  summary: {
-    currentStreakDays: 3,
-    lifetimeTokens,
-    longestRunningTurnSec: 90,
-    longestStreakDays: 8,
-    peakDailyTokens: 80,
-    ...summary,
+const profile = (lifetimeTokens, dailyUsageBuckets, stats = {}) => ({
+  metadata: { generated_at: "must-not-survive" },
+  profile: { username: "must-not-survive" },
+  stats: {
+    current_streak_days: 3,
+    daily_usage_buckets: dailyUsageBuckets,
+    lifetime_tokens: lifetimeTokens,
+    longest_running_turn_sec: 90,
+    longest_streak_days: 8,
+    peak_daily_tokens: 80,
+    total_threads: 999,
+    top_invocations: [{ plugin_name: "must-not-survive" }],
+    ...stats,
   },
 });
 
@@ -39,17 +43,17 @@ const limits = {
 describe("public Codex statistics", () => {
   test("whitelists upstream data and combines accounts", () => {
     const first = createCodexAccountSnapshot(
-      usage(100, [
-        { startDate: "2026-01-29", tokens: 30 },
-        { startDate: "2026-01-30", tokens: 50 },
+      profile(100, [
+        { start_date: "2026-01-29", tokens: 30 },
+        { start_date: "2026-01-30", tokens: 50 },
       ]),
       limits
     );
     const second = createCodexAccountSnapshot(
-      usage(200, [{ startDate: "2026-01-30", tokens: 70 }], {
-        currentStreakDays: 5,
-        longestStreakDays: 7,
-        peakDailyTokens: 100,
+      profile(200, [{ start_date: "2026-01-30", tokens: 70 }], {
+        current_streak_days: 5,
+        longest_streak_days: 7,
+        peak_daily_tokens: 100,
       }),
       {
         ...limits,
@@ -116,7 +120,7 @@ describe("public Codex statistics", () => {
     expect(partial?.totals.lifetimeTokens.partial).toBe(true);
     expect(partial?.highlights.currentStreakDays.partial).toBe(true);
 
-    const empty = createCodexAccountSnapshot(usage(0, []), limits);
+    const empty = createCodexAccountSnapshot(profile(0, []), limits);
     expect(
       buildPublicCodexStats(
         [
@@ -131,5 +135,26 @@ describe("public Codex statistics", () => {
     expect(() => {
       validateCodexAuthJson('{"OPENAI_API_KEY":"secret"}');
     }).toThrow();
+
+    const request = createCodexProfileRequest(
+      JSON.stringify({
+        auth_mode: "chatgpt",
+        tokens: {
+          access_token: "access-token",
+          account_id: "account-id",
+          refresh_token: "refresh-token",
+        },
+      }),
+      "codex-user-agent"
+    );
+    expect(request.method).toBe("GET");
+    expect(request.url).toBe(
+      "https://chatgpt.com/backend-api/wham/profiles/me"
+    );
+    expect(Object.fromEntries(request.headers)).toEqual({
+      authorization: "Bearer access-token",
+      "chatgpt-account-id": "account-id",
+      "user-agent": "codex-user-agent",
+    });
   });
 });

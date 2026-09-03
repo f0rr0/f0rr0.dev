@@ -27,10 +27,12 @@ encrypted in Supabase Vault; the table stores only labels, leases, safe error
 codes, timestamps, and allowlisted usage fields. Prompts, emails, account IDs,
 raw API responses, and auth tokens are never copied into public snapshots.
 
-The sync uses the supported Codex App Server
-[`account/usage/read`](https://learn.chatgpt.com/docs/app-server) and
-[`account/rateLimits/read`](https://learn.chatgpt.com/docs/app-server) methods,
-including the documented refreshed-auth persistence flow for
-[CI/CD](https://learn.chatgpt.com/docs/auth/ci-cd-auth). The ChatGPT profile page
-is intentionally not scraped; add that only if a required statistic is absent
-from the supported response.
+The sync uses Codex App Server's supported
+[`account/rateLimits/read`](https://learn.chatgpt.com/docs/app-server) method and
+automatic token refresh. It then makes the same authenticated
+`GET /backend-api/wham/profiles/me` request as Codex itself because App Server's
+`account/usage/read` response currently omits Profile statistics. The request
+uses only the refreshed bearer token, ChatGPT account ID, and the exact Codex
+user agent returned during App Server initialization. The Profile endpoint is
+internal, so its response is validated and reduced to the existing public
+allowlist before storage.

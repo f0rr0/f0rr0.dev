@@ -9,6 +9,7 @@ import { ZodError } from "zod";
 
 import {
   createCodexAccountSnapshot,
+  createCodexProfileRequest,
   validateCodexAuthJson,
 } from "@/lib/codex/stats";
 import {
@@ -22,6 +23,7 @@ import {
 import type { ClaimedCodexAccount } from "@/lib/codex/store";
 
 const APP_SERVER_TIMEOUT_MS = 45_000;
+const PROFILE_TIMEOUT_MS = 10_000;
 
 type ErrorCode =
   | "app_server_failed"
@@ -31,16 +33,18 @@ type ErrorCode =
   | "database_error"
   | "invalid_response"
   | "lease_lost"
+  | "profile_failed"
+  | "profile_timeout"
   | "protocol_error"
   | "unknown";
 
-class CodexAppServerError extends Error {
+class CodexSyncError extends Error {
   readonly code: ErrorCode;
 
   constructor(code: ErrorCode, message: string) {
     super(message);
     this.code = code;
-    this.name = "CodexAppServerError";
+    this.name = "CodexSyncError";
   }
 }
 
@@ -93,7 +97,7 @@ const runAppServer = async (codexHome: string) => {
 
   const closed = Promise.withResolvers<null>();
   child.once("error", () => {
-    terminalError = new CodexAppServerError(
+    terminalError = new CodexSyncError(
       "app_server_failed",
       "Codex App Server could not start."
     );
@@ -102,7 +106,7 @@ const runAppServer = async (codexHome: string) => {
   });
   child.once("exit", (code) => {
     if (terminalError === null && pending.size > 0) {
-      terminalError = new CodexAppServerError(
+      terminalError = new CodexSyncError(
         "app_server_failed",
         `Codex App Server exited before completing its requests (${String(code)}).`
       );
@@ -119,7 +123,7 @@ const runAppServer = async (codexHome: string) => {
     try {
       message = JSON.parse(line);
     } catch {
-      const error = new CodexAppServerError(
+      const error = new CodexSyncError(
         "protocol_error",
         "Codex App Server returned invalid JSON."
       );
@@ -141,7 +145,7 @@ const runAppServer = async (codexHome: string) => {
     pending.delete(id);
     if ("error" in message) {
       request.reject(
-        new CodexAppServerError(
+        new CodexSyncError(
           "protocol_error",
           "Codex App Server rejected an account request."
         )
@@ -165,7 +169,7 @@ const runAppServer = async (codexHome: string) => {
   };
 
   const timeout = setTimeout(() => {
-    terminalError = new CodexAppServerError(
+    terminalError = new CodexSyncError(
       "app_server_timeout",
       "Codex App Server timed out."
     );
@@ -174,7 +178,7 @@ const runAppServer = async (codexHome: string) => {
   }, APP_SERVER_TIMEOUT_MS);
 
   try {
-    await request("initialize", {
+    const initialized = await request("initialize", {
       capabilities: null,
       clientInfo: {
         name: "f0rr0_dev_codex_stats",
@@ -182,12 +186,20 @@ const runAppServer = async (codexHome: string) => {
         version: "1.0.0",
       },
     });
+    if (
+      typeof initialized !== "object" ||
+      initialized === null ||
+      !("userAgent" in initialized) ||
+      typeof initialized.userAgent !== "string"
+    ) {
+      throw new CodexSyncError(
+        "invalid_response",
+        "Codex App Server returned an invalid initialization response."
+      );
+    }
     send({ method: "initialized" });
-    const [usage, rateLimits] = await Promise.all([
-      request("account/usage/read"),
-      request("account/rateLimits/read"),
-    ]);
-    return { rateLimits, usage };
+    const rateLimits = await request("account/rateLimits/read");
+    return { rateLimits, userAgent: initialized.userAgent };
   } finally {
     clearTimeout(timeout);
     child.stdin.end();
@@ -200,15 +212,41 @@ const runAppServer = async (codexHome: string) => {
   }
 };
 
+const fetchCodexProfile = async (authJson: string, userAgent: string) => {
+  try {
+    const response = await fetch(
+      createCodexProfileRequest(authJson, userAgent),
+      { signal: AbortSignal.timeout(PROFILE_TIMEOUT_MS) }
+    );
+    if (!response.ok) {
+      throw new CodexSyncError(
+        "profile_failed",
+        `Codex Profile request failed (${String(response.status)}).`
+      );
+    }
+    return (await response.json()) as unknown;
+  } catch (error) {
+    if (error instanceof CodexSyncError) {
+      throw error;
+    }
+    const timedOut =
+      error instanceof Error &&
+      (error.name === "AbortError" || error.name === "TimeoutError");
+    throw new CodexSyncError(
+      timedOut ? "profile_timeout" : "profile_failed",
+      timedOut
+        ? "Codex Profile request timed out."
+        : "Codex Profile request failed."
+    );
+  }
+};
+
 const syncAccount = async (account: ClaimedCodexAccount) => {
   const authJson = await readCodexAuthSecret(account.authSecretName);
   try {
     validateCodexAuthJson(authJson);
   } catch {
-    throw new CodexAppServerError(
-      "auth_invalid",
-      "Stored Codex auth is invalid."
-    );
+    throw new CodexSyncError("auth_invalid", "Stored Codex auth is invalid.");
   }
 
   const codexHome = await mkdtemp(path.join(tmpdir(), "f0rr0-codex-stats-"));
@@ -233,7 +271,7 @@ const syncAccount = async (account: ClaimedCodexAccount) => {
     try {
       validateCodexAuthJson(refreshedAuthJson);
     } catch {
-      throw new CodexAppServerError(
+      throw new CodexSyncError(
         "auth_invalid",
         "Codex App Server wrote invalid auth."
       );
@@ -244,22 +282,23 @@ const syncAccount = async (account: ClaimedCodexAccount) => {
     if (failure !== null) {
       throw failure instanceof Error
         ? failure
-        : new CodexAppServerError("unknown", "Codex App Server failed.");
+        : new CodexSyncError("unknown", "Codex App Server failed.");
     }
     if (raw === null) {
-      throw new CodexAppServerError(
+      throw new CodexSyncError(
         "app_server_failed",
         "Codex App Server returned no account data."
       );
     }
+    const profile = await fetchCodexProfile(refreshedAuthJson, raw.userAgent);
     let snapshot;
     try {
-      snapshot = createCodexAccountSnapshot(raw.usage, raw.rateLimits);
+      snapshot = createCodexAccountSnapshot(profile, raw.rateLimits);
     } catch (error) {
       if (error instanceof ZodError) {
-        throw new CodexAppServerError(
+        throw new CodexSyncError(
           "invalid_response",
-          "Codex App Server returned an invalid account snapshot."
+          "Codex Profile returned an invalid account snapshot."
         );
       }
       throw error;
@@ -271,10 +310,7 @@ const syncAccount = async (account: ClaimedCodexAccount) => {
 };
 
 const errorCode = (error: unknown): ErrorCode => {
-  if (
-    error instanceof CodexAppServerError ||
-    error instanceof CodexStoreError
-  ) {
+  if (error instanceof CodexSyncError || error instanceof CodexStoreError) {
     return error.code;
   }
   return error instanceof Error ? "database_error" : "unknown";
