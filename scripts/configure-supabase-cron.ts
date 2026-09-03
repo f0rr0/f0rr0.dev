@@ -84,7 +84,7 @@ export const supabaseCronSiteUrlFrom = (
 };
 
 const upsertVaultSecret = async (
-  sql: ReturnType<typeof postgres>,
+  sql: postgres.TransactionSql,
   input: { name: string; value: string }
 ) => {
   const [existing] = await sql<{ id: string }[]>`

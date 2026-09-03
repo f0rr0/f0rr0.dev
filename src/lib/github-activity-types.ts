@@ -11,8 +11,8 @@ export interface PublicGitHubActivityDestination {
 export interface PublicGitHubActivityRepository {
   avatarUrl: string | null;
   key: string;
-  label: string;
-  url: string;
+  label: string | null;
+  url: string | null;
 }
 
 export interface PublicGitHubActivityDateRange {
@@ -30,15 +30,16 @@ export interface PublicGitHubWorkUnitFacts {
 }
 
 export interface PublicGitHubWorkUnitActivity {
-  destination: PublicGitHubActivityDestination;
+  destination: PublicGitHubActivityDestination | null;
   facts: PublicGitHubWorkUnitFacts;
   id: string;
   kind: PublicGitHubWorkUnitKind;
-  outcome: string | null;
+  headline: string | null;
+  summary: string | null;
 }
 
 export interface PublicGitHubIssueOpenedActivity {
-  destination: PublicGitHubActivityDestination;
+  destination: PublicGitHubActivityDestination | null;
   id: string;
   kind: "issue-opened";
   title: string;
@@ -55,7 +56,6 @@ export interface PublicGitHubActivityRepositoryGroup {
 
 export interface PublicGitHubActivityDay {
   day: string;
-  privateWork: boolean;
   repositories: readonly PublicGitHubActivityRepositoryGroup[];
 }
 

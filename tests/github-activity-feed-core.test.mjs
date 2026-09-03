@@ -26,10 +26,11 @@ const work = (id, activityAt, repositoryIdentity) => ({
     url: `https://github.com/example/repository/pull/${id}`,
   },
   facts,
+  headline: null,
   id,
   kind: "pull-request",
-  outcome: null,
   repository: repositoryIdentity,
+  summary: null,
 });
 
 describe("public GitHub activity day projection", () => {
@@ -38,7 +39,6 @@ describe("public GitHub activity day projection", () => {
     const [day] = buildPublicGitHubActivityDays({
       days: ["2026-08-28"],
       issues: [],
-      privateDays: new Set(),
       workUnits: [
         work("older", "2026-08-28T08:00:00.000Z", sharedRepository),
         work("newer", "2026-08-28T12:00:00.000Z", sharedRepository),
@@ -47,7 +47,6 @@ describe("public GitHub activity day projection", () => {
 
     expect(day).toEqual({
       day: "2026-08-28",
-      privateWork: false,
       repositories: [
         {
           items: [
@@ -57,9 +56,10 @@ describe("public GitHub activity day projection", () => {
                 url: "https://github.com/example/repository/pull/newer",
               },
               facts,
+              headline: null,
               id: "newer",
               kind: "pull-request",
-              outcome: null,
+              summary: null,
             },
             {
               destination: {
@@ -67,9 +67,10 @@ describe("public GitHub activity day projection", () => {
                 url: "https://github.com/example/repository/pull/older",
               },
               facts,
+              headline: null,
               id: "older",
               kind: "pull-request",
-              outcome: null,
+              summary: null,
             },
           ],
           repository: sharedRepository,
@@ -78,23 +79,11 @@ describe("public GitHub activity day projection", () => {
     });
   });
 
-  test("collapses all private work to one boolean-only day fact", () => {
-    expect(
-      buildPublicGitHubActivityDays({
-        days: ["2026-08-27"],
-        issues: [],
-        privateDays: new Set(["2026-08-27"]),
-        workUnits: [],
-      })
-    ).toEqual([{ day: "2026-08-27", privateWork: true, repositories: [] }]);
-  });
-
   test("rejects rows outside the requested complete-day page", () => {
     expect(() =>
       buildPublicGitHubActivityDays({
         days: ["2026-08-28"],
         issues: [],
-        privateDays: new Set(),
         workUnits: [
           work("outside", "2026-08-27T12:00:00.000Z", repository("42")),
         ],

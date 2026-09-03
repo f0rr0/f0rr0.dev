@@ -22,8 +22,10 @@ import type {
   PublicGitHubActivityRepository,
   PublicGitHubWorkUnitKind,
 } from "@/lib/github-activity-types";
-import { hasCurrentTrackedGitHubRepositoryAccess } from "@/lib/github-repository-access";
-import { GITHUB_WORK_UNIT_SUMMARY_RECIPE } from "@/lib/github-work-unit-summary";
+import {
+  decodeGitHubWorkUnitSummary,
+  GITHUB_WORK_UNIT_SUMMARY_RECIPE,
+} from "@/lib/github-work-unit-summary";
 
 export const PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE = 5;
 const MAXIMUM_PUBLIC_DAY_PAGE_SIZE = 14;
@@ -141,16 +143,35 @@ interface PublicRepositorySource {
   fullName: string;
   id: string;
   ownerAvatarUrl: string | null;
+  visibility: string | null;
 }
 
 interface CheckedPublicRepository {
-  baseUrl: string;
+  baseUrl: string | null;
   projection: PublicGitHubActivityRepository;
 }
 
 const checkedPublicRepository = (
   repository: PublicRepositorySource
 ): CheckedPublicRepository => {
+  if (
+    repository.visibility !== "public" &&
+    repository.visibility !== "private" &&
+    repository.visibility !== "internal"
+  ) {
+    throw new Error("A GitHub repository visibility is invalid.");
+  }
+  if (repository.visibility !== "public") {
+    return {
+      baseUrl: null,
+      projection: {
+        avatarUrl: safeAvatarUrl(repository.ownerAvatarUrl),
+        key: repository.id,
+        label: "Private",
+        url: null,
+      },
+    };
+  }
   const [owner, name, extra] = repository.fullName.split("/");
   if (
     owner === undefined ||
@@ -190,7 +211,6 @@ const issueDay = sql<string>`to_char(${githubIssues.createdAt} AT TIME ZONE 'UTC
 
 interface AvailableDays {
   hasNextPage: boolean;
-  privateDays: ReadonlySet<string>;
   selectedDays: readonly string[];
 }
 
@@ -211,91 +231,55 @@ const readAvailableDays = async (
           new Date(`${cursor.beforeDay}T00:00:00.000Z`)
         );
   const queryLimit = pageSize + 1;
-  const [publicWorkDays, privateWorkDays, publicIssueDays, privateIssueDays] =
-    await Promise.all([
-      database
-        .selectDistinct({ day: githubWorkUnits.activityDay })
-        .from(githubWorkUnits)
-        .innerJoin(
-          githubRepositories,
-          eq(githubWorkUnits.repositoryId, githubRepositories.id)
+  const [workDays, issueDays] = await Promise.all([
+    database
+      .selectDistinct({ day: githubWorkUnits.activityDay })
+      .from(githubWorkUnits)
+      .innerJoin(
+        githubRepositories,
+        eq(githubWorkUnits.repositoryId, githubRepositories.id)
+      )
+      .where(
+        and(
+          beforeWorkUnit,
+          inArray(githubWorkUnits.visibility, ["public", "private"]),
+          inArray(githubRepositories.visibility, [
+            "public",
+            "private",
+            "internal",
+          ])
         )
-        .where(
-          and(
-            beforeWorkUnit,
-            eq(githubWorkUnits.visibility, "public"),
-            eq(githubRepositories.visibility, "public")
-          )
+      )
+      .orderBy(desc(githubWorkUnits.activityDay))
+      .limit(queryLimit),
+    database
+      .selectDistinct({ day: issueDay })
+      .from(githubIssues)
+      .innerJoin(
+        githubRepositories,
+        eq(githubIssues.repositoryId, githubRepositories.id)
+      )
+      .where(
+        and(
+          beforeIssue,
+          inArray(githubRepositories.visibility, [
+            "public",
+            "private",
+            "internal",
+          ])
         )
-        .orderBy(desc(githubWorkUnits.activityDay))
-        .limit(queryLimit),
-      database
-        .selectDistinct({ day: githubWorkUnits.activityDay })
-        .from(githubWorkUnits)
-        .innerJoin(
-          githubRepositories,
-          eq(githubWorkUnits.repositoryId, githubRepositories.id)
-        )
-        .where(
-          and(
-            beforeWorkUnit,
-            eq(githubWorkUnits.visibility, "private"),
-            inArray(githubRepositories.visibility, ["private", "internal"]),
-            hasCurrentTrackedGitHubRepositoryAccess(
-              githubWorkUnits.repositoryId
-            )
-          )
-        )
-        .orderBy(desc(githubWorkUnits.activityDay))
-        .limit(queryLimit),
-      database
-        .selectDistinct({ day: issueDay })
-        .from(githubIssues)
-        .innerJoin(
-          githubRepositories,
-          eq(githubIssues.repositoryId, githubRepositories.id)
-        )
-        .where(and(beforeIssue, eq(githubRepositories.visibility, "public")))
-        .orderBy(desc(issueDay))
-        .limit(queryLimit),
-      database
-        .selectDistinct({ day: issueDay })
-        .from(githubIssues)
-        .innerJoin(
-          githubRepositories,
-          eq(githubIssues.repositoryId, githubRepositories.id)
-        )
-        .where(
-          and(
-            beforeIssue,
-            inArray(githubRepositories.visibility, ["private", "internal"]),
-            hasCurrentTrackedGitHubRepositoryAccess(githubIssues.repositoryId)
-          )
-        )
-        .orderBy(desc(issueDay))
-        .limit(queryLimit),
-    ]);
+      )
+      .orderBy(desc(issueDay))
+      .limit(queryLimit),
+  ]);
 
-  const allDays = new Set(
-    [
-      ...publicWorkDays,
-      ...privateWorkDays,
-      ...publicIssueDays,
-      ...privateIssueDays,
-    ].map(({ day }) => day)
-  );
+  const allDays = new Set([...workDays, ...issueDays].map(({ day }) => day));
   const orderedDays = [...allDays].toSorted((left, right) =>
     right.localeCompare(left)
   );
   const selectedDays = orderedDays.slice(0, pageSize);
-  const privateDayCandidates = new Set(
-    [...privateWorkDays, ...privateIssueDays].map(({ day }) => day)
-  );
   return {
     hasNextPage: orderedDays.length > pageSize,
-    privateDays: new Set(
-      selectedDays.filter((day) => privateDayCandidates.has(day))
-    ),
     selectedDays,
   };
 };
@@ -332,6 +316,7 @@ const readPublicRows = async (
         ownerAvatarUrl: githubRepositories.ownerAvatarUrl,
         pullRequestNumber: githubPullRequests.number,
         repositoryId: githubRepositories.id,
+        visibility: githubRepositories.visibility,
       })
       .from(githubWorkUnits)
       .innerJoin(
@@ -348,8 +333,12 @@ const readPublicRows = async (
       .where(
         and(
           inArray(githubWorkUnits.activityDay, selectedDays),
-          eq(githubWorkUnits.visibility, "public"),
-          eq(githubRepositories.visibility, "public")
+          inArray(githubWorkUnits.visibility, ["public", "private"]),
+          inArray(githubRepositories.visibility, [
+            "public",
+            "private",
+            "internal",
+          ])
         )
       )
       .orderBy(desc(githubWorkUnits.activityAt), githubWorkUnits.id)
@@ -364,6 +353,7 @@ const readPublicRows = async (
         ownerAvatarUrl: githubRepositories.ownerAvatarUrl,
         repositoryId: githubRepositories.id,
         title: githubIssues.titleSnapshot,
+        visibility: githubRepositories.visibility,
       })
       .from(githubIssues)
       .innerJoin(
@@ -373,7 +363,11 @@ const readPublicRows = async (
       .where(
         and(
           inArray(issueDay, selectedDays),
-          eq(githubRepositories.visibility, "public")
+          inArray(githubRepositories.visibility, [
+            "public",
+            "private",
+            "internal",
+          ])
         )
       )
       .orderBy(desc(githubIssues.createdAt), githubIssues.nodeId)
@@ -439,10 +433,16 @@ const readPublicRows = async (
             githubWorkUnitSummaryAttempts.workUnitId,
             desc(githubWorkUnitSummaryAttempts.revision)
           );
-  const outcomes = new Map<string, string>();
+  const summaries = new Map<
+    string,
+    Readonly<{ headline: string; summary: string | null }>
+  >();
   for (const summary of summaryRows) {
-    if (!outcomes.has(summary.workUnitId) && summary.outcome !== null) {
-      outcomes.set(summary.workUnitId, summary.outcome);
+    if (!summaries.has(summary.workUnitId) && summary.outcome !== null) {
+      const decoded = decodeGitHubWorkUnitSummary(summary.outcome);
+      if (decoded !== null) {
+        summaries.set(summary.workUnitId, decoded);
+      }
     }
   }
 
@@ -451,10 +451,13 @@ const readPublicRows = async (
       fullName: row.fullName,
       id: row.repositoryId,
       ownerAvatarUrl: row.ownerAvatarUrl,
+      visibility: row.visibility,
     });
     const kind = publicWorkUnitKind(row.kind);
     let destination;
-    if (kind === "pull-request") {
+    if (repository.baseUrl === null) {
+      destination = null;
+    } else if (kind === "pull-request") {
       if (
         row.pullRequestNumber === null ||
         !Number.isSafeInteger(row.pullRequestNumber) ||
@@ -480,6 +483,7 @@ const readPublicRows = async (
     }
     const firstDay = row.firstActivityAt.toISOString().slice(0, 10);
     const lastDay = row.lastActivityAt.toISOString().slice(0, 10);
+    const summary = summaries.get(row.id);
     return {
       activityAt: row.activityAt.toISOString(),
       day: row.activityDay,
@@ -494,9 +498,10 @@ const readPublicRows = async (
         uniqueFileCount: row.fileCount,
       },
       id: row.identityKey,
+      headline: summary?.headline ?? null,
       kind,
-      outcome: outcomes.get(row.id) ?? null,
       repository: repository.projection,
+      summary: summary?.summary ?? null,
     };
   });
   const issues = issueRows.map((row): PublicGitHubIssueRow => {
@@ -504,6 +509,7 @@ const readPublicRows = async (
       fullName: row.fullName,
       id: row.repositoryId,
       ownerAvatarUrl: row.ownerAvatarUrl,
+      visibility: row.visibility,
     });
     if (!Number.isSafeInteger(row.number) || row.number < 1) {
       throw new Error("A public GitHub issue has no destination.");
@@ -511,10 +517,13 @@ const readPublicRows = async (
     return {
       activityAt: row.activityAt.toISOString(),
       day: row.day,
-      destination: {
-        label: `Open issue ${String(row.number)} on GitHub`,
-        url: `${repository.baseUrl}/issues/${String(row.number)}`,
-      },
+      destination:
+        repository.baseUrl === null
+          ? null
+          : {
+              label: `Open issue ${String(row.number)} on GitHub`,
+              url: `${repository.baseUrl}/issues/${String(row.number)}`,
+            },
       id: `issue:${row.nodeId}`,
       repository: repository.projection,
       title: row.title,
@@ -532,7 +541,7 @@ const readPublicGitHubActivityPageInTransaction = async (
   if (cursor !== null && cursor.orderingRevision !== orderingRevision) {
     throw new GitHubActivityOrderingChangedError();
   }
-  const { hasNextPage, privateDays, selectedDays } = await readAvailableDays(
+  const { hasNextPage, selectedDays } = await readAvailableDays(
     database,
     cursor,
     pageSize
@@ -541,7 +550,6 @@ const readPublicGitHubActivityPageInTransaction = async (
   const days = buildPublicGitHubActivityDays({
     days: selectedDays,
     issues,
-    privateDays,
     workUnits,
   });
   const lastDay = selectedDays.at(-1);

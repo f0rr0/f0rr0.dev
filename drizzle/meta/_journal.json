@@ -120,6 +120,13 @@
       "when": 1788266468975,
       "tag": "0016_moaning_paibok",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788362760803,
+      "tag": "0017_mighty_enchantress",
+      "breakpoints": true
     }
   ]
 }

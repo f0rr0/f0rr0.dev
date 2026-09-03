@@ -640,7 +640,10 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
     expect(afterReversion.headContentRevision).toBe(
       beforeReversion.headContentRevision + 1
     );
-    expect(publicUnit).toMatchObject({ outcome: "Cached outcome A." });
+    expect(publicUnit).toMatchObject({
+      headline: "Cached outcome A.",
+      summary: null,
+    });
   });
 
   test("reuses a superseded paid input without resetting its request budget", async () => {
@@ -915,7 +918,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
     expect(withLanding).toMatchObject({ memberCount: 2 });
   });
 
-  test("purges private prose and removes unknown visibility instead of leaking", async () => {
+  test("keeps private projection, summaries, and feed detail", async () => {
     await database
       .update(schema.githubRepositories)
       .set({ visibility: "private" })
@@ -933,10 +936,18 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       updatedUnits: 1,
     });
     expect(privateUnit).toMatchObject({
-      summaryInputDigest: null,
       visibility: "private",
     });
-    expect(privateAttempts).toEqual([]);
+    expect(privateUnit.summaryInputDigest).toMatch(/^[a-f0-9]{64}$/u);
+    expect(privateAttempts.length).toBeGreaterThan(0);
+    const privatePage = await readPublicGitHubActivityPage(null, 1);
+    expect(privatePage.days[0]?.repositories[0]).toMatchObject({
+      items: [expect.objectContaining({ destination: null })],
+      repository: { label: "Private", url: null },
+    });
+    expect(JSON.stringify(privatePage.days)).not.toContain(
+      "f0rr0/projection-store-test"
+    );
 
     await database.insert(schema.githubRepositoryInventoryHeads).values([
       {
@@ -958,11 +969,14 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       new Date("2026-08-30T14:01:00.000Z")
     );
     expect(unknownResult).toMatchObject({
-      deletedUnits: 1,
-      feedRevisionChanged: true,
-      orderingRevisionChanged: true,
+      changed: false,
+      deletedUnits: 0,
+      feedRevisionChanged: false,
+      orderingRevisionChanged: false,
     });
-    expect(await database.select().from(schema.githubWorkUnits)).toEqual([]);
+    expect(await database.select().from(schema.githubWorkUnits)).toHaveLength(
+      1
+    );
   });
 
   test("summarizes only owned evidence when a tracked PR includes collaborator commits", async () => {
@@ -1162,10 +1176,10 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       .from(schema.githubWorkUnitSummaryAttempts)
       .where(eq(schema.githubWorkUnitSummaryAttempts.workUnitId, unit.id));
     expect(unrelated).toMatchObject({
-      insertedUnits: 1,
-      summaryAttemptsQueued: 1,
+      insertedUnits: 0,
+      summaryAttemptsQueued: 0,
       summaryInputsFailed: 0,
-      updatedUnits: 0,
+      updatedUnits: 1,
     });
     expect(attemptsAfterUnrelatedChange).toEqual(attemptsBeforeUnrelatedChange);
   });
@@ -1241,7 +1255,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
     expect(afterUnknown).toEqual(after);
   });
 
-  test("excludes revoked private issue days from initial-page projection", async () => {
+  test("keeps private issue days in initial-page projection after access changes", async () => {
     const publicRepositoryId = "7005";
     const privateRepositoryId = "7006";
     const publicSha = "9".repeat(40);
@@ -1393,7 +1407,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       new Date("2026-09-15T12:01:00.000Z")
     );
     expect(revoked).toMatchObject({
-      feedRevisionChanged: true,
+      feedRevisionChanged: false,
       updatedUnits: 1,
     });
   });
