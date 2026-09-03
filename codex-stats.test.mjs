@@ -6,7 +6,7 @@ import {
   validateCodexAuthJson,
 } from "./src/lib/codex/stats.ts";
 
-const usage = (lifetimeTokens, dailyUsageBuckets) => ({
+const usage = (lifetimeTokens, dailyUsageBuckets, summary = {}) => ({
   accountId: "must-not-survive",
   dailyUsageBuckets,
   summary: {
@@ -15,6 +15,7 @@ const usage = (lifetimeTokens, dailyUsageBuckets) => ({
     longestRunningTurnSec: 90,
     longestStreakDays: 8,
     peakDailyTokens: 80,
+    ...summary,
   },
 });
 
@@ -45,8 +46,26 @@ describe("public Codex statistics", () => {
       limits
     );
     const second = createCodexAccountSnapshot(
-      usage(200, [{ startDate: "2026-01-30", tokens: 70 }]),
-      limits
+      usage(200, [{ startDate: "2026-01-30", tokens: 70 }], {
+        currentStreakDays: 5,
+        longestStreakDays: 7,
+        peakDailyTokens: 100,
+      }),
+      {
+        ...limits,
+        rateLimitsByLimitId: {
+          codex: {
+            ...limits.rateLimits,
+            primary: { ...limits.rateLimits.primary, usedPercent: 75 },
+          },
+          codex_bengalfox: {
+            ...limits.rateLimits,
+            limitId: "codex_bengalfox",
+            limitName: "GPT-5.3-Codex-Spark",
+            primary: { ...limits.rateLimits.primary, usedPercent: 99 },
+          },
+        },
+      }
     );
     const serialized = JSON.stringify(first);
     expect(serialized).not.toContain("must-not-survive");
@@ -56,16 +75,10 @@ describe("public Codex statistics", () => {
     const stats = buildPublicCodexStats(
       [
         {
-          id: "one",
-          label: "One",
           snapshot: first,
-          snapshotAt: new Date("2026-01-30T11:50:00Z"),
         },
         {
-          id: "two",
-          label: "Two",
           snapshot: second,
-          snapshotAt: new Date("2026-01-30T11:55:00Z"),
         },
       ],
       new Date("2026-01-30T12:00:00Z")
@@ -80,32 +93,35 @@ describe("public Codex statistics", () => {
       partial: false,
       tokens: 120,
     });
-    expect(stats?.accounts).toHaveLength(2);
+    expect(stats?.highlights).toEqual({
+      currentStreakDays: { partial: false, value: 5 },
+      longestStreakDays: { partial: false, value: 8 },
+      peakDailyTokens: { partial: false, value: 100 },
+    });
+    expect(stats?.primaryLimit).toEqual({
+      planType: "pro",
+      usedPercent: 50,
+    });
+    expect(JSON.stringify(stats)).not.toContain("Spark");
 
     const partial = buildPublicCodexStats(
       [
         {
-          id: "one",
-          label: "One",
           snapshot: first,
-          snapshotAt: new Date("2026-01-30T11:50:00Z"),
         },
       ],
       new Date("2026-01-30T12:00:00Z"),
       2
     );
-    expect(partial?.accountCount).toBe(2);
     expect(partial?.totals.lifetimeTokens.partial).toBe(true);
+    expect(partial?.highlights.currentStreakDays.partial).toBe(true);
 
     const empty = createCodexAccountSnapshot(usage(0, []), limits);
     expect(
       buildPublicCodexStats(
         [
           {
-            id: "empty",
-            label: "Empty",
             snapshot: empty,
-            snapshotAt: new Date("2026-01-30T12:00:00Z"),
           },
         ],
         new Date("2026-01-30T12:00:00Z")

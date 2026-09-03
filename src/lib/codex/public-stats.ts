@@ -9,32 +9,20 @@ import { buildPublicCodexStats } from "@/lib/codex/stats";
 const readPublicCodexStats = async () => {
   const rows = await getDatabase()
     .select({
-      id: codexAccounts.id,
-      label: codexAccounts.publicLabel,
       snapshot: codexAccounts.snapshot,
-      snapshotAt: codexAccounts.snapshotAt,
     })
     .from(codexAccounts)
     .where(eq(codexAccounts.enabled, true));
 
   const records = rows.flatMap((row) =>
-    row.snapshot === null || row.snapshotAt === null
-      ? []
-      : [
-          {
-            id: row.id,
-            label: row.label,
-            snapshot: row.snapshot,
-            snapshotAt: row.snapshotAt,
-          },
-        ]
+    row.snapshot === null ? [] : [{ snapshot: row.snapshot }]
   );
   return buildPublicCodexStats(records, new Date(), rows.length);
 };
 
 const readCachedPublicCodexStats = unstable_cache(
   readPublicCodexStats,
-  ["public-codex-stats-v1"],
+  ["public-codex-stats-v2"],
   { revalidate: 900 }
 );
 

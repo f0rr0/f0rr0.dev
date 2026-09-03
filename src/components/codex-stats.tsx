@@ -1,8 +1,4 @@
-import type {
-  CodexRateLimitWindow,
-  PublicCodexMetric,
-  PublicCodexStats,
-} from "@/lib/codex/stats";
+import type { PublicCodexMetric, PublicCodexStats } from "@/lib/codex/stats";
 
 const compactNumber = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
@@ -14,12 +10,6 @@ const day = new Intl.DateTimeFormat("en-US", {
   month: "short",
   timeZone: "UTC",
 });
-const timestamp = new Intl.DateTimeFormat("en-US", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: "UTC",
-});
-
 const formatDuration = (seconds: number | null) => {
   if (seconds === null) {
     return "—";
@@ -58,16 +48,14 @@ const Metric = ({
   </div>
 );
 
-const LimitWindow = ({
+const LimitBar = ({
   label,
-  window,
+  usedPercent,
 }: {
   label: string;
-  window: CodexRateLimitWindow;
+  usedPercent: number;
 }) => {
-  const used = Math.min(100, window.usedPercent);
-  const reset =
-    window.resetsAt === null ? null : new Date(window.resetsAt * 1000);
+  const used = Math.min(100, usedPercent);
   return (
     <div>
       <div className="flex items-baseline justify-between gap-3 font-ui text-xs text-muted-foreground">
@@ -87,19 +75,32 @@ const LimitWindow = ({
           style={{ width: `${String(used)}%` }}
         />
       </div>
-      {reset === null ? null : (
-        <p className="mt-1 font-mono text-[0.625rem] text-muted-foreground">
-          Resets{" "}
-          <time dateTime={reset.toISOString()}>{timestamp.format(reset)}</time>{" "}
-          UTC
-        </p>
-      )}
     </div>
   );
 };
 
 export function CodexStats({ stats }: { stats: PublicCodexStats }) {
   const peak = Math.max(1, ...stats.dailyUsage.map(({ tokens }) => tokens));
+  const highlights = [
+    {
+      label: "Current streak",
+      metric: stats.highlights.currentStreakDays,
+      value: formatDays(stats.highlights.currentStreakDays.value),
+    },
+    {
+      label: "Longest streak",
+      metric: stats.highlights.longestStreakDays,
+      value: formatDays(stats.highlights.longestStreakDays.value),
+    },
+    {
+      label: "Daily peak",
+      metric: stats.highlights.peakDailyTokens,
+      value:
+        stats.highlights.peakDailyTokens.value === null
+          ? "—"
+          : compactNumber.format(stats.highlights.peakDailyTokens.value),
+    },
+  ];
 
   return (
     <section aria-labelledby="codex-stats-title" className="home-section">
@@ -116,9 +117,8 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
           </h2>
         </div>
         <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
-          Sanitized usage from {stats.accountCount} personal account
-          {stats.accountCount === 1 ? "" : "s"}. Prompts and credentials are
-          never stored here.
+          Sanitized usage across personal ChatGPT accounts. Prompts and
+          credentials are never stored here.
         </p>
       </div>
 
@@ -182,72 +182,36 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
         </p>
       </div>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        {stats.accounts.map(({ id, label, snapshot, stale, updatedAt }) => (
-          <article className="rounded-lg border border-border p-5" key={id}>
-            <div className="flex items-baseline justify-between gap-4">
-              <h3 className="font-serif text-xl font-bold text-foreground">
-                {label}
-              </h3>
-              <time
-                className="font-mono text-[0.625rem] uppercase tracking-wider text-muted-foreground"
-                dateTime={updatedAt}
-              >
-                {stale ? "Stale · " : ""}
-                {day.format(new Date(updatedAt))}
-              </time>
+      <article className="mt-8 rounded-lg border border-border p-5">
+        <div>
+          <h3 className="font-serif text-xl font-bold text-foreground">
+            Unified activity
+          </h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Highest observed values and pooled primary limit across connected
+            accounts.
+          </p>
+        </div>
+        <dl className="mt-5 grid grid-cols-3 gap-4 text-sm">
+          {highlights.map(({ label, metric, value }) => (
+            <div key={label}>
+              <dt className="text-muted-foreground">{label}</dt>
+              <dd className="mt-1 font-mono text-foreground">
+                {value}
+                {metric.partial ? " · partial" : ""}
+              </dd>
             </div>
-            <dl className="mt-5 grid grid-cols-3 gap-4 text-sm">
-              <div>
-                <dt className="text-muted-foreground">Current streak</dt>
-                <dd className="mt-1 font-mono text-foreground">
-                  {formatDays(snapshot.summary.currentStreakDays)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Longest streak</dt>
-                <dd className="mt-1 font-mono text-foreground">
-                  {formatDays(snapshot.summary.longestStreakDays)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Daily peak</dt>
-                <dd className="mt-1 font-mono text-foreground">
-                  {snapshot.summary.peakDailyTokens === null
-                    ? "—"
-                    : compactNumber.format(snapshot.summary.peakDailyTokens)}
-                </dd>
-              </div>
-            </dl>
-            {snapshot.availableResetCredits === null ? null : (
-              <p className="mt-4 text-sm text-muted-foreground">
-                {number.format(snapshot.availableResetCredits)} reset credits
-                available
-              </p>
-            )}
-            <div className="mt-6 space-y-5">
-              {snapshot.limits.flatMap((limit) =>
-                [
-                  limit.primary === null ? null : (
-                    <LimitWindow
-                      key={`${limit.id}-primary`}
-                      label={`${limit.name ?? "Primary limit"}${limit.planType === null ? "" : ` · ${limit.planType}`}`}
-                      window={limit.primary}
-                    />
-                  ),
-                  limit.secondary === null ? null : (
-                    <LimitWindow
-                      key={`${limit.id}-secondary`}
-                      label={`${limit.name ?? "Limit"}${limit.planType === null ? "" : ` · ${limit.planType}`} · secondary`}
-                      window={limit.secondary}
-                    />
-                  ),
-                ].filter((window) => window !== null)
-              )}
-            </div>
-          </article>
-        ))}
-      </div>
+          ))}
+        </dl>
+        {stats.primaryLimit === null ? null : (
+          <div className="mt-6 border-t border-border pt-5">
+            <LimitBar
+              label={`Primary limit${stats.primaryLimit.planType === null ? "" : ` · ${stats.primaryLimit.planType}`}`}
+              usedPercent={stats.primaryLimit.usedPercent}
+            />
+          </div>
+        )}
+      </article>
     </section>
   );
 }

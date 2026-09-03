@@ -91,16 +91,17 @@ export interface PublicCodexMetric {
 }
 
 export interface PublicCodexStats {
-  accountCount: number;
-  accounts: readonly {
-    id: string;
-    label: string;
-    snapshot: CodexAccountSnapshot;
-    stale: boolean;
-    updatedAt: string;
-  }[];
   busiestDay: { day: string; partial: boolean; tokens: number } | null;
   dailyUsage: readonly { day: string; tokens: number }[];
+  highlights: {
+    currentStreakDays: PublicCodexMetric;
+    longestStreakDays: PublicCodexMetric;
+    peakDailyTokens: PublicCodexMetric;
+  };
+  primaryLimit: {
+    planType: string | null;
+    usedPercent: number;
+  } | null;
   totals: {
     last30Days: PublicCodexMetric;
     last7Days: PublicCodexMetric;
@@ -111,10 +112,7 @@ export interface PublicCodexStats {
 }
 
 export interface CodexSnapshotRecord {
-  id: string;
-  label: string;
   snapshot: CodexAccountSnapshot;
-  snapshotAt: Date;
 }
 
 const sanitizeWindow = (
@@ -199,6 +197,30 @@ const utcDayOffset = (day: string, offset: number) => {
   return date.toISOString().slice(0, 10);
 };
 
+const mainPrimaryLimit = (
+  records: readonly CodexSnapshotRecord[]
+): PublicCodexStats["primaryLimit"] => {
+  let count = 0;
+  let planType: string | null = null;
+  let usedPercent = 0;
+  for (const { snapshot } of records) {
+    for (const limit of snapshot.limits) {
+      if (limit.id !== "codex" || limit.primary === null) {
+        continue;
+      }
+      count += 1;
+      planType ??= limit.planType;
+      usedPercent += limit.primary.usedPercent;
+    }
+  }
+  return count === 0
+    ? null
+    : {
+        planType,
+        usedPercent: usedPercent / count,
+      };
+};
+
 export const buildPublicCodexStats = (
   records: readonly CodexSnapshotRecord[],
   now = new Date(),
@@ -249,16 +271,6 @@ export const buildPublicCodexStats = (
   }
 
   return {
-    accountCount: records.length + missingAccountCount,
-    accounts: records
-      .map(({ id, label, snapshot, snapshotAt }) => ({
-        id,
-        label,
-        snapshot,
-        stale: now.getTime() - snapshotAt.getTime() > 45 * 60 * 1000,
-        updatedAt: snapshotAt.toISOString(),
-      }))
-      .toSorted((left, right) => left.label.localeCompare(right.label)),
     busiestDay:
       busiest === undefined
         ? null
@@ -267,6 +279,30 @@ export const buildPublicCodexStats = (
       const day = utcDayOffset(today, index - 29);
       return { day, tokens: combinedDaily.get(day) ?? 0 };
     }),
+    highlights: {
+      currentStreakDays: metric(
+        [
+          ...records.map(({ snapshot }) => snapshot.summary.currentStreakDays),
+          ...missingValues,
+        ],
+        maximum
+      ),
+      longestStreakDays: metric(
+        [
+          ...records.map(({ snapshot }) => snapshot.summary.longestStreakDays),
+          ...missingValues,
+        ],
+        maximum
+      ),
+      peakDailyTokens: metric(
+        [
+          ...records.map(({ snapshot }) => snapshot.summary.peakDailyTokens),
+          ...missingValues,
+        ],
+        maximum
+      ),
+    },
+    primaryLimit: mainPrimaryLimit(records),
     totals: {
       last30Days: totalDays(30),
       last7Days: totalDays(7),
