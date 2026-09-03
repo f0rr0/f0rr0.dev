@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { activityIntensity } from "./src/components/codex-activity.tsx";
 import {
   buildPublicCodexStats,
   createCodexAccountSnapshot,
@@ -63,6 +64,10 @@ const requireStats = (stats) => {
 
 describe("public Codex statistics", () => {
   test("whitelists upstream data and combines accounts", () => {
+    expect(activityIntensity(0, 1, 1000)).toBe(0);
+    expect(activityIntensity(10, 1, 1000)).toBeCloseTo(1 / 3);
+    expect(activityIntensity(1000, 1, 1000)).toBe(1);
+
     const first = createCodexAccountSnapshot(
       profile(80, [
         { start_date: "2026-01-29", tokens: 30 },

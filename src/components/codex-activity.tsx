@@ -28,6 +28,18 @@ const weekStart = (day: string) => {
   return value;
 };
 
+export const activityIntensity = (
+  tokens: number,
+  minimum: number,
+  maximum: number
+) =>
+  tokens === 0
+    ? 0
+    : minimum === maximum
+      ? 1
+      : (Math.log(tokens) - Math.log(minimum)) /
+        (Math.log(maximum) - Math.log(minimum));
+
 const MonthAxis = ({
   calendarOffset,
   values,
@@ -82,7 +94,11 @@ const ActivityHeatmap = ({
   mode: keyof typeof labels;
   series: PublicCodexSeries;
 }) => {
-  const peak = Math.max(1, ...series.values.map(({ tokens }) => tokens));
+  const positiveTokens = series.values
+    .map(({ tokens }) => tokens)
+    .filter((tokens) => tokens > 0);
+  const minimum = Math.min(...positiveTokens);
+  const maximum = Math.max(...positiveTokens);
   const leadingDays =
     (date(series.values[0]?.day ?? "1970-01-05").getUTCDay() + 6) % 7;
   const label = labels[mode];
@@ -97,7 +113,7 @@ const ActivityHeatmap = ({
           <span aria-hidden="true" key={`leading-${String(index)}`} />
         ))}
         {series.values.map(({ day, tokens }) => {
-          const ratio = tokens / peak;
+          const ratio = activityIntensity(tokens, minimum, maximum);
           const color =
             tokens === 0
               ? "bg-muted/60"
