@@ -31,6 +31,7 @@ export interface GitHubLogicalChange {
   enrichmentComplete: boolean;
   fileFacts: readonly GitHubFileChangeStat[];
   fileFactsComplete: boolean;
+  fileFactsDigest: string | null;
   logicalActivityAt: string;
   logicalRepositoryId: string;
   logicalSha: string;
@@ -85,8 +86,10 @@ export interface GitHubRefProjectionEvidence {
 
 export interface GitHubPriorActivityAnchor {
   activityAnchorAt: string;
+  attributionMode?: string;
   identityKey: string;
   outcomeDigest: string;
+  repositoryId?: string;
 }
 
 export interface GitHubWorkUnitProjectionInput {
@@ -525,6 +528,30 @@ const identityKeyFrom = (owner: GitHubWorkOwner): string => {
   return `branch:${owner.ref.branchLineageId}`;
 };
 
+const repositoryIdFrom = (owner: GitHubWorkOwner): string =>
+  owner.kind === "pull_request"
+    ? owner.pullRequest.baseRepositoryId
+    : owner.repository.id;
+
+const attributionModeFrom = (
+  owner: GitHubWorkOwner,
+  trackedAuthorUserIds: ReadonlySet<string>
+): GitHubWorkUnitSummaryAttributionMode =>
+  owner.kind === "pull_request"
+    ? owner.pullRequest.authorUserId !== null &&
+      trackedAuthorUserIds.has(owner.pullRequest.authorUserId)
+      ? "tracked_authored_pr"
+      : "foreign_pr_contribution"
+    : owner.kind === "canonical_day"
+      ? "canonical_owned_composite"
+      : "branch_owned_composite";
+
+const equivalentOutcomeKey = (
+  repositoryId: string,
+  attributionMode: string,
+  outcomeDigest: string
+) => `${repositoryId}\0${attributionMode}\0${outcomeDigest}`;
+
 const visibilityFrom = (
   visibility: GitHubRepositoryVisibility
 ): "private" | "public" | null => {
@@ -685,6 +712,7 @@ const projectedUnitFrom = (
   changes: readonly GitHubLogicalChange[],
   trackedAuthorUserIds: ReadonlySet<string>,
   priorAnchors: ReadonlyMap<string, string>,
+  priorEquivalentAnchors: ReadonlyMap<string, string>,
   outcomeDigests: ReadonlyMap<string, string | null> | undefined
 ): GitHubProjectedWorkUnit | null => {
   const visibility = visibilityFrom(repository.visibility);
@@ -709,10 +737,21 @@ const projectedUnitFrom = (
   const currentAnchor = maxInstant(
     orderedChanges.map((change) => change.logicalActivityAt)
   );
+  const attributionMode = attributionModeFrom(owner, trackedAuthorUserIds);
   const activityAnchorAt =
     owner.kind === "canonical_day" || outcomeDigest === null
       ? currentAnchor
-      : (priorAnchors.get(`${identityKey}/${outcomeDigest}`) ?? currentAnchor);
+      : (priorAnchors.get(`${identityKey}/${outcomeDigest}`) ??
+        (owner.kind === "branch"
+          ? priorEquivalentAnchors.get(
+              equivalentOutcomeKey(
+                repository.id,
+                attributionMode,
+                outcomeDigest
+              )
+            )
+          : undefined) ??
+        currentAnchor);
   const firstActivityAt = minInstant(
     orderedChanges.map((change) => change.logicalActivityAt)
   );
@@ -734,15 +773,6 @@ const projectedUnitFrom = (
     unitKey: identityKey,
   });
   const { kind } = owner;
-  const attributionMode =
-    owner.kind === "pull_request"
-      ? owner.pullRequest.authorUserId !== null &&
-        trackedAuthorUserIds.has(owner.pullRequest.authorUserId)
-        ? ("tracked_authored_pr" as const)
-        : ("foreign_pr_contribution" as const)
-      : owner.kind === "canonical_day"
-        ? ("canonical_owned_composite" as const)
-        : ("branch_owned_composite" as const);
   const ownerFacts =
     owner.kind === "pull_request"
       ? {
@@ -802,6 +832,91 @@ const projectedUnitFrom = (
   };
 };
 
+const priorEquivalentAnchorsFrom = (
+  anchors: readonly GitHubPriorActivityAnchor[]
+) => {
+  const result = new Map<string, string>();
+  for (const anchor of anchors) {
+    if (
+      anchor.repositoryId === undefined ||
+      anchor.attributionMode === undefined ||
+      !anchor.identityKey.startsWith("branch:")
+    ) {
+      continue;
+    }
+    const key = equivalentOutcomeKey(
+      anchor.repositoryId,
+      anchor.attributionMode,
+      anchor.outcomeDigest
+    );
+    const instant = normalizedInstant(anchor.activityAnchorAt);
+    const current = result.get(key);
+    if (current === undefined || instant < current) {
+      result.set(key, instant);
+    }
+  }
+  return result;
+};
+
+const mergedPullRequestsByFileFactsFrom = (
+  changes: readonly GitHubLogicalChange[],
+  ownership: GitHubWorkUnitOwnershipIndex,
+  trackedAuthorUserIds: ReadonlySet<string>
+) => {
+  const result = new Map<string, GitHubPullRequestProjectionEvidence>();
+  for (const change of changes) {
+    if (change.fileFactsDigest === null) {
+      continue;
+    }
+    const owner = chooseOwnerFor(change, ownership, trackedAuthorUserIds);
+    if (
+      owner?.kind !== "pull_request" ||
+      owner.pullRequest.state !== "merged"
+    ) {
+      continue;
+    }
+    const key = `${repositoryIdFrom(owner)}\0${change.fileFactsDigest}`;
+    const previous = result.get(key);
+    const selected = chooseEffectivePullRequest(
+      [...(previous === undefined ? [] : [previous]), owner.pullRequest],
+      trackedAuthorUserIds
+    );
+    if (selected !== null) {
+      result.set(key, selected);
+    }
+  }
+  return result;
+};
+
+const claimsEquivalentMergedPullRequestPatch = (
+  change: GitHubLogicalChange,
+  owner: GitHubWorkOwner,
+  repositoryId: string,
+  mergedPullRequestsByFileFacts: ReadonlyMap<
+    string,
+    GitHubPullRequestProjectionEvidence
+  >,
+  claimedFileFacts: Set<string>
+) => {
+  if (change.fileFactsDigest === null) {
+    return true;
+  }
+  const key = `${repositoryId}\0${change.fileFactsDigest}`;
+  const mergedPullRequest = mergedPullRequestsByFileFacts.get(key);
+  if (mergedPullRequest === undefined) {
+    return true;
+  }
+  if (
+    owner.kind !== "pull_request" ||
+    owner.pullRequest.nodeId !== mergedPullRequest.nodeId ||
+    claimedFileFacts.has(key)
+  ) {
+    return false;
+  }
+  claimedFileFacts.add(key);
+  return true;
+};
+
 export const projectGitHubWorkUnits = (
   input: GitHubWorkUnitProjectionInput,
   ownership = indexGitHubWorkUnitOwnershipEvidence(input),
@@ -813,6 +928,9 @@ export const projectGitHubWorkUnits = (
       normalizedInstant(anchor.activityAnchorAt),
     ])
   );
+  const priorEquivalentAnchors = priorEquivalentAnchorsFrom(
+    input.priorActivityAnchors ?? []
+  );
   const grouped = new Map<
     string,
     {
@@ -823,10 +941,24 @@ export const projectGitHubWorkUnits = (
   >();
   const seenLogicalKeys = new Set<string>();
 
-  for (const change of input.changes) {
-    if (!isEligibleGitHubWorkChange(change, input.trackedAuthorUserIds)) {
-      continue;
-    }
+  const eligibleChanges = [...input.changes]
+    .filter((change) =>
+      isEligibleGitHubWorkChange(change, input.trackedAuthorUserIds)
+    )
+    .toSorted((left, right) =>
+      bytewiseCompare(
+        githubLogicalChangeKey(left.logicalRepositoryId, left.logicalSha),
+        githubLogicalChangeKey(right.logicalRepositoryId, right.logicalSha)
+      )
+    );
+  const mergedPullRequestByFileFacts = mergedPullRequestsByFileFactsFrom(
+    eligibleChanges,
+    ownership,
+    input.trackedAuthorUserIds
+  );
+  const claimedFileFacts = new Set<string>();
+
+  for (const change of eligibleChanges) {
     const logicalKey = githubLogicalChangeKey(
       change.logicalRepositoryId,
       change.logicalSha
@@ -840,10 +972,18 @@ export const projectGitHubWorkUnits = (
     if (owner === null) {
       continue;
     }
-    const repositoryId =
-      owner.kind === "pull_request"
-        ? owner.pullRequest.baseRepositoryId
-        : owner.repository.id;
+    const repositoryId = repositoryIdFrom(owner);
+    if (
+      !claimsEquivalentMergedPullRequestPatch(
+        change,
+        owner,
+        repositoryId,
+        mergedPullRequestByFileFacts,
+        claimedFileFacts
+      )
+    ) {
+      continue;
+    }
     const repository = ownership.repositoriesById.get(repositoryId);
     if (repository === undefined) {
       throw new Error(
@@ -868,6 +1008,7 @@ export const projectGitHubWorkUnits = (
       group.changes,
       input.trackedAuthorUserIds,
       priorAnchors,
+      priorEquivalentAnchors,
       options.outcomeDigests
     );
     if (unit !== null) {

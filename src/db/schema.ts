@@ -1436,6 +1436,52 @@ export const githubWorkUnitSummaryAttempts = pgTable(
   ]
 ).enableRLS();
 
+export const githubWorkUnitAcceptedSummaries = pgTable(
+  "github_work_unit_accepted_summaries",
+  {
+    acceptedAt: timestamp("accepted_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    attributionMode: varchar("attribution_mode", { length: 32 }).notNull(),
+    identityKey: varchar("identity_key", { length: 180 }).notNull(),
+    outcome: text("outcome").notNull(),
+    outcomeDigest: varchar("outcome_digest", { length: 64 }).notNull(),
+    recipe: varchar("recipe", { length: 100 }).notNull(),
+    repositoryId: varchar("repository_id", { length: 32 }).notNull(),
+    summaryInputDigest: varchar("summary_input_digest", {
+      length: 64,
+    }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.identityKey, table.summaryInputDigest, table.recipe],
+      name: "gh_work_unit_accepted_summaries_pk",
+    }),
+    index("gh_work_unit_accepted_summaries_identity_idx").on(
+      table.identityKey,
+      table.attributionMode,
+      table.recipe,
+      table.acceptedAt
+    ),
+    index("gh_work_unit_accepted_summaries_outcome_idx").on(
+      table.repositoryId,
+      table.outcomeDigest,
+      table.attributionMode,
+      table.recipe,
+      table.acceptedAt
+    ),
+    check(
+      "gh_work_unit_accepted_summaries_digests",
+      sql`${table.outcomeDigest} ~ '^[a-f0-9]{64}$' AND ${table.summaryInputDigest} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "gh_work_unit_accepted_summaries_attribution",
+      sql`${table.attributionMode} IN ('tracked_authored_pr', 'foreign_pr_contribution', 'canonical_owned_composite', 'branch_owned_composite')`
+    ),
+  ]
+).enableRLS();
+
 export const githubWorkUnitSummaryDailyUsage = pgTable(
   "github_work_unit_summary_daily_usage",
   {

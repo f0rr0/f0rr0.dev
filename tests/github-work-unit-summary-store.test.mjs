@@ -126,6 +126,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
       )
     `;
     return {
+      identityKey: `branch:${branchLineageId}`,
       outcomeDigest,
       payload,
       revision: attemptRevision,
@@ -900,5 +901,23 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
       head_content_revision: "6",
       summarizing: false,
     });
+
+    const [cached] = await admin`
+      select * from github_work_unit_accepted_summaries
+      where identity_key = ${stale.identityKey}
+    `;
+    expect(cached).toMatchObject({
+      outcome: "Reusable output for the prior evidence.",
+      outcome_digest: stale.outcomeDigest,
+    });
+    await admin`
+      delete from github_work_units where id = ${stale.workUnitId}
+    `;
+    expect(await readAttempt(stale)).toBeUndefined();
+    const [retained] = await admin`
+      select * from github_work_unit_accepted_summaries
+      where identity_key = ${stale.identityKey}
+    `;
+    expect(retained).toEqual(cached);
   });
 });

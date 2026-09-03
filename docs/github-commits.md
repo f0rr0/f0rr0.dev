@@ -46,8 +46,9 @@ replacement is evaluated, queued, retried, or processed.
 Multi-parent merge commits and commits with neither file facts nor churn are not
 separate timeline work. A provider-verified same-repository merge SHA is
 excluded from canonical and side-ref ownership when it is absent from effective
-PR membership. Associations alone do not suppress ref ownership. The system
-does not infer aliases from messages, timestamps, patches, or fingerprints.
+PR membership. An exact complete file-facts match to a merged PR is owned by
+that PR once, covering rewritten SHAs without message or timestamp heuristics.
+Associations alone do not suppress ref ownership.
 
 ## Projection and publication
 
@@ -61,9 +62,11 @@ path as public work. Unknown work contributes nothing. Redaction is deferred to
 the public API boundary and does not alter internal storage or model input.
 
 Summary attempts are keyed by the current outcome, attribution mode, recipe, and
-summary-input digest. Facts publish independently of optional prose. A force
-push recomputes current PR membership and net outcome; an unchanged exact input
-can reuse accepted prose. A superseded unstarted input is removed. A paid
+summary-input digest. Accepted output is also retained independently of current
+work-unit rows. Facts publish independently of optional prose. A force push
+recomputes current PR membership and net outcome; an unchanged exact outcome
+can reuse accepted prose across branch-lineage replacement. A superseded
+unstarted input is removed. A paid
 retryable input drops its payload but retains its request count; the exact input
 is rebuilt and debounced if it becomes current later. Daily and monthly request
 caps count started requests, including retries.

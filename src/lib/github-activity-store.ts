@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import {
@@ -6,6 +6,7 @@ import {
   githubPublicFeedHead,
   githubPullRequests,
   githubRepositories,
+  githubWorkUnitAcceptedSummaries,
   githubWorkUnitSummaryAttempts,
   githubWorkUnits,
 } from "@/db/schema";
@@ -396,9 +397,9 @@ const readPublicRows = async (
   }
 
   const unitIds = unitRows.map(({ id }) => id);
-  const [currentSummaryRows, fallbackSummaryRows] =
+  const [currentSummaryRows, fallbackSummaryRows, durableSummaryRows] =
     unitIds.length === 0
-      ? [[], []]
+      ? [[], [], []]
       : await Promise.all([
           database
             .select({
@@ -472,6 +473,47 @@ const readPublicRows = async (
               githubWorkUnitSummaryAttempts.workUnitId,
               desc(githubWorkUnitSummaryAttempts.revision)
             ),
+          database
+            .selectDistinctOn([githubWorkUnits.id], {
+              outcome: githubWorkUnitAcceptedSummaries.outcome,
+              workUnitId: githubWorkUnits.id,
+            })
+            .from(githubWorkUnitAcceptedSummaries)
+            .innerJoin(
+              githubWorkUnits,
+              and(
+                eq(
+                  githubWorkUnitAcceptedSummaries.attributionMode,
+                  githubWorkUnits.attributionMode
+                ),
+                or(
+                  eq(
+                    githubWorkUnitAcceptedSummaries.identityKey,
+                    githubWorkUnits.identityKey
+                  ),
+                  and(
+                    eq(
+                      githubWorkUnits.attributionMode,
+                      "branch_owned_composite"
+                    ),
+                    eq(
+                      githubWorkUnitAcceptedSummaries.repositoryId,
+                      githubWorkUnits.repositoryId
+                    ),
+                    eq(
+                      githubWorkUnitAcceptedSummaries.outcomeDigest,
+                      githubWorkUnits.outcomeDigest
+                    )
+                  )
+                )
+              )
+            )
+            .where(inArray(githubWorkUnits.id, unitIds))
+            .orderBy(
+              githubWorkUnits.id,
+              sql`CASE WHEN ${githubWorkUnitAcceptedSummaries.identityKey} = ${githubWorkUnits.identityKey} THEN 0 ELSE 1 END`,
+              desc(githubWorkUnitAcceptedSummaries.acceptedAt)
+            ),
         ]);
   const currentSummaries = new Map<
     string,
@@ -494,6 +536,14 @@ const readPublicRows = async (
   >();
   for (const summary of fallbackSummaryRows) {
     if (summary.outcome !== null) {
+      const decoded = decodeGitHubWorkUnitSummary(summary.outcome);
+      if (decoded !== null) {
+        fallbackSummaries.set(summary.workUnitId, decoded);
+      }
+    }
+  }
+  for (const summary of durableSummaryRows) {
+    if (!fallbackSummaries.has(summary.workUnitId)) {
       const decoded = decodeGitHubWorkUnitSummary(summary.outcome);
       if (decoded !== null) {
         fallbackSummaries.set(summary.workUnitId, decoded);

@@ -19,6 +19,7 @@ import {
   githubIssues,
   githubPublicFeedHead,
   githubRepositories,
+  githubWorkUnitAcceptedSummaries,
   githubWorkUnitSummaryAttempts,
   githubWorkUnitSummaryDailyUsage,
   githubWorkUnits,
@@ -384,7 +385,9 @@ const lockedUnit = async (
     .select({
       activityDay: githubWorkUnits.activityDay,
       attributionMode: githubWorkUnits.attributionMode,
+      identityKey: githubWorkUnits.identityKey,
       outcomeDigest: githubWorkUnits.outcomeDigest,
+      repositoryId: githubWorkUnits.repositoryId,
       summaryEvaluatedDigest: githubWorkUnits.summaryEvaluatedDigest,
       summaryEvaluationDigest: githubWorkUnits.summaryEvaluationDigest,
       summaryInputDigest: githubWorkUnits.summaryInputDigest,
@@ -893,6 +896,19 @@ export const completeGitHubWorkUnitSummary = async (
       await settleHead();
       return { accepted: false };
     }
+    await transaction
+      .insert(githubWorkUnitAcceptedSummaries)
+      .values({
+        acceptedAt: now,
+        attributionMode: attempt.attributionMode,
+        identityKey: unit.identityKey,
+        outcome: result.outcome,
+        outcomeDigest: attempt.outcomeDigest,
+        recipe: attempt.recipe,
+        repositoryId: unit.repositoryId,
+        summaryInputDigest: attempt.summaryInputDigest,
+      })
+      .onConflictDoNothing();
     await settleHead(
       initialPageChanged
         ? {

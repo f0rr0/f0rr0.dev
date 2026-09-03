@@ -17,6 +17,7 @@ import {
   githubRepositories,
   githubRepositoryRefs,
   githubWebhookDeliveries,
+  githubWorkUnitAcceptedSummaries,
   githubWorkUnitMemberships,
   githubWorkUnitSummaryAttempts,
   githubWorkUnitSummaryDailyUsage,
@@ -184,7 +185,7 @@ describe("GitHub activity persistence schema", () => {
     expect(githubPullRequestMemberships.isHead.default).toBe(false);
   });
 
-  test("stores only active work-unit summaries, daily usage, and feed head", () => {
+  test("stores current and durable work-unit summaries, usage, and feed head", () => {
     expect(getTableName(githubWorkUnits)).toBe("github_work_units");
     expect(indexNames(githubWorkUnitMemberships)).toContain(
       "gh_work_unit_memberships_commit_unique"
@@ -200,6 +201,10 @@ describe("GitHub activity persistence schema", () => {
         "gh_work_unit_summary_lease",
       ])
     );
+    expect(getTableName(githubWorkUnitAcceptedSummaries)).toBe(
+      "github_work_unit_accepted_summaries"
+    );
+    expect(config(githubWorkUnitAcceptedSummaries).foreignKeys).toHaveLength(0);
     expect(getTableName(githubWorkUnitSummaryDailyUsage)).toBe(
       "github_work_unit_summary_daily_usage"
     );
@@ -234,6 +239,7 @@ describe("GitHub activity persistence schema", () => {
       githubPullRequestMemberships,
       githubIssues,
       githubWorkUnits,
+      githubWorkUnitAcceptedSummaries,
       githubWorkUnitSummaryAttempts,
       githubWorkUnitSummaryDailyUsage,
       githubPublicFeedHead,

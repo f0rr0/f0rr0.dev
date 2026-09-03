@@ -45,6 +45,7 @@ const change = (character, overrides = {}) => {
     enrichmentComplete: true,
     fileFacts,
     fileFactsComplete: true,
+    fileFactsDigest: null,
     logicalActivityAt: "2026-08-30T12:00:00.000Z",
     logicalRepositoryId: "1",
     logicalSha: sha(character),
@@ -213,6 +214,48 @@ describe("deterministic GitHub work ownership", () => {
       chooseEffectivePullRequest([earlierForeign, trackedOpen], trackedIds)
         ?.nodeId
     ).toBe("PR_tracked_open");
+  });
+
+  test("owns an exact rewritten patch by its merged PR only once", () => {
+    const fileFactsDigest = "1".repeat(64);
+    const pullRequestChange = change("c", { fileFactsDigest });
+    const rewrittenPullRequestChange = change("d", {
+      fileFacts: pullRequestChange.fileFacts,
+      fileFactsDigest,
+      logicalActivityAt: "2026-08-30T12:01:00.000Z",
+    });
+    const rewrittenLanding = change("e", {
+      fileFacts: pullRequestChange.fileFacts,
+      fileFactsDigest,
+      logicalActivityAt: "2026-08-30T12:02:00.000Z",
+    });
+    const pullRequestKey = logicalKeyFrom(pullRequestChange);
+    const rewrittenPullRequestKey = logicalKeyFrom(rewrittenPullRequestChange);
+    const landingKey = logicalKeyFrom(rewrittenLanding);
+
+    const units = projection({
+      changes: [
+        rewrittenLanding,
+        rewrittenPullRequestChange,
+        pullRequestChange,
+      ],
+      pullRequests: [
+        pullRequest("PR_rewritten_merge", [pullRequestKey], {
+          snapshotKind: "final",
+          state: "merged",
+        }),
+        pullRequest("PR_rewritten_open", [rewrittenPullRequestKey]),
+      ],
+      refs: [ref("refs/heads/main", [landingKey])],
+    });
+
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({
+      facts: { memberCount: 1 },
+      identityKey: "pr:PR_rewritten_merge",
+      kind: "pull_request",
+    });
+    expect(units[0].members[0].logicalKey).toBe(pullRequestKey);
   });
 
   test("projects complete provider evidence when aggregate and file counters drift", () => {
@@ -421,6 +464,41 @@ describe("deterministic GitHub work ownership", () => {
     expect(after.outcomeDigest).toBe(before.outcomeDigest);
     expect(after.membershipDigest).not.toBe(before.membershipDigest);
     expect(after.facts.memberCount).toBe(1);
+    expect(after.activityAt).toBe(before.activityAt);
+  });
+
+  test("keeps a branch outcome anchored when a shared lineage is replaced", () => {
+    const oldChange = change("8");
+    const oldKey = logicalKeyFrom(oldChange);
+    const [before] = projection({
+      changes: [oldChange],
+      refs: [ref("refs/heads/topic", [oldKey])],
+    });
+    const replacement = change("9", {
+      fileFacts: oldChange.fileFacts,
+      logicalActivityAt: "2026-08-31T15:00:00.000Z",
+    });
+    const replacementKey = logicalKeyFrom(replacement);
+    const [after] = projection({
+      changes: [replacement],
+      priorActivityAnchors: [
+        {
+          activityAnchorAt: before.activityAnchorAt,
+          attributionMode: before.attributionMode,
+          identityKey: before.identityKey,
+          outcomeDigest: before.outcomeDigest,
+          repositoryId: before.repositoryId,
+        },
+      ],
+      refs: [
+        ref("refs/heads/topic", [replacementKey], {
+          branchLineageId: "22222222-2222-4222-8222-222222222222",
+        }),
+      ],
+    });
+
+    expect(after.identityKey).not.toBe(before.identityKey);
+    expect(after.outcomeDigest).toBe(before.outcomeDigest);
     expect(after.activityAt).toBe(before.activityAt);
   });
 

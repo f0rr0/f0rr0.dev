@@ -460,6 +460,32 @@ const excludedChangesFrom = (
   const published = new Set(
     units.flatMap((unit) => unit.members.map((member) => member.logicalKey))
   );
+  const changesByLogicalKey = new Map(
+    input.changes.map((change) => [
+      logicalKeyFrom(change.logicalRepositoryId, change.logicalSha),
+      change,
+    ])
+  );
+  const mergedPullRequestNodeIds = new Set(
+    input.pullRequests
+      .filter((pullRequest) => pullRequest.state === "merged")
+      .map((pullRequest) => pullRequest.nodeId)
+  );
+  const publishedFileFacts = new Set(
+    units.flatMap((unit) =>
+      unit.pullRequestNodeId !== null &&
+      mergedPullRequestNodeIds.has(unit.pullRequestNodeId)
+        ? unit.members.flatMap((member) => {
+            const digest = changesByLogicalKey.get(
+              member.logicalKey
+            )?.fileFactsDigest;
+            return digest === null || digest === undefined
+              ? []
+              : [`${unit.repositoryId}\0${digest}`];
+          })
+        : []
+    )
+  );
   const excludedChanges: GitHubWorkUnitProjectionExcludedChange[] = [];
   for (const change of input.changes) {
     if (!isEligibleGitHubWorkChange(change, input.trackedAuthorUserIds)) {
@@ -480,7 +506,13 @@ const excludedChangesFrom = (
       effectivePullRequest?.baseRepositoryId ?? change.repositoryId
     );
     let reason: GitHubWorkUnitProjectionExclusionReason;
-    if (repository === undefined || repository.visibility === null) {
+    const equivalentKey =
+      change.fileFactsDigest === null
+        ? null
+        : `${repository?.id ?? change.repositoryId}\0${change.fileFactsDigest}`;
+    if (equivalentKey !== null && publishedFileFacts.has(equivalentKey)) {
+      reason = "merged_pr_landing";
+    } else if (repository === undefined || repository.visibility === null) {
       reason = "repository_visibility_unknown";
     } else if (effectivePullRequest !== null) {
       throw new Error(
@@ -884,6 +916,7 @@ const loadProjectionSnapshot = async (
       enrichmentComplete: row.enrichmentState === "complete",
       fileFacts: fileFacts ?? [],
       fileFactsComplete: row.fileFactsComplete && fileFacts !== null,
+      fileFactsDigest: checkedDigest(row.fileFactsDigest),
       logicalActivityAt: (row.committerAt ?? row.committedAt).toISOString(),
       logicalRepositoryId: row.repositoryId,
       logicalSha: row.sha,
@@ -1095,8 +1128,10 @@ const loadProjectionSnapshot = async (
         : [
             {
               activityAnchorAt: unit.activityAnchorAt.toISOString(),
+              attributionMode: unit.attributionMode,
               identityKey: unit.identityKey,
               outcomeDigest: unit.outcomeDigest,
+              repositoryId: unit.repositoryId,
             },
           ]
     ),
