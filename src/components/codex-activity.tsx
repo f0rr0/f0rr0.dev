@@ -10,6 +10,10 @@ import {
 import type { PublicCodexSeries } from "@/lib/codex/stats";
 
 const number = new Intl.NumberFormat("en-US");
+const compactNumber = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 1,
+  notation: "compact",
+});
 const month = new Intl.DateTimeFormat("en-US", {
   month: "short",
   timeZone: "UTC",
@@ -133,7 +137,7 @@ const ActivityHeatmap = ({
               <TooltipContent className="flex-col items-start gap-0.5">
                 <span>{dayLabel}</span>
                 <span className="font-mono font-medium">
-                  {number.format(tokens)} tokens
+                  {compactNumber.format(tokens)} tokens
                 </span>
               </TooltipContent>
             </Tooltip>
