@@ -15,22 +15,22 @@ interface PublicRepositoryActivityRow {
 
 export interface PublicGitHubWorkUnitRow extends PublicRepositoryActivityRow {
   day: string;
-  destination: PublicGitHubActivityDestination;
+  destination: PublicGitHubActivityDestination | null;
   facts: PublicGitHubWorkUnitFacts;
+  headline: string | null;
   kind: PublicGitHubWorkUnitKind;
-  outcome: string | null;
+  summary: string | null;
 }
 
 export interface PublicGitHubIssueRow extends PublicRepositoryActivityRow {
   day: string;
-  destination: PublicGitHubActivityDestination;
+  destination: PublicGitHubActivityDestination | null;
   title: string;
 }
 
 export interface BuildPublicGitHubActivityDaysInput {
   days: readonly string[];
   issues: readonly PublicGitHubIssueRow[];
-  privateDays: ReadonlySet<string>;
   workUnits: readonly PublicGitHubWorkUnitRow[];
 }
 
@@ -104,9 +104,6 @@ export const buildPublicGitHubActivityDays = (
   ) {
     throw new Error("Public activity days must be unique valid UTC dates.");
   }
-  if ([...input.privateDays].some((day) => !requestedDays.has(day))) {
-    throw new Error("Private activity must belong to a requested UTC day.");
-  }
   const rowsByDay = new Map<
     string,
     { issues: PublicGitHubIssueRow[]; workUnits: PublicGitHubWorkUnitRow[] }
@@ -138,9 +135,10 @@ export const buildPublicGitHubActivityDays = (
       addRepositoryItem(groups, row, {
         destination: row.destination,
         facts: row.facts,
+        headline: row.headline,
         id: row.id,
         kind: row.kind,
-        outcome: row.outcome,
+        summary: row.summary,
       });
     }
     for (const row of rows.issues) {
@@ -169,9 +167,6 @@ export const buildPublicGitHubActivityDays = (
           compareText(left.repository.key, right.repository.key)
       )
       .map(({ items, repository }) => ({ items, repository }));
-    const privateWork = input.privateDays.has(day);
-    return repositories.length === 0 && !privateWork
-      ? []
-      : [{ day, privateWork, repositories }];
+    return repositories.length === 0 ? [] : [{ day, repositories }];
   });
 };

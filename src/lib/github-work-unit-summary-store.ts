@@ -25,7 +25,7 @@ import {
 } from "@/db/schema";
 import { env } from "@/env";
 import { PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE } from "@/lib/github-activity-store";
-import { hasCurrentTrackedGitHubRepositoryAccess } from "@/lib/github-repository-access";
+import { GITHUB_SUMMARY_REQUEST_BUDGET } from "@/lib/github-cron-config";
 import { acquireGitHubWorkUnitProjectionLock } from "@/lib/github-work-unit-projection-state";
 import { GITHUB_WORK_UNIT_SUMMARY_RECIPE } from "@/lib/github-work-unit-summary";
 import type { GitHubWorkUnitSummaryAttributionMode } from "@/lib/github-work-unit-summary";
@@ -36,9 +36,10 @@ const DEFAULT_LEASE_DURATION_MS = 90_000;
 const MAXIMUM_LEASE_DURATION_MS = 15 * 60_000;
 const RECENT_WINDOW_MS = 30 * 24 * 60 * 60_000;
 const MAXIMUM_STARTED_REQUESTS = 2;
-const MAXIMUM_DAILY_STARTED_REQUESTS = 12;
-const MAXIMUM_MONTHLY_STARTED_REQUESTS = 120;
-const RESERVED_RECENT_REQUESTS_PER_FUTURE_DAY = 2;
+const MAXIMUM_DAILY_STARTED_REQUESTS = GITHUB_SUMMARY_REQUEST_BUDGET.daily;
+const MAXIMUM_MONTHLY_STARTED_REQUESTS = GITHUB_SUMMARY_REQUEST_BUDGET.monthly;
+const RESERVED_RECENT_REQUESTS_PER_FUTURE_DAY =
+  GITHUB_SUMMARY_REQUEST_BUDGET.recentReservePerRemainingDay;
 const DIGEST = /^[a-f0-9]{64}$/u;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -162,18 +163,11 @@ const checkedProviderResult = (result: GitHubWorkUnitSummaryProviderResult) => {
   return result;
 };
 
-const unitIsPublic = (unit: {
-  repositoryVisibility: string | null;
-  visibility: string;
-}) => unit.visibility === "public" && unit.repositoryVisibility === "public";
-
-const unitDisplaysAttempt = (
+const unitMatchesAttempt = (
   unit: {
     attributionMode: string;
     outcomeDigest: string | null;
-    repositoryVisibility: string | null;
     summaryInputDigest: string | null;
-    visibility: string;
   },
   attempt: {
     attributionMode: string;
@@ -181,7 +175,6 @@ const unitDisplaysAttempt = (
     summaryInputDigest: string;
   }
 ) =>
-  unitIsPublic(unit) &&
   unit.outcomeDigest === attempt.outcomeDigest &&
   unit.summaryInputDigest === attempt.summaryInputDigest &&
   unit.attributionMode === attempt.attributionMode;
@@ -190,11 +183,9 @@ const currentUnitMatchesAttempt = (
   unit: {
     attributionMode: string;
     outcomeDigest: string | null;
-    repositoryVisibility: string | null;
     summaryEvaluatedDigest: string | null;
     summaryEvaluationDigest: string | null;
     summaryInputDigest: string | null;
-    visibility: string;
   },
   attempt: {
     attributionMode: string;
@@ -202,7 +193,7 @@ const currentUnitMatchesAttempt = (
     summaryInputDigest: string;
   }
 ) =>
-  unitDisplaysAttempt(unit, attempt) &&
+  unitMatchesAttempt(unit, attempt) &&
   unit.summaryEvaluationDigest !== null &&
   unit.summaryEvaluationDigest === unit.summaryEvaluatedDigest;
 
@@ -211,15 +202,11 @@ const reconcileInactiveSummaryInputs = async (
 ) => {
   await transaction.execute(sql`
     delete from ${githubWorkUnitSummaryAttempts} as attempt
-    using ${githubWorkUnits} as work_unit,
-      ${githubRepositories} as repository
+    using ${githubWorkUnits} as work_unit
     where attempt.work_unit_id = work_unit.id
-      and work_unit.repository_id = repository.id
       and attempt.state in ('pending', 'retryable')
       and (
-        work_unit.visibility <> 'public'
-        or repository.visibility <> 'public'
-        or attempt.recipe <> ${GITHUB_WORK_UNIT_SUMMARY_RECIPE}
+        attempt.recipe <> ${GITHUB_WORK_UNIT_SUMMARY_RECIPE}
         or (
           attempt.started_requests = 0
           and (
@@ -238,16 +225,12 @@ const reconcileInactiveSummaryInputs = async (
   await transaction.execute(sql`
     update ${githubWorkUnitSummaryAttempts} as attempt
     set request_payload = null
-    from ${githubWorkUnits} as work_unit,
-      ${githubRepositories} as repository
+    from ${githubWorkUnits} as work_unit
     where attempt.work_unit_id = work_unit.id
-      and work_unit.repository_id = repository.id
       and attempt.state = 'retryable'
       and attempt.started_requests > 0
       and attempt.request_payload is not null
       and attempt.recipe = ${GITHUB_WORK_UNIT_SUMMARY_RECIPE}
-      and work_unit.visibility = 'public'
-      and repository.visibility = 'public'
       and (
         work_unit.summary_evaluation_digest is null
         or work_unit.summary_evaluation_digest
@@ -357,10 +340,6 @@ async function selectClaimCandidate(
       githubWorkUnits,
       eq(githubWorkUnitSummaryAttempts.workUnitId, githubWorkUnits.id)
     )
-    .innerJoin(
-      githubRepositories,
-      eq(githubWorkUnits.repositoryId, githubRepositories.id)
-    )
     .where(
       and(
         inArray(githubWorkUnitSummaryAttempts.state, ["pending", "retryable"]),
@@ -374,8 +353,6 @@ async function selectClaimCandidate(
           githubWorkUnitSummaryAttempts.recipe,
           GITHUB_WORK_UNIT_SUMMARY_RECIPE
         ),
-        eq(githubWorkUnits.visibility, "public"),
-        eq(githubRepositories.visibility, "public"),
         eq(
           githubWorkUnits.summaryEvaluationDigest,
           githubWorkUnits.summaryEvaluatedDigest
@@ -417,19 +394,13 @@ const lockedUnit = async (
       activityDay: githubWorkUnits.activityDay,
       attributionMode: githubWorkUnits.attributionMode,
       outcomeDigest: githubWorkUnits.outcomeDigest,
-      repositoryVisibility: githubRepositories.visibility,
       summaryEvaluatedDigest: githubWorkUnits.summaryEvaluatedDigest,
       summaryEvaluationDigest: githubWorkUnits.summaryEvaluationDigest,
       summaryInputDigest: githubWorkUnits.summaryInputDigest,
-      visibility: githubWorkUnits.visibility,
     })
     .from(githubWorkUnits)
-    .innerJoin(
-      githubRepositories,
-      eq(githubWorkUnits.repositoryId, githubRepositories.id)
-    )
     .where(eq(githubWorkUnits.id, workUnitId))
-    .for("update", { of: [githubWorkUnits, githubRepositories] });
+    .for("update");
   return unit ?? null;
 };
 
@@ -522,7 +493,6 @@ const readSummaryUsage = async (transaction: SummaryTransaction, now: Date) => {
   if (
     !Number.isSafeInteger(dailyStartedRequests) ||
     dailyStartedRequests < 0 ||
-    dailyStartedRequests > MAXIMUM_DAILY_STARTED_REQUESTS ||
     !Number.isSafeInteger(monthlyStartedRequests) ||
     monthlyStartedRequests < dailyStartedRequests
   ) {
@@ -702,16 +672,9 @@ const terminalizeLockedAttempt = async (
 };
 
 async function readInitialPageDays(transaction: SummaryTransaction) {
-  const recognizedWorkUnit = or(
-    and(
-      eq(githubWorkUnits.visibility, "public"),
-      eq(githubRepositories.visibility, "public")
-    ),
-    and(
-      eq(githubWorkUnits.visibility, "private"),
-      inArray(githubRepositories.visibility, ["private", "internal"]),
-      hasCurrentTrackedGitHubRepositoryAccess(githubWorkUnits.repositoryId)
-    )
+  const recognizedWorkUnit = and(
+    inArray(githubWorkUnits.visibility, ["public", "private"]),
+    inArray(githubRepositories.visibility, ["public", "private", "internal"])
   );
   const issueDay = sql<string>`to_char(${githubIssues.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
   const [workDays, issueDays] = await Promise.all([
@@ -733,13 +696,11 @@ async function readInitialPageDays(transaction: SummaryTransaction) {
         eq(githubIssues.repositoryId, githubRepositories.id)
       )
       .where(
-        or(
-          eq(githubRepositories.visibility, "public"),
-          and(
-            inArray(githubRepositories.visibility, ["private", "internal"]),
-            hasCurrentTrackedGitHubRepositoryAccess(githubIssues.repositoryId)
-          )
-        )
+        inArray(githubRepositories.visibility, [
+          "public",
+          "private",
+          "internal",
+        ])
       )
       .orderBy(desc(issueDay))
       .limit(PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE),
@@ -782,8 +743,12 @@ async function hasCurrentInitialPageSummaryWork(
     )
     .where(
       and(
-        eq(githubWorkUnits.visibility, "public"),
-        eq(githubRepositories.visibility, "public"),
+        inArray(githubWorkUnits.visibility, ["public", "private"]),
+        inArray(githubRepositories.visibility, [
+          "public",
+          "private",
+          "internal",
+        ]),
         gte(
           githubWorkUnits.activityAt,
           new Date(now.getTime() - RECENT_WINDOW_MS)
@@ -950,7 +915,7 @@ export const claimGitHubWorkUnitSummary = async (
   });
 };
 
-/** Stores valid public-input output, including reusable stale evaluations. */
+/** Stores valid output, including reusable stale evaluations. */
 export const completeGitHubWorkUnitSummary = async (
   uncheckedClaim: GitHubWorkUnitSummaryClaim,
   uncheckedResult: GitHubWorkUnitSummaryProviderResult,
@@ -984,12 +949,7 @@ export const completeGitHubWorkUnitSummary = async (
       await settleHead();
       return { accepted: false };
     }
-    if (!unitIsPublic(unit)) {
-      await terminalizeLockedAttempt(transaction, claim, now);
-      await settleHead();
-      return { accepted: false };
-    }
-    const currentlyVisible = unitDisplaysAttempt(unit, attempt);
+    const currentlyVisible = unitMatchesAttempt(unit, attempt);
     const initialPageChanged =
       currentlyVisible && initialPageDays.has(unit.activityDay);
     const [accepted] = await transaction
@@ -1065,11 +1025,6 @@ export const deferGitHubWorkUnitSummary = async (
     if (attempt === null || !leaseMatchesClaim(attempt, claim)) {
       await settleHead();
       return "stale";
-    }
-    if (!unitIsPublic(unit)) {
-      await terminalizeLockedAttempt(transaction, claim, now);
-      await settleHead();
-      return "terminal";
     }
     if (attempt.startedRequests >= MAXIMUM_STARTED_REQUESTS) {
       await terminalizeLockedAttempt(transaction, claim, now);

@@ -205,7 +205,7 @@ describe("GitHub activity persistence schema", () => {
     );
     expect(githubWorkUnitSummaryDailyUsage.day.primary).toBe(true);
     expect(githubWorkUnitSummaryDailyUsage.startedRequests.default).toBe(0);
-    expect(checkNames(githubWorkUnitSummaryDailyUsage)).toContain(
+    expect(checkNames(githubWorkUnitSummaryDailyUsage)).not.toContain(
       "gh_work_unit_summary_daily_usage_cap"
     );
     expect(githubPublicFeedHead.summarizing.default).toBe(false);

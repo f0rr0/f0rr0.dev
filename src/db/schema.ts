@@ -1439,13 +1439,7 @@ export const githubWorkUnitSummaryDailyUsage = pgTable(
   {
     day: date("day", { mode: "string" }).primaryKey(),
     startedRequests: integer("started_requests").default(0).notNull(),
-  },
-  (table) => [
-    check(
-      "gh_work_unit_summary_daily_usage_cap",
-      sql`${table.startedRequests} BETWEEN 0 AND 12`
-    ),
-  ]
+  }
 ).enableRLS();
 
 export const githubPublicFeedHead = pgTable(

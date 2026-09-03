@@ -13,7 +13,10 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
 import { env } from "../src/env.ts";
-import { GITHUB_WORK_UNIT_SUMMARY_RECIPE } from "../src/lib/github-work-unit-summary.ts";
+import {
+  encodeGitHubWorkUnitSummary,
+  GITHUB_WORK_UNIT_SUMMARY_RECIPE,
+} from "../src/lib/github-work-unit-summary.ts";
 
 setDefaultTimeout(30_000);
 
@@ -256,7 +259,10 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit feed projection", () => {
         (
           '2026-08-30T12:02:00Z', 'tracked_authored_pr',
           '2026-08-30T12:02:00Z', '2026-08-30T12:00:00Z',
-          'Explains the current pull request outcome.', ${digest("a")},
+          ${encodeGitHubWorkUnitSummary({
+            headline: "Explains the pull request outcome",
+            summary: "The expanded summary explains the complete outcome.",
+          })}, ${digest("a")},
           ${GITHUB_WORK_UNIT_SUMMARY_RECIPE}, 1, 'accepted', ${digest("1")},
           '00000000-0000-4000-8000-000000000101'
         ),
@@ -314,7 +320,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit feed projection", () => {
     }
   });
 
-  test("reads complete days with one repository group and no private detail", async () => {
+  test("reads complete days while redacting private repository identity", async () => {
     const firstPage = await readPublicGitHubActivityPage(null, 2);
 
     expect(firstPage.head.feedRevision).toBe("7");
@@ -323,14 +329,25 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit feed projection", () => {
       "2026-08-30",
       "2026-08-29",
     ]);
-    expect(firstPage.days[0]?.privateWork).toBe(true);
-    expect(firstPage.days[0]?.repositories).toHaveLength(1);
+    expect(firstPage.days[0]?.repositories).toHaveLength(2);
     expect(firstPage.days[0]?.repositories[0]?.repository.label).toBe(
       "f0rr0/public-one"
     );
     expect(
       firstPage.days[0]?.repositories[0]?.items.map(({ id }) => id)
     ).toEqual(["pr:PR_public_feed_1", "canonical:101:2026-08-30"]);
+    expect(firstPage.days[0]?.repositories[1]?.repository).toEqual({
+      avatarUrl: null,
+      key: "201",
+      label: "Private",
+      url: null,
+    });
+    expect(firstPage.days[0]?.repositories[1]?.items).toHaveLength(2);
+    expect(
+      firstPage.days[0]?.repositories[1]?.items.every(
+        ({ destination }) => destination === null
+      )
+    ).toBe(true);
     expect(firstPage.days[1]?.repositories).toHaveLength(1);
     expect(firstPage.days[1]?.repositories[0]?.items).toHaveLength(2);
 
@@ -346,9 +363,16 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit feed projection", () => {
     );
     expect(visibleRepositories).toEqual([
       "f0rr0/public-one",
+      "Private",
       "f0rr0/public-two",
     ]);
-    expect(visibleIssueTitles).toEqual(["Track deterministic activity"]);
+    expect(visibleIssueTitles).toEqual([
+      "private issue title sentinel",
+      "Track deterministic activity",
+    ]);
+    expect(JSON.stringify(firstPage.days)).not.toContain(
+      "secret-owner/private-repository-sentinel"
+    );
   });
 
   test("shows only an accepted summary for the current immutable input", async () => {
@@ -370,7 +394,8 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit feed projection", () => {
         ownedCommitCount: 3,
         uniqueFileCount: 4,
       },
-      outcome: "Explains the current pull request outcome.",
+      headline: "Explains the pull request outcome",
+      summary: "The expanded summary explains the complete outcome.",
     });
   });
 
@@ -411,7 +436,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit feed projection", () => {
     expect(after.head.summarizing).toBe(true);
   });
 
-  test("hides a private issue day after current repository access is revoked", async () => {
+  test("keeps private issue details after current repository access is revoked", async () => {
     await admin`
       insert into github_repository_inventory_heads (
         account_login, account_user_id, completed_at, generation, updated_at
@@ -450,10 +475,14 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit feed projection", () => {
     `;
 
     const accessible = await readPublicGitHubActivityPage(null, 14);
-    expect(accessible.days.find(({ day }) => day === "2026-08-27")).toEqual({
-      day: "2026-08-27",
-      privateWork: true,
-      repositories: [],
+    const accessibleRepository = accessible.days.find(
+      ({ day }) => day === "2026-08-27"
+    )?.repositories[0];
+    expect(accessibleRepository?.repository.label).toBe("Private");
+    expect(accessibleRepository?.items[0]).toMatchObject({
+      destination: null,
+      kind: "issue-opened",
+      title: "revoked private issue title sentinel",
     });
 
     await admin`
@@ -462,6 +491,14 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit feed projection", () => {
       where account_user_id = '8574219' and repository_id = '201'
     `;
     const revoked = await readPublicGitHubActivityPage(null, 14);
-    expect(revoked.days.some(({ day }) => day === "2026-08-27")).toBe(false);
+    const revokedRepository = revoked.days.find(
+      ({ day }) => day === "2026-08-27"
+    )?.repositories[0];
+    expect(revokedRepository?.repository.label).toBe("Private");
+    expect(revokedRepository?.items[0]).toMatchObject({
+      destination: null,
+      kind: "issue-opened",
+      title: "revoked private issue title sentinel",
+    });
   });
 });

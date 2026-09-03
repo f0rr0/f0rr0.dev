@@ -2,7 +2,6 @@ import { and, asc, eq, exists, inArray, isNotNull, or, sql } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import {
-  githubAccountRepositoryCatalogs,
   githubCommits,
   githubIssues,
   githubPublicFeedHead,
@@ -12,7 +11,6 @@ import {
   githubRefGenerations,
   githubRefMemberships,
   githubRepositories,
-  githubRepositoryInventoryHeads,
   githubRepositoryRefs,
   githubWorkUnitMemberships,
   githubWorkUnitSummaryAttempts,
@@ -25,7 +23,6 @@ import type {
   GitHubWorkUnitFileFact,
 } from "@/lib/github-change-evidence";
 import { TRACKED_GITHUB_USER_IDS } from "@/lib/github-commits-core";
-import { hasCurrentTrackedGitHubRepositoryAccess } from "@/lib/github-repository-access";
 import {
   chooseEffectivePullRequest,
   githubLogicalChangeKey,
@@ -324,8 +321,7 @@ const checkedParentShas = (value: unknown): readonly string[] | null => {
 
 const visibilityFrom = (
   value: string | null,
-  verifiedAt: Date | null,
-  accessIsCurrent: boolean
+  verifiedAt: Date | null
 ): GitHubRepositoryProjectionEvidence["visibility"] => {
   if (verifiedAt === null) {
     return null;
@@ -333,7 +329,7 @@ const visibilityFrom = (
   if (value === "public") {
     return value;
   }
-  if ((value === "internal" || value === "private") && accessIsCurrent) {
+  if (value === "internal" || value === "private") {
     return value;
   }
   return null;
@@ -758,40 +754,6 @@ const loadProjectionSnapshot = async (
     })
     .from(githubRepositories)
     .orderBy(asc(githubRepositories.id));
-  const inventoryHeadRows = await transaction
-    .select({
-      accountUserId: githubRepositoryInventoryHeads.accountUserId,
-      completedAt: githubRepositoryInventoryHeads.completedAt,
-      generation: githubRepositoryInventoryHeads.generation,
-    })
-    .from(githubRepositoryInventoryHeads);
-  const catalogRows = await transaction
-    .select({
-      accountUserId: githubAccountRepositoryCatalogs.accountUserId,
-      activeAccess: githubAccountRepositoryCatalogs.activeAccess,
-      inventoryGeneration: githubAccountRepositoryCatalogs.inventoryGeneration,
-      repositoryId: githubAccountRepositoryCatalogs.repositoryId,
-    })
-    .from(githubAccountRepositoryCatalogs);
-  const inventoryGenerationByAccount = new Map(
-    inventoryHeadRows.flatMap((head) =>
-      head.completedAt !== null && head.generation > 0
-        ? [[head.accountUserId, head.generation] as const]
-        : []
-    )
-  );
-  const everyTrackedInventoryIsComplete = [...trackedAuthorUserIds].every(
-    (accountUserId) => inventoryGenerationByAccount.has(accountUserId)
-  );
-  const accessibleRepositoryIds = new Set(
-    catalogRows.flatMap((catalog) =>
-      catalog.activeAccess &&
-      inventoryGenerationByAccount.get(catalog.accountUserId) ===
-        catalog.inventoryGeneration
-        ? [catalog.repositoryId]
-        : []
-    )
-  );
   const desiredHeadRows = await transaction
     .select({
       active: githubRepositoryRefs.active,
@@ -1121,9 +1083,7 @@ const loadProjectionSnapshot = async (
       id: repository.id,
       visibility: visibilityFrom(
         repository.visibility,
-        repository.factsVerifiedAt,
-        !everyTrackedInventoryIsComplete ||
-          accessibleRepositoryIds.has(repository.id)
+        repository.factsVerifiedAt
       ),
     })
   );
@@ -1172,13 +1132,10 @@ const loadProjectionSnapshot = async (
   >();
   const summaryEvaluationDigests = new Map<string, string>();
   for (const unit of compactUnits) {
-    if (unit.visibility !== "public") {
-      continue;
-    }
     const repository = repositoryContexts.get(unit.repositoryId);
     if (repository === undefined) {
       throw new Error(
-        `A public work unit lacks repository context: ${unit.identityKey}`
+        `A work unit lacks repository context: ${unit.identityKey}`
       );
     }
     const evidence = summaryEvaluationEvidenceFrom(
@@ -1250,13 +1207,7 @@ const loadProjectionSnapshot = async (
       eq(githubIssues.repositoryId, githubRepositories.id)
     )
     .where(
-      or(
-        eq(githubRepositories.visibility, "public"),
-        and(
-          inArray(githubRepositories.visibility, ["private", "internal"]),
-          hasCurrentTrackedGitHubRepositoryAccess(githubIssues.repositoryId)
-        )
-      )
+      inArray(githubRepositories.visibility, ["public", "private", "internal"])
     );
   const issueDays = issueRows.map((issue) => issueDayFrom(issue.createdAt));
   return {
@@ -1304,13 +1255,7 @@ const materialProjectionChanged = (
 const publicOrderingSignature = (
   units: readonly (CurrentWorkUnitRow | GitHubProjectedWorkUnit)[]
 ) => {
-  const privateDays = sortedUniqueDays(
-    units
-      .filter((unit) => unit.visibility === "private")
-      .map((unit) => unit.activityDay)
-  );
-  const publicUnits = units
-    .filter((unit) => unit.visibility === "public")
+  const visibleUnits = units
     .map((unit) => ({
       activityAt:
         unit.activityAt instanceof Date
@@ -1327,7 +1272,7 @@ const publicOrderingSignature = (
         bytewiseCompare(left.repositoryId, right.repositoryId) ||
         bytewiseCompare(left.identityKey, right.identityKey)
     );
-  return JSON.stringify({ privateDays, publicUnits });
+  return JSON.stringify(visibleUnits);
 };
 
 const initialPageDaysFrom = (
@@ -1358,26 +1303,14 @@ const initialPageChanged = (
   for (const identityKey of changedIdentities) {
     const before = currentByIdentity.get(identityKey);
     const after = projectedByIdentity.get(identityKey);
-    if (before?.visibility === "public" && headDays.has(before.activityDay)) {
+    if (before !== undefined && headDays.has(before.activityDay)) {
       return true;
     }
-    if (after?.visibility === "public" && headDays.has(after.activityDay)) {
+    if (after !== undefined && headDays.has(after.activityDay)) {
       return true;
     }
   }
-  const currentPrivateDays = new Set(
-    current
-      .filter((unit) => unit.visibility === "private")
-      .map((unit) => unit.activityDay)
-  );
-  const projectedPrivateDays = new Set(
-    projected
-      .filter((unit) => unit.visibility === "private")
-      .map((unit) => unit.activityDay)
-  );
-  return [...headDays].some(
-    (day) => currentPrivateDays.has(day) !== projectedPrivateDays.has(day)
-  );
+  return false;
 };
 
 const languageSignature = (languages: readonly GitHubLanguageFact[] | null) =>
@@ -1481,12 +1414,12 @@ const projectedSummaryEvaluationDigest = (
   projected: GitHubProjectedWorkUnit
 ) => {
   const digest = snapshot.summaryEvaluationDigests.get(projected.identityKey);
-  if (projected.visibility === "public" && digest === undefined) {
+  if (digest === undefined) {
     throw new Error(
-      `A public work unit lacks a summary evaluation digest: ${projected.identityKey}`
+      `A work unit lacks a summary evaluation digest: ${projected.identityKey}`
     );
   }
-  return digest ?? null;
+  return digest;
 };
 
 const persistProjectedUnit = async (
@@ -1539,7 +1472,6 @@ const persistProjectedUnit = async (
     );
   }
 
-  const keepPublicSummary = projected.visibility === "public";
   const revision = current.revision + 1;
   await transaction
     .update(githubWorkUnits)
@@ -1547,20 +1479,15 @@ const persistProjectedUnit = async (
       projectedValues(
         projected,
         revision,
-        keepPublicSummary ? summaryEvaluationDigest : null,
-        keepPublicSummary ? current.summaryEvaluatedDigest : null,
-        keepPublicSummary ? current.summaryInputDigest : null
+        summaryEvaluationDigest,
+        current.summaryEvaluatedDigest,
+        current.summaryInputDigest
       )
     )
     .where(eq(githubWorkUnits.id, current.id));
   await transaction
     .insert(githubWorkUnitMemberships)
     .values(membershipValues(current.id, projected));
-  if (!keepPublicSummary) {
-    await transaction
-      .delete(githubWorkUnitSummaryAttempts)
-      .where(eq(githubWorkUnitSummaryAttempts.workUnitId, current.id));
-  }
   return persistedSummaryCandidate(snapshot, current.id, projected, revision);
 };
 
@@ -1572,8 +1499,7 @@ const persistSummaryEvaluationTargets = async (
   const targets = snapshot.units.flatMap((projected) => {
     const current = currentByIdentity.get(projected.identityKey);
     const digest = snapshot.summaryEvaluationDigests.get(projected.identityKey);
-    return projected.visibility === "public" &&
-      current !== undefined &&
+    return current !== undefined &&
       digest !== undefined &&
       !materialProjectionChanged(current, projected) &&
       current.summaryEvaluationDigest !== digest
@@ -1882,12 +1808,10 @@ const setSummaryInputs = async (
         id: githubWorkUnits.id,
         membershipDigest: githubWorkUnits.membershipDigest,
         outcomeDigest: githubWorkUnits.outcomeDigest,
-        repositoryVisibility: githubRepositories.visibility,
         revision: githubWorkUnits.revision,
         summaryEvaluationDigest: githubWorkUnits.summaryEvaluationDigest,
         summaryInputDigest: githubWorkUnits.summaryInputDigest,
         topics: githubRepositories.topics,
-        visibility: githubWorkUnits.visibility,
       })
       .from(githubWorkUnits)
       .innerJoin(
@@ -1982,8 +1906,6 @@ const setSummaryInputs = async (
         current === undefined ||
         currentEvaluationDigest !== item.unit.summaryEvaluationDigest ||
         current.summaryEvaluationDigest !== item.unit.summaryEvaluationDigest ||
-        current.visibility !== "public" ||
-        current.repositoryVisibility !== "public" ||
         current.revision !== item.unit.revision ||
         current.factsDigest !== item.unit.projected.factsDigest ||
         current.membershipDigest !== item.unit.projected.membershipDigest ||
@@ -2009,8 +1931,7 @@ const setSummaryInputs = async (
               item.unit.summaryEvaluationDigest
             ),
             eq(githubWorkUnits.membershipDigest, current.membershipDigest),
-            eq(githubWorkUnits.attributionMode, current.attributionMode),
-            eq(githubWorkUnits.visibility, "public")
+            eq(githubWorkUnits.attributionMode, current.attributionMode)
           )
         )
         .returning({ id: githubWorkUnits.id });

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildGitHubWorkUnitSummaryInput,
+  decodeGitHubWorkUnitSummary,
   digestGitHubWorkUnitMembership,
   digestGitHubWorkUnitOutcome,
   digestGitHubWorkUnitSummaryEvaluation,
@@ -9,6 +10,7 @@ import {
   GITHUB_WORK_UNIT_SUMMARY_MAX_PAYLOAD_BYTES,
   githubWorkUnitSummaryInputSchema,
   githubWorkUnitSummaryOutputSchema,
+  splitGitHubWorkUnitSummaryOutcome,
   validateGitHubWorkUnitSummaryOutput,
 } from "../src/lib/github-work-unit-summary.ts";
 
@@ -120,7 +122,7 @@ describe("GitHub work-unit summary evidence", () => {
     ).not.toBe(original);
   });
 
-  test("serializes an immutable, public-safe net-outcome request", async () => {
+  test("serializes an immutable normalized net-outcome request", async () => {
     const result = await buildGitHubWorkUnitSummaryInput(candidate());
 
     expect(result.eligible).toBe(true);
@@ -152,7 +154,7 @@ describe("GitHub work-unit summary evidence", () => {
         mode: "net",
       },
       kind: "pull_request",
-      version: 1,
+      version: 2,
     });
     expect(
       objectKeys(parsed).filter((key) =>
@@ -425,9 +427,66 @@ describe("GitHub work-unit summary evidence", () => {
     ).rejects.toThrow("membership");
   });
 
-  test("enforces byte and token limits without lossy fallback", async () => {
+  test("compacts oversized net and composite evidence without dropping files or changes", async () => {
     expect(GITHUB_WORK_UNIT_SUMMARY_MAX_INPUT_TOKENS).toBe(32_000);
     expect(GITHUB_WORK_UNIT_SUMMARY_MAX_PAYLOAD_BYTES).toBe(393_216);
+    const largeFile = (filename) => {
+      const additions = Array.from(
+        { length: 40 },
+        (_, index) => `+new behavior ${String(index)} ${"x".repeat(80)}`
+      );
+      const deletions = Array.from(
+        { length: 40 },
+        (_, index) => `-old behavior ${String(index)} ${"y".repeat(80)}`
+      );
+      return {
+        additions: additions.length,
+        deletions: deletions.length,
+        filename,
+        patch: textPatch(
+          ["@@ -1,40 +1,40 @@ behavior", ...deletions, ...additions].join("\n")
+        ),
+        previousFilename: null,
+        status: "modified",
+      };
+    };
+    const changes = [
+      diff([largeFile("src/a.ts"), largeFile("src/b.ts")]),
+      diff([largeFile("src/c.ts")]),
+    ];
+    const compacted = await buildGitHubWorkUnitSummaryInput(
+      candidate({ outcome: { changes, mode: "composite" } }),
+      { maxPayloadBytes: 8000 }
+    );
+    expect(compacted).toMatchObject({ eligible: true });
+    if (compacted.eligible) {
+      expect(compacted.input.evidence.mode).toBe("composite");
+      if (compacted.input.evidence.mode === "composite") {
+        expect(
+          compacted.input.evidence.changes.map((change) =>
+            change.files.map((file) => file.filename)
+          )
+        ).toEqual([["src/a.ts", "src/b.ts"], ["src/c.ts"]]);
+        expect(
+          compacted.input.evidence.changes
+            .flatMap((change) => change.files)
+            .every(
+              (file) =>
+                file.patch.kind === "sample" && file.patch.lines.length > 0
+            )
+        ).toBe(true);
+      }
+      expect(compacted.inputBytes).toBeLessThanOrEqual(8000);
+      expect(
+        (
+          await buildGitHubWorkUnitSummaryInput(
+            candidate({ outcome: { changes, mode: "composite" } }),
+            { maxPayloadBytes: 8000 }
+          )
+        ).serializedInput
+      ).toBe(compacted.serializedInput);
+    }
+
     expect(
       await buildGitHubWorkUnitSummaryInput(candidate(), {
         maxPayloadBytes: 100,
@@ -442,14 +501,29 @@ describe("GitHub work-unit summary evidence", () => {
 });
 
 describe("GitHub work-unit summary output", () => {
+  test("splits the one-line summary from optional expanded detail", () => {
+    expect(
+      splitGitHubWorkUnitSummaryOutcome(
+        "Added session recovery. Expired requests now return to sign-in."
+      )
+    ).toEqual({
+      detail: "Expired requests now return to sign-in.",
+      headline: "Added session recovery.",
+    });
+  });
+
   test("requires the exact structured shape", () => {
     expect(
-      githubWorkUnitSummaryOutputSchema.safeParse({ outcome: "Done." }).success
+      githubWorkUnitSummaryOutputSchema.safeParse({
+        headline: "Done",
+        summary: "The requested work is complete.",
+      }).success
     ).toBe(true);
     expect(
       validateGitHubWorkUnitSummaryOutput({
         explanation: "extra",
-        outcome: "Done.",
+        headline: "Done",
+        summary: "The requested work is complete.",
       })
     ).toEqual({ ok: false, reason: "invalid_shape" });
     expect(validateGitHubWorkUnitSummaryOutput("Done.")).toEqual({
@@ -458,32 +532,48 @@ describe("GitHub work-unit summary output", () => {
     });
   });
 
-  test("accepts a compact factual outcome and trims transport whitespace", () => {
+  test("accepts separate headline and full summary fields", () => {
     expect(
       validateGitHubWorkUnitSummaryOutput({
-        outcome:
-          "  Added session recovery across 3 public routes. Expired requests now return to sign-in.  ",
+        headline: "  Added session recovery  ",
+        summary:
+          "  Session recovery now covers 3 public routes. Expired requests return to sign-in.  ",
       })
     ).toEqual({
       ok: true,
-      outcome:
-        "Added session recovery across 3 public routes. Expired requests now return to sign-in.",
+      summary: {
+        headline: "Added session recovery",
+        summary:
+          "Session recovery now covers 3 public routes. Expired requests return to sign-in.",
+      },
     });
   });
 
   test("rejects unsafe or malformed output deterministically", () => {
     const cases = [
-      [{ outcome: "" }, "empty"],
-      [{ outcome: "First line.\nSecond line." }, "control_character"],
-      [{ outcome: "Unsafe \u202Etext." }, "bidi_character"],
-      [{ outcome: "Broken \uD800 text." }, "invalid_unicode"],
-      [{ outcome: "See https://example.com/details." }, "url"],
-      [{ outcome: "Added <strong>recovery</strong>." }, "html"],
-      [{ outcome: "Added **recovery**." }, "markdown"],
-      [{ outcome: "Applied revision abcdef1." }, "sha"],
-      [{ outcome: "word ".repeat(61) }, "overlength"],
-      [{ outcome: "One. Two. Three." }, "too_many_sentences"],
-      [{ outcome: "One. Two. Three" }, "too_many_sentences"],
+      [{ headline: "", summary: "Safe." }, "empty"],
+      [
+        { headline: "Safe", summary: "First line.\nSecond line." },
+        "control_character",
+      ],
+      [{ headline: "Safe", summary: "Unsafe \u202Etext." }, "bidi_character"],
+      [{ headline: "Safe", summary: "Broken \uD800 text." }, "invalid_unicode"],
+      [
+        { headline: "Safe", summary: "See https://example.com/details." },
+        "url",
+      ],
+      [
+        { headline: "Safe", summary: "Added <strong>recovery</strong>." },
+        "html",
+      ],
+      [{ headline: "Safe", summary: "Added **recovery**." }, "markdown"],
+      [{ headline: "Safe", summary: "Applied revision abcdef1." }, "sha"],
+      [{ headline: "word ".repeat(17), summary: "Safe." }, "overlength"],
+      [{ headline: "One. Two.", summary: "Safe." }, "too_many_sentences"],
+      [
+        { headline: "Safe", summary: "One. Two. Three. Four." },
+        "too_many_sentences",
+      ],
     ];
 
     for (const [output, reason] of cases) {
@@ -497,11 +587,36 @@ describe("GitHub work-unit summary output", () => {
   test("allows descriptive source language and domain numbers", () => {
     expect(
       validateGitHubWorkUnitSummaryOutput({
-        outcome: "Added OAuth 2 recovery for React 19 clients.",
+        headline: "Added OAuth 2 recovery",
+        summary: "OAuth 2 recovery now supports React 19 clients.",
       })
     ).toEqual({
       ok: true,
-      outcome: "Added OAuth 2 recovery for React 19 clients.",
+      summary: {
+        headline: "Added OAuth 2 recovery",
+        summary: "OAuth 2 recovery now supports React 19 clients.",
+      },
+    });
+  });
+
+  test("decodes new summaries and legacy one- or two-sentence outcomes", () => {
+    expect(
+      decodeGitHubWorkUnitSummary(
+        JSON.stringify({
+          headline: "Added recovery",
+          summary: "Recovery works.",
+        })
+      )
+    ).toEqual({ headline: "Added recovery", summary: "Recovery works." });
+    expect(decodeGitHubWorkUnitSummary("Added recovery.")).toEqual({
+      headline: "Added recovery.",
+      summary: null,
+    });
+    expect(
+      decodeGitHubWorkUnitSummary("Added recovery. Sessions resume safely.")
+    ).toEqual({
+      headline: "Added recovery.",
+      summary: "Sessions resume safely.",
     });
   });
 });

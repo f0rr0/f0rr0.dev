@@ -19,22 +19,21 @@ An opened issue is a separate authored milestone. Merge events, multi-parent
 merge commits, empty commits, branch operations, tags, and obsolete PR/ref
 memberships are not additional timeline rows.
 
-The public result has these invariants:
+The current result has these invariants:
 
 - One eligible repository/SHA belongs to at most one work unit. The database
   enforces this with a unique membership constraint.
 - A repository is rendered once per UTC day. Every work unit and opened issue
   for that repository and day is grouped under the same header.
-- The displayed repository count is the number of rendered public repository
-  groups. The generic private group is excluded.
+- The displayed repository count is the number of rendered repository groups.
 - A PR is one row. Merging it does not create a second row or a merge label.
 - A force push changes current membership. A removed SHA no longer belongs to
   its old unit; the ownership and association rules are reevaluated from the
   current evidence.
 - Facts publish without a summary. PR titles and commit messages are not
   fallback display copy.
-- Known-private activity renders only as `Private work` for that UTC day.
-  Unknown visibility renders nothing.
+- Known-private activity currently renders through the same path as public
+  activity. Unknown visibility renders nothing.
 
 A row shows aggregate owned commit count, unique filenames, additions,
 deletions, detected languages, and a date range when the unit spans days. The
@@ -126,17 +125,11 @@ branch units for that repository fail closed on the next projection refresh.
 The new generation atomically replaces the previous membership; partial
 membership is never published.
 
-Public repository facts may remain public after an access change because
-public visibility was verified independently. When every tracked inventory is
-complete, private/internal visibility is accepted only if a current catalog
-still grants access. While any tracked inventory is unavailable, the last
-verified private fact is retained. An unverified repository is unknown and is
-omitted.
-
-Private repository identity, branch names, PR metadata, issue titles, commit
-messages, filenames, diffs, facts, and summaries are never returned by the
-public feed. Private work and private issues contribute only one generic day
-presence.
+Once verified, public, private, and internal repository facts remain usable
+after an access change. An unverified repository is unknown and is omitted.
+The current validation release does not redact known-private activity; that
+policy belongs at the API boundary and does not alter capture, projection, or
+summarization.
 
 ## Projection and feed storage
 
@@ -173,15 +166,17 @@ read transaction. Pagination cursors are HMAC-signed and bound to the ordering
 revision. An ordering change returns `409`, prompting a fresh first page.
 
 Accepted summaries are read only when their recipe, outcome, input, and
-attribution digests still match the current public unit. Stale attempts cannot
+attribution digests still match the current unit. Stale attempts cannot
 leak into a new projection.
 
 ## Outcome summaries
 
-Summaries are optional prose for public work units. The summary input contains
-only normalized public repository context and complete file/diff evidence. It
-does not contain PR titles, PR bodies, commit messages, private evidence, or
-provider event text.
+Summaries are optional prose for every known-visibility work unit. The summary
+input contains normalized repository context and a complete file ledger. Patch
+evidence is complete when it fits; oversized input is compacted by sampling
+changed lines evenly across every file and composite change while retaining the
+original counters. It does not contain PR titles, PR bodies, commit messages,
+or provider event text.
 
 The evidence shape depends on attribution:
 
@@ -195,16 +190,17 @@ The evidence shape depends on attribution:
 
 An otherwise projected unit remains facts-only when its summary evidence has an
 unavailable or binary patch, a counter mismatch, an incomplete or capped PR net
-ledger, an empty normalized outcome, or excessive input. Commit-level
-incomplete or capped ledgers are excluded at the eligibility boundary. There is
-no generated fallback.
+ledger, or an empty normalized outcome. It also remains facts-only when even
+the compact file ledger and one changed-line sample per text file exceed the
+hard input limit. Commit-level incomplete or capped ledgers are excluded at the
+eligibility boundary. There is no generated fallback.
 
 The provider is pinned to `gpt-5.4-nano-2026-03-17`, with reasoning disabled,
 low text verbosity, provider storage disabled, no SDK retry, a 32,000-token
-input cap, and a 160-token output cap. Output must be structured as one outcome
-of at most two sentences, 60 words, and 320 Unicode code points. Validation
-rejects invalid Unicode, control/bidirectional characters, URLs, HTML,
-Markdown, and SHAs.
+input cap, and a 256-token output cap. Output is structured as a one-line
+headline of at most 16 words and a standalone expanded summary of at most three
+sentences and 80 words. Validation rejects invalid Unicode,
+control/bidirectional characters, URLs, HTML, Markdown, and SHAs.
 
 Summary identity includes the semantic policy, recipe, prompt, normalized
 input, outcome digest, and attribution mode. Transport retries and storage
@@ -213,8 +209,8 @@ rewrites. Up to eight recent-first inputs are deterministically evaluated per
 projection refresh. A separate bounded worker starts at most one provider claim,
 so a historical evaluation backlog cannot consume the provider request's
 runtime window.
-Valid public-input output remains cacheable if its input becomes stale while
-the request runs; it is displayed only when the current public unit's exact
+Valid output remains cacheable if its input becomes stale while the request
+runs; it is displayed only when the current unit's exact
 recipe, outcome, attribution, and summary-input keys match. A force push with
 the same complete PR net outcome can therefore reuse accepted prose.
 
@@ -224,10 +220,11 @@ Claims are recent-first:
 - only when no recent claim is ready may one historical request start that UTC
   day;
 - each attempt may start at most twice;
-- at most 12 requests may start per UTC day and 120 per UTC month; and
+- at most 30 requests may start per UTC day and 120 per UTC month; and
 - historical claims reserve two monthly requests for every remaining day in
   the month.
 
+These limits are application configuration; the database only records usage.
 Started requests count even when they fail. A transient failure waits 15
 minutes before its one possible retry. Invalid input/output and exhausted
 attempts become facts-only. Superseded attempts that never started are removed;
@@ -376,7 +373,8 @@ class names:
 | ref head A → B → A                                                      | final A is projected rather than suppressed           |
 | incomplete PR discovery, visibility, default branch, or head generation | fail closed with a reported reason                    |
 | shared side-branch commit                                               | deterministic primary branch, one owner               |
-| private or unknown repository                                           | generic private day or no output                      |
+| verified private or internal repository                                 | same projection and summary path as public            |
+| unknown repository                                                      | no output                                             |
 | replayed/out-of-order evidence                                          | identical projection                                  |
 | concurrent projection/summary work                                      | leases and compare-and-swap prevent stale publication |
 | same-day repository rows                                                | one header and a count derived from final groups      |
