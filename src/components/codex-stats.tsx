@@ -1,4 +1,12 @@
+import { Info } from "lucide-react";
+
 import { CodexActivity } from "@/components/codex-activity";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type {
   PublicCodexMetric,
   PublicCodexRange,
@@ -105,16 +113,19 @@ const LimitBar = ({
 export function CodexStats({ stats }: { stats: PublicCodexStats }) {
   const highlights = [
     {
+      agentRange: false,
       label: "Current streak",
       metric: stats.highlights.currentStreakDays,
       value: formatDays(stats.highlights.currentStreakDays.value),
     },
     {
+      agentRange: false,
       label: "Longest streak",
       metric: stats.highlights.longestStreakDays,
       value: formatDays(stats.highlights.longestStreakDays.value),
     },
     {
+      agentRange: false,
       label: "Daily peak",
       metric: stats.highlights.peakDailyTokens,
       value:
@@ -123,6 +134,7 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
           : compactNumber.format(stats.highlights.peakDailyTokens.value),
     },
     {
+      agentRange: true,
       label: "Fast mode",
       metric: stats.insights.fastModeUsagePercent,
       value: formatRange(
@@ -131,6 +143,7 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
       ),
     },
     {
+      agentRange: true,
       label: "Skills explored",
       metric: stats.insights.skillsExplored,
       value: formatRange(stats.insights.skillsExplored, (value) =>
@@ -138,6 +151,7 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
       ),
     },
     {
+      agentRange: true,
       label: "Reasoning leaders",
       metric: stats.insights.reasoningEfforts,
       value:
@@ -204,30 +218,48 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
         </div>
       </dl>
 
-      <article className="mt-8 rounded-lg border border-border p-5">
-        <h3 className="font-serif text-xl font-bold text-foreground">
-          Activity highlights
-        </h3>
-        <dl className="mt-5 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
-          {highlights.map(({ label, metric, value }) => (
-            <div key={label}>
-              <dt className="text-muted-foreground">{label}</dt>
-              <dd className="mt-1 font-mono text-foreground">
-                {value}
-                {metric.partial ? " · partial" : ""}
-              </dd>
+      <TooltipProvider delay={100}>
+        <article className="mt-8 rounded-lg border border-border p-5">
+          <h3 className="font-serif text-xl font-bold text-foreground">
+            Activity highlights
+          </h3>
+          <dl className="mt-5 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+            {highlights.map(({ agentRange, label, metric, value }) => (
+              <div key={label}>
+                <dt className="flex items-center gap-1 text-muted-foreground">
+                  {label}
+                  {agentRange ? (
+                    <Tooltip>
+                      <TooltipTrigger
+                        aria-label={`${label}: range across multiple agents`}
+                        className="inline-flex size-4 items-center justify-center rounded-sm"
+                        type="button"
+                      >
+                        <Info aria-hidden="true" className="size-3" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Range across multiple agents.
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : null}
+                </dt>
+                <dd className="mt-1 font-mono text-foreground">
+                  {value}
+                  {metric.partial ? " · partial" : ""}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {stats.primaryLimit === null ? null : (
+            <div className="mt-6 border-t border-border pt-5">
+              <LimitBar
+                label="Primary limit"
+                usedPercent={stats.primaryLimit.usedPercent}
+              />
             </div>
-          ))}
-        </dl>
-        {stats.primaryLimit === null ? null : (
-          <div className="mt-6 border-t border-border pt-5">
-            <LimitBar
-              label="Primary limit"
-              usedPercent={stats.primaryLimit.usedPercent}
-            />
-          </div>
-        )}
-      </article>
+          )}
+        </article>
+      </TooltipProvider>
     </section>
   );
 }
