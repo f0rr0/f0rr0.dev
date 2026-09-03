@@ -35,7 +35,12 @@ automatic token refresh. It then makes the same authenticated
 uses only the refreshed bearer token, ChatGPT account ID, and the exact Codex
 user agent returned during App Server initialization. The Profile endpoint is
 internal, so its response is validated and reduced to the existing public
-allowlist before storage. The public view sums token, chat, and skill-run totals,
-combines daily activity, and takes the highest streak, peak, and longest-chat
-values across accounts. Per-account identities and statistics that cannot be
-combined exactly are discarded.
+allowlist before storage. The public view sums token, chat, skill-run, daily,
+weekly, and cumulative totals. When the daily buckets reconcile exactly to the
+lifetime totals, peak and streak statistics are rebuilt from the fused activity
+instead of taking weaker per-account maxima. Fast-mode percentages are shown as
+the observed range, and unique skills as the mathematically valid range between
+the largest account count and their sum. The primary limit is pooled only when
+every account has the same plan and window. Per-account identities and global
+rankings that cannot be recovered from truncated per-account lists are
+discarded.

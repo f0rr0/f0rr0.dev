@@ -1,4 +1,9 @@
-import type { PublicCodexMetric, PublicCodexStats } from "@/lib/codex/stats";
+import { CodexActivity } from "@/components/codex-activity";
+import type {
+  PublicCodexMetric,
+  PublicCodexRange,
+  PublicCodexStats,
+} from "@/lib/codex/stats";
 
 const compactNumber = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
@@ -25,6 +30,24 @@ const formatDuration = (seconds: number | null) => {
 
 const formatDays = (days: number | null) =>
   days === null ? "—" : `${number.format(days)} days`;
+const formatRange = (
+  range: PublicCodexRange,
+  format: (value: number) => string
+) => {
+  if (range.minimum === null) {
+    return "—";
+  }
+  if (range.maximum === null) {
+    return `≥${format(range.minimum)}`;
+  }
+  return range.minimum === range.maximum
+    ? format(range.minimum)
+    : `${format(range.minimum)}–${format(range.maximum)}`;
+};
+const reasoningLabel = (value: string) =>
+  value === "xhigh"
+    ? "Extra high"
+    : `${value.charAt(0).toUpperCase()}${value.slice(1).replaceAll("_", " ")}`;
 
 const Metric = ({
   label,
@@ -80,10 +103,6 @@ const LimitBar = ({
 };
 
 export function CodexStats({ stats }: { stats: PublicCodexStats }) {
-  const peak = Math.max(1, ...stats.dailyUsage.map(({ tokens }) => tokens));
-  const leadingDays = new Date(
-    `${stats.dailyUsage[0]?.day ?? "1970-01-04"}T00:00:00.000Z`
-  ).getUTCDay();
   const highlights = [
     {
       label: "Current streak",
@@ -102,6 +121,31 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
         stats.highlights.peakDailyTokens.value === null
           ? "—"
           : compactNumber.format(stats.highlights.peakDailyTokens.value),
+    },
+    {
+      label: "Fast mode",
+      metric: stats.insights.fastModeUsagePercent,
+      value: formatRange(
+        stats.insights.fastModeUsagePercent,
+        (value) => `${value.toFixed(1)}%`
+      ),
+    },
+    {
+      label: "Skills explored",
+      metric: stats.insights.skillsExplored,
+      value: formatRange(stats.insights.skillsExplored, (value) =>
+        number.format(value)
+      ),
+    },
+    {
+      label: "Reasoning leaders",
+      metric: stats.insights.reasoningEfforts,
+      value:
+        stats.insights.reasoningEfforts.values.length === 0
+          ? "—"
+          : stats.insights.reasoningEfforts.values
+              .map(reasoningLabel)
+              .join(" · "),
     },
   ];
 
@@ -132,50 +176,7 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
         <Metric label="Last 30 days" metric={stats.totals.last30Days} />
       </dl>
 
-      <figure className="mt-10">
-        <div
-          className="grid grid-flow-col grid-rows-7 auto-cols-fr gap-0.5 sm:gap-1"
-          role="img"
-          aria-label="Combined daily token activity over the last year"
-        >
-          {Array.from({ length: leadingDays }, (_, index) => (
-            <span aria-hidden="true" key={`leading-${String(index)}`} />
-          ))}
-          {stats.dailyUsage.map(({ day: date, tokens }) => {
-            const ratio = tokens / peak;
-            const color =
-              tokens === 0
-                ? "bg-muted/60"
-                : ratio < 0.25
-                  ? "bg-primary/25"
-                  : ratio < 0.5
-                    ? "bg-primary/45"
-                    : ratio < 0.75
-                      ? "bg-primary/70"
-                      : "bg-primary";
-            return (
-              <span
-                aria-hidden="true"
-                className={`aspect-square min-w-0 rounded-[0.2rem] ${color}`}
-                key={date}
-                title={`${date}: ${number.format(tokens)} tokens`}
-              />
-            );
-          })}
-        </div>
-        <figcaption className="mt-2 flex justify-between font-mono text-[0.625rem] uppercase tracking-wider text-muted-foreground">
-          <span>1 year ago</span>
-          <span>Today</span>
-        </figcaption>
-        <ol className="sr-only">
-          {stats.dailyUsage.map(({ day: date, tokens }) => (
-            <li key={date}>
-              {day.format(new Date(`${date}T00:00:00.000Z`))}:{" "}
-              {number.format(tokens)} tokens
-            </li>
-          ))}
-        </ol>
-      </figure>
+      <CodexActivity {...stats.activity} />
 
       <dl className="mt-6 grid grid-cols-2 gap-4 border-y border-border py-4 text-sm sm:grid-cols-4">
         <div>
@@ -220,11 +221,10 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
             Unified activity
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Highest observed values and pooled primary limit across connected
-            accounts.
+            Fused activity and honest bounds where account overlap is unknown.
           </p>
         </div>
-        <dl className="mt-5 grid grid-cols-3 gap-4 text-sm">
+        <dl className="mt-5 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
           {highlights.map(({ label, metric, value }) => (
             <div key={label}>
               <dt className="text-muted-foreground">{label}</dt>
@@ -238,7 +238,7 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
         {stats.primaryLimit === null ? null : (
           <div className="mt-6 border-t border-border pt-5">
             <LimitBar
-              label={`Primary limit${stats.primaryLimit.planType === null ? "" : ` · ${stats.primaryLimit.planType}`}`}
+              label={`Pooled primary limit${stats.primaryLimit.planType === null ? "" : ` · ${stats.primaryLimit.planType}`}`}
               usedPercent={stats.primaryLimit.usedPercent}
             />
           </div>
