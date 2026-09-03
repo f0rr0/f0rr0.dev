@@ -14,8 +14,8 @@ export const GITHUB_SUMMARY_CRON_JOB = {
 } as const;
 
 export const GITHUB_SUMMARY_REQUEST_BUDGET = {
-  daily: 30,
-  monthly: 120,
+  daily: 100,
+  monthly: 300,
 } as const;
 
 export const GITHUB_HEAD_REFS_CRON_JOB = {

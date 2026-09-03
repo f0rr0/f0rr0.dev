@@ -435,7 +435,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
 
   test("serializes concurrent claims at the configured UTC-day cap", async () => {
     const now = new Date("2026-09-01T12:00:00.000Z");
-    await seedUsage([{ day: "2026-09-01", startedRequests: 29 }]);
+    await seedUsage([{ day: "2026-09-01", startedRequests: 99 }]);
     for (const hour of [11, 10, 9]) {
       await seedUnit({
         activityAt: new Date(
@@ -452,7 +452,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     ]);
     expect(claims.filter((claim) => claim !== null)).toHaveLength(1);
     expect(await readUsage()).toEqual([
-      { day: "2026-09-01", started_requests: 30 },
+      { day: "2026-09-01", started_requests: 100 },
     ]);
     const [states] = await admin`
       select
@@ -463,12 +463,12 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     expect(states).toEqual({ pending: 2, processing: 1 });
   });
 
-  test("stops at the 120-request UTC-month boundary", async () => {
+  test("stops at the 300-request UTC-month boundary", async () => {
     const now = new Date("2026-09-30T12:00:00.000Z");
     await seedUsage([
       ...Array.from({ length: 10 }, (_, index) => ({
         day: `2026-09-${String(index + 1).padStart(2, "0")}`,
-        startedRequests: 11,
+        startedRequests: 29,
       })),
       { day: "2026-09-30", startedRequests: 9 },
     ]);
@@ -488,7 +488,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
       from github_work_unit_summary_daily_usage
       where day >= '2026-09-01' and day < '2026-10-01'
     `;
-    expect(usage).toEqual({ monthly: 120 });
+    expect(usage).toEqual({ monthly: 300 });
   });
 
   test("recovers expired leases once and settles facts-only at two starts", async () => {

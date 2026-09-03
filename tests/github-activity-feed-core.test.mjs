@@ -86,7 +86,7 @@ describe("public GitHub activity day projection", () => {
     });
   });
 
-  test("marks a stale summary while its replacement is running", () => {
+  test("keeps a stale summary visible without a processing indicator", () => {
     const item = {
       ...work(
         "refreshing",
@@ -110,8 +110,8 @@ describe("public GitHub activity day projection", () => {
     );
 
     expect(html).toContain("Previous summary remains visible.");
-    expect(html).toContain('title="Refreshing summary"');
-    expect(html).toContain("motion-safe:animate-spin");
+    expect(html).not.toContain("Refreshing summary");
+    expect(html).not.toContain("animate-spin");
   });
 
   test("rejects rows outside the requested complete-day page", () => {
