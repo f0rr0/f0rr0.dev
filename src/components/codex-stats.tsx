@@ -188,7 +188,7 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
           <dd className="mt-1 font-mono text-foreground">
             {stats.busiestDay === null
               ? "—"
-              : `${day.format(new Date(`${stats.busiestDay.day}T00:00:00.000Z`))} · ${compactNumber.format(stats.busiestDay.tokens)} tokens`}
+              : `${day.format(new Date(`${stats.busiestDay.day}T00:00:00.000Z`))} · ${compactNumber.format(stats.busiestDay.tokens)}`}
             {stats.busiestDay?.partial === true ? " · partial" : ""}
           </dd>
         </div>
