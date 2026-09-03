@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, CircleCheck, FilePenLine } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   createContext,
@@ -17,7 +17,6 @@ import {
   comparePublicActivityRevisions,
   nextPublicActivityPoll,
   publicActivityHeadFrom,
-  publicActivityStatusText,
 } from "@/lib/github-activity-status";
 import type { PublicActivityHead } from "@/lib/github-activity-types";
 
@@ -101,11 +100,6 @@ export function GitHubActivityLiveProvider({
   );
 }
 
-function StatusIcon({ summarizing }: Readonly<{ summarizing: boolean }>) {
-  const Icon = summarizing ? FilePenLine : CircleCheck;
-  return <Icon aria-hidden="true" className="size-3" />;
-}
-
 export function GitHubActivityStatus({
   initialHead,
 }: Readonly<{ initialHead: PublicActivityHead }>) {
@@ -126,7 +120,6 @@ export function GitHubActivityStatus({
   const [online, setOnline] = useState(true);
   const [pageVisible, setPageVisible] = useState(true);
   const [pollCycle, setPollCycle] = useState(0);
-  const [now, setNow] = useState<number | null>(null);
   const [announcement, setAnnouncement] = useState("");
 
   useEffect(() => {
@@ -136,10 +129,6 @@ export function GitHubActivityStatus({
     setHead(initialHead);
     setPollCycle((cycle) => cycle + 1);
   }, [feedRevision, initialHead]);
-
-  useEffect(() => {
-    setNow(Date.now());
-  }, []);
 
   useEffect(() => {
     const target = containerRef.current?.closest("#timeline");
@@ -233,9 +222,6 @@ export function GitHubActivityStatus({
                 signal: requestController.signal,
               });
               if (response.status === 304) {
-                if (current) {
-                  setNow(Date.now());
-                }
                 return;
               }
               if (!response.ok) {
@@ -255,13 +241,12 @@ export function GitHubActivityStatus({
                 return;
               }
               etag.current = response.headers.get("etag");
-              setNow(Date.now());
               setHead(nextHead);
               if (nextHead.feedRevision !== feedRevision) {
                 markLatestAvailable();
               }
             } catch {
-              // A failed passive check keeps the last public-safe state.
+              // A failed passive check keeps the last known state.
             } finally {
               if (current) {
                 setPollCycle((cycle) => cycle + 1);
@@ -280,23 +265,16 @@ export function GitHubActivityStatus({
     };
   }, [canPoll, feedRevision, head, markLatestAvailable, pollCycle]);
 
-  const statusText =
-    now === null
-      ? head.summarizing
-        ? publicActivityStatusText(head, 0)
-        : "Activity is up to date"
-      : publicActivityStatusText(head, now);
-
   return (
     <div
-      className="mt-4 min-h-6 outline-none"
+      className="outline-none"
       id="github-activity-status"
       ref={containerRef}
       tabIndex={-1}
     >
       {latestAvailable ? (
         <button
-          className="inline-flex min-h-6 items-center gap-1.5 rounded-sm font-mono text-[0.6875rem] text-primary transition-colors duration-150 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none"
+          className="mt-4 inline-flex min-h-6 items-center gap-1.5 rounded-sm font-mono text-[0.6875rem] text-primary transition-colors duration-150 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none"
           disabled={isRefreshing}
           onClick={refreshLatest}
           type="button"
@@ -304,12 +282,7 @@ export function GitHubActivityStatus({
           <ArrowUp aria-hidden="true" className="size-3" />
           {isRefreshing ? "Showing latest work…" : "Show latest work"}
         </button>
-      ) : (
-        <p className="inline-flex min-h-6 items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground transition-colors duration-150 motion-reduce:transition-none">
-          <StatusIcon summarizing={head.summarizing} />
-          <span>{statusText}</span>
-        </p>
-      )}
+      ) : null}
       <p aria-live="polite" className="sr-only" role="status">
         {announcement}
       </p>

@@ -10,6 +10,7 @@ import {
 
 import {
   countGitHubWorkUnitSummaryInputTokens,
+  encodeGitHubWorkUnitSummary,
   GITHUB_WORK_UNIT_SUMMARY_MAX_INPUT_TOKENS,
   GITHUB_WORK_UNIT_SUMMARY_MAX_PAYLOAD_BYTES,
   GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY,
@@ -174,7 +175,7 @@ export const generateGitHubWorkUnitSummary = async (
     inputTokens: nullableTokenCount(generated.usage.inputTokens),
     latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
     model: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.model,
-    outcome: validated.outcome,
+    outcome: encodeGitHubWorkUnitSummary(validated.summary),
     outputTokens: nullableTokenCount(generated.usage.outputTokens),
   };
 };

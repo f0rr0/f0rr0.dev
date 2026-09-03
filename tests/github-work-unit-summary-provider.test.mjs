@@ -31,14 +31,14 @@ const summaryInput = (overrides = {}) => ({
     mode: "net",
   },
   kind: "pull_request",
-  recipe: "github-work-unit-outcome-v1",
+  recipe: "github-work-unit-outcome-v2",
   repository: {
     description: "Public session recovery for the example product.",
     fullName: "example/product",
     homepageUrl: null,
     topics: ["sessions"],
   },
-  version: 1,
+  version: 2,
   ...overrides,
 });
 
@@ -71,7 +71,10 @@ describe("GitHub work-unit summary provider", () => {
       generateText: async (options) => {
         call = options;
         return {
-          output: { outcome: "Added resilient session recovery." },
+          output: {
+            headline: "Added resilient session recovery",
+            summary: "Sessions now recover safely after expiration.",
+          },
           usage,
         };
       },
@@ -99,8 +102,11 @@ describe("GitHub work-unit summary provider", () => {
     expect(responseFormat).toMatchObject({
       schema: {
         additionalProperties: false,
-        properties: { outcome: { type: "string" } },
-        required: ["outcome"],
+        properties: {
+          headline: { type: "string" },
+          summary: { type: "string" },
+        },
+        required: ["headline", "summary"],
         type: "object",
       },
       type: "json",
@@ -108,7 +114,10 @@ describe("GitHub work-unit summary provider", () => {
     expect(result).toMatchObject({
       inputTokens: 12,
       model: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.model,
-      outcome: "Added resilient session recovery.",
+      outcome: JSON.stringify({
+        headline: "Added resilient session recovery",
+        summary: "Sessions now recover safely after expiration.",
+      }),
       outputTokens: 6,
     });
     expect(result.latencyMs).toBeGreaterThanOrEqual(0);
@@ -135,7 +144,10 @@ describe("GitHub work-unit summary provider", () => {
       generateText: async () => {
         semanticCalls += 1;
         return {
-          output: { outcome: "See https://example.com/details." },
+          output: {
+            headline: "Added recovery",
+            summary: "See https://example.com/details.",
+          },
           usage,
         };
       },
@@ -167,7 +179,11 @@ describe("GitHub work-unit summary provider", () => {
             modelId: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.model,
             timestamp: new Date(0),
           },
-          text: JSON.stringify({ outcome: "Safe.", extra: true }),
+          text: JSON.stringify({
+            extra: true,
+            headline: "Safe",
+            summary: "Safe.",
+          }),
           usage,
         });
       },
@@ -213,7 +229,7 @@ describe("GitHub work-unit summary provider", () => {
     const generateUnusedSummary = async () => {
       calls += 1;
       return {
-        output: { outcome: "Unused." },
+        output: { headline: "Unused", summary: "Unused." },
         usage,
       };
     };
@@ -243,7 +259,7 @@ describe("GitHub work-unit summary provider", () => {
       generateGitHubWorkUnitSummary(request({ deadlineAt: Date.now() - 1 }), {
         generateText: async () => {
           calls += 1;
-          return { output: { outcome: "Unused." }, usage };
+          return { output: { headline: "Unused", summary: "Unused." }, usage };
         },
       })
     ).rejects.toMatchObject({ name: "TimeoutError" });
@@ -257,7 +273,7 @@ describe("GitHub work-unit summary provider", () => {
           observedSignal = abortSignal;
           await Bun.sleep(30);
           abortSignal.throwIfAborted();
-          return { output: { outcome: "Unused." }, usage };
+          return { output: { headline: "Unused", summary: "Unused." }, usage };
         },
       }
     );

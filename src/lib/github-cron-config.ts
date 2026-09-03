@@ -13,6 +13,12 @@ export const GITHUB_SUMMARY_CRON_JOB = {
   schedule: "3-58/5 * * * *",
 } as const;
 
+export const GITHUB_SUMMARY_REQUEST_BUDGET = {
+  daily: 30,
+  monthly: 120,
+  recentReservePerRemainingDay: 2,
+} as const;
+
 export const GITHUB_HEAD_REFS_CRON_JOB = {
   name: "github-head-refs-every-fifteen-minutes",
   schedule: "4,19,34,49 * * * *",

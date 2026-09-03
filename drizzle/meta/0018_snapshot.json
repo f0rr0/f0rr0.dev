@@ -1,6 +1,6 @@
 {
-  "id": "3866bee0-eb08-4884-888d-529743ff0c1d",
-  "prevId": "d6da0c1d-3da6-42ac-b2da-f449442b8a16",
+  "id": "43a0124c-2b45-4956-9783-8c4496679b6b",
+  "prevId": "01f8b833-8b96-4f42-bbd9-d886373ec9d4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3316,12 +3316,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "gh_work_unit_summary_daily_usage_cap": {
-          "name": "gh_work_unit_summary_daily_usage_cap",
-          "value": "\"github_work_unit_summary_daily_usage\".\"started_requests\" BETWEEN 0 AND 12"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": true
     },
     "public.github_work_units": {

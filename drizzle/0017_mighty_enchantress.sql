@@ -1,0 +1,1 @@
+ALTER TABLE "github_work_unit_summary_daily_usage" DROP CONSTRAINT "gh_work_unit_summary_daily_usage_cap";

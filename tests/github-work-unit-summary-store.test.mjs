@@ -26,7 +26,7 @@ const migrationsFolder = new URL("../drizzle", import.meta.url).pathname;
 const postgresImage = "postgres:17-alpine";
 const postgresPassword = "github-work-unit-summary-store-test";
 const repositoryId = "9901";
-const recipe = "github-work-unit-outcome-v1";
+const recipe = "github-work-unit-outcome-v2";
 const digest = (character) => character.repeat(64);
 const instant = (value) => value?.toISOString() ?? null;
 
@@ -320,7 +320,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     expect(await readAttempt(stale)).toBeUndefined();
   });
 
-  test("does not claim a stale public payload after its repository becomes private", async () => {
+  test("claims a current payload after its repository becomes private", async () => {
     const now = new Date("2026-09-01T12:00:00.000Z");
     const unit = await seedUnit({
       activityAt: new Date("2026-09-01T11:30:00.000Z"),
@@ -330,12 +330,18 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
       update github_repositories set visibility = 'private'
       where id = ${repositoryId}
     `;
+    await admin`
+      update github_work_units set visibility = 'private'
+      where id = ${unit.workUnitId}
+    `;
 
-    expect(await claimGitHubWorkUnitSummary({ now })).toBeNull();
-    expect(await readAttempt(unit)).toBeUndefined();
+    expect(await claimGitHubWorkUnitSummary({ now })).toMatchObject({
+      workUnitId: unit.workUnitId,
+    });
+    expect(await readAttempt(unit)).toMatchObject({ state: "processing" });
   });
 
-  test("discards completed output after repository access is revoked", async () => {
+  test("accepts completed output after a unit becomes private", async () => {
     const now = new Date("2026-09-01T12:00:00.000Z");
     const unit = await seedUnit({
       activityAt: new Date("2026-09-01T11:30:00.000Z"),
@@ -345,23 +351,27 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     await admin`
       update github_repositories set visibility = 'private'
       where id = ${repositoryId}
+    `;
+    await admin`
+      update github_work_units set visibility = 'private'
+      where id = ${unit.workUnitId}
     `;
 
     expect(
       await completeGitHubWorkUnitSummary(
         claim,
-        providerResult("This private result must be discarded."),
+        providerResult("Summarized private repository work."),
         now
       )
-    ).toEqual({ accepted: false });
+    ).toEqual({ accepted: true });
     expect(await readAttempt(unit)).toMatchObject({
-      outcome: null,
+      outcome: "Summarized private repository work.",
       request_payload: null,
-      state: "terminal",
+      state: "accepted",
     });
   });
 
-  test("discards retry payloads after repository access is revoked", async () => {
+  test("retains retry payloads after a unit becomes private", async () => {
     const now = new Date("2026-09-01T12:00:00.000Z");
     const unit = await seedUnit({
       activityAt: new Date("2026-09-01T11:30:00.000Z"),
@@ -371,6 +381,10 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     await admin`
       update github_repositories set visibility = 'private'
       where id = ${repositoryId}
+    `;
+    await admin`
+      update github_work_units set visibility = 'private'
+      where id = ${unit.workUnitId}
     `;
 
     expect(
@@ -379,10 +393,10 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
         new Date("2026-09-01T13:00:00.000Z"),
         now
       )
-    ).toBe("terminal");
+    ).toBe("deferred");
     expect(await readAttempt(unit)).toMatchObject({
-      request_payload: null,
-      state: "terminal",
+      request_payload: unit.payload,
+      state: "retryable",
     });
   });
 
@@ -413,9 +427,9 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     });
   });
 
-  test("serializes concurrent claims at the twelve-request UTC-day cap", async () => {
+  test("serializes concurrent claims at the configured UTC-day cap", async () => {
     const now = new Date("2026-09-01T12:00:00.000Z");
-    await seedUsage([{ day: "2026-09-01", startedRequests: 11 }]);
+    await seedUsage([{ day: "2026-09-01", startedRequests: 29 }]);
     for (const hour of [11, 10, 9]) {
       await seedUnit({
         activityAt: new Date(
@@ -432,7 +446,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     ]);
     expect(claims.filter((claim) => claim !== null)).toHaveLength(1);
     expect(await readUsage()).toEqual([
-      { day: "2026-09-01", started_requests: 12 },
+      { day: "2026-09-01", started_requests: 30 },
     ]);
     const [states] = await admin`
       select
@@ -674,7 +688,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     });
   });
 
-  test("ignores revoked private issue days when tracking initial-page work", async () => {
+  test("includes private issue days when tracking initial-page work", async () => {
     const now = new Date("2026-09-06T12:00:00.000Z");
     const revokedRepositoryId = "999001";
     await admin`
@@ -709,8 +723,8 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
       state: "processing",
     });
 
-    expect(await reconcileGitHubWorkUnitSummaryStatus(now)).toBe(true);
-    expect(await readHead()).toMatchObject({ summarizing: true });
+    expect(await reconcileGitHubWorkUnitSummaryStatus(now)).toBe(false);
+    expect(await readHead()).toMatchObject({ summarizing: false });
   });
 
   test("keeps one active transition while another current summary settles", async () => {

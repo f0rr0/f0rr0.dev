@@ -504,7 +504,7 @@ describe("deterministic GitHub work ownership", () => {
     });
   });
 
-  test("renders private work only as safe days and omits unknown visibility", () => {
+  test("projects verified private work and omits unknown visibility", () => {
     const publicWork = change("c");
     const privateWork = change("d", {
       logicalRepositoryId: "2",

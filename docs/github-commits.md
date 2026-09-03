@@ -37,9 +37,9 @@ The worker leases small batches and can safely resume after a deadline. It:
    units, memberships, and public feed revisions atomically; and
 5. evaluates summary inputs in recent-first batches of eight.
 
-A separate bounded summary worker claims at most one eligible public summary.
+A separate bounded summary worker claims at most one eligible summary.
 Historical input reevaluation therefore cannot consume the provider request's
-runtime budget. Valid public-input output can be cached after becoming stale;
+runtime budget. Valid output can be cached after becoming stale;
 display still requires exact current recipe, outcome, attribution, and input
 digests.
 
@@ -56,10 +56,9 @@ identity is derived from the PR node ID, repository plus UTC day for canonical
 work, or persisted branch lineage. Every included repository/SHA belongs to
 exactly one current work unit.
 
-Known-private work contributes only the approved generic private-day presence.
-Unknown work contributes nothing. Private titles, messages, paths, branch
-names, repository identity, and generated prose are neither rendered nor sent
-to the model.
+Known-private work currently follows the same projection, summary, and display
+path as public work. Unknown work contributes nothing. Redaction is deferred to
+the public API boundary and does not alter internal storage or model input.
 
 Summary attempts are keyed by the current outcome, attribution mode, recipe, and
 summary-input digest. Facts publish independently of optional prose. A force

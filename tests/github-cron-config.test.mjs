@@ -9,6 +9,7 @@ import {
   GITHUB_REF_REPOSITORY_BATCH_SIZE,
   GITHUB_ROUTINE_MAX_DURATION_SECONDS,
   GITHUB_SUMMARY_CRON_JOB,
+  GITHUB_SUMMARY_REQUEST_BUDGET,
   GITHUB_WORKER_EXECUTION_DURATION_MS,
   GITHUB_WORKER_HTTP_TIMEOUT_MS,
   GITHUB_WORKER_MAX_DURATION_SECONDS,
@@ -73,6 +74,7 @@ describe("GitHub cron configuration", () => {
     expect(GITHUB_WORKER_HTTP_TIMEOUT_MS).toBe(
       GITHUB_WORKER_MAX_DURATION_SECONDS * 1000
     );
+    expect(GITHUB_SUMMARY_REQUEST_BUDGET.daily).toBe(30);
     expect(githubRefRepositoryLimitFrom(null)).toBe(8);
     expect(githubRefRepositoryLimitFrom("1")).toBe(1);
     expect(githubRefRepositoryLimitFrom("8")).toBe(8);

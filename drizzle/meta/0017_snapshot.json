@@ -1,124 +1,9 @@
 {
-  "id": "d6da0c1d-3da6-42ac-b2da-f449442b8a16",
+  "id": "01f8b833-8b96-4f42-bbd9-d886373ec9d4",
   "prevId": "31383d79-7e1f-48fb-b00e-1713698aa9ac",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.codex_accounts": {
-      "name": "codex_accounts",
-      "schema": "",
-      "columns": {
-        "auth_secret_name": {
-          "name": "auth_secret_name",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "id": {
-          "name": "id",
-          "type": "varchar(64)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "last_attempt_at": {
-          "name": "last_attempt_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_error_code": {
-          "name": "last_error_code",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "public_label": {
-          "name": "public_label",
-          "type": "varchar(80)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "snapshot": {
-          "name": "snapshot",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "snapshot_at": {
-          "name": "snapshot_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sync_lease_token": {
-          "name": "sync_lease_token",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sync_lease_until": {
-          "name": "sync_lease_until",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "codex_accounts_auth_secret_name_unique": {
-          "name": "codex_accounts_auth_secret_name_unique",
-          "columns": [
-            {
-              "expression": "auth_secret_name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "codex_accounts_id_shape": {
-          "name": "codex_accounts_id_shape",
-          "value": "\"codex_accounts\".\"id\" ~ '^[a-z0-9][a-z0-9_-]{0,63}$'"
-        },
-        "codex_accounts_auth_secret_name_shape": {
-          "name": "codex_accounts_auth_secret_name_shape",
-          "value": "\"codex_accounts\".\"auth_secret_name\" ~ '^[a-z0-9][a-z0-9_.-]{0,127}$'"
-        },
-        "codex_accounts_public_label_shape": {
-          "name": "codex_accounts_public_label_shape",
-          "value": "length(btrim(\"codex_accounts\".\"public_label\")) > 0"
-        },
-        "codex_accounts_snapshot_pair": {
-          "name": "codex_accounts_snapshot_pair",
-          "value": "(\"codex_accounts\".\"snapshot\" IS NULL) = (\"codex_accounts\".\"snapshot_at\" IS NULL)"
-        },
-        "codex_accounts_snapshot_object": {
-          "name": "codex_accounts_snapshot_object",
-          "value": "\"codex_accounts\".\"snapshot\" IS NULL OR jsonb_typeof(\"codex_accounts\".\"snapshot\") = 'object'"
-        },
-        "codex_accounts_lease_pair": {
-          "name": "codex_accounts_lease_pair",
-          "value": "(\"codex_accounts\".\"sync_lease_token\" IS NULL) = (\"codex_accounts\".\"sync_lease_until\" IS NULL)"
-        }
-      },
-      "isRLSEnabled": true
-    },
     "public.github_account_checkpoints": {
       "name": "github_account_checkpoints",
       "schema": "",
@@ -3380,12 +3265,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "gh_work_unit_summary_daily_usage_cap": {
-          "name": "gh_work_unit_summary_daily_usage_cap",
-          "value": "\"github_work_unit_summary_daily_usage\".\"started_requests\" BETWEEN 0 AND 12"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": true
     },
     "public.github_work_units": {
