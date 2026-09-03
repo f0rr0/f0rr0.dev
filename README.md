@@ -15,6 +15,8 @@ bun run dev
 The website works without secrets; the persisted commit feed stays empty until
 Postgres is configured. See [the commit sync guide](docs/github-commits.md) for
 database, Supabase Cron, account polling, and webhook setup.
+The separate [Codex stats guide](docs/codex-stats.md) covers its encrypted
+account snapshots and scheduled sync.
 
 ## Validation
 

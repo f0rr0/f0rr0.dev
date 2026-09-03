@@ -18,6 +18,11 @@ const nextConfig: NextConfig = {
         pathname: "/**",
         protocol: "https",
       },
+      {
+        hostname: "files.openai.com",
+        pathname: "/content",
+        protocol: "https",
+      },
     ],
   },
   outputFileTracingExcludes: {

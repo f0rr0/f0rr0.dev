@@ -96,6 +96,8 @@ export const githubRepositories = pgTable(
   ]
 ).enableRLS();
 
+export { codexAccounts } from "@/db/codex-schema";
+
 export const githubCommits = pgTable(
   "github_commits",
   {
