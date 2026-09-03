@@ -4,6 +4,16 @@ const UTC_DAY = /^\d{4}-\d{2}-\d{2}$/u;
 const safeInteger = z.number().int().nonnegative();
 const nullableSafeInteger = safeInteger.nullable();
 const nullablePercent = z.number().min(0).max(100).nullable();
+const topInvocationsSchema = z
+  .array(
+    z.object({
+      plugin_name: z.string().trim().min(1).max(160).nullish(),
+      skill_name: z.string().trim().min(1).max(160).nullish(),
+      type: z.enum(["plugin", "skill"]),
+      usage_count: safeInteger,
+    })
+  )
+  .nullish();
 
 const validUtcDay = (value: string) => {
   if (!UTC_DAY.test(value)) {
@@ -32,7 +42,9 @@ const profileResponseSchema = z.object({
     longest_running_turn_sec: nullableSafeInteger.optional(),
     longest_streak_days: nullableSafeInteger.optional(),
     most_used_reasoning_effort: z.string().max(80).nullable().optional(),
+    most_used_reasoning_effort_percentage: nullablePercent.optional(),
     peak_daily_tokens: nullableSafeInteger.optional(),
+    top_invocations: topInvocationsSchema,
     total_skills_used: nullableSafeInteger.optional(),
     total_threads: nullableSafeInteger.optional(),
     unique_skills_used: nullableSafeInteger.optional(),
@@ -85,11 +97,19 @@ export interface CodexAccountSnapshot {
     longestRunningTurnSec: number | null;
     longestStreakDays: number | null;
     mostUsedReasoningEffort: string | null;
+    mostUsedReasoningEffortPercent: number | null;
     peakDailyTokens: number | null;
     totalSkillsUsed: number | null;
     totalThreads: number | null;
     uniqueSkillsUsed: number | null;
   };
+  topInvocations: readonly CodexInvocation[] | null;
+}
+
+export interface CodexInvocation {
+  kind: "plugin" | "skill";
+  name: string;
+  usageCount: number;
 }
 
 export interface CodexUsageBucket {
@@ -128,7 +148,9 @@ export interface PublicCodexStats {
   insights: {
     fastModeUsagePercent: PublicCodexRange;
     reasoningEfforts: { partial: boolean; values: readonly string[] };
+    reasoningEffortPercent: PublicCodexRange;
     skillsExplored: PublicCodexRange;
+    topTools: readonly (CodexInvocation & { partial: boolean })[];
   };
   primaryLimit: {
     usedPercent: number;
@@ -153,6 +175,23 @@ const sanitizeBuckets = (value: z.infer<typeof usageBucketsSchema>) =>
     startDate: bucket.start_date,
     tokens: bucket.tokens,
   })) ?? null;
+
+const sanitizeInvocations = (value: z.infer<typeof topInvocationsSchema>) =>
+  value?.flatMap((invocation) => {
+    const name =
+      invocation.type === "plugin"
+        ? invocation.plugin_name
+        : invocation.skill_name;
+    return name === null || name === undefined
+      ? []
+      : [
+          {
+            kind: invocation.type,
+            name,
+            usageCount: invocation.usage_count,
+          },
+        ];
+  }) ?? null;
 
 export const createCodexAccountSnapshot = (
   rawProfile: unknown,
@@ -187,11 +226,14 @@ export const createCodexAccountSnapshot = (
       longestRunningTurnSec: stats.longest_running_turn_sec ?? null,
       longestStreakDays: stats.longest_streak_days ?? null,
       mostUsedReasoningEffort: stats.most_used_reasoning_effort ?? null,
+      mostUsedReasoningEffortPercent:
+        stats.most_used_reasoning_effort_percentage ?? null,
       peakDailyTokens: stats.peak_daily_tokens ?? null,
       totalSkillsUsed: stats.total_skills_used ?? null,
       totalThreads: stats.total_threads ?? null,
       uniqueSkillsUsed: stats.unique_skills_used ?? null,
     },
+    topInvocations: sanitizeInvocations(stats.top_invocations),
   };
 };
 
@@ -265,7 +307,7 @@ const utcDayOffset = (day: string, offset: number) => {
 
 const utcWeekStart = (day: string) => {
   const date = new Date(`${day}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+  date.setUTCDate(date.getUTCDate() - date.getUTCDay());
   return date.toISOString().slice(0, 10);
 };
 
@@ -287,7 +329,7 @@ const sumBuckets = (
 
 const streaks = (usage: ReadonlyMap<string, number>, today: string) => {
   const activeDays = [...usage]
-    .filter(([, tokens]) => tokens > 0)
+    .filter(([day, tokens]) => day <= today && tokens > 0)
     .map(([day]) => day)
     .toSorted();
   let current = 0;
@@ -363,6 +405,36 @@ const mainPrimaryLimit = (
   return {
     usedPercent: sum(limits.map((limit) => limit.usedPercent)) / limits.length,
   };
+};
+
+const topTools = (
+  records: readonly CodexSnapshotRecord[],
+  expectedAccountCount: number
+): PublicCodexStats["insights"]["topTools"] => {
+  const tools = new Map<string, CodexInvocation & { accounts: Set<number> }>();
+  for (const [accountIndex, { snapshot }] of records.entries()) {
+    for (const tool of snapshot.topInvocations ?? []) {
+      const key = `${tool.kind}:${tool.name}`;
+      const existing = tools.get(key);
+      if (existing === undefined) {
+        tools.set(key, { ...tool, accounts: new Set([accountIndex]) });
+      } else {
+        existing.accounts.add(accountIndex);
+        existing.usageCount += tool.usageCount;
+      }
+    }
+  }
+  return [...tools.values()]
+    .toSorted(
+      (left, right) =>
+        right.usageCount - left.usageCount ||
+        left.name.localeCompare(right.name)
+    )
+    .slice(0, 5)
+    .map(({ accounts, ...tool }) => ({
+      ...tool,
+      partial: accounts.size !== expectedAccountCount,
+    }));
 };
 
 export const buildPublicCodexStats = (
@@ -449,8 +521,10 @@ export const buildPublicCodexStats = (
           : null,
     };
   };
-  const dailyUsage = Array.from({ length: 365 }, (_, index) => {
-    const day = utcDayOffset(today, index - 364);
+  const chartDays = 52 * 7;
+  const chartStart = utcDayOffset(utcWeekStart(today), 7 - chartDays);
+  const dailyUsage = Array.from({ length: chartDays }, (_, index) => {
+    const day = utcDayOffset(chartStart, index);
     return { day, tokens: combinedDaily.get(day) ?? 0 };
   });
   const weeklyUsage = dailyUsage.map(({ day }) => ({
@@ -472,6 +546,12 @@ export const buildPublicCodexStats = (
   const reasoningValues = [
     ...records.map(({ snapshot }) => snapshot.summary.mostUsedReasoningEffort),
     ...Array.from({ length: missingAccountCount }, () => null),
+  ];
+  const reasoningPercentValues = [
+    ...records.map(
+      ({ snapshot }) => snapshot.summary.mostUsedReasoningEffortPercent ?? null
+    ),
+    ...missingValues,
   ];
 
   return {
@@ -508,7 +588,9 @@ export const buildPublicCodexStats = (
           ),
         ].toSorted(),
       },
+      reasoningEffortPercent: range(reasoningPercentValues, minimum, maximum),
       skillsExplored: range(skillsExploredValues, maximum, sum),
+      topTools: topTools(records, expectedAccountCount),
     },
     primaryLimit: mainPrimaryLimit(records, expectedAccountCount),
     totals: {

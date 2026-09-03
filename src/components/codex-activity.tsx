@@ -28,7 +28,7 @@ const fullDay = new Intl.DateTimeFormat("en-US", {
 const date = (day: string) => new Date(`${day}T00:00:00.000Z`);
 const weekStart = (day: string) => {
   const value = date(day);
-  value.setUTCDate(value.getUTCDate() - ((value.getUTCDay() + 6) % 7));
+  value.setUTCDate(value.getUTCDate() - value.getUTCDay());
   return value;
 };
 
@@ -100,13 +100,12 @@ const ActivityHeatmap = ({
     .filter((tokens) => tokens > 0);
   const minimum = Math.min(...positiveTokens);
   const maximum = Math.max(...positiveTokens);
-  const leadingDays =
-    (date(series.values[0]?.day ?? "1970-01-05").getUTCDay() + 6) % 7;
+  const leadingDays = date(series.values[0]?.day ?? "1970-01-04").getUTCDay();
   const label = labels[mode];
   return (
     <figure>
       <div
-        aria-label={`Combined ${mode} token activity${series.partial ? ", partial data" : ""}`}
+        aria-label={`${mode} token activity${series.partial ? ", partial data" : ""}`}
         className="grid grid-flow-col grid-rows-7 auto-cols-fr gap-0.5 sm:gap-1"
         role="group"
       >

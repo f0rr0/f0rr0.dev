@@ -25,10 +25,19 @@ const profile = (lifetimeTokens, dailyUsageBuckets, stats = {}) => {
       longest_running_turn_sec: 90,
       longest_streak_days: 2,
       most_used_reasoning_effort: "high",
+      most_used_reasoning_effort_percentage: 50,
       peak_daily_tokens: 50,
       total_skills_used: 40,
       total_threads: 10,
-      top_invocations: [{ plugin_name: "must-not-survive" }],
+      top_invocations: [
+        {
+          plugin_id: "must-not-survive",
+          plugin_name: "github",
+          skill_name: null,
+          type: "plugin",
+          usage_count: 10,
+        },
+      ],
       unique_skills_used: 20,
       ...stats,
     },
@@ -67,16 +76,39 @@ describe("public Codex statistics", () => {
       usage()
     );
     const second = createCodexAccountSnapshot(
-      profile(70, [{ start_date: "2026-01-30", tokens: 70 }], {
-        current_streak_days: 1,
-        fast_mode_usage_percentage: 7,
-        longest_streak_days: 1,
-        most_used_reasoning_effort: "max",
-        peak_daily_tokens: 70,
-        total_skills_used: 60,
-        total_threads: 20,
-        unique_skills_used: 12,
-      }),
+      profile(
+        80,
+        [
+          { start_date: "2026-01-28", tokens: 10 },
+          { start_date: "2026-01-30", tokens: 70 },
+        ],
+        {
+          current_streak_days: 1,
+          fast_mode_usage_percentage: 7,
+          longest_streak_days: 1,
+          most_used_reasoning_effort: "max",
+          most_used_reasoning_effort_percentage: 40,
+          peak_daily_tokens: 70,
+          top_invocations: [
+            {
+              plugin_id: "different-id",
+              plugin_name: "github",
+              skill_name: null,
+              type: "plugin",
+              usage_count: 7,
+            },
+            {
+              plugin_name: null,
+              skill_name: "next-best-practices",
+              type: "skill",
+              usage_count: 9,
+            },
+          ],
+          total_skills_used: 60,
+          total_threads: 20,
+          unique_skills_used: 12,
+        }
+      ),
       usage(75)
     );
     const serialized = JSON.stringify(first);
@@ -98,7 +130,7 @@ describe("public Codex statistics", () => {
     );
     expect(stats.totals.lifetimeTokens).toEqual({
       partial: false,
-      value: 150,
+      value: 160,
     });
     expect(stats.totals.todayTokens.value).toBe(120);
     expect(stats.totals.totalSkillsUsed).toEqual({
@@ -106,21 +138,31 @@ describe("public Codex statistics", () => {
       value: 100,
     });
     expect(stats.totals.totalThreads).toEqual({ partial: false, value: 30 });
-    expect(stats.activity.daily.values).toHaveLength(365);
+    expect(stats.activity.daily.values).toHaveLength(364);
     expect(stats.activity.daily.partial).toBe(false);
-    expect(stats.activity.daily.values.at(-1)).toEqual({
+    expect(stats.activity.daily.values[0]?.day).toBe("2025-02-02");
+    expect(
+      stats.activity.daily.values.find(({ day }) => day === "2026-01-30")
+    ).toEqual({
       day: "2026-01-30",
       tokens: 120,
     });
-    expect(stats.activity.weekly.values.at(-1)).toEqual({
-      day: "2026-01-30",
-      tokens: 150,
+    expect(stats.activity.daily.values.at(-1)).toEqual({
+      day: "2026-01-31",
+      tokens: 0,
     });
-    expect(stats.activity.weekly.values).toHaveLength(365);
+    expect(stats.activity.weekly.values[0]?.day).toBe("2025-02-02");
+    expect(
+      stats.activity.weekly.values.find(({ day }) => day === "2026-01-25")
+    ).toEqual({
+      day: "2026-01-25",
+      tokens: 160,
+    });
+    expect(stats.activity.weekly.values).toHaveLength(364);
     expect(stats.activity.weekly.partial).toBe(false);
     expect(stats.activity.cumulative.values.at(-1)).toEqual({
-      day: "2026-01-30",
-      tokens: 150,
+      day: "2026-01-31",
+      tokens: 160,
     });
     expect(stats.activity.cumulative.partial).toBe(false);
     expect(stats.busiestDay).toEqual({
@@ -129,14 +171,33 @@ describe("public Codex statistics", () => {
       tokens: 120,
     });
     expect(stats.highlights).toEqual({
-      currentStreakDays: { partial: false, value: 2 },
-      longestStreakDays: { partial: false, value: 2 },
+      currentStreakDays: { partial: false, value: 3 },
+      longestStreakDays: { partial: false, value: 3 },
       peakDailyTokens: { partial: false, value: 120 },
     });
     expect(stats.insights).toEqual({
       fastModeUsagePercent: { maximum: 8, minimum: 7, partial: false },
       reasoningEfforts: { partial: false, values: ["high", "max"] },
+      reasoningEffortPercent: {
+        maximum: 50,
+        minimum: 40,
+        partial: false,
+      },
       skillsExplored: { maximum: 32, minimum: 20, partial: false },
+      topTools: [
+        {
+          kind: "plugin",
+          name: "github",
+          partial: false,
+          usageCount: 17,
+        },
+        {
+          kind: "skill",
+          name: "next-best-practices",
+          partial: true,
+          usageCount: 9,
+        },
+      ],
     });
     expect(stats.primaryLimit).toEqual({
       usedPercent: 50,

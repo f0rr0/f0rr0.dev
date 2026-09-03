@@ -28,8 +28,11 @@ The sync refreshes OAuth credentials when needed, then calls the same
 `GET /backend-api/wham/usage` and `GET /backend-api/wham/profiles/me` endpoints
 used by Codex clients. Responses are validated and reduced to the public
 allowlist before storage. The public view sums token, chat, skill-run, daily,
-weekly, and cumulative totals. When daily buckets reconcile exactly to lifetime
-totals, peak and streak statistics are rebuilt from the combined activity.
-Fast-mode percentages are shown as the observed range, and unique skills as the
-mathematically valid range between the largest account count and their sum. The
-primary limit is combined only when every account has the same plan and window.
+weekly, and cumulative totals on the Codex Desktop Sunday-based 52-week grid.
+When daily buckets reconcile exactly to lifetime totals, peak and streak
+statistics are rebuilt from the combined activity. Fast-mode and leading
+reasoning percentages are shown as observed ranges, while unique skills use the
+mathematically valid range between the largest account count and their sum. Top
+tool counts are combined by type and display name; `+` marks a lower bound when
+a tool is absent from an account's truncated top list. The primary limit is
+combined only when every account has the same plan and window.

@@ -112,55 +112,68 @@ const LimitBar = ({
 };
 
 export function CodexStats({ stats }: { stats: PublicCodexStats }) {
+  const reasoningLeaders =
+    stats.insights.reasoningEfforts.values.length === 0
+      ? "—"
+      : stats.insights.reasoningEfforts.values.map(reasoningLabel).join(" · ");
+  const reasoningShare = formatRange(
+    stats.insights.reasoningEffortPercent,
+    (value) => `${value.toFixed(1)}%`
+  );
   const highlights = [
     {
-      agentRange: false,
       label: "Current streak",
       metric: stats.highlights.currentStreakDays,
+      tooltip: null,
       value: formatDays(stats.highlights.currentStreakDays.value),
     },
     {
-      agentRange: false,
       label: "Longest streak",
       metric: stats.highlights.longestStreakDays,
+      tooltip: null,
       value: formatDays(stats.highlights.longestStreakDays.value),
     },
     {
-      agentRange: false,
       label: "Daily peak",
       metric: stats.highlights.peakDailyTokens,
+      tooltip: null,
       value:
         stats.highlights.peakDailyTokens.value === null
           ? "—"
           : compactNumber.format(stats.highlights.peakDailyTokens.value),
     },
     {
-      agentRange: true,
       label: "Fast mode",
       metric: stats.insights.fastModeUsagePercent,
+      tooltip: "Range across multiple agents.",
       value: formatRange(
         stats.insights.fastModeUsagePercent,
         (value) => `${value.toFixed(1)}%`
       ),
     },
     {
-      agentRange: true,
       label: "Skills explored",
       metric: stats.insights.skillsExplored,
+      tooltip: "Range across multiple agents.",
       value: formatRange(stats.insights.skillsExplored, (value) =>
         number.format(value)
       ),
     },
     {
-      agentRange: true,
       label: "Reasoning leaders",
-      metric: stats.insights.reasoningEfforts,
+      metric: {
+        partial:
+          stats.insights.reasoningEfforts.partial ||
+          stats.insights.reasoningEffortPercent.partial,
+      },
+      tooltip:
+        reasoningShare === "—"
+          ? "Leaders across multiple agents."
+          : `Each agent's leading level represents ${reasoningShare} of its usage.`,
       value:
-        stats.insights.reasoningEfforts.values.length === 0
-          ? "—"
-          : stats.insights.reasoningEfforts.values
-              .map(reasoningLabel)
-              .join(" · "),
+        reasoningLeaders === "—" || reasoningShare === "—"
+          ? reasoningLeaders
+          : `${reasoningLeaders} · ${reasoningShare}`,
     },
   ];
 
@@ -225,24 +238,22 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
             Activity highlights
           </h3>
           <dl className="mt-5 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
-            {highlights.map(({ agentRange, label, metric, value }) => (
+            {highlights.map(({ label, metric, tooltip, value }) => (
               <div key={label}>
                 <dt className="flex items-center gap-1 text-muted-foreground">
                   {label}
-                  {agentRange ? (
+                  {tooltip === null ? null : (
                     <Tooltip>
                       <TooltipTrigger
-                        aria-label={`${label}: range across multiple agents`}
+                        aria-label={`${label}: ${tooltip}`}
                         className="inline-flex size-4 items-center justify-center rounded-sm"
                         type="button"
                       >
                         <Info aria-hidden="true" className="size-3" />
                       </TooltipTrigger>
-                      <TooltipContent>
-                        Range across multiple agents.
-                      </TooltipContent>
+                      <TooltipContent>{tooltip}</TooltipContent>
                     </Tooltip>
-                  ) : null}
+                  )}
                 </dt>
                 <dd className="mt-1 font-mono text-foreground">
                   {value}
@@ -251,6 +262,45 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
               </div>
             ))}
           </dl>
+          {stats.insights.topTools.length === 0 ? null : (
+            <div className="mt-6 border-t border-border pt-5">
+              <h4 className="flex items-center gap-1 font-ui text-sm font-medium text-foreground">
+                Top tools
+                {stats.insights.topTools.some(({ partial }) => partial) ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      aria-label="Top tools: some counts are minimums"
+                      className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground"
+                      type="button"
+                    >
+                      <Info aria-hidden="true" className="size-3" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Counts marked + are minimums; only top results are
+                      returned.
+                    </TooltipContent>
+                  </Tooltip>
+                ) : null}
+              </h4>
+              <ol className="mt-3 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+                {stats.insights.topTools.map((tool) => (
+                  <li
+                    className="flex min-w-0 items-baseline justify-between gap-3"
+                    key={`${tool.kind}:${tool.name}`}
+                  >
+                    <span className="truncate font-mono text-foreground">
+                      {tool.kind === "plugin" ? "@" : "$"}
+                      {tool.name}
+                    </span>
+                    <span className="shrink-0 font-mono text-muted-foreground">
+                      {number.format(tool.usageCount)}
+                      {tool.partial ? "+" : ""} runs
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
           {stats.primaryLimit === null ? null : (
             <div className="mt-6 border-t border-border pt-5">
               <LimitBar
