@@ -151,22 +151,16 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
 
   return (
     <section aria-labelledby="codex-stats-title" className="home-section">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="font-ui text-xs uppercase tracking-[0.14em] text-primary">
-            Building with AI
-          </p>
-          <h2
-            className="mt-2 font-serif text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
-            id="codex-stats-title"
-          >
-            Codex, in numbers
-          </h2>
-        </div>
-        <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
-          Sanitized usage across personal ChatGPT accounts. Prompts and
-          credentials are never stored here.
+      <div>
+        <p className="font-ui text-xs uppercase tracking-[0.14em] text-primary">
+          Building with AI
         </p>
+        <h2
+          className="mt-2 font-serif text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
+          id="codex-stats-title"
+        >
+          Codex, in numbers
+        </h2>
       </div>
 
       <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-4">
@@ -216,14 +210,9 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
       </dl>
 
       <article className="mt-8 rounded-lg border border-border p-5">
-        <div>
-          <h3 className="font-serif text-xl font-bold text-foreground">
-            Unified activity
-          </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Fused activity and honest bounds where account overlap is unknown.
-          </p>
-        </div>
+        <h3 className="font-serif text-xl font-bold text-foreground">
+          Activity highlights
+        </h3>
         <dl className="mt-5 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
           {highlights.map(({ label, metric, value }) => (
             <div key={label}>
@@ -238,7 +227,7 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
         {stats.primaryLimit === null ? null : (
           <div className="mt-6 border-t border-border pt-5">
             <LimitBar
-              label={`Pooled primary limit${stats.primaryLimit.planType === null ? "" : ` · ${stats.primaryLimit.planType}`}`}
+              label="Primary limit"
               usedPercent={stats.primaryLimit.usedPercent}
             />
           </div>
