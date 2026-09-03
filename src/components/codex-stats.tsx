@@ -22,6 +22,7 @@ const day = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
   month: "short",
   timeZone: "UTC",
+  year: "numeric",
 });
 const formatDuration = (seconds: number | null) => {
   if (seconds === null) {
