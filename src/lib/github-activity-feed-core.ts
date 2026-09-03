@@ -19,6 +19,7 @@ export interface PublicGitHubWorkUnitRow extends PublicRepositoryActivityRow {
   facts: PublicGitHubWorkUnitFacts;
   headline: string | null;
   kind: PublicGitHubWorkUnitKind;
+  summarizing: boolean;
   summary: string | null;
 }
 
@@ -138,6 +139,7 @@ export const buildPublicGitHubActivityDays = (
         headline: row.headline,
         id: row.id,
         kind: row.kind,
+        summarizing: row.summarizing,
         summary: row.summary,
       });
     }

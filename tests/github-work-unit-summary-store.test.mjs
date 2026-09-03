@@ -274,7 +274,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     }
   });
 
-  test("claims current recent work newest-first and never claims a stale digest", async () => {
+  test("claims current work by newest activity then newest content", async () => {
     const now = new Date("2026-09-01T12:00:00.000Z");
     const stale = await seedUnit({
       activityAt: new Date("2026-09-01T11:30:00.000Z"),
@@ -287,13 +287,15 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     `;
     const newest = await seedUnit({
       activityAt: new Date("2026-08-31T10:00:00.000Z"),
+      contentObservedAt: new Date("2026-09-01T11:30:00.000Z"),
       debounceUntil: new Date("2026-09-01T11:00:00.000Z"),
     });
     const older = await seedUnit({
-      activityAt: new Date("2026-08-30T10:00:00.000Z"),
+      activityAt: new Date("2026-08-31T10:00:00.000Z"),
+      contentObservedAt: new Date("2026-09-01T10:30:00.000Z"),
       debounceUntil: new Date("2026-09-01T11:00:00.000Z"),
     });
-    await seedUnit({
+    const historical = await seedUnit({
       activityAt: new Date("2026-07-01T10:00:00.000Z"),
       debounceUntil: new Date("2026-09-01T11:00:00.000Z"),
     });
@@ -317,6 +319,10 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
       serializedInput: older.payload,
       workUnitId: older.workUnitId,
     });
+    expect(await terminalGitHubWorkUnitSummary(second, now)).toBe(true);
+
+    const third = await claimGitHubWorkUnitSummary({ now });
+    expect(third).toMatchObject({ workUnitId: historical.workUnitId });
     expect(await readAttempt(stale)).toBeUndefined();
   });
 
@@ -485,62 +491,6 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     expect(usage).toEqual({ monthly: 120 });
   });
 
-  test("admits historical work at the exact future-day reserve boundary", async () => {
-    const now = new Date("2026-09-20T12:00:00.000Z");
-    await seedUsage(
-      Array.from({ length: 9 }, (_, index) => ({
-        day: `2026-09-${String(index + 1).padStart(2, "0")}`,
-        startedRequests: 11,
-      }))
-    );
-    const historical = await seedUnit({
-      activityAt: new Date("2026-07-01T12:00:00.000Z"),
-      debounceUntil: new Date("2026-09-20T11:00:00.000Z"),
-    });
-
-    expect(await claimGitHubWorkUnitSummary({ now })).toMatchObject({
-      workUnitId: historical.workUnitId,
-    });
-    const [usage] = await admin`
-      select sum(started_requests)::integer as monthly
-      from github_work_unit_summary_daily_usage
-    `;
-    expect(usage).toEqual({ monthly: 100 });
-    expect(await readHead()).toMatchObject({
-      head_content_revision: "0",
-      summarizing: false,
-    });
-  });
-
-  test("reserves future capacity from historical work without blocking recent work", async () => {
-    const now = new Date("2026-09-20T12:00:00.000Z");
-    await seedUsage([
-      ...Array.from({ length: 9 }, (_, index) => ({
-        day: `2026-09-${String(index + 1).padStart(2, "0")}`,
-        startedRequests: 11,
-      })),
-      { day: "2026-09-10", startedRequests: 1 },
-    ]);
-    await seedUnit({
-      activityAt: new Date("2026-07-01T12:00:00.000Z"),
-      debounceUntil: new Date("2026-09-20T11:00:00.000Z"),
-    });
-
-    expect(await claimGitHubWorkUnitSummary({ now })).toBeNull();
-    const recent = await seedUnit({
-      activityAt: new Date("2026-09-19T12:00:00.000Z"),
-      debounceUntil: new Date("2026-09-20T11:00:00.000Z"),
-    });
-    expect(await claimGitHubWorkUnitSummary({ now })).toMatchObject({
-      workUnitId: recent.workUnitId,
-    });
-    const [usage] = await admin`
-      select sum(started_requests)::integer as monthly
-      from github_work_unit_summary_daily_usage
-    `;
-    expect(usage).toEqual({ monthly: 101 });
-  });
-
   test("recovers expired leases once and settles facts-only at two starts", async () => {
     const now = new Date("2026-09-01T12:00:00.000Z");
     const exhausted = await seedUnit({
@@ -594,46 +544,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     expect(await claimGitHubWorkUnitSummary({ now })).toBeNull();
   });
 
-  test("permits one historical start per UTC day without delaying recent work", async () => {
-    const now = new Date("2026-09-01T12:00:00.000Z");
-    const newestHistorical = await seedUnit({
-      activityAt: new Date("2026-07-20T12:00:00.000Z"),
-      debounceUntil: new Date("2026-09-01T11:00:00.000Z"),
-    });
-    await seedUnit({
-      activityAt: new Date("2026-07-10T12:00:00.000Z"),
-      debounceUntil: new Date("2026-09-01T11:00:00.000Z"),
-    });
-
-    const first = await claimGitHubWorkUnitSummary({ now });
-    expect(first).toMatchObject({ workUnitId: newestHistorical.workUnitId });
-    expect(
-      await deferGitHubWorkUnitSummary(
-        first,
-        new Date("2026-09-02T00:00:00.000Z"),
-        now
-      )
-    ).toBe("deferred");
-    expect(await claimGitHubWorkUnitSummary({ now })).toBeNull();
-
-    const recent = await seedUnit({
-      activityAt: new Date("2026-08-31T12:00:00.000Z"),
-      debounceUntil: new Date("2026-09-01T11:00:00.000Z"),
-    });
-    const foreground = await claimGitHubWorkUnitSummary({ now });
-    expect(foreground).toMatchObject({ workUnitId: recent.workUnitId });
-    expect(await terminalGitHubWorkUnitSummary(foreground, now)).toBe(true);
-    expect(await claimGitHubWorkUnitSummary({ now })).toBeNull();
-
-    const nextDay = new Date("2026-09-02T00:01:00.000Z");
-    const retried = await claimGitHubWorkUnitSummary({ now: nextDay });
-    expect(retried).toMatchObject({
-      startedRequests: 2,
-      workUnitId: newestHistorical.workUnitId,
-    });
-  });
-
-  test("presents recent queued work but not historical work as active", async () => {
+  test("presents queued initial-page work regardless of age", async () => {
     const now = new Date("2026-09-06T12:00:00.000Z");
     await seedUnit({
       activityAt: new Date("2026-07-01T10:00:00.000Z"),
@@ -645,16 +556,6 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
       state: "processing",
     });
 
-    expect(await reconcileGitHubWorkUnitSummaryStatus(now)).toBe(false);
-    expect(await readHead()).toMatchObject({
-      head_content_revision: "0",
-      summarizing: false,
-    });
-
-    await seedUnit({
-      activityAt: new Date("2026-09-06T10:00:00.000Z"),
-      debounceUntil: new Date("2026-09-06T13:00:00.000Z"),
-    });
     expect(await reconcileGitHubWorkUnitSummaryStatus(now)).toBe(true);
     expect(await readHead()).toMatchObject({
       head_content_revision: "1",
@@ -669,7 +570,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     }
   });
 
-  test("presents a recent initial-page reevaluation before its input is built", async () => {
+  test("presents an initial-page reevaluation before its input is built", async () => {
     const now = new Date("2026-09-06T12:00:00.000Z");
     const unit = await seedUnit({
       activityAt: new Date("2026-09-06T10:00:00.000Z"),

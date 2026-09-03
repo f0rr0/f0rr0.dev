@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+import { GitHubActivityDays } from "../src/components/github-activity-days.tsx";
 import { buildPublicGitHubActivityDays } from "../src/lib/github-activity-feed-core.ts";
 
 const repository = (key, label = key) => ({
@@ -30,6 +34,7 @@ const work = (id, activityAt, repositoryIdentity) => ({
   id,
   kind: "pull-request",
   repository: repositoryIdentity,
+  summarizing: false,
   summary: null,
 });
 
@@ -59,6 +64,7 @@ describe("public GitHub activity day projection", () => {
               headline: null,
               id: "newer",
               kind: "pull-request",
+              summarizing: false,
               summary: null,
             },
             {
@@ -70,6 +76,7 @@ describe("public GitHub activity day projection", () => {
               headline: null,
               id: "older",
               kind: "pull-request",
+              summarizing: false,
               summary: null,
             },
           ],
@@ -77,6 +84,34 @@ describe("public GitHub activity day projection", () => {
         },
       ],
     });
+  });
+
+  test("marks a stale summary while its replacement is running", () => {
+    const item = {
+      ...work(
+        "refreshing",
+        "2026-08-28T12:00:00.000Z",
+        repository("42", "example/repository")
+      ),
+      facts: { ...facts, languages: null },
+      headline: "Previous headline",
+      summarizing: true,
+      summary: "Previous summary remains visible.",
+    };
+    const html = renderToStaticMarkup(
+      createElement(GitHubActivityDays, {
+        days: [
+          {
+            day: "2026-08-28",
+            repositories: [{ items: [item], repository: item.repository }],
+          },
+        ],
+      })
+    );
+
+    expect(html).toContain("Previous summary remains visible.");
+    expect(html).toContain('title="Refreshing summary"');
+    expect(html).toContain("motion-safe:animate-spin");
   });
 
   test("rejects rows outside the requested complete-day page", () => {

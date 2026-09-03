@@ -33,6 +33,7 @@ const MAXIMUM_PUBLIC_ROWS_PER_DAY = 1000;
 const SHA = /^[a-f0-9]{40}$/u;
 const REPOSITORY_OWNER = /^(?!-)[A-Za-z0-9-]{1,39}(?<!-)$/u;
 const REPOSITORY_NAME = /^[A-Za-z0-9._-]{1,100}$/u;
+const ACTIVE_SUMMARY_STATES = new Set(["pending", "processing", "retryable"]);
 
 type GitHubActivityDatabase = Parameters<
   Parameters<ReturnType<typeof getDatabase>["transaction"]>[0]
@@ -286,7 +287,8 @@ const readAvailableDays = async (
 
 const readPublicRows = async (
   database: GitHubActivityDatabase,
-  selectedDays: readonly string[]
+  selectedDays: readonly string[],
+  summariesAreRunning: boolean
 ): Promise<{
   issues: readonly PublicGitHubIssueRow[];
   workUnits: readonly PublicGitHubWorkUnitRow[];
@@ -301,6 +303,7 @@ const readPublicRows = async (
         activityAt: githubWorkUnits.activityAt,
         activityDay: githubWorkUnits.activityDay,
         additions: githubWorkUnits.additions,
+        attributionMode: githubWorkUnits.attributionMode,
         deletions: githubWorkUnits.deletions,
         fileCount: githubWorkUnits.fileCount,
         firstActivityAt: githubWorkUnits.firstActivityAt,
@@ -313,9 +316,13 @@ const readPublicRows = async (
         memberCount: githubWorkUnits.memberCount,
         newestCommitRepositoryId: githubWorkUnits.newestCommitRepositoryId,
         newestCommitSha: githubWorkUnits.newestCommitSha,
+        outcomeDigest: githubWorkUnits.outcomeDigest,
         ownerAvatarUrl: githubRepositories.ownerAvatarUrl,
         pullRequestNumber: githubPullRequests.number,
         repositoryId: githubRepositories.id,
+        summaryEvaluatedDigest: githubWorkUnits.summaryEvaluatedDigest,
+        summaryEvaluationDigest: githubWorkUnits.summaryEvaluationDigest,
+        summaryInputDigest: githubWorkUnits.summaryInputDigest,
         visibility: githubRepositories.visibility,
       })
       .from(githubWorkUnits)
@@ -389,59 +396,107 @@ const readPublicRows = async (
   }
 
   const unitIds = unitRows.map(({ id }) => id);
-  const summaryRows =
+  const [currentSummaryRows, fallbackSummaryRows] =
     unitIds.length === 0
-      ? []
-      : await database
-          .select({
-            outcome: githubWorkUnitSummaryAttempts.outcome,
-            revision: githubWorkUnitSummaryAttempts.revision,
-            workUnitId: githubWorkUnitSummaryAttempts.workUnitId,
-          })
-          .from(githubWorkUnitSummaryAttempts)
-          .innerJoin(
-            githubWorkUnits,
-            and(
-              eq(githubWorkUnitSummaryAttempts.workUnitId, githubWorkUnits.id),
-              eq(
-                githubWorkUnitSummaryAttempts.outcomeDigest,
-                githubWorkUnits.outcomeDigest
-              ),
-              eq(
-                githubWorkUnitSummaryAttempts.summaryInputDigest,
-                githubWorkUnits.summaryInputDigest
-              ),
-              eq(
-                githubWorkUnitSummaryAttempts.attributionMode,
-                githubWorkUnits.attributionMode
+      ? [[], []]
+      : await Promise.all([
+          database
+            .select({
+              outcome: githubWorkUnitSummaryAttempts.outcome,
+              state: githubWorkUnitSummaryAttempts.state,
+              workUnitId: githubWorkUnitSummaryAttempts.workUnitId,
+            })
+            .from(githubWorkUnitSummaryAttempts)
+            .innerJoin(
+              githubWorkUnits,
+              and(
+                eq(
+                  githubWorkUnitSummaryAttempts.workUnitId,
+                  githubWorkUnits.id
+                ),
+                eq(
+                  githubWorkUnitSummaryAttempts.outcomeDigest,
+                  githubWorkUnits.outcomeDigest
+                ),
+                eq(
+                  githubWorkUnitSummaryAttempts.summaryInputDigest,
+                  githubWorkUnits.summaryInputDigest
+                ),
+                eq(
+                  githubWorkUnitSummaryAttempts.attributionMode,
+                  githubWorkUnits.attributionMode
+                )
               )
             )
-          )
-          .where(
-            and(
-              inArray(githubWorkUnitSummaryAttempts.workUnitId, unitIds),
-              eq(
-                githubWorkUnitSummaryAttempts.recipe,
-                GITHUB_WORK_UNIT_SUMMARY_RECIPE
-              ),
-              eq(githubWorkUnitSummaryAttempts.state, "accepted"),
-              isNotNull(githubWorkUnitSummaryAttempts.acceptedAt),
-              isNotNull(githubWorkUnitSummaryAttempts.outcome)
+            .where(
+              and(
+                inArray(githubWorkUnitSummaryAttempts.workUnitId, unitIds),
+                eq(
+                  githubWorkUnitSummaryAttempts.recipe,
+                  GITHUB_WORK_UNIT_SUMMARY_RECIPE
+                )
+              )
             )
-          )
-          .orderBy(
-            githubWorkUnitSummaryAttempts.workUnitId,
-            desc(githubWorkUnitSummaryAttempts.revision)
-          );
-  const summaries = new Map<
+            .orderBy(
+              githubWorkUnitSummaryAttempts.workUnitId,
+              desc(githubWorkUnitSummaryAttempts.revision)
+            ),
+          database
+            .selectDistinctOn([githubWorkUnitSummaryAttempts.workUnitId], {
+              outcome: githubWorkUnitSummaryAttempts.outcome,
+              workUnitId: githubWorkUnitSummaryAttempts.workUnitId,
+            })
+            .from(githubWorkUnitSummaryAttempts)
+            .innerJoin(
+              githubWorkUnits,
+              and(
+                eq(
+                  githubWorkUnitSummaryAttempts.workUnitId,
+                  githubWorkUnits.id
+                ),
+                eq(
+                  githubWorkUnitSummaryAttempts.attributionMode,
+                  githubWorkUnits.attributionMode
+                )
+              )
+            )
+            .where(
+              and(
+                inArray(githubWorkUnitSummaryAttempts.workUnitId, unitIds),
+                eq(githubWorkUnitSummaryAttempts.state, "accepted"),
+                isNotNull(githubWorkUnitSummaryAttempts.acceptedAt),
+                isNotNull(githubWorkUnitSummaryAttempts.outcome)
+              )
+            )
+            .orderBy(
+              githubWorkUnitSummaryAttempts.workUnitId,
+              desc(githubWorkUnitSummaryAttempts.revision)
+            ),
+        ]);
+  const currentSummaries = new Map<
     string,
     Readonly<{ headline: string; summary: string | null }>
   >();
-  for (const summary of summaryRows) {
-    if (!summaries.has(summary.workUnitId) && summary.outcome !== null) {
+  const summarizingUnits = new Set<string>();
+  for (const summary of currentSummaryRows) {
+    if (ACTIVE_SUMMARY_STATES.has(summary.state)) {
+      summarizingUnits.add(summary.workUnitId);
+    } else if (summary.outcome !== null) {
       const decoded = decodeGitHubWorkUnitSummary(summary.outcome);
       if (decoded !== null) {
-        summaries.set(summary.workUnitId, decoded);
+        currentSummaries.set(summary.workUnitId, decoded);
+      }
+    }
+  }
+  const fallbackSummaries = new Map<
+    string,
+    Readonly<{ headline: string; summary: string | null }>
+  >();
+  for (const summary of fallbackSummaryRows) {
+    if (summary.outcome !== null) {
+      const decoded = decodeGitHubWorkUnitSummary(summary.outcome);
+      if (decoded !== null) {
+        fallbackSummaries.set(summary.workUnitId, decoded);
       }
     }
   }
@@ -483,7 +538,8 @@ const readPublicRows = async (
     }
     const firstDay = row.firstActivityAt.toISOString().slice(0, 10);
     const lastDay = row.lastActivityAt.toISOString().slice(0, 10);
-    const summary = summaries.get(row.id);
+    const summary =
+      currentSummaries.get(row.id) ?? fallbackSummaries.get(row.id);
     return {
       activityAt: row.activityAt.toISOString(),
       day: row.activityDay,
@@ -501,6 +557,11 @@ const readPublicRows = async (
       headline: summary?.headline ?? null,
       kind,
       repository: repository.projection,
+      summarizing:
+        summarizingUnits.has(row.id) ||
+        (summariesAreRunning &&
+          row.summaryEvaluationDigest !== null &&
+          row.summaryEvaluationDigest !== row.summaryEvaluatedDigest),
       summary: summary?.summary ?? null,
     };
   });
@@ -546,7 +607,11 @@ const readPublicGitHubActivityPageInTransaction = async (
     cursor,
     pageSize
   );
-  const { issues, workUnits } = await readPublicRows(database, selectedDays);
+  const { issues, workUnits } = await readPublicRows(
+    database,
+    selectedDays,
+    head.summarizing
+  );
   const days = buildPublicGitHubActivityDays({
     days: selectedDays,
     issues,
