@@ -9,7 +9,7 @@ export function SiteMobileMenu({
   navItems,
 }: Readonly<{
   activeHref?: "/blog" | "/resume";
-  currentPath: "/" | "/blog" | "/resume";
+  currentPath: "/" | "/blog" | "/resume" | "/work-log";
   navItems: readonly ResumeNavItem[];
 }>) {
   return (

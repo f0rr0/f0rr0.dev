@@ -14,7 +14,7 @@ import { getGitHubProfile } from "@/lib/github-profile";
 import { publicUrl, siteConfig } from "@/lib/site";
 
 const description =
-  "Sid Jain is an applied AI engineer building useful, durable products and production systems. Explore his open-source work, GitHub activity, and writing.";
+  "Sid Jain is an applied AI engineer building useful, durable products and production systems. Explore his open-source work, Work Log, and writing.";
 
 export const metadata: Metadata = {
   alternates: {
@@ -119,7 +119,7 @@ export default async function Home() {
           </div>
         </section>
 
-        <GitHubTimeline initialPage={activity} />
+        <GitHubTimeline initialPage={activity} preview />
 
         {codexStats === null ? null : <CodexStats stats={codexStats} />}
 

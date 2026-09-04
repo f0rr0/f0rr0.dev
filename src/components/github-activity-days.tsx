@@ -2,6 +2,11 @@ import { ChevronRight, CircleDot, Code2, LockKeyhole } from "lucide-react";
 import Image from "next/image";
 
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -69,7 +74,7 @@ function RepositoryIdentity({
 }: Readonly<{ repository: PublicGitHubActivityRepository }>) {
   if (repository.label === null || repository.url === null) {
     return (
-      <span className="inline-flex min-w-0 items-center gap-2.5 font-mono text-xs text-muted-foreground">
+      <span className="inline-flex min-h-[1.375rem] min-w-0 items-center gap-2.5 font-mono text-xs text-muted-foreground">
         {repository.avatarUrl === null ? (
           <LockKeyhole aria-hidden="true" className="size-3" />
         ) : (
@@ -101,7 +106,7 @@ function RepositoryIdentity({
   }
   return (
     <a
-      className="inline-flex min-w-0 items-center gap-2.5 rounded-sm font-mono text-xs text-muted-foreground transition-colors duration-150 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring motion-reduce:transition-none"
+      className="inline-flex min-h-[1.375rem] min-w-0 items-center gap-2.5 font-mono text-xs text-muted-foreground transition-colors duration-150 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring motion-reduce:transition-none"
       href={repository.url}
       rel="noopener noreferrer"
       target="_blank"
@@ -109,16 +114,16 @@ function RepositoryIdentity({
       {repository.avatarUrl === null ? null : (
         <span
           aria-hidden="true"
-          className="size-5 flex-none overflow-hidden rounded-full bg-muted"
+          className="size-[1.375rem] flex-none overflow-hidden rounded-full bg-muted"
         >
           <Image
             alt=""
             className="size-full object-cover"
-            height={20}
-            sizes="20px"
+            height={22}
+            sizes="22px"
             src={repository.avatarUrl}
             unoptimized
-            width={20}
+            width={22}
           />
         </span>
       )}
@@ -152,70 +157,74 @@ function WorkUnitDetails({
   const commits = `${countFormatter.format(item.facts.ownedCommitCount)} ${item.facts.ownedCommitCount === 1 ? "commit" : "commits"}`;
   const files = `${countFormatter.format(item.facts.uniqueFileCount)} ${item.facts.uniqueFileCount === 1 ? "file" : "files"}`;
   return (
-    <details className="group min-w-0">
-      <summary className="grid min-h-6 cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto_auto] items-start gap-3 text-foreground focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
-        <span className="truncate text-base leading-relaxed group-open:overflow-visible group-open:wrap-anywhere group-open:text-clip group-open:whitespace-normal">
+    <Collapsible className="min-w-0">
+      <CollapsibleTrigger className="group/details grid min-h-6 w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-start gap-3 text-start text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+        <span className="truncate text-base leading-relaxed group-data-panel-open/details:overflow-visible group-data-panel-open/details:wrap-anywhere group-data-panel-open/details:text-clip group-data-panel-open/details:whitespace-normal">
           {headline}
         </span>
         <DiffCounters facts={item.facts} />
         <span className="mt-[0.3125rem] inline-flex items-center gap-1 text-muted-foreground">
           <ChevronRight
             aria-hidden="true"
-            className="size-4 transition-transform duration-150 group-open:rotate-90 motion-reduce:transition-none"
+            className="size-4 transition-transform duration-150 group-data-panel-open/details:rotate-90 motion-reduce:transition-none"
           />
         </span>
-      </summary>
-      <div className="mt-2 max-w-[50rem] ps-0 text-sm leading-relaxed text-muted-foreground">
-        {item.summary === null ? null : (
-          <p className="wrap-anywhere">{item.summary}</p>
-        )}
-        <p className={item.summary === null ? undefined : "mt-2"}>
-          {commits} touching {files}
-          {item.facts.languages === null ||
-          item.facts.languages.length === 0 ? null : (
-            <TooltipProvider>
-              <span
-                aria-label="Languages"
-                className="relative -top-[0.5px] ms-1.5 inline-flex items-center gap-0.5 align-middle"
-                role="group"
-              >
-                {item.facts.languages.map((language) => {
-                  const slug = languageIconSlugs[language];
-                  return (
-                    <Tooltip key={language}>
-                      <TooltipTrigger
-                        render={
-                          <button
-                            aria-label={language}
-                            className="inline-flex size-5 cursor-help items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-                            type="button"
-                          />
-                        }
-                      >
-                        {slug === undefined ? (
-                          <Code2 aria-hidden="true" className="size-3.5" />
-                        ) : (
-                          <Image
-                            alt=""
-                            className="opacity-[0.82] dark:invert"
-                            height={14}
-                            sizes="14px"
-                            src={`https://cdn.jsdelivr.net/npm/simple-icons@16.12.0/icons/${slug}.svg`}
-                            unoptimized
-                            width={14}
-                          />
-                        )}
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">{language}</TooltipContent>
-                    </Tooltip>
-                  );
-                })}
-              </span>
-            </TooltipProvider>
+      </CollapsibleTrigger>
+      <CollapsibleContent hiddenUntilFound>
+        <div className="max-w-[50rem] pt-2 ps-0 text-sm leading-relaxed text-muted-foreground">
+          {item.summary === null ? null : (
+            <p className="wrap-anywhere">{item.summary}</p>
           )}
-        </p>
-      </div>
-    </details>
+          <p className={item.summary === null ? undefined : "mt-2"}>
+            {commits} touching {files}
+            {item.facts.languages === null ||
+            item.facts.languages.length === 0 ? null : (
+              <TooltipProvider>
+                <span
+                  aria-label="Languages"
+                  className="relative -top-[0.5px] ms-1.5 inline-flex items-center gap-0.5 align-middle"
+                  role="group"
+                >
+                  {item.facts.languages.map((language) => {
+                    const slug = languageIconSlugs[language];
+                    return (
+                      <Tooltip key={language}>
+                        <TooltipTrigger
+                          render={
+                            <button
+                              aria-label={language}
+                              className="inline-flex size-6 cursor-help items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                              type="button"
+                            />
+                          }
+                        >
+                          {slug === undefined ? (
+                            <Code2 aria-hidden="true" className="size-3.5" />
+                          ) : (
+                            <Image
+                              alt=""
+                              className="size-3.5 opacity-[0.82] dark:invert"
+                              height={14}
+                              sizes="14px"
+                              src={`https://cdn.jsdelivr.net/npm/simple-icons@16.12.0/icons/${slug}.svg`}
+                              unoptimized
+                              width={14}
+                            />
+                          )}
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          {language}
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                  })}
+                </span>
+              </TooltipProvider>
+            )}
+          </p>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -223,7 +232,7 @@ function WorkUnitRow({
   item,
 }: Readonly<{ item: PublicGitHubWorkUnitActivity }>) {
   return (
-    <li className="py-3">
+    <li className="py-1.5">
       <article>
         <WorkUnitDetails item={item} />
       </article>
@@ -237,7 +246,7 @@ function IssueRow({
   item: Extract<PublicGitHubActivityItem, { kind: "issue-opened" }>;
 }>) {
   return (
-    <li className="py-3">
+    <li className="py-1.5">
       <article className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
         <p className="max-w-[50rem] wrap-anywhere text-base leading-relaxed text-foreground">
           {item.title}
@@ -245,7 +254,7 @@ function IssueRow({
         {item.destination === null ? null : (
           <a
             aria-label={`Issue opened: ${item.destination.label}`}
-            className="mt-0.5 inline-flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors duration-150 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none"
+            className="mt-0.5 inline-flex size-6 items-center justify-center text-muted-foreground transition-colors duration-150 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none"
             href={item.destination.url}
             rel="noopener noreferrer"
             target="_blank"
@@ -268,18 +277,48 @@ function ActivityItem({ item }: Readonly<{ item: PublicGitHubActivityItem }>) {
 
 function RepositoryGroup({
   group,
-}: Readonly<{ group: PublicGitHubActivityRepositoryGroup }>) {
+  itemLimit,
+}: Readonly<{
+  group: PublicGitHubActivityRepositoryGroup;
+  itemLimit?: number;
+}>) {
+  const visibleItems =
+    itemLimit === undefined ? group.items : group.items.slice(0, itemLimit);
+  const hiddenItems = group.items.slice(visibleItems.length);
   return (
-    <li className="border-b border-border py-5 [contain-intrinsic-size:auto_10rem] [content-visibility:auto]">
+    <li className="pt-4 pb-1.5 first:pt-0 last:pb-0">
       <article aria-label={`${group.repository.label ?? "Private"} activity`}>
-        <header>
+        <header className="flex">
           <RepositoryIdentity repository={group.repository} />
         </header>
-        <ol className="mt-1 divide-y divide-border/60">
-          {group.items.map((item) => (
+        <ol className="pt-2.5">
+          {visibleItems.map((item) => (
             <ActivityItem item={item} key={item.id} />
           ))}
         </ol>
+        {hiddenItems.length === 0 ? null : (
+          <Collapsible>
+            <CollapsibleContent>
+              <ol>
+                {hiddenItems.map((item) => (
+                  <ActivityItem item={item} key={item.id} />
+                ))}
+              </ol>
+            </CollapsibleContent>
+            <CollapsibleTrigger className="group/more inline-flex min-h-8 items-center gap-1.5 font-ui text-[0.8125rem] text-muted-foreground transition-colors duration-150 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none">
+              <ChevronRight
+                aria-hidden="true"
+                className="-ms-1.5 size-4 transition-transform duration-150 group-data-panel-open/more:rotate-90 motion-reduce:transition-none"
+              />
+              <span className="group-data-panel-open/more:hidden">
+                Show {countFormatter.format(hiddenItems.length)} more
+              </span>
+              <span className="hidden group-data-panel-open/more:inline">
+                Show less
+              </span>
+            </CollapsibleTrigger>
+          </Collapsible>
+        )}
       </article>
     </li>
   );
@@ -287,7 +326,8 @@ function RepositoryGroup({
 
 function GitHubActivityDay({
   day,
-}: Readonly<{ day: PublicGitHubActivityDay }>) {
+  itemLimit,
+}: Readonly<{ day: PublicGitHubActivityDay; itemLimit?: number }>) {
   const repositoryCount = day.repositories.length;
   const workUnits = day.repositories
     .flatMap(({ items }) => items)
@@ -305,11 +345,8 @@ function GitHubActivityDay({
     0
   );
   return (
-    <section
-      aria-labelledby={`activity-day-${day.day}`}
-      className="[contain-intrinsic-size:auto_28rem] [content-visibility:auto]"
-    >
-      <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+    <section aria-labelledby={`activity-day-${day.day}`}>
+      <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2 border-y border-border py-3">
         <h3 className="font-mono text-[0.6875rem] font-medium tracking-[0.11em] text-muted-foreground uppercase">
           <time dateTime={day.day} id={`activity-day-${day.day}`}>
             {dayFormatter.format(new Date(`${day.day}T00:00:00.000Z`))}
@@ -343,9 +380,13 @@ function GitHubActivityDay({
           </div>
         </dl>
       </header>
-      <ol aria-label={`Activity for ${day.day}`} className="mt-2">
+      <ol aria-label={`Activity for ${day.day}`} className="mt-7">
         {day.repositories.map((group) => (
-          <RepositoryGroup group={group} key={group.repository.key} />
+          <RepositoryGroup
+            group={group}
+            itemLimit={itemLimit}
+            key={group.repository.key}
+          />
         ))}
       </ol>
     </section>
@@ -354,6 +395,12 @@ function GitHubActivityDay({
 
 export function GitHubActivityDays({
   days,
-}: Readonly<{ days: readonly PublicGitHubActivityDay[] }>) {
-  return days.map((day) => <GitHubActivityDay day={day} key={day.day} />);
+  itemLimit,
+}: Readonly<{
+  days: readonly PublicGitHubActivityDay[];
+  itemLimit?: number;
+}>) {
+  return days.map((day) => (
+    <GitHubActivityDay day={day} itemLimit={itemLimit} key={day.day} />
+  ));
 }

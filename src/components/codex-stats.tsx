@@ -220,7 +220,7 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
         className="font-serif text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
         id="codex-stats-title"
       >
-        AI, in numbers
+        Token Log
       </h2>
 
       <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-4">

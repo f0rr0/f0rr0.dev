@@ -6,7 +6,7 @@ import { SiteHeader } from "@/components/site-header";
 interface SiteShellProps {
   activeHref?: "/blog" | "/resume";
   children: ReactNode;
-  currentPath?: "/" | "/blog" | "/resume";
+  currentPath?: "/" | "/blog" | "/resume" | "/work-log";
   includeFooter?: boolean;
 }
 
