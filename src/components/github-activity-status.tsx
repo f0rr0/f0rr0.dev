@@ -274,7 +274,7 @@ export function GitHubActivityStatus({
     >
       {latestAvailable ? (
         <button
-          className="mt-4 inline-flex min-h-6 items-center gap-1.5 rounded-sm font-mono text-[0.6875rem] text-primary transition-colors duration-150 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none"
+          className="mt-4 inline-flex min-h-6 items-center gap-1.5 font-mono text-[0.6875rem] text-primary transition-colors duration-150 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none"
           disabled={isRefreshing}
           onClick={refreshLatest}
           type="button"

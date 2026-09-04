@@ -8,7 +8,7 @@ import { SiteMobileMenu } from "./site-mobile-menu";
 
 interface SiteHeaderProps {
   activeHref?: "/blog" | "/resume";
-  currentPath?: "/" | "/blog" | "/resume";
+  currentPath?: "/" | "/blog" | "/resume" | "/work-log";
 }
 
 export function SiteHeader({
