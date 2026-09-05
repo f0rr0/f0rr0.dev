@@ -1,0 +1,325 @@
+export const metadata = {
+  title: "How Namefi Outbound Cut Lead Research Cost by 83.8%",
+  date: "2026-08-25",
+  author: "Sid Jain",
+  summary:
+    "An eval-driven rearchitecture of Namefi Outbound that cut one matched high-effort lead research run from $5.61 to $0.91 while producing more source-backed contacts.",
+  tags: [
+    "applied-ai",
+    "ai-agents",
+    "evals",
+    "temporal",
+    "typescript",
+  ],
+  draft: true,
+};
+
+One high-effort Namefi Outbound run used to cost $5.61. After I rearchitected the workflow, the same high-effort benchmark case cost $0.91.
+
+That is an **83.8% reduction**.
+
+The cheaper run did not simply stop earlier. It produced 13 source-backed contacts and 13 editable drafts, compared with 8 of each in the historical run.
+
+| Result                   | Historical workflow | New workflow |
+| ------------------------ | ------------------: | -----------: |
+| Model cost estimate      |               $4.74 |        $0.56 |
+| Search provider cost     |               $0.87 |        $0.35 |
+| Total run cost           |               $5.61 |        $0.91 |
+| Ranked leads             |                  56 |           49 |
+| Promoted leads           |                   4 |            6 |
+| Source-backed contacts   |                   8 |           13 |
+| Editable outreach drafts |                   8 |           13 |
+
+This is one matched benchmark case, not a universal average. Both runs used the same seller domain and effort tier, but they happened 11 days apart, so the searchable web was not identical. Model cost is estimated from recorded tokens and a versioned pricing table. Search cost uses the provider's recorded charge where available and published per-call pricing otherwise. I will return to those limitations later.
+
+Still, the difference was too large to dismiss as prompt tuning. The main saving came from changing what the system was allowed to spend money on, and when.
+
+## What Namefi Outbound actually does
+
+[Namefi Outbound](https://namefi.io/outbound) starts with a domain name that its owner wants to sell.
+
+That sounds like a search problem, but it is really a compact sales research operation. A good result has to interpret the commercial meaning of the domain, map possible buyer categories, find real companies, explain why each company might care, locate public contacts, and prepare grounded outreach.
+
+The product turns that work into one durable workflow:
+
+```text
+seller domain
+  -> market theses
+  -> candidate companies
+  -> buyer-specific evidence
+  -> ranked opportunities
+  -> public contacts
+  -> editable outreach drafts
+```
+
+The output is preparation, not autonomous sending. A seller gets a researched starting point and remains in control of outreach.
+
+This distinction matters. If the system were only generating company names, cheap breadth would be enough. If it were only drafting email, a strong language model would be enough. Outbound has to connect retrieval, judgment, evidence, contact discovery, and writing without silently inventing the links between them.
+
+The first version could do that. It could turn hours or days of manual buyer research into roughly five minutes and return dozens of ranked leads. But the architecture made the expensive path far too easy to enter.
+
+## The first version worked, but its cost scaled with autonomy
+
+The original Outbound workflow was already durable. Temporal coordinated domain analysis, buyer discovery, ranking, contact research, and drafting. It was not one giant prompt.
+
+Inside several stages, however, model-native web search bundled together three different jobs:
+
+1. Deciding what to search for.
+2. Retrieving pages and snippets.
+3. Judging what the evidence meant.
+
+High effort also upgraded repeated discovery and contact tasks to a frontier model. A single run could invoke that model many times, and each invocation could decide to perform more searches.
+
+The orchestration compounded the problem. Profile research and seed discovery began in parallel. As soon as seed discovery returned, the workflow started early contact research while additional recipe-based discovery was still running. The intent was good: hide latency by overlapping work. The economic effect was not.
+
+We were paying to find contacts for companies before the complete candidate pool had been compared. Some of those companies would never survive final ranking.
+
+The historical high-effort run in the opening table made 87 web searches and processed almost 684,000 input and output tokens. Its search fees were only $0.87. Most of the $5.61 total came from the models wrapped around those searches.
+
+This is a common trap in research agents. More autonomy often means more branching, more context, and more tokens. Anthropic reports that its multi-agent research system used about 15 times as many tokens as ordinary chat interactions, and argues that the approach is economically sensible only when the task value can support it ([Anthropic's multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system)).
+
+Outbound did not need less research. It needed a spending policy.
+
+## The turning point was decomposing the decision, not adding another agent
+
+I looked for industry examples that were close to the actual problem, not generic agent demos.
+
+Google Cloud has published a [lead generation deep research architecture](https://cloud.google.com/blog/products/ai-machine-learning/build-a-deep-research-agent-with-google-adk) that separates pattern discovery from lead generation, then combines sequential work with parallel company research. Its central design observation is concise:
+
+> “Complex problems are best solved by breaking them down into discrete phases.”
+
+Microsoft's [Sales Qualification Agent benchmark](https://www.microsoft.com/en-us/dynamics-365/blog/it-professional/2025/12/11/sales-qualification-agent-benchmarks/) is even closer to Outbound's job. It evaluates live company research, personalized outreach, and multi-turn qualification across more than 300 leads, 33 industries, 6 regions, and 500 exchanges. Microsoft grades research on properties such as recency, relevance, completeness, reliability, and source credibility, then separately grades the outreach.
+
+Those examples confirmed the shape of the problem. My conclusion was slightly different from the fashionable one. I did not need a deeper hierarchy of agents. I needed a deterministic graph with narrow model decisions inside it.
+
+The new workflow became:
+
+```text
+seller domain
+  -> bounded domain context retrieval
+  -> small-model market plan
+  -> bounded seed and recipe discovery
+  -> small-model evidence judgment
+  -> rank the complete candidate pool
+  -> one optional frontier review for high effort
+  -> select promoted leads
+  -> bounded contact research for those leads only
+  -> grounded contacts and editable drafts
+```
+
+Temporal owns the graph. Exa owns retrieval. Models own specific judgments. The database owns attribution and idempotency. Laminar owns the evaluation surface.
+
+That separation made each part cheaper to operate and easier to test.
+
+## Rank before you enrich
+
+The most important change is also the least glamorous: **contact research moved after ranking**.
+
+Contactability is not buyer relevance. Finding an email for a weak company does not make it a stronger lead. It only makes the mistake more expensive.
+
+The old ordering effectively asked:
+
+```text
+Can I contact this company, and should it survive later?
+```
+
+The new ordering asks:
+
+```text
+Should this company survive, and only then, can I contact it?
+```
+
+This creates a promotion gate before one of the most expensive branches in the workflow. The contact stage can now be modeled as:
+
+```text
+contact cost =
+  sum of contact research for promoted, evidence-backed leads only
+```
+
+The principle generalizes beyond sales. Any enrichment step that has variable external cost should sit behind the cheapest reliable rejection step. Rank before enrichment. Classify before deep research. Validate an identifier before buying data for it.
+
+Latency still matters, so the new workflow parallelizes work that is truly independent. Seed discovery can run while the domain profile is being formed. Contact research can run concurrently across promoted leads. What it no longer does is speculate across a dependency boundary just to make the waterfall look faster.
+
+## Exa became bounded retrieval, not an autonomous black box
+
+The rearchitecture moved web retrieval out of model-native search and into a dedicated Exa adapter.
+
+That choice matched the structure of the product. Exa's own [GTM intelligence example](https://demos.exa.ai/gtm-intelligence/how-it-works) moves from one company domain to an account list, then to enriched prospects and decision makers. Its company and people search modes map naturally to Outbound's candidate and contact stages.
+
+The retrieval quality also has relevant public evidence. Exa's [company search benchmark](https://exa.ai/blog/company-search-benchmarks) uses roughly 800 queries and deliberately includes companies that are hard for language models to recall from memory. Its [people search benchmark](https://exa.ai/blog/people-search-benchmark) uses 1,400 queries across targeted and discovery tasks, with verifiable public profiles as the unit of evaluation.
+
+I did not use an opaque research agent API, though. Outbound calls bounded search primitives because the workflow needs control over:
+
+- The query and search category.
+- The maximum results requested.
+- Allowed or included domains when contact evidence requires them.
+- Retry behavior for rate limits and provider errors.
+- Cancellation when a sibling activity makes the branch irrelevant.
+- The exact provider request ID and reported cost.
+
+Each paid response is persisted immediately, before model judgment. If Exa supplies a provider request ID, that ID becomes the idempotency key. Otherwise the client records its own request UUID. A retry that creates a genuinely new paid request creates a new cost event.
+
+This sounds like accounting detail. It is actually an agent capability. If a system cannot identify which decision caused a paid request, it cannot learn a useful cost policy from its evals.
+
+The design also handles failure explicitly. The adapter retries rate limits and transient server errors with bounded backoff. Temporal cancellation reaches the underlying request through an abort signal. A failed recipe can produce a partial result, but if every discovery path fails, the workflow fails rather than presenting an empty result as success.
+
+## Model right-sizing became a routing policy
+
+Once retrieval was separate, most model work became smaller and more legible:
+
+- Convert domain context into market theses and search recipes.
+- Judge whether a retrieved company has buyer-specific evidence.
+- Normalize public contact evidence.
+- Draft editable outreach from approved facts.
+
+Those tasks now use `gpt-5.4-mini` across every effort tier. High effort gets additional breadth and one `gpt-5.6-sol` review after ranking. It does not get a frontier model on every branch.
+
+| Effort | Candidate pool | Leads sent to contact research | Frontier review |
+| ------ | -------------: | -----------------------------: | --------------: |
+| Low    |             20 |                              5 |            None |
+| Medium |             45 |                              5 |            None |
+| High   |            110 |                              8 |      One review |
+
+This makes effort a product policy instead of a vague model preference. Low and medium buy bounded breadth. High buys more breadth, more promoted leads, and one deeper second opinion.
+
+Cursor describes a similar principle in its model router: [“Only route when performance is clearly better.”](https://cursor.com/blog/how-cursor-router-works) Its router learns the trade between quality and cost from real tasks, then reserves expensive models for cases with observed uplift.
+
+Outbound does not yet use a learned router. The promotion gate is hand-designed. But the design has the same important property: the expensive model must earn its place at a named decision point.
+
+## Prompts became evidence contracts
+
+The old prompts asked a capable model to research and decide. The new prompts assume retrieval has already happened and define what may be concluded from it.
+
+Every decision prompt follows the same basic shape:
+
+```text
+Role
+Goal
+Success criteria
+Available evidence
+Constraints
+Output schema
+```
+
+The important part is not the headings. It is the ownership boundary.
+
+The evidence judge cannot browse. A candidate's URL must come from the supplied sources. Its supporting snippet must identify the company and state the buyer-specific fact used in the rationale. A generic category match is not enough for automatic promotion.
+
+Contact extraction is stricter. An email address has to appear in the retrieved source. Same-domain email extraction is also performed deterministically so that a model omission does not discard a verifiable address. The sanitizer rejects malformed evidence and removes unsupported fields before persistence.
+
+Drafting receives only approved lead and contact facts. The prompt forbids invented pricing, traffic, urgency, SEO claims, and other sales theater. The output is marked editable and is never sent by the workflow.
+
+This did not make prompts unimportant. It made them smaller. A prompt is good at expressing a judgment contract. It is a poor place to hide retries, budgets, data lineage, and side effects.
+
+## Temporal turned cost controls into durable behavior
+
+A local agent loop can appear correct until a worker restarts halfway through a paid request. Production behavior has to survive timeouts, retries, cancellation, and duplicate delivery.
+
+Temporal already gave Outbound durable orchestration, but the new design uses that durability as part of the cost policy:
+
+- Paid sibling work is cancelled when a fatal branch makes it useless.
+- External requests receive cancellation through activity heartbeats and abort signals.
+- Contact lookup runs as one activity per promoted lead with a concurrency limit of two.
+- Per-lead failures use settled results, so one bad company does not erase successful contacts for the rest.
+- Database claims use an owner, lease, and attempt record to prevent duplicate in-flight work.
+- Contacts are upserted by lead and email rather than appended blindly.
+- Version markers keep in-flight workflows compatible when the graph changes.
+
+[Temporal's retry guidance](https://docs.temporal.io/encyclopedia/retry-policies) is clear that activities should be designed with failure and retry in mind. Its [TypeScript cancellation documentation](https://docs.temporal.io/develop/typescript/cancellation) also distinguishes requesting cancellation from proving that the underlying work has stopped. That difference matters when the underlying work has a price tag.
+
+The useful mental model is that a retry policy is also a purchasing policy. Every retry of a paid side effect needs bounded attempts, an idempotency story, and an attributed cost event.
+
+## Laminar evaluates the production workflow, not a prompt replica
+
+The cost result in the opening did not come from a playground script. A Laminar executor starts the same Temporal workflow used by the product, waits for completion, and then reads the resulting leads, evidence, contacts, drafts, token usage, and provider-cost events from the application database.
+
+The initial corpus has three deliberately different market shapes:
+
+1. A name with an obvious exact-match and specialist category.
+2. An open commercial category with many plausible buyers.
+3. An opaque identifier where category resemblance alone is weak evidence.
+
+Every case runs at low, medium, and high effort. That produces nine production-path executions for one evaluation revision.
+
+The scorecard separates operational health from semantic quality:
+
+| Signal                          | What it detects                                      |
+| ------------------------------- | ---------------------------------------------------- |
+| Completion by effort            | Broken production paths                              |
+| Lead and contact volume         | Empty or unexpectedly narrow runs                    |
+| Monotonic lead volume           | Effort tiers that do not buy more discovery          |
+| Reference-buyer retention       | Regressions against previously reviewed candidates   |
+| Promoted-lead evidence coverage | Automatic promotion without a URL and source passage |
+| Contact-source coverage         | Contacts without public evidence                     |
+| Draft coverage                  | Grounded contacts that lost their editable draft     |
+| Top-buyer fit                   | Plausibility and support for the promoted set        |
+| Cost per run, lead, and contact | What each effort tier purchased                      |
+
+Most checks are deterministic. A separate `gpt-5.6-sol` judge reviews only the top promoted companies, their rationales, and their evidence snippets. It cannot browse. It scores buyer plausibility and whether the supplied source supports the rationale as separate questions.
+
+The judge is not ground truth. It is one repeatable signal that still needs calibration against human review.
+
+This is close to the standard Microsoft set for its sales agent benchmark:
+
+> “Trust must be earned through transparent, repeatable, and rigorous evaluation.”
+
+Microsoft runs its model grader five times per sample and manually calibrates a subset. Anthropic's [guide to agent evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) makes the complementary point that research agents need both outcome grading and transcript-level inspection, with groundedness, coverage, and source quality treated as distinct properties.
+
+Laminar provides the repeatable comparison surface. Its [evaluation model](https://laminar.sh/docs/evaluations/introduction) organizes datapoints, an executor, and evaluators, while [run comparison](https://laminar.sh/docs/evaluations/comparing-runs) exposes both aggregate movement and individual regressions.
+
+No contact email is sent to Laminar. The evaluator receives counts and source-coverage indicators, not the address itself. The suite is also a live, manual evaluation, not a default CI job. It runs real paid research, so triggering it is an explicit decision.
+
+## Where the 83.8% came from
+
+The matched high-effort comparison is straightforward.
+
+For the historical run:
+
+```text
+estimated model cost     $4.7357115
+87 web searches          $0.8700000
+total                    $5.6057115
+```
+
+The search estimate uses OpenAI's published price of $10 per 1,000 web search calls ([OpenAI API pricing](https://platform.openai.com/pricing)). Model cost uses the run's recorded token counts and the pricing version stored with the evaluation.
+
+For the new run:
+
+```text
+estimated model cost     $0.55830625
+exact Exa cost           $0.35000000
+total                    $0.90830625
+```
+
+Then:
+
+```text
+1 - (0.90830625 / 5.6057115) = 0.8379677
+```
+
+Rounded, that is an 83.8% reduction, or about 6.2 times cheaper.
+
+The new run returned 49 ranked leads instead of 56, so it did trade a small amount of top-line volume. But the promoted set grew from 4 to 6, and source-backed contacts and drafts grew from 8 to 13. The workflow spent less while carrying more evidence-backed work through the expensive end of the funnel.
+
+Across the new three-case corpus, low-effort runs cost about $0.05 to $0.06, medium runs about $0.10 to $0.25, and high runs about $0.61 to $1.13. That spread is useful. It says effort tiers now represent observable resource policies rather than three labels on roughly the same agent loop.
+
+I would not publish 83.8% as a population estimate yet. The historical and new runs were not simultaneous, and one matched case cannot describe every domain market. The next step is repeated matched runs, human calibration of the buyer-fit judge, and distributions rather than single totals.
+
+But it is already a valid architectural result. We can account for the difference, stage by stage.
+
+## The lesson was not “use a smaller model”
+
+The cheaper workflow does use a smaller model more often, but that is the least transferable reading of the work.
+
+The actual changes were:
+
+1. Separate retrieval from reasoning so each can be measured.
+2. Put the cheapest reliable rejection before expensive enrichment.
+3. Give effort tiers explicit budgets and output obligations.
+4. Reserve a frontier model for one decision where a second opinion can change the promoted set.
+5. Treat retries, cancellation, and idempotency as cost controls.
+6. Evaluate the production workflow, including evidence and provider spend.
+
+The biggest saving did not come from asking a model to be more concise. It came from asking the system to earn the right to spend.
+
+That is the architecture I now want for agents: broad enough to research, narrow enough to audit, and cheap for reasons the eval can explain.
