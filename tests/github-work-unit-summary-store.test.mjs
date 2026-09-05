@@ -464,14 +464,14 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
     expect(states).toEqual({ pending: 2, processing: 1 });
   });
 
-  test("stops at the 300-request UTC-month boundary", async () => {
+  test("stops at the 3000-request UTC-month boundary", async () => {
     const now = new Date("2026-09-30T12:00:00.000Z");
     await seedUsage([
-      ...Array.from({ length: 10 }, (_, index) => ({
+      ...Array.from({ length: 29 }, (_, index) => ({
         day: `2026-09-${String(index + 1).padStart(2, "0")}`,
-        startedRequests: 29,
+        startedRequests: 100,
       })),
-      { day: "2026-09-30", startedRequests: 9 },
+      { day: "2026-09-30", startedRequests: 99 },
     ]);
     await seedUnit({
       activityAt: new Date("2026-09-30T11:00:00.000Z"),
@@ -489,7 +489,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit summary store", () => {
       from github_work_unit_summary_daily_usage
       where day >= '2026-09-01' and day < '2026-10-01'
     `;
-    expect(usage).toEqual({ monthly: 300 });
+    expect(usage).toEqual({ monthly: 3000 });
   });
 
   test("recovers expired leases once and settles facts-only at two starts", async () => {

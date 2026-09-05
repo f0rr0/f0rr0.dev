@@ -222,7 +222,7 @@ changing the activity anchor.
 Claims are ordered by newest activity, then newest observed content:
 
 - each attempt may start at most twice;
-- at most 100 requests may start per UTC day and 300 per UTC month.
+- at most 100 requests may start per UTC day and 3,000 per UTC month.
 
 These limits are application configuration; the database only records usage.
 Started requests count even when they fail. A transient failure waits 15
@@ -236,7 +236,7 @@ current again. Expired leases are recovered by the next worker.
 summary claim is started. This is not an OpenAI free-tier design. At the
 [model's documented price](https://developers.openai.com/api/docs/models/gpt-5.4-nano)
 of $0.20/M input tokens and $1.25/M output tokens, the hard monthly maximum is
-`300 * (32,000 * $0.20/M + 160 * $1.25/M) = $1.98`.
+`3,000 * (32,000 * $0.20/M + 160 * $1.25/M) = $19.80`.
 
 ## Intake and cadence
 
