@@ -75,7 +75,7 @@ describe("GitHub cron configuration", () => {
       GITHUB_WORKER_MAX_DURATION_SECONDS * 1000
     );
     expect(GITHUB_SUMMARY_REQUEST_BUDGET.daily).toBe(100);
-    expect(GITHUB_SUMMARY_REQUEST_BUDGET.monthly).toBe(300);
+    expect(GITHUB_SUMMARY_REQUEST_BUDGET.monthly).toBe(3000);
     expect(githubRefRepositoryLimitFrom(null)).toBe(8);
     expect(githubRefRepositoryLimitFrom("1")).toBe(1);
     expect(githubRefRepositoryLimitFrom("8")).toBe(8);
