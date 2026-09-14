@@ -1,7 +1,21 @@
-# Codex stats
+# Token log setup
 
 The portfolio reads sanitized Codex usage snapshots from Supabase. A scheduled
 Supabase cron calls a protected Vercel route every 15 minutes.
+
+## Environment
+
+Use a Supabase database with Vault, `pg_cron`, and `pg_net` support. Configure
+these in `.env.local` for local administration and in Vercel for the deployment:
+
+- `DATABASE_URL`: runtime database connection.
+- `DATABASE_URL_UNPOOLED`: direct or session-pooler connection for migrations,
+  account registration, and cron setup when runtime uses a transaction pooler.
+- `CRON_SECRET`: a random secret of at least 32 characters, shared by the route
+  and scheduled requests.
+- `VERCEL_PROJECT_PRODUCTION_URL`: production hostname, supplied by Vercel when
+  system environment variables are exposed. Set it explicitly when configuring
+  cron locally.
 
 ## Setup
 
@@ -17,24 +31,35 @@ Supabase cron calls a protected Vercel route every 15 minutes.
    bun run codex:account account-two /private/other-path
    ```
 
-4. Deploy to production. The existing Supabase cron setup schedules the sync.
+4. Deploy using the Build Command in [site setup](site-setup.md), which runs
+   migrations, builds the site, and configures Supabase cron. For an existing
+   deployment, run `bun run supabase:cron` after registering the first account.
+   The job is scheduled only when at least one account is enabled.
+
+## Verify and maintain
+
+The job calls `POST /api/cron/codex-stats` at minutes 7, 22, 37, and 52 each hour,
+using `Authorization: Bearer <CRON_SECRET>`. Check the job in Supabase Cron and
+`codex_accounts.snapshot_at` after it runs. The public view is cached for 15
+minutes, so a new snapshot can take another cache interval to appear.
+
+A 401 response means the route's bearer secret is missing or incorrect. A 503
+means sync failed; inspect the server's `codex_stats` error and check the database
+connection and registered login. If login credentials expire or are revoked,
+repeat the dedicated login and registration with the same account ID. Registration
+replaces the Vault secret and clears the old snapshot until the next sync.
+
+To stop including an account, set its `codex_accounts.enabled` value to `false`.
+Rerun cron configuration after disabling every account to remove the scheduled
+Codex job.
+
+## Stored data
 
 Account credentials stay encrypted in Supabase Vault; the table stores only
 internal account IDs, timestamps, and allowlisted display fields. Prompts, emails,
 ChatGPT account IDs, raw API responses, and auth tokens are never copied into
 public snapshots.
 
-The sync refreshes OAuth credentials when needed, then calls the same
-`GET /backend-api/wham/usage` and `GET /backend-api/wham/profiles/me` endpoints
-used by Codex clients. It searches `GET /backend-api/ps/plugins/search` for any
-listed top plugins and keeps only their OpenAI-hosted light and dark logo URLs.
-Responses are validated and reduced to the public allowlist before storage. The
-public view sums token, chat, skill-run, daily, weekly, and cumulative totals on
-the Codex Desktop Sunday-based 52-week grid.
-When daily buckets reconcile exactly to lifetime totals, peak and streak
-statistics are rebuilt from the combined activity. Fast-mode and leading
-reasoning percentages are shown as observed ranges, while unique skills use the
-mathematically valid range between the largest account count and their sum. Top
-tool counts are combined by type and display name, then the top four are shown.
-The primary limit is combined only when every account has the same plan and
-window.
+The sync refreshes account credentials automatically and combines account usage
+for display. Unique skills and percentage metrics use ranges where exact totals
+cannot be calculated; plan limits are combined only for matching plans and windows.

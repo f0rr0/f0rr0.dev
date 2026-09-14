@@ -21,4 +21,4 @@ export const siteConfig = {
 export const publicUrl = (path: string) =>
   new URL(path, CANONICAL_SITE_URL).toString();
 
-export const resumePdfUrl = resumeData.pdf.outputPath.replace(/^public\//, "/");
+export const resumePdfUrl = "/resume/sid-jain-resume.pdf";

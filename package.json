@@ -11,13 +11,10 @@
     "typecheck": "tsgo --noEmit",
     "lint": "ultracite check && oxlint .",
     "lint:ox": "oxlint .",
-    "resume:pdf": "bun scripts/build-resume-pdf.ts",
     "rulesync": "bunx rulesync generate",
     "format": "ultracite fix",
     "format:ox": "oxfmt --write",
     "format:check": "oxfmt --check",
-    "format:typ": "typstyle -i career",
-    "format:typ:check": "typstyle --check career",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
@@ -66,6 +63,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@flukxr/typst-cli": "0.15.0-npm.2",
     "@tailwindcss/postcss": "4.3.1",
     "@types/bun": "1.4.1",
     "@types/mdx": "2.0.14",
