@@ -1,8 +1,8 @@
-import Image from "next/image";
 import type { StaticImageData } from "next/image";
 import Link from "next/link";
 
 import { LocalDateTime } from "@/components/local-date-time";
+import MDXImage from "@/components/mdx/MDXImage";
 import {
   HoverCardGroup,
   HoverCardContent,
@@ -18,16 +18,13 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
   const entries = await Promise.all(
     posts.map(async (post) => {
       const asset = await findMetadataImageAsset(post.importPath, "opengraph");
-      let preview: StaticImageData | string | null = null;
-      if (asset?.type === "file") {
-        const image = await importMetadataImageModule<{
-          default: StaticImageData;
-        }>(asset.importPath);
-        preview = image.default;
-      } else if (asset !== null) {
-        preview = `/writing/${post.slug}/share-image`;
-      }
-      return { ...post, preview };
+      const image =
+        asset?.type === "file"
+          ? await importMetadataImageModule<{ default: StaticImageData }>(
+              asset.importPath
+            )
+          : null;
+      return { ...post, hasPreview: asset !== null, image: image?.default };
     })
   );
   return entries.length === 0 ? (
@@ -40,24 +37,16 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
             <HoverCardTrigger
               payload={
                 <HoverCardContent>
-                  {post.preview === null ? null : (
-                    <Image
+                  {post.hasPreview ? (
+                    <MDXImage
                       alt=""
                       className="aspect-[1200/630] w-full border-b object-cover"
                       height={168}
-                      placeholder={
-                        typeof post.preview !== "string" &&
-                        post.preview.blurDataURL !== undefined &&
-                        post.preview.blurDataURL !== ""
-                          ? "blur"
-                          : "empty"
-                      }
                       sizes="320px"
-                      src={post.preview}
-                      unoptimized={typeof post.preview === "string"}
+                      src={post.image ?? `/writing/${post.slug}/share-image`}
                       width={320}
                     />
-                  )}
+                  ) : null}
                   <div className="space-y-2 p-4">
                     <p className="font-medium">{post.metadata.title}</p>
                     <p className="text-muted-foreground">
