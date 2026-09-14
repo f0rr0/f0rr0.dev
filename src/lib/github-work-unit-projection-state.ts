@@ -3,7 +3,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
-import { githubPublicFeedHead } from "@/db/schema";
+import {
+  githubPublicFeedHead,
+  githubRepositories,
+  githubRepositoryRefs,
+  githubRefGenerations,
+} from "@/db/schema";
 import { TRACKED_GITHUB_USER_IDS } from "@/lib/github-commits-core";
 import { GITHUB_WORK_UNIT_SUMMARY_POLICY_DIGEST } from "@/lib/github-work-unit-summary";
 
@@ -92,4 +97,41 @@ export const completeGitHubWorkUnitProjectionRequest = async (
     )
     .returning({ id: githubPublicFeedHead.id });
   return cleared !== undefined;
+};
+
+// A repository's branch ownership is publishable only after every relevant head
+// matches its complete generation. Share this predicate with the snapshot reader.
+export const githubRepositoryHeadGenerationComplete = sql<boolean>`
+  ${githubRepositories}.heads_last_reconciled_at is not null and not exists (
+    select 1 from ${githubRepositoryRefs} as desired
+    left join ${githubRefGenerations} as generation
+      on generation.repository_id = desired.repository_id
+      and generation.ref_name = desired.ref_name
+    where desired.repository_id = ${githubRepositories}.id
+      and desired.kind = 'head'
+      and desired.projection_relevant = true
+      and (
+        (desired.active and (
+          desired.branch_lineage_id is null
+          or generation.head_sha is distinct from desired.head_sha
+          or generation.branch_lineage_id is distinct from desired.branch_lineage_id
+        ))
+        or (not desired.active and generation.repository_id is not null)
+      )
+  )
+`;
+
+export const requestGitHubProjectionAfterRefRepair = async (
+  transaction: DatabaseTransaction,
+  repositoryId: string
+) => {
+  const [repository] = await transaction
+    .select({ complete: githubRepositoryHeadGenerationComplete })
+    .from(githubRepositories)
+    .where(eq(githubRepositories.id, repositoryId));
+  // Ref intake already invalidates stale ownership. Intermediate repairs cannot
+  // publish branch work; the final repair requests one rebuild for the repository.
+  if (repository?.complete) {
+    await requestGitHubWorkUnitProjection(transaction);
+  }
 };

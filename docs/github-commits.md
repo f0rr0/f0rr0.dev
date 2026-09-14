@@ -23,6 +23,11 @@ checked against GitHub's immutable numeric `/user.id`. Login is display
 metadata, not identity. Repository visibility is published only after a
 verified public/private fact; unknown visibility fails closed.
 
+Different event IDs can describe the same push transition. Intake deduplicates
+those observations, validates their commit evidence, and advances the checkpoint
+only after the entire batch is persisted. Contradictory evidence rolls back the
+batch.
+
 ## Durable worker
 
 The worker leases small batches and can safely resume after a deadline. It:
@@ -36,6 +41,11 @@ The worker leases small batches and can safely resume after a deadline. It:
 4. recomputes the current work-unit projection from durable evidence and swaps
    units, memberships, and public feed revisions atomically; and
 5. evaluates summary inputs in newest-first batches of eight.
+
+Ref intake requests a projection when desired ownership changes. Intermediate
+ref repairs do not request another full-history read while the repository still
+has incomplete relevant heads; the final repair requests publication. Other
+changes, such as completed commit or PR evidence, can still request a projection.
 
 A separate bounded summary worker claims at most one eligible summary.
 Claims are ordered by newest activity, then newest observed content. The newest

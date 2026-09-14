@@ -42,6 +42,7 @@ import type {
 } from "@/lib/github-work-unit-core";
 import {
   acquireGitHubWorkUnitProjectionLock,
+  githubRepositoryHeadGenerationComplete,
   completeGitHubWorkUnitProjectionRequest,
   requestGitHubWorkUnitProjection,
 } from "@/lib/github-work-unit-projection-state";
@@ -377,61 +378,6 @@ const issueDayFrom = (createdAt: Date) => createdAt.toISOString().slice(0, 10);
 
 const sortedUniqueDays = (days: readonly string[]) =>
   [...new Set(days)].toSorted((left, right) => bytewiseCompare(right, left));
-
-const activeHeadGenerationIsComplete = (
-  repositoryId: string,
-  headsLastReconciledAt: Date | null,
-  desiredRows: readonly {
-    active: boolean;
-    branchLineageId: string | null;
-    headSha: string;
-    refName: string;
-    repositoryId: string;
-  }[],
-  generationRows: readonly {
-    branchLineageId: string;
-    headSha: string;
-    refName: string;
-    repositoryId: string;
-  }[]
-) => {
-  if (headsLastReconciledAt === null) {
-    return false;
-  }
-  const desiredByRef = new Map(
-    desiredRows
-      .filter((row) => row.repositoryId === repositoryId)
-      .map((row) => [row.refName, row])
-  );
-  const generations = generationRows.filter(
-    (row) => row.repositoryId === repositoryId && desiredByRef.has(row.refName)
-  );
-  for (const desired of desiredByRef.values()) {
-    const generation = generations.find(
-      (candidate) => candidate.refName === desired.refName
-    );
-    if (
-      desired.active &&
-      (desired.branchLineageId === null ||
-        generation === undefined ||
-        generation.headSha !== desired.headSha ||
-        generation.branchLineageId !== desired.branchLineageId)
-    ) {
-      return false;
-    }
-    if (!desired.active && generation !== undefined) {
-      return false;
-    }
-  }
-  return generations.every((generation) => {
-    const desired = desiredByRef.get(generation.refName);
-    return (
-      desired?.active === true &&
-      desired.headSha === generation.headSha &&
-      desired.branchLineageId === generation.branchLineageId
-    );
-  });
-};
 
 const exclusionReasonCountsFrom = (
   changes: readonly GitHubWorkUnitProjectionExcludedChange[]
@@ -779,7 +725,7 @@ const loadProjectionSnapshot = async (
       description: githubRepositories.description,
       factsVerifiedAt: githubRepositories.factsVerifiedAt,
       fullName: githubRepositories.fullName,
-      headsLastReconciledAt: githubRepositories.headsLastReconciledAt,
+      headGenerationComplete: githubRepositoryHeadGenerationComplete,
       homepageUrl: githubRepositories.homepageUrl,
       id: githubRepositories.id,
       topics: githubRepositories.topics,
@@ -1142,12 +1088,7 @@ const loadProjectionSnapshot = async (
   const repositories: GitHubRepositoryProjectionEvidence[] = repositoryRows.map(
     (repository) => ({
       defaultBranch: repository.defaultBranch,
-      headGenerationComplete: activeHeadGenerationIsComplete(
-        repository.id,
-        repository.headsLastReconciledAt,
-        desiredHeadRows,
-        generationRows
-      ),
+      headGenerationComplete: repository.headGenerationComplete,
       id: repository.id,
       visibility: visibilityFrom(
         repository.visibility,
