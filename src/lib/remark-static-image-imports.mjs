@@ -238,6 +238,18 @@ const remarkStaticImageImports = () => (tree) => {
     transformJsxImage(node, imports, importAliases, counterRef);
   });
 
+  visit(tree, "paragraph", (node, index, parent) => {
+    const [image] = node.children;
+    if (
+      (parent?.name === "figure" || parent?.name === "a") &&
+      typeof index === "number" &&
+      node.children.length === 1 &&
+      image.name === "img"
+    ) {
+      parent.children[index] = image;
+    }
+  });
+
   if (imports.length > 0 && Array.isArray(tree.children)) {
     tree.children = [
       ...imports,
