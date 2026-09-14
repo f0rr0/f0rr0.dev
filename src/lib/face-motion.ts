@@ -1,4 +1,4 @@
-// Complete each turn before following the latest pointer direction.
+// Ignore pointer changes until the current turn completes.
 export const FACE_MOTION_CONFIG = {
   atlasColumns: 8,
   atlasRows: 8,
@@ -240,6 +240,9 @@ export class CompassFaceMachine {
 
   setTarget(target: FaceMotionPose): void {
     assertFaceMotionPose(target);
+    if (this.edge !== null) {
+      return;
+    }
     this.target = target;
   }
 

@@ -57,10 +57,12 @@ export function PortraitFace({ className }: Readonly<{ className?: string }>) {
       }
       machine.advance();
       renderFrame();
-      frameTimer = window.setTimeout(
-        advance,
-        mobile ? 100 : FACE_MOTION_CONFIG.frameIntervalMs
-      );
+      if (!machine.isSettled()) {
+        frameTimer = window.setTimeout(
+          advance,
+          mobile ? 100 : FACE_MOTION_CONFIG.frameIntervalMs
+        );
+      }
     };
     const look = (pose: FaceMotionPose) => {
       machine.setTarget(pose);

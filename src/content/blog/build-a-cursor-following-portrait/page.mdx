@@ -111,7 +111,7 @@ I packed the 57 frames into an 8 × 8 WebP atlas, leaving seven cells empty. Eac
 
 The cursor controller uses `atan2` to choose one of eight directions, with a neutral dead zone around the portrait. Neighboring poses have animated transitions; other turns switch directly to the requested pose. That small graph avoids generating transitions between every possible pair of poses.
 
-Retargeting matters more than it first appears. Reversing halfway through a turn can make the portrait jitter when the cursor hovers near a direction boundary. The controller finishes the current turn, then follows the latest requested direction. The same three intermediate images work in both directions.
+Retargeting matters more than it first appears. Reversing halfway through a turn can make the portrait jitter when the cursor hovers near a direction boundary. The controller ignores pointer changes until the current turn finishes, then responds to fresh movement. The same three intermediate images work in both directions.
 
 The element stays fixed. Only its CSS background position changes. For an 8 × 8 atlas, the underlying calculation is:
 
