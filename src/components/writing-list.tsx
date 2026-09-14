@@ -17,14 +17,19 @@ import type { BlogPost } from "@/lib/blog-utils";
 export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
   const entries = await Promise.all(
     posts.map(async (post) => {
-      const asset = await findMetadataImageAsset(post.importPath, "opengraph");
-      const image =
-        asset?.type === "file"
-          ? await importMetadataImageModule<{ default: StaticImageData }>(
-              asset.importPath
-            )
-          : null;
-      return { ...post, hasPreview: asset !== null, image: image?.default };
+      const asset =
+        (await findMetadataImageAsset(post.importPath, "opengraph")) ??
+        (await findMetadataImageAsset(post.importPath, "twitter"));
+      if (asset === null) {
+        return { post, shareImage: undefined };
+      }
+      if (asset.type === "module") {
+        return { post, shareImage: `/writing/${post.slug}/share-image` };
+      }
+      const { default: shareImage } = await importMetadataImageModule<{
+        default: StaticImageData;
+      }>(asset.importPath);
+      return { post, shareImage };
     })
   );
   return entries.length === 0 ? (
@@ -32,21 +37,19 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
   ) : (
     <HoverCardGroup>
       <ol className="site-list divide-y divide-border">
-        {entries.map((post) => (
+        {entries.map(({ post, shareImage }) => (
           <li key={post.slug}>
             <HoverCardTrigger
               payload={
                 <HoverCardContent>
-                  {post.hasPreview ? (
-                    <MDXImage
-                      alt=""
-                      className="aspect-[1200/630] w-full border-b object-cover"
-                      height={168}
-                      sizes="320px"
-                      src={post.image ?? `/writing/${post.slug}/share-image`}
-                      width={320}
-                    />
-                  ) : null}
+                  <MDXImage
+                    alt=""
+                    className="aspect-[1200/630] w-full border-b object-cover"
+                    height={168}
+                    sizes="320px"
+                    src={shareImage}
+                    width={320}
+                  />
                   <div className="space-y-2 p-4">
                     <p className="font-medium">{post.metadata.title}</p>
                     <p className="text-muted-foreground">
