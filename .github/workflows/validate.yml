@@ -23,6 +23,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Typst format check
+        run: bun run format:typ:check
+
       - name: Type check
         run: bun run typecheck
 
