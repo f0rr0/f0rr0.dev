@@ -9,7 +9,7 @@ import { z } from "zod";
 import { FACE_MOTION_ATLAS_FRAME_ORDER } from "../src/lib/face-motion";
 
 const root = path.resolve(import.meta.dirname, "..");
-const source = path.join(root, "output/imagegen/face-motion-v7");
+const source = path.join(root, "output/imagegen/face-motion-v8");
 const output = path.resolve(
   process.argv[2] ?? path.join(root, "public/portraits")
 );
@@ -34,8 +34,8 @@ const cells = await Promise.all(
   frames.map(async ({ code }) => {
     const image = sharp(path.join(source, "preview", `${code}.webp`));
     const { width, height } = await image.metadata();
-    assert.equal(width, 656);
-    assert.equal(height, 656);
+    assert.equal(width, height);
+    assert.ok(width !== undefined && width >= cellSize);
     return await image
       .resize(cellSize, cellSize, { kernel: "lanczos3" })
       .png()
