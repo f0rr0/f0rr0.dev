@@ -44,6 +44,7 @@
         "zod": "4.4.3",
       },
       "devDependencies": {
+        "@flukxr/typst-cli": "0.15.0-npm.2",
         "@tailwindcss/postcss": "4.3.1",
         "@types/bun": "1.4.1",
         "@types/mdx": "2.0.14",
@@ -219,6 +220,20 @@
     "@floating-ui/react-dom": ["@floating-ui/react-dom@2.1.8", "", { "dependencies": { "@floating-ui/dom": "^1.7.6" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-cC52bHwM/n/CxS87FH0yWdngEZrjdtLW/qVruo68qg+prK7ZQ4YGdut2GyDVpoGeAYe/h899rVeOVm6Oi40k2A=="],
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
+
+    "@flukxr/typst-cli": ["@flukxr/typst-cli@0.15.0-npm.2", "", { "optionalDependencies": { "@flukxr/typst-cli-darwin-arm64": "0.15.0-npm.2", "@flukxr/typst-cli-darwin-x64": "0.15.0-npm.2", "@flukxr/typst-cli-linux-arm64": "0.15.0-npm.2", "@flukxr/typst-cli-linux-x64": "0.15.0-npm.2", "@flukxr/typst-cli-win32-arm64": "0.15.0-npm.2", "@flukxr/typst-cli-win32-x64": "0.15.0-npm.2" }, "bin": { "typst": "bin/typst.cjs" } }, "sha512-JLqxXQx07WIoqk7cwnqWRn9kaAvhorRTbD//itP4ecl/0r7etIBthShTpyaGLFfhmcPEVi9TnrFgk4ekbyd0nQ=="],
+
+    "@flukxr/typst-cli-darwin-arm64": ["@flukxr/typst-cli-darwin-arm64@0.15.0-npm.2", "", { "os": "darwin", "cpu": "arm64" }, "sha512-2UMPEGU1yGDjcaHyL94IsyJYiL+xmyyw8AeSkzUAWqklHmhGBYuv7a4NXEPUUNMt5ovEoDON4IkcQ9Y6aimu6A=="],
+
+    "@flukxr/typst-cli-darwin-x64": ["@flukxr/typst-cli-darwin-x64@0.15.0-npm.2", "", { "os": "darwin", "cpu": "x64" }, "sha512-06mv7zBX8Br3ZCBf8br8MTIwzIOYTnb5T7yyW+EGeYLVjggl9pg08+vSYiu4YDfj0sksJjXjt7y0fpXNhb6jeQ=="],
+
+    "@flukxr/typst-cli-linux-arm64": ["@flukxr/typst-cli-linux-arm64@0.15.0-npm.2", "", { "os": "linux", "cpu": "arm64" }, "sha512-JcJInp7lyP6BBjxHlHeQIBZ0EXlmManQEhMIl/6OKMPGH7QNl8KZjBE2Z9S88JPdhqCUe90HOrmgRti0cnU71A=="],
+
+    "@flukxr/typst-cli-linux-x64": ["@flukxr/typst-cli-linux-x64@0.15.0-npm.2", "", { "os": "linux", "cpu": "x64" }, "sha512-SqKIV68WdFsxTjPMyKFC3SrnQ1hvaxkMfFZNaahXoY1wCNFhc/RUXRIX8qse7wcg9h4wFnMCh4oblnh5vejlrw=="],
+
+    "@flukxr/typst-cli-win32-arm64": ["@flukxr/typst-cli-win32-arm64@0.15.0-npm.2", "", { "os": "win32", "cpu": "arm64" }, "sha512-IuiNpOYqv2Vgi/5L2ZyFydly8hPmpQhXA0ZSjR1kmg5W9ItMEr8ZcdJUXmJnLMt+h8QEW7IY9wEQGqSeZ4ITBA=="],
+
+    "@flukxr/typst-cli-win32-x64": ["@flukxr/typst-cli-win32-x64@0.15.0-npm.2", "", { "os": "win32", "cpu": "x64" }, "sha512-pot3r1+qKgVYXh8lN3AGZFVhHE7xX5FXY6bGv2qpyYw8MxmHoQVrA2/oEaFJWJ/6CMrHU+rVa+zP8oVZn6wUyA=="],
 
     "@hono/node-server": ["@hono/node-server@1.19.9", "", { "peerDependencies": { "hono": "^4" } }, "sha512-vHL6w3ecZsky+8P5MD+eFfaGTyCeOHUIFYMGpQGbrBTSmNNoxv0if69rEZ5giu36weC5saFuznL411gRX7bJDw=="],
 

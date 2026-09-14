@@ -77,7 +77,6 @@ test("an alternate profile drives site identity, structured exports, education a
       company: "Example University", url: "https://university.example", tagline: "Education",
       roles: [{title: "Computer Science", dates: "2020 - 2024", location: "London"}]
     });
-    resumeData.pdf.outputPath = "public/resume/alice.pdf";
     const { siteConfig, resumePdfUrl } = await import("./src/lib/site.ts");
     const { buildJsonResume, buildLlmsTxt } = await import("./src/lib/resume.ts");
     const { buildProfilePageJsonLd } = await import("./src/lib/structured-data.ts");
@@ -115,6 +114,8 @@ test("an alternate profile drives site identity, structured exports, education a
     ],
   });
   expect(output.resume.education[0].institution).toBe("Example University");
-  expect(output.resumePdfUrl).toBe("/resume/alice.pdf");
-  expect(output.guide).toContain("https://alice.example/resume/alice.pdf");
+  expect(output.resumePdfUrl).toBe("/resume/sid-jain-resume.pdf");
+  expect(output.guide).toContain(
+    "https://alice.example/resume/sid-jain-resume.pdf"
+  );
 });

@@ -862,8 +862,6 @@ export const resumeData = {
     },
   ] satisfies PublicReference[],
   pdf: {
-    generatedTypstPath: "career/generated/sid-jain-resume-dark.typ",
-    outputPath: "public/resume/sid-jain-resume.pdf",
     title: `${person.name} Resume`,
   },
 } as const;
