@@ -10,10 +10,12 @@ export const metadata = {
   summary:
     "Keeping generated faces consistent, reviewing awkward transitions, and animating 57 still frames with a reversible compass controller.",
   tags: ["animation", "image generation", "TypeScript"],
-  draft: true,
+  draft: false,
 };
 
 My website's header portrait follows the cursor. It's still images played in sequence; most of the work was getting those images to agree on what my face looks like.
+
+![Cut-paper portraits of Sid in several head poses, with the central face turned toward a saffron mouse cursor.](./opengraph-image.jpg)
 
 ## Start with one face you like
 
@@ -25,10 +27,9 @@ My early attempts changed my face width, head size and skin tone between poses. 
 
 <figure>
   <a href={contactSheetPoses.src}>
-    <Image
-      src={contactSheetPoses}
-      alt="An early four-by-four contact sheet with sixteen individual portraits labeled by row, column, intended direction and turn strength."
-    />
+
+![An early four-by-four contact sheet with sixteen individual portraits labeled by row, column, intended direction and turn strength.](./contact-sheet-poses.png)
+
   </a>
   <figcaption>An early 16-pose study, before I settled on the nine-pose compass below. Codes such as R4C2 made feedback precise; percentages described intended poses, not measured angles. Tap to enlarge.</figcaption>
 </figure>
@@ -60,10 +61,9 @@ Number the frames and keep a manifest pairing each code with its pose or transit
 
 <figure>
   <a href={contactSheetFrames.src}>
-    <Image
-      src={contactSheetFrames}
-      alt="The original 57-frame review contact sheet, labeled F00 through F56 with each endpoint direction or intermediate transition and percentage."
-    />
+
+![The original 57-frame review contact sheet, labeled F00 through F56 with each endpoint direction or intermediate transition and percentage.](./contact-sheet-frames.png)
+
   </a>
   <figcaption>The full review set before corrections. F00–F08 are endpoints; F09–F56 are in-betweens. Compare F18–F20 with their destination F02, or F24–F26 with F04. Tap to read the labels.</figcaption>
 </figure>
@@ -72,10 +72,9 @@ I built a small web reviewer for this. It let me choose a movement, slow it down
 
 <figure>
   <a href={motionReview.src}>
-    <Image
-      src={motionReview}
-      alt="The original motion reviewer with a labeled portrait, movement and speed selectors, frame stepping, a scrubber, and a Flag this frame and pause button above the feedback box."
-    />
+
+![The original motion reviewer with a labeled portrait, movement and speed selectors, frame stepping, a scrubber, and a Flag this frame and pause button above the feedback box.](./motion-review.png)
+
   </a>
   <figcaption>Early review tool, paused on F00. The nine scrub positions cover the five-frame path out and four steps back. Tap the screenshot to inspect the controls.</figcaption>
 </figure>
@@ -86,10 +85,9 @@ Overlay neighbors at 50% opacity to spot shifting shoulders, changing hair and j
 
 <figure>
   <a href={portraitOverlay.src}>
-    <Image
-      src={portraitOverlay}
-      alt="The original comparison tool overlays two bottom-left portraits at 50% opacity, with eye-line guides and a lower-torso measurement region. The readout reports 0.4% changed pixels in that region."
-    />
+
+![The original comparison tool overlays two bottom-left portraits at 50% opacity, with eye-line guides and a lower-torso measurement region. The readout reports 0.4% changed pixels in that region.](./portrait-overlay.png)
+
   </a>
   <figcaption>Comparing two earlier poses before background removal. Doubled edges reveal shifts; the lower-torso measurement checks an area that should stay still. Tap to enlarge.</figcaption>
 </figure>
@@ -103,12 +101,9 @@ After replacing an endpoint, replay every connected path. Check at the final siz
 I packed the 57 frames into an 8 × 8 WebP atlas, leaving seven cells empty. Each cell is 96 pixels square for the 48-pixel header portrait at 2× display density. A separate neutral image gives the page a small static fallback while the atlas loads.
 
 <figure>
-  <Image
-    src="/portraits/atlas.webp"
-    width={768}
-    height={768}
-    alt="The shipped portrait atlas, with nine main poses followed by three intermediate frames for each of sixteen transitions. Seven cells at the end are empty."
-  />
+
+![The shipped portrait atlas, with nine main poses followed by three intermediate frames for each of sixteen transitions. Seven cells at the end are empty.](/portraits/atlas.webp)
+
   <figcaption>The actual sprite sheet. Read left to right, row by row; neighboring cells aren't necessarily neighboring poses.</figcaption>
 </figure>
 

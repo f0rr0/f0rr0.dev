@@ -21,11 +21,9 @@ After going through this loop enough times, I began wondering whether AI could d
 It sounded like a fun weekend project. It also sounded like an excellent excuse to hack on [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw).
 
 <figure id="paper-illustration">
-  <Image
-    src="./lunch-decision-v2.webp"
-    alt="A paper kitchen scene with a cook chopping vegetables, a pantry of ingredients, and a family member using a phone at a nearby desk."
-    sizes="(min-width: 1024px) 672px, (min-width: 768px) 704px, (min-width: 640px) calc(100vw - 64px), calc(100vw - 32px)"
-  />
+
+![A paper kitchen scene with a cook chopping vegetables, a pantry of ingredients, and a family member using a phone at a nearby desk.](./lunch-decision-v2.webp)
+
   <figcaption>Messages, pantry photos, and old orders finally add up to lunch.</figcaption>
 </figure>
 
@@ -101,11 +99,9 @@ That last case matters. The easiest implementation is to flatten every sentence 
 The same separation helps with repetition. “We ate this recently”, “I didn't enjoy it”, and “everyone liked it” are different signals. I stored meals and their feedback together so the next suggestion could use both.
 
 <figure id="preference-memory" className="article-screenshot">
-  <Image
-    src="./meal-preferences.png"
-    alt="Telegram conversation where ZeroClaw summarizes Sid and Shreya's meal preferences"
-    sizes="(min-width: 640px) 448px, 100vw"
-  />
+
+![Telegram conversation where ZeroClaw summarizes Sid and Shreya's meal preferences](./meal-preferences.png)
+
   <figcaption>
     The assistant remembers whose preference is whose.
   </figcaption>
@@ -173,24 +169,22 @@ The assistant could now say “capsicum is probably available; paneer needs chec
 
 <div id="pantry-freshness" className="article-screenshot-grid">
   <figure>
-    <Image
-      src="./pantry-from-order-history.png"
-      alt="Telegram conversation showing ZeroClaw derive a pantry list from recent Instamart order history"
-      sizes="(min-width: 1024px) 436px, (min-width: 640px) calc(50vw - 3rem), 100vw"
-    />
+
+![Telegram conversation showing ZeroClaw derive a pantry list from recent Instamart order history](./pantry-from-order-history.png)
+
     <figcaption>
       Recent Instamart purchases give the assistant a starting pantry list.
     </figcaption>
+
   </figure>
   <figure>
-    <Image
-      src="./pantry-freshness-check.png"
-      alt="Telegram conversation where ZeroClaw reports a chicken purchase date and refreshes inventory"
-      sizes="(min-width: 1024px) 436px, (min-width: 640px) calc(50vw - 3rem), 100vw"
-    />
+
+![Telegram conversation where ZeroClaw reports a chicken purchase date and refreshes inventory](./pantry-freshness-check.png)
+
     <figcaption>
       The purchase date prompts a fresh check on the chicken.
     </figcaption>
+
   </figure>
 </div>
 
@@ -214,24 +208,22 @@ The cook's messages remain part of the grounding context because “technically 
 
 <div id="context-aware-recommendations" className="article-screenshot-grid">
   <figure>
-    <Image
-      src="./lunch-from-fridge-photos.png"
-      alt="Telegram conversation with two fridge photos and ZeroClaw suggesting lunch dishes from visible vegetables"
-      sizes="(min-width: 1024px) 436px, (min-width: 640px) calc(50vw - 3rem), 100vw"
-    />
+
+![Telegram conversation with two fridge photos and ZeroClaw suggesting lunch dishes from visible vegetables](./lunch-from-fridge-photos.png)
+
     <figcaption>
       Two fridge photos become ingredients for the lunch suggestions.
     </figcaption>
+
   </figure>
   <figure>
-    <Image
-      src="./breakfast-from-pantry.png"
-      alt="Telegram conversation where ZeroClaw suggests breakfast options based on pantry ingredients"
-      sizes="(min-width: 1024px) 436px, (min-width: 640px) calc(50vw - 3rem), 100vw"
-    />
+
+![Telegram conversation where ZeroClaw suggests breakfast options based on pantry ingredients](./breakfast-from-pantry.png)
+
     <figcaption>
       The pantry also gives breakfast suggestions somewhere to start.
     </figcaption>
+
   </figure>
 </div>
 

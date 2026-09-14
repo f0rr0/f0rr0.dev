@@ -1,43 +1,55 @@
-import Image from "next/image";
+import type { StaticImageData } from "next/image";
 import Link from "next/link";
 
 import { LocalDateTime } from "@/components/local-date-time";
+import MDXImage from "@/components/mdx/MDXImage";
 import {
   HoverCardGroup,
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
-import { findMetadataImageAsset } from "@/lib/blog-utils";
+import {
+  findMetadataImageAsset,
+  importMetadataImageModule,
+} from "@/lib/blog-utils";
 import type { BlogPost } from "@/lib/blog-utils";
 
 export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
   const entries = await Promise.all(
-    posts.map(async (post) => ({
-      ...post,
-      hasPreview:
-        (await findMetadataImageAsset(post.importPath, "opengraph")) !== null,
-    }))
+    posts.map(async (post) => {
+      const asset =
+        (await findMetadataImageAsset(post.importPath, "opengraph")) ??
+        (await findMetadataImageAsset(post.importPath, "twitter"));
+      if (asset === null) {
+        return { post, shareImage: undefined };
+      }
+      if (asset.type === "module") {
+        return { post, shareImage: `/writing/${post.slug}/share-image` };
+      }
+      const { default: shareImage } = await importMetadataImageModule<{
+        default: StaticImageData;
+      }>(asset.importPath);
+      return { post, shareImage };
+    })
   );
   return entries.length === 0 ? (
     <p className="text-muted-foreground">No published writing yet.</p>
   ) : (
     <HoverCardGroup>
       <ol className="site-list divide-y divide-border">
-        {entries.map((post) => (
+        {entries.map(({ post, shareImage }) => (
           <li key={post.slug}>
             <HoverCardTrigger
               payload={
                 <HoverCardContent>
-                  {post.hasPreview ? (
-                    <Image
-                      alt=""
-                      className="aspect-[1200/630] w-full border-b object-cover"
-                      height={168}
-                      src={`/writing/${post.slug}/share-image`}
-                      unoptimized
-                      width={320}
-                    />
-                  ) : null}
+                  <MDXImage
+                    alt=""
+                    className="aspect-[1200/630] w-full border-b object-cover"
+                    height={168}
+                    sizes="320px"
+                    src={shareImage}
+                    width={320}
+                  />
                   <div className="space-y-2 p-4">
                     <p className="font-medium">{post.metadata.title}</p>
                     <p className="text-muted-foreground">

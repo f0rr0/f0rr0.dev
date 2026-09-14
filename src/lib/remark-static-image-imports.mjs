@@ -1,4 +1,4 @@
-import { visit } from "unist-util-visit";
+import { CONTINUE, SKIP, visit } from "unist-util-visit";
 
 const EXTERNAL_PROTOCOL_PATTERN = /^(https?:)?\/\//i;
 const DATA_URL_PATTERN = /^data:/i;
@@ -236,6 +236,22 @@ const remarkStaticImageImports = () => (tree) => {
 
   visit(tree, "mdxJsxTextElement", (node) => {
     transformJsxImage(node, imports, importAliases, counterRef);
+  });
+
+  visit(tree, "paragraph", (node, index, parent) => {
+    const [image] = node.children;
+    if (
+      (parent?.name === "figure" || parent?.name === "a") &&
+      parent.type === "mdxJsxFlowElement" &&
+      typeof index === "number" &&
+      node.children.length === 1 &&
+      image.type === "mdxJsxTextElement" &&
+      image.name === "img"
+    ) {
+      parent.children[index] = { ...image, type: "mdxJsxFlowElement" };
+      return SKIP;
+    }
+    return CONTINUE;
   });
 
   if (imports.length > 0 && Array.isArray(tree.children)) {

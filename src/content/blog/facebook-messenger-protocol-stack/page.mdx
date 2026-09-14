@@ -34,11 +34,9 @@ client.on(PacketType.PingReq, () => {
 That looks laughably small after an evening spent doubting the transport. It also set the method for everything that followed: start with the public standard, keep what matches, and put each private variation behind a narrow seam.
 
 <figure id="paper-illustration">
-  <Image
-    src="./backwards-packet.webp"
-    alt="A coral packet marked C0 00 travels from a server toward a client computer, above an engineer's notebook and network cable."
-    sizes="(min-width: 1024px) 672px, (min-width: 768px) 704px, (min-width: 640px) calc(100vw - 64px), calc(100vw - 32px)"
-  />
+
+![A coral packet marked C0 00 travels from a server toward a client computer, above an engineer's notebook and network cable.](./backwards-packet.webp)
+
   <figcaption>The useful clue was a keepalive travelling the wrong way.</figcaption>
 </figure>
 

@@ -17,10 +17,9 @@ My first implementation had reservations, captures, releases, microcredits, and 
 Getting there involved deciding what a credit meant, which state deserved to exist, and what an error actually told me.
 
 <figure>
-  <Image
-    src="./competing-requests.webp"
-    alt="Two couriers bring unmarked job slips to a shared workshop till holding a lone paper token."
-  />
+
+![Two couriers bring unmarked job slips to a shared workshop till holding a lone paper token.](./competing-requests.webp)
+
   <figcaption>Both requests reach for the same remaining balance.</figcaption>
 </figure>
 
@@ -80,10 +79,9 @@ For a successful job, stop after the second row. There is no settlement entry ju
 The customer-visible trade-off is real: the amount is spent while work is running. If failure handling is delayed, the refund is delayed too. I also gave up partial capture in favour of a full refund of the original charge. This fits the current fixed-price operations; it would need revisiting for open-ended usage or partial-delivery pricing.
 
 <figure>
-  <Image
-    src="./charge-and-refund.webp"
-    alt="A workshop clerk returns a token after a failed print job while receipts marked Paid and Returned remain together in the ledger."
-  />
+
+![A workshop clerk returns a token after a failed print job while receipts marked Paid and Returned remain together in the ledger.](./charge-and-refund.webp)
+
   <figcaption>The return gets a new entry. The earlier charge remains in the record.</figcaption>
 </figure>
 
@@ -121,10 +119,9 @@ The balance projection is useful because the UI and admission path need the curr
 In the latest implementation, an `AFTER INSERT` ledger trigger updates the account in the same transaction. The projection is named `ai_credit_readonly_accounts`, and direct writes are rejected. Separate triggers reject ledger updates, deletes, and truncation. A correction goes through a new entry.
 
 <figure>
-  <Image
-    src="./ledger-projection.webp"
-    alt="A receipt enters a paper ledger whose gears and belt drive a protected, unnumbered balance gauge."
-  />
+
+![A receipt enters a paper ledger whose gears and belt drive a protected, unnumbered balance gauge.](./ledger-projection.webp)
+
   <figcaption>The ledger drives the balance. The gauge has no independent write path.</figcaption>
 </figure>
 
@@ -218,10 +215,9 @@ Now consider an activity whose transaction commits, but whose completion acknowl
 If I treat that error as proof of failed fulfillment, I can refund a payment after delivering its credits. If I blindly repeat the top-up, I can deliver them twice.
 
 <figure>
-  <Image
-    src="./lost-acknowledgement.webp"
-    alt="A purchase receipt marked Recorded remains safely filed while its acknowledgement envelope tears in transit, leaving the recipient with no reply."
-  />
+
+![A purchase receipt marked Recorded remains safely filed while its acknowledgement envelope tears in transit, leaving the recipient with no reply.](./lost-acknowledgement.webp)
+
   <figcaption>
     The credits can be recorded even when the acknowledgement never arrives.
   </figcaption>
