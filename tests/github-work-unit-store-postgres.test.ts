@@ -97,6 +97,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
   let readPublicGitHubActivityPage: (typeof GithubActivityStore)["readPublicGitHubActivityPage"];
   let readGitHubFactualWorkerBacklog: (typeof GithubBackfillStore)["readGitHubFactualWorkerBacklog"];
   let refreshGitHubWorkUnitProjection: (typeof GithubWorkUnitStore)["refreshGitHubWorkUnitProjection"];
+  let readGitHubWorkUnitProjectionEvidence: (typeof GithubWorkUnitStore)["readGitHubWorkUnitProjectionEvidence"];
   let requestGitHubWorkUnitProjection: (typeof GithubWorkUnitProjectionState)["requestGitHubWorkUnitProjection"];
   let runGitHubActivityWorker: (typeof GithubActivityWorker)["runGitHubActivityWorker"];
   let schema: typeof DatabaseSchema;
@@ -158,7 +159,7 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
     const client = await import("../src/db/client.ts");
     ({ closeDatabase } = client);
     database = client.getDatabase();
-    ({ refreshGitHubWorkUnitProjection } =
+    ({ refreshGitHubWorkUnitProjection, readGitHubWorkUnitProjectionEvidence } =
       await import("../src/lib/github-work-unit-store.ts"));
     ({ persistGitHubWebhookIssue } =
       await import("../src/lib/github-commits-store.ts"));
@@ -250,6 +251,47 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
         stderr: "ignore",
         stdout: "ignore",
       });
+    }
+  });
+
+  test("round-trips compact file facts without changing order, counters, or completeness", async () => {
+    const files = [
+      { ...fileFact('src/雪 "quoted".ts'), additions: 7, deletions: 2 },
+      { ...fileFact("src/second.py"), additions: 0, deletions: 9 },
+      { ...fileFact("src/second.py"), additions: 3, deletions: 0 },
+    ];
+    try {
+      for (const value of [files, [], null]) {
+        await admin`update github_commits set file_facts_complete = ${value !== null}, file_facts = ${value === null ? null : JSON.stringify(value)}::jsonb where repository_id = ${repositoryId} and sha = ${firstSha}`;
+        const snapshot = await readGitHubWorkUnitProjectionEvidence();
+        const change = snapshot.input.changes.find(
+          (item) => item.sha === firstSha
+        );
+        expect(change?.fileFacts).toEqual(
+          value?.map(({ filename, additions, deletions }) => ({
+            filename,
+            additions,
+            deletions,
+          })) ?? []
+        );
+        expect(change?.fileFactsComplete).toBe(value !== null);
+      }
+      for (const invalid of [
+        { ...files[0], additions: -1 },
+        { ...files[0], deletions: 1.5 },
+        { ...files[0], additions: "7" },
+        { ...files[0], additions: Number.MAX_SAFE_INTEGER + 1 },
+        { ...files[0], filename: null },
+        { filename: "missing-counters.ts" },
+      ]) {
+        await admin`update github_commits set file_facts = ${JSON.stringify([invalid])}::jsonb where repository_id = ${repositoryId} and sha = ${firstSha}`;
+        await assert.rejects(
+          readGitHubWorkUnitProjectionEvidence(),
+          /Stored compact GitHub file evidence is invalid\./u
+        );
+      }
+    } finally {
+      await admin`update github_commits set file_facts_complete = true, file_facts = ${JSON.stringify([fileFact("src/first.ts")])}::jsonb where repository_id = ${repositoryId} and sha = ${firstSha}`;
     }
   });
 
@@ -608,6 +650,44 @@ describe.skipIf(!dockerAvailable)("GitHub work-unit projection store", () => {
       headContentRevision: before.headContentRevision + 1,
       orderingRevision: before.orderingRevision + 1,
     });
+    // Re-evaluate the same input to exercise the non-null payload check, rather
+    // than skipping summary work entirely through the unchanged-input guard.
+    await database
+      .update(schema.githubWorkUnits)
+      .set({ summaryEvaluatedDigest: null })
+      .where(eq(schema.githubWorkUnits.id, unit.id));
+    await refreshGitHubWorkUnitProjection(new Date("2026-08-30T12:02:00.000Z"));
+    const [unchangedAttempt] = await database
+      .select()
+      .from(schema.githubWorkUnitSummaryAttempts);
+    expect(unchangedAttempt.requestPayload).toBe(attempts[0].requestPayload);
+    expect(unchangedAttempt.debounceUntil).toEqual(attempts[0].debounceUntil);
+
+    await database
+      .update(schema.githubWorkUnitSummaryAttempts)
+      .set({ requestPayload: null, state: "retryable" })
+      .where(eq(schema.githubWorkUnitSummaryAttempts.workUnitId, unit.id));
+    await database
+      .update(schema.githubWorkUnits)
+      .set({ summaryEvaluatedDigest: null })
+      .where(eq(schema.githubWorkUnits.id, unit.id));
+    await refreshGitHubWorkUnitProjection(new Date("2026-08-30T12:03:00.000Z"));
+    const [restoredAttempt] = await database
+      .select()
+      .from(schema.githubWorkUnitSummaryAttempts);
+    expect(restoredAttempt.requestPayload).toBe(attempts[0].requestPayload);
+    expect(restoredAttempt.debounceUntil).toEqual(
+      new Date("2026-08-30T12:08:00.000Z")
+    );
+    expect(restoredAttempt.startedRequests).toBe(attempts[0].startedRequests);
+    // Restore the fixture's original claim schedule for the following scenarios.
+    await database
+      .update(schema.githubWorkUnitSummaryAttempts)
+      .set({
+        state: attempts[0].state,
+        debounceUntil: attempts[0].debounceUntil,
+      })
+      .where(eq(schema.githubWorkUnitSummaryAttempts.workUnitId, unit.id));
   });
 
   test("reuses unchanged outcomes across context changes without another request", async () => {
