@@ -33,7 +33,7 @@ import {
   trackedGitHubAccountFrom,
 } from "@/lib/github-commits-core";
 import type { TrackedGitHubAccount } from "@/lib/github-commits-core";
-import { requestGitHubWorkUnitProjection } from "@/lib/github-work-unit-projection-state";
+import { requestGitHubProjectionAfterRefRepair } from "@/lib/github-work-unit-projection-state";
 
 const DEFAULT_LEASE_MS = 5 * 60 * 1000;
 const SHA = /^[a-f0-9]{40}$/u;
@@ -435,6 +435,13 @@ export const completeGitHubRefRepair = async (
 ): Promise<GitHubRefRepairCompletion> => {
   validateGitHubRefRepairSource(repair, source);
   return await getDatabase().transaction(async (transaction) => {
+    // Serialize repairs within a repository so concurrent final repairs cannot
+    // both observe another unfinished head and omit the publication request.
+    await transaction
+      .select({ id: githubRepositories.id })
+      .from(githubRepositories)
+      .where(eq(githubRepositories.id, repair.repositoryId))
+      .for("update");
     const [desired] = await transaction
       .select({
         active: githubRepositoryRefs.active,
@@ -562,7 +569,10 @@ export const completeGitHubRefRepair = async (
         repairLeaseUntil: null,
       })
       .where(repairIdentity(repair));
-    await requestGitHubWorkUnitProjection(transaction);
+    await requestGitHubProjectionAfterRefRepair(
+      transaction,
+      repair.repositoryId
+    );
     return {
       generation,
       insertedCommits: inserted.length,
@@ -577,6 +587,11 @@ export const completeGitHubRefDeletion = async (
   repair: ClaimedDeletedGitHubRefRepair
 ): Promise<{ stale: boolean }> =>
   await getDatabase().transaction(async (transaction) => {
+    await transaction
+      .select({ id: githubRepositories.id })
+      .from(githubRepositories)
+      .where(eq(githubRepositories.id, repair.repositoryId))
+      .for("update");
     const [desired] = await transaction
       .select({ active: githubRepositoryRefs.active })
       .from(githubRepositoryRefs)
@@ -606,7 +621,10 @@ export const completeGitHubRefDeletion = async (
         repairLeaseUntil: null,
       })
       .where(repairIdentity(repair));
-    await requestGitHubWorkUnitProjection(transaction);
+    await requestGitHubProjectionAfterRefRepair(
+      transaction,
+      repair.repositoryId
+    );
     return { stale: false };
   });
 

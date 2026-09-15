@@ -375,10 +375,7 @@ const insertPushObservations = async (
   if (inputs.length === 0) {
     return { duplicates: 0, knownCommits: 0, pushes: 0 };
   }
-  if (
-    new Set(inputs.map(pushInputIdentityKey)).size !== inputs.length ||
-    new Set(inputs.map(pushSourceIdentityKey)).size !== inputs.length
-  ) {
+  if (new Set(inputs.map(pushSourceIdentityKey)).size !== inputs.length) {
     throw new GitHubPushObservationEvidenceConflictError();
   }
 
@@ -440,6 +437,16 @@ const insertPushObservations = async (
       sha,
     }));
   });
+  // Persist the first event's evidence before validating repeats in this batch.
+  for (
+    let offset = 0;
+    offset < commitRows.length;
+    offset += PUSH_COMMIT_INSERT_BATCH
+  ) {
+    await transaction
+      .insert(githubPushObservationCommits)
+      .values(commitRows.slice(offset, offset + PUSH_COMMIT_INSERT_BATCH));
+  }
   const insertedSources = new Set(inserted.map(pushSourceIdentityKey));
   const duplicateInputs = inputs.filter(
     (input) => !insertedSources.has(pushSourceIdentityKey(input))
@@ -590,18 +597,11 @@ const insertPushObservations = async (
           }))
         );
       }
+      conflict.expectedCommitCount = input.push.size;
+      commitsByObservation.set(conflict.id, [...input.push.commitShas]);
       promoted += 1;
       promotedCommitCount += input.push.commitShas.length;
     }
-  }
-  for (
-    let offset = 0;
-    offset < commitRows.length;
-    offset += PUSH_COMMIT_INSERT_BATCH
-  ) {
-    await transaction
-      .insert(githubPushObservationCommits)
-      .values(commitRows.slice(offset, offset + PUSH_COMMIT_INSERT_BATCH));
   }
   return {
     duplicates: inputs.length - inserted.length - promoted,

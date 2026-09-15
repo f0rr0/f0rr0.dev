@@ -16,9 +16,15 @@ import postgres from "postgres";
 import { closeDatabase } from "../src/db/client.ts";
 import type {
   GitHubHeadSignal,
+  GitHubEvent,
+  GitHubPush,
   GitHubCommit,
 } from "../src/lib/github-commits-core.ts";
-import { persistGitHubWebhookHeadSignal } from "../src/lib/github-commits-store.ts";
+import {
+  persistGitHubWebhookHeadSignal,
+  persistAccountIntake,
+  readGitHubAccountCheckpoint,
+} from "../src/lib/github-commits-store.ts";
 import type { ClaimedGitHubRefRepair } from "../src/lib/github-ref-membership-store.ts";
 import {
   claimGitHubRefRepairs,
@@ -96,6 +102,23 @@ const headSignal = (
     visibility: "public",
   },
 });
+
+const pushEvent = (id: string, push: GitHubPush): GitHubEvent => ({
+  id,
+  occurredAt: "2026-09-12T07:00:00.000Z",
+  push,
+  issue: null,
+  pullRequest: null,
+});
+
+const intakeEvents = async (events: GitHubEvent[]) =>
+  await persistAccountIntake({
+    account: "f0rr0",
+    events,
+    gap: null,
+    latestEventId: events[0].id,
+    expectedCheckpoint: await readGitHubAccountCheckpoint("f0rr0"),
+  });
 
 describe("GitHub ref repair source validation", () => {
   test("accepts the tracked-author intersection of complete reachability", () => {
@@ -560,6 +583,107 @@ describe.skipIf(!dockerAvailable)(
           coverageSinceAt: new Date(row.coverageSinceAt),
         }))
       ).toEqual([{ coverageSinceAt: august1, generation: 2 }]);
+    });
+
+    test("accepts repeated push identities without losing evidence or advancing past conflicts", async () => {
+      const push: GitHubPush = {
+        before: sha("a"),
+        head: sha("b"),
+        commitShas: [],
+        size: null,
+        pushedBy: "f0rr0",
+        ref: "refs/heads/main",
+        repository: { id: "901", fullName: "f0rr0/repeated-events" },
+      };
+      expect(
+        await intakeEvents([pushEvent("9002", push), pushEvent("9001", push)])
+      ).toMatchObject({
+        pushes: 1,
+      });
+      expect(
+        await intakeEvents([pushEvent("9002", push), pushEvent("9001", push)])
+      ).toMatchObject({
+        pushes: 0,
+      });
+      expect((await readGitHubAccountCheckpoint("f0rr0"))?.latestEventId).toBe(
+        "9002"
+      );
+      expect(
+        await admin`select id from github_push_observations where repository_id = '901'`
+      ).toHaveLength(1);
+
+      const exact = {
+        ...push,
+        head: sha("d"),
+        size: 1,
+        commitShas: [sha("d")],
+      };
+      expect(
+        await intakeEvents([pushEvent("9004", exact), pushEvent("9003", exact)])
+      ).toMatchObject({ pushes: 1, knownCommits: 1 });
+      const contradictory = {
+        ...push,
+        head: sha("f"),
+        size: 1,
+        commitShas: [sha("e")],
+      };
+      await assert.rejects(
+        intakeEvents([
+          pushEvent("9006", contradictory),
+          pushEvent("9005", { ...contradictory, commitShas: [sha("f")] }),
+        ]),
+        /Conflicting GitHub push evidence/u
+      );
+      expect((await readGitHubAccountCheckpoint("f0rr0"))?.latestEventId).toBe(
+        "9004"
+      );
+      expect(
+        await admin`select id from github_push_observations where repository_id = '901'`
+      ).toHaveLength(2);
+
+      await admin`insert into github_push_observations
+        (repository_id, repository_name_snapshot, account, ref_name, before_sha, after_sha, source, source_id, observed_at)
+        values ('901', 'f0rr0/repeated-events', 'f0rr0', 'refs/heads/main', ${sha("a")}, ${sha("f")}, 'refs', 'review-ref-observation', now())`;
+      await assert.rejects(
+        intakeEvents([
+          pushEvent("9008", contradictory),
+          pushEvent("9007", { ...contradictory, commitShas: [sha("f")] }),
+        ]),
+        /Conflicting GitHub push evidence/u
+      );
+      expect((await readGitHubAccountCheckpoint("f0rr0"))?.latestEventId).toBe(
+        "9004"
+      );
+    });
+
+    test("requests one projection after the final relevant head is repaired", async () => {
+      const now = new Date("2026-09-15T00:00:00.000Z");
+      await admin`insert into github_repositories (id, full_name, default_branch, heads_last_reconciled_at)
+        values ('902', 'f0rr0/repair-batch', 'main', ${iso(now)})`;
+      await admin`insert into github_repository_refs
+        (repository_id, ref_name, kind, head_sha, branch_lineage_id, active, projection_relevant, first_observed_at, last_observed_at)
+        values ('902', 'refs/heads/main', 'head', ${sha("a")}, ${branchLineageId}, true, true, ${iso(now)}, ${iso(now)}),
+        ('902', 'refs/heads/side', 'head', ${sha("b")}, ${sideBranchLineageId}, true, true, ${iso(now)}, ${iso(now)})`;
+      await admin`update github_public_feed_head set projection_request_token = null where id`;
+      const repairs = await claimGitHubRefRepairs({
+        limit: 2,
+        repositoryId: "902",
+        now,
+      });
+      expect(repairs).toHaveLength(2);
+      for (const [index, repair] of repairs.entries()) {
+        assert.ok(repair.active);
+        expect(
+          await completeGitHubRefRepair(
+            repair,
+            { commitShas: [repair.desiredHeadSha], commits: [] },
+            now
+          )
+        ).toMatchObject({ stale: false });
+        const [head] =
+          await admin`select projection_request_token is not null as requested from github_public_feed_head`;
+        expect(head.requested).toBe(index === 1);
+      }
     });
   }
 );
