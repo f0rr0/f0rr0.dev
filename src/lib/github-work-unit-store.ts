@@ -244,15 +244,16 @@ const checkedFileFacts = (
   return facts;
 };
 
+// Wire format only: [filename, additions, deletions]. Stored facts stay unchanged.
 const compactFileFacts = sql<unknown>`case
 when ${githubCommits.fileFacts} is null then null
 else coalesce(
   (
     select jsonb_agg(
-      jsonb_build_object(
-        'additions', entry.value -> 'additions',
-        'deletions', entry.value -> 'deletions',
-        'filename', entry.value -> 'filename'
+      jsonb_build_array(
+        entry.value -> 'filename',
+        entry.value -> 'additions',
+        entry.value -> 'deletions'
       )
       order by entry.position
     )
@@ -277,19 +278,20 @@ const checkedCompactFileFacts = (
   const facts: GitHubFileChangeStat[] = [];
   for (const item of value) {
     if (
-      !isRecord(item) ||
-      !Number.isSafeInteger(item.additions) ||
-      (item.additions as number) < 0 ||
-      !Number.isSafeInteger(item.deletions) ||
-      (item.deletions as number) < 0 ||
-      typeof item.filename !== "string"
+      !Array.isArray(item) ||
+      item.length !== 3 ||
+      typeof item[0] !== "string" ||
+      !Number.isSafeInteger(item[1]) ||
+      (item[1] as number) < 0 ||
+      !Number.isSafeInteger(item[2]) ||
+      (item[2] as number) < 0
     ) {
       throw new TypeError("Stored compact GitHub file evidence is invalid.");
     }
     facts.push({
-      additions: item.additions as number,
-      deletions: item.deletions as number,
-      filename: item.filename,
+      additions: item[1] as number,
+      deletions: item[2] as number,
+      filename: item[0],
     });
   }
   return facts;
@@ -738,7 +740,6 @@ const loadProjectionSnapshot = async (
       active: githubRepositoryRefs.active,
       branchLineageId: githubRepositoryRefs.branchLineageId,
       headSha: githubRepositoryRefs.headSha,
-      lastObservedAt: githubRepositoryRefs.lastObservedAt,
       refName: githubRepositoryRefs.refName,
       repositoryId: githubRepositoryRefs.repositoryId,
     })
@@ -1861,7 +1862,9 @@ const setSummaryInputs = async (
         outcome: githubWorkUnitSummaryAttempts.outcome,
         outcomeDigest: githubWorkUnitSummaryAttempts.outcomeDigest,
         recipe: githubWorkUnitSummaryAttempts.recipe,
-        requestPayload: githubWorkUnitSummaryAttempts.requestPayload,
+        hasRequestPayload: isNotNull(
+          githubWorkUnitSummaryAttempts.requestPayload
+        ).mapWith(Boolean),
         revision: githubWorkUnitSummaryAttempts.revision,
         state: githubWorkUnitSummaryAttempts.state,
         summaryInputDigest: githubWorkUnitSummaryAttempts.summaryInputDigest,
@@ -2003,7 +2006,7 @@ const setSummaryInputs = async (
         if (
           (existingAttempt.state === "pending" ||
             existingAttempt.state === "retryable") &&
-          (existingAttempt.requestPayload === null ||
+          (!existingAttempt.hasRequestPayload ||
             current.summaryInputDigest !== eligibleBuild.summaryInputDigest)
         ) {
           const debounceUntil = new Date(now.getTime() + SUMMARY_DEBOUNCE_MS);
