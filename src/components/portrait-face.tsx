@@ -35,7 +35,6 @@ export function PortraitFace({ className }: Readonly<{ className?: string }>) {
   useEffect(() => {
     const mobile = matchMedia("(hover: none), (pointer: coarse)").matches;
     let ambientTimer = 0;
-    let glancing = false;
     let idleTimer = 0;
     let frameTimer = 0;
     let disposed = false;
@@ -58,14 +57,12 @@ export function PortraitFace({ className }: Readonly<{ className?: string }>) {
       }
       machine.advance();
       renderFrame();
-      // A half-turn keeps idle glances subtle with the existing authored frames.
-      if (glancing && machine.getFrame().endsWith("_2")) {
-        return;
+      if (!machine.isSettled()) {
+        frameTimer = window.setTimeout(
+          advance,
+          mobile ? 100 : FACE_MOTION_CONFIG.frameIntervalMs
+        );
       }
-      frameTimer = window.setTimeout(
-        advance,
-        mobile ? 100 : FACE_MOTION_CONFIG.frameIntervalMs
-      );
     };
     const look = (pose: FaceMotionPose) => {
       machine.setTarget(pose);
@@ -75,7 +72,6 @@ export function PortraitFace({ className }: Readonly<{ className?: string }>) {
     };
     const rest = () => {
       clearTimeout(idleTimer);
-      glancing = false;
       look("center");
     };
     const loadAtlas = async () => {
@@ -116,7 +112,6 @@ export function PortraitFace({ className }: Readonly<{ className?: string }>) {
             return;
           }
           if (ready && !document.hidden) {
-            glancing = true;
             look(Math.random() < 0.5 ? "left" : "right");
             idleTimer = window.setTimeout(rest, 1100 + Math.random() * 500);
           }

@@ -1,10 +1,10 @@
-// Adapted from PR #67: decoded atlas, compass paths, and mid-edge retargeting.
+// Ignore pointer changes until the current turn completes.
 export const FACE_MOTION_CONFIG = {
   atlasColumns: 8,
   atlasRows: 8,
   centerPose: "center",
   deadZoneRatio: 0.5,
-  frameIntervalMs: 40,
+  frameIntervalMs: 50,
 } as const;
 
 export const FACE_MOTION_POSTER_SRC = "/portraits/neutral.webp?v=7";
@@ -130,20 +130,6 @@ export function poseFromClientPointer(
   );
 }
 
-function shortestPosePath(
-  from: FaceMotionPose,
-  to: FaceMotionPose
-): FaceMotionPose[] {
-  if (from === to) {
-    return [from];
-  }
-  const adjacent = FACE_MOTION_CANONICAL_EDGES.some(
-    ([start, end]) =>
-      (from === start && to === end) || (from === end && to === start)
-  );
-  return adjacent ? [from, to] : [from, "center", to];
-}
-
 export function canonicalFaceMotionEdge(
   from: FaceMotionPose,
   to: FaceMotionPose
@@ -254,34 +240,10 @@ export class CompassFaceMachine {
 
   setTarget(target: FaceMotionPose): void {
     assertFaceMotionPose(target);
-
-    if (target === this.target) {
+    if (this.edge !== null) {
       return;
     }
-
     this.target = target;
-
-    if (this.edge === null) {
-      return;
-    }
-
-    const remainingSteps = (pose: FaceMotionPose) =>
-      (shortestPosePath(pose, target).length - 1) * 4;
-    const distanceFrom = this.edge.step + remainingSteps(this.edge.from);
-    const distanceTo =
-      this.edge.intermediates +
-      1 -
-      this.edge.step +
-      remainingSteps(this.edge.to);
-
-    if (distanceFrom < distanceTo) {
-      this.edge = {
-        from: this.edge.to,
-        intermediates: this.edge.intermediates,
-        step: this.edge.intermediates + 1 - this.edge.step,
-        to: this.edge.from,
-      };
-    }
   }
 
   advance(): FaceMotionFrame {
@@ -290,10 +252,14 @@ export class CompassFaceMachine {
         return this.frame;
       }
 
-      const path = shortestPosePath(this.pose, this.target);
-      const [, nextPose] = path;
-
-      if (nextPose === undefined) {
+      const adjacent = FACE_MOTION_CANONICAL_EDGES.some(
+        ([start, end]) =>
+          (this.pose === start && this.target === end) ||
+          (this.pose === end && this.target === start)
+      );
+      if (!adjacent) {
+        this.pose = this.target;
+        this.frame = this.pose;
         return this.frame;
       }
 
@@ -301,7 +267,7 @@ export class CompassFaceMachine {
         from: this.pose,
         intermediates: 3,
         step: 0,
-        to: nextPose,
+        to: this.target,
       };
     }
 

@@ -109,9 +109,9 @@ I packed the 57 frames into an 8 × 8 WebP atlas, leaving seven cells empty. Eac
 
 ## Let the cursor choose a path
 
-The cursor controller uses `atan2` to choose one of eight directions, with a neutral dead zone around the portrait. Neighboring poses connect directly; other turns pass through center. That small graph avoids generating transitions between every possible pair of poses.
+The cursor controller uses `atan2` to choose one of eight directions, with a neutral dead zone around the portrait. Neighboring poses have animated transitions; other turns switch directly to the requested pose. That small graph avoids generating transitions between every possible pair of poses.
 
-Retargeting matters more than it first appears. If the cursor reverses halfway through a turn, restarting from an endpoint creates a visible snap. The controller compares the remaining route through either end of the current transition, then continues or reverses from the frame already on screen. The same three intermediate images work in both directions.
+Retargeting matters more than it first appears. Reversing halfway through a turn can make the portrait jitter when the cursor hovers near a direction boundary. The controller ignores pointer changes until the current turn finishes, then responds to fresh movement. The same three intermediate images work in both directions.
 
 The element stays fixed. Only its CSS background position changes. For an 8 × 8 atlas, the underlying calculation is:
 
@@ -124,6 +124,6 @@ element.style.backgroundPosition = `${column / 7 * 100}% ${row / 7 * 100}%`;
 
 Divide by seven because CSS percentages align positions across the available background offset: the last cell must land at 100%. [MDN explains that percentage calculation](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/background-position).
 
-The [header implementation](https://github.com/f0rr0/f0rr0.dev/pull/143) advances frames every 40ms while turning, then stops. It decodes the atlas before displaying it, respects reduced motion, and uses occasional half-glances on phones.
+The header advances frames every 50ms while turning, then stops. It decodes the atlas before displaying it, respects reduced motion, and uses slower, occasional glances on phones.
 
 Once the shoulders stayed anchored and the head stopped changing size, the little portrait started to read as a person turning. Most of that improvement came from correcting the images.
