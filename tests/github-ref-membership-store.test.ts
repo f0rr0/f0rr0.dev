@@ -640,6 +640,20 @@ describe.skipIf(!dockerAvailable)(
       expect(
         await admin`select id from github_push_observations where repository_id = '901'`
       ).toHaveLength(2);
+
+      await admin`insert into github_push_observations
+        (repository_id, repository_name_snapshot, account, ref_name, before_sha, after_sha, source, source_id, observed_at)
+        values ('901', 'f0rr0/repeated-events', 'f0rr0', 'refs/heads/main', ${sha("a")}, ${sha("f")}, 'refs', 'review-ref-observation', now())`;
+      await assert.rejects(
+        intakeEvents([
+          pushEvent("9008", contradictory),
+          pushEvent("9007", { ...contradictory, commitShas: [sha("f")] }),
+        ]),
+        /Conflicting GitHub push evidence/u
+      );
+      expect((await readGitHubAccountCheckpoint("f0rr0"))?.latestEventId).toBe(
+        "9004"
+      );
     });
 
     test("requests one projection after the final relevant head is repaired", async () => {
@@ -647,9 +661,9 @@ describe.skipIf(!dockerAvailable)(
       await admin`insert into github_repositories (id, full_name, default_branch, heads_last_reconciled_at)
         values ('902', 'f0rr0/repair-batch', 'main', ${iso(now)})`;
       await admin`insert into github_repository_refs
-        (repository_id, ref_name, kind, head_sha, branch_lineage_id, active, projection_relevant, last_observed_at)
-        values ('902', 'refs/heads/main', 'head', ${sha("a")}, ${branchLineageId}, true, true, ${iso(now)}),
-        ('902', 'refs/heads/side', 'head', ${sha("b")}, ${sideBranchLineageId}, true, true, ${iso(now)})`;
+        (repository_id, ref_name, kind, head_sha, branch_lineage_id, active, projection_relevant, first_observed_at, last_observed_at)
+        values ('902', 'refs/heads/main', 'head', ${sha("a")}, ${branchLineageId}, true, true, ${iso(now)}, ${iso(now)}),
+        ('902', 'refs/heads/side', 'head', ${sha("b")}, ${sideBranchLineageId}, true, true, ${iso(now)}, ${iso(now)})`;
       await admin`update github_public_feed_head set projection_request_token = null where id`;
       const repairs = await claimGitHubRefRepairs({
         limit: 2,

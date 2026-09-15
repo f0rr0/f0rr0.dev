@@ -597,6 +597,8 @@ const insertPushObservations = async (
           }))
         );
       }
+      conflict.expectedCommitCount = input.push.size;
+      commitsByObservation.set(conflict.id, [...input.push.commitShas]);
       promoted += 1;
       promotedCommitCount += input.push.commitShas.length;
     }
