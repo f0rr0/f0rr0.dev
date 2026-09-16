@@ -23,15 +23,9 @@ export function SiteHeader({
     };
     return (
       <li key={item.href}>
-        {item.external === true ? (
-          <a {...props} target="_blank" rel="noopener noreferrer">
-            {item.label}
-          </a>
-        ) : (
-          <Link {...props} prefetch={false}>
-            {item.label}
-          </Link>
-        )}
+        <Link {...props} prefetch={false}>
+          {item.label}
+        </Link>
       </li>
     );
   });

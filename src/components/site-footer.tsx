@@ -6,21 +6,22 @@ export function SiteFooter() {
   return (
     <footer className="site-container mx-auto w-full max-w-192 px-4 sm:px-8 lg:px-12 pb-8 print:hidden">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-border pt-4">
-        <nav aria-label="Contact and feed" className="flex items-center gap-6">
+        <nav
+          aria-label="Contact and feed"
+          className="flex flex-wrap items-center gap-x-6 gap-y-2"
+        >
           <CopyEmailButton email={resumeData.person.email} />
-          {socialProfiles
-            .filter((profile) => profile.network !== "GitHub")
-            .map((profile) => (
-              <a
-                className="site-text-link inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
-                href={profile.url}
-                key={profile.url}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {profile.network}
-              </a>
-            ))}
+          {socialProfiles.map((profile) => (
+            <a
+              className="site-text-link inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
+              href={profile.url}
+              key={profile.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {profile.network}
+            </a>
+          ))}
           <a
             className="site-text-link inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
             href={publicUrl("/rss.xml")}
