@@ -1,5 +1,4 @@
 import { Rss } from "lucide-react";
-import Image from "next/image";
 
 import { CopyEmailButton } from "@/components/copy-email-button";
 import {
@@ -33,13 +32,12 @@ export function SiteFooter() {
                 rel="noopener noreferrer"
               >
                 {/* Brand marks from thesvg.org, served locally. */}
-                <Image
-                  alt=""
-                  width={16}
-                  height={16}
-                  className={`size-4 shrink-0 ${profile.network === "GitHub" ? "dark:invert" : ""}`}
-                  src={`/brands/${profile.network.toLowerCase()}.svg`}
-                  unoptimized
+                <span
+                  aria-hidden="true"
+                  className="size-4 shrink-0 bg-current mask-contain mask-center mask-no-repeat"
+                  style={{
+                    maskImage: `url(/brands/${profile.network.toLowerCase()}.svg)`,
+                  }}
                 />
                 {profile.network}
               </a>
