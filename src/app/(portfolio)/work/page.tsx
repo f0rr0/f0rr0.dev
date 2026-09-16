@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 
 import { GitHubTimeline } from "@/components/github-timeline";
 import { SiteMain } from "@/components/site-page";
@@ -32,19 +31,12 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-async function WorkActivity() {
-  return <GitHubTimeline initialPage={await getInitialGitHubActivity()} />;
-}
-
-export default function WorkLogPage() {
+export default async function WorkLogPage() {
+  const initialPage = await getInitialGitHubActivity();
   return (
     <SiteShell activeHref="/work">
       <SiteMain>
-        <Suspense
-          fallback={<p className="text-muted-foreground">Loading work…</p>}
-        >
-          <WorkActivity />
-        </Suspense>
+        <GitHubTimeline initialPage={initialPage} />
       </SiteMain>
     </SiteShell>
   );

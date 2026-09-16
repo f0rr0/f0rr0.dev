@@ -1,6 +1,5 @@
 import { Star, GitFork } from "lucide-react";
 import type { Metadata } from "next";
-import { Suspense } from "react";
 
 import { CodexStats } from "@/components/codex-stats";
 import { GitHubTimeline } from "@/components/github-timeline";
@@ -126,21 +125,10 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
   );
 }
 
-async function HomeActivity() {
-  const [activity, codexStats] = await Promise.all([
+export default async function Home() {
+  const [activity, codexStats, posts, github] = await Promise.all([
     getInitialGitHubActivity(),
     getPublicCodexStats(),
-  ]);
-  return (
-    <>
-      <GitHubTimeline initialPage={activity} preview />
-      {codexStats === null ? null : <CodexStats stats={codexStats} />}
-    </>
-  );
-}
-
-export default async function Home() {
-  const [posts, github] = await Promise.all([
     getBlogPosts(),
     getGitHubProfile(),
   ]);
@@ -154,9 +142,8 @@ export default async function Home() {
           <WritingList posts={posts.slice(0, 3)} />
         </SiteSection>
 
-        <Suspense fallback={null}>
-          <HomeActivity />
-        </Suspense>
+        <GitHubTimeline initialPage={activity} preview />
+        {codexStats === null ? null : <CodexStats stats={codexStats} />}
 
         <OpenSource github={github} />
       </SiteMain>
