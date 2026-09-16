@@ -126,9 +126,9 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
 }
 
 export default async function Home() {
-  const [activity, codexStats, posts, github] = await Promise.all([
-    getInitialGitHubActivity(),
+  const [codexStats, activity, posts, github] = await Promise.all([
     getPublicCodexStats(),
+    getInitialGitHubActivity(),
     getBlogPosts(),
     getGitHubProfile(),
   ]);
