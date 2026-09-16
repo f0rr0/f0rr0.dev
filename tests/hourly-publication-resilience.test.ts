@@ -107,3 +107,45 @@ test("public reads retain successful snapshots on outage and recover without cac
     assert.deepEqual(await request(), [{ version: 2 }, { version: 2 }]);
   `);
 });
+
+test("live refresh retries a stale page on the next successful poll and stops once caught up", () => {
+  check(`
+    import assert from "node:assert/strict";
+    import { mock } from "bun:test";
+    const React = await import("react");
+    const ReactQuery = await import("@tanstack/react-query");
+    let refreshes = 0;
+    let previousDependencies;
+    const context = {
+      feedRevision: "7", isRefreshing: false, latestAvailable: false,
+      refreshCompletion: 0, markLatestAvailable: () => {},
+      refreshLatest: () => { refreshes++; },
+    };
+    const head = { feedRevision: "8", revision: "9", lastPublishedAt: null, summarizing: false };
+    const query = { data: head, dataUpdatedAt: 1 };
+    const ref = { current: "7" };
+    mock.module("react", () => ({
+      ...React,
+      use: () => context,
+      useRef: () => ref,
+      useEffect: (effect, dependencies) => {
+        if (!previousDependencies || dependencies.some((value, index) => !Object.is(value, previousDependencies[index]))) effect();
+        previousDependencies = dependencies;
+      },
+    }));
+    mock.module("@tanstack/react-query", () => ({ ...ReactQuery, useQuery: () => query }));
+    const { GitHubActivityStatus } = await import("./src/components/github-activity-status.tsx");
+    const render = () => GitHubActivityStatus({ initialHead: { ...head, feedRevision: "7" } });
+    render();
+    assert.equal(refreshes, 1);
+    render();
+    assert.equal(refreshes, 1);
+    query.dataUpdatedAt++;
+    render();
+    assert.equal(refreshes, 2);
+    context.feedRevision = "8";
+    query.dataUpdatedAt++;
+    render();
+    assert.equal(refreshes, 2);
+  `);
+});

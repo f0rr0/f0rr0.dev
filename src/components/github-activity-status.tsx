@@ -117,8 +117,7 @@ export function GitHubActivityStatus({
     refreshCompletion,
     refreshLatest,
   } = useGitHubActivityLive();
-  const requestedRevision = useRef(initialHead.feedRevision);
-  const { data: head } = useQuery({
+  const { data: head, dataUpdatedAt } = useQuery({
     queryKey: ["github-activity-head", initialHead.revision],
     initialData: initialHead,
     staleTime: 60_000,
@@ -129,18 +128,18 @@ export function GitHubActivityStatus({
   });
 
   useEffect(() => {
-    if (
-      comparePublicActivityRevisions(head.feedRevision, feedRevision) > 0 &&
-      comparePublicActivityRevisions(
-        head.feedRevision,
-        requestedRevision.current
-      ) > 0
-    ) {
-      requestedRevision.current = head.feedRevision;
+    // A refresh can serve stale cached data. Retry after the next successful poll.
+    if (comparePublicActivityRevisions(head.feedRevision, feedRevision) > 0) {
       markLatestAvailable();
       refreshLatest();
     }
-  }, [feedRevision, head.feedRevision, markLatestAvailable, refreshLatest]);
+  }, [
+    dataUpdatedAt,
+    feedRevision,
+    head.feedRevision,
+    markLatestAvailable,
+    refreshLatest,
+  ]);
 
   return (
     <div id="github-activity-status">
