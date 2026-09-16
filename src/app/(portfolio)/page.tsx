@@ -1,5 +1,6 @@
 import { Star, GitFork } from "lucide-react";
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import { CodexStats } from "@/components/codex-stats";
 import { GitHubTimeline } from "@/components/github-timeline";
@@ -125,10 +126,21 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
   );
 }
 
-export default async function Home() {
-  const [codexStats, activity, posts, github] = await Promise.all([
-    getPublicCodexStats(),
+async function HomeActivity() {
+  const [activity, codexStats] = await Promise.all([
     getInitialGitHubActivity(),
+    getPublicCodexStats(),
+  ]);
+  return (
+    <>
+      <GitHubTimeline initialPage={activity} preview />
+      {codexStats === null ? null : <CodexStats stats={codexStats} />}
+    </>
+  );
+}
+
+export default async function Home() {
+  const [posts, github] = await Promise.all([
     getBlogPosts(),
     getGitHubProfile(),
   ]);
@@ -142,16 +154,9 @@ export default async function Home() {
           <WritingList posts={posts.slice(0, 3)} />
         </SiteSection>
 
-        <GitHubTimeline initialPage={activity} preview />
-        {codexStats === null ? (
-          <SiteSection id="token-log" title="Token log">
-            <p className="py-2.5 text-muted-foreground">
-              Token activity is unavailable right now.
-            </p>
-          </SiteSection>
-        ) : (
-          <CodexStats stats={codexStats} />
-        )}
+        <Suspense fallback={null}>
+          <HomeActivity />
+        </Suspense>
 
         <OpenSource github={github} />
       </SiteMain>

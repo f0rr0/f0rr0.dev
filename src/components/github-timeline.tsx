@@ -4,12 +4,29 @@ import {
 } from "@/components/github-activity-status";
 import { GitHubTimelinePager } from "@/components/github-timeline-pager";
 import { SiteSection } from "@/components/site-page";
+import { primaryGitHubProfile } from "@/content/resume";
 import type { PublicGitHubActivityPage } from "@/lib/github-activity-types";
 
 export function GitHubTimeline({
   initialPage,
   preview = false,
-}: Readonly<{ initialPage: PublicGitHubActivityPage; preview?: boolean }>) {
+}: Readonly<{
+  initialPage: PublicGitHubActivityPage | null;
+  preview?: boolean;
+}>) {
+  if (initialPage === null) {
+    return preview ? null : (
+      <SiteSection heading="h1" id="timeline" title="Work">
+        <p className="text-muted-foreground">
+          Work activity is temporarily unavailable.{" "}
+          <a className="site-text-link" href={primaryGitHubProfile.url}>
+            View my work on GitHub
+          </a>
+          .
+        </p>
+      </SiteSection>
+    );
+  }
   return (
     <SiteSection
       className={preview ? "home-section mt-12 [scroll-margin-top:2rem]" : ""}

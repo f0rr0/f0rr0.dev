@@ -1,0 +1,109 @@
+import { expect, test } from "bun:test";
+
+// Isolate module mocks from the PostgreSQL integration tests.
+const check = (source: string) => {
+  const result = Bun.spawnSync([process.execPath, "--eval", source], {
+    cwd: new URL("..", import.meta.url).pathname,
+  });
+  expect(result.stderr.toString()).toBe("");
+  expect(result.exitCode).toBe(0);
+};
+
+test("only the hourly invocation publishes, without changing ingestion limits or auth", () => {
+  check(`
+    import assert from "node:assert/strict";
+    import { mock } from "bun:test";
+    const calls = [];
+    mock.module("./src/env.ts", () => ({ env: { CRON_SECRET: "hourly-publication-test-secret-32-characters" } }));
+    mock.module("./src/lib/github-activity-worker.ts", () => ({
+      runGitHubActivityWorker: async options => { calls.push(options); return {}; }
+    }));
+    const { POST } = await import("./src/app/api/cron/github-worker/route.ts");
+    const request = (query, authorized = true) => POST(new Request(
+      "https://example.com/api/cron/github-worker" + query,
+      { method: "POST", headers: authorized ? { authorization: "Bearer hourly-publication-test-secret-32-characters" } : {} }
+    ));
+    assert.equal((await request("?publish=1", false)).status, 401);
+    for (const query of ["?publish=0", "?publish=yes", "?publish=", "?batch=0&publish=1"]) {
+      assert.equal((await request(query)).status, 400);
+    }
+    assert.equal(calls.length, 0);
+    assert.equal((await request("")).status, 200);
+    assert.equal((await request("?publish=1")).status, 200);
+    assert.equal((await request("?publish=1&batch=2")).status, 200);
+    assert.equal(calls[0].includeProjection, false);
+    assert.equal(calls[1].includeProjection, true);
+    assert.deepEqual({ ...calls[0], includeProjection: true }, calls[1]);
+    assert.equal(calls[2].includeProjection, true);
+    assert.equal(calls[2].commitLimit, 2);
+    assert.equal(calls[2].refLimit, 1);
+  `);
+});
+
+test("public reads retain successful snapshots on outage and recover without caching failures", () => {
+  check(`
+    import assert from "node:assert/strict";
+    import { AsyncLocalStorage } from "node:async_hooks";
+    import { mock } from "bun:test";
+    Object.assign(globalThis, { AsyncLocalStorage });
+    mock.module("server-only", () => ({}));
+    mock.module("./src/lib/operational-error.ts", () => ({ reportOperationalError: () => {} }));
+    const { workAsyncStorage } = await import("next/dist/server/app-render/work-async-storage.external.js");
+    let unavailable = true;
+    let version = 1;
+    let reads = 0;
+    const read = async () => {
+      reads++;
+      if (unavailable) throw new Error("Database unavailable");
+      return { version };
+    };
+    mock.module("./src/lib/github-activity-store.ts", () => ({
+      PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE: 7,
+      readPublicGitHubActivityPage: read,
+      readPublicGitHubActivityHead: read,
+    }));
+    mock.module("./src/db/client.ts", () => ({
+      isDatabaseConfigured: () => true,
+      getDatabase: () => ({ select: () => ({ from: () => ({ where: async () => {
+        await read(); return [];
+      } }) }) }),
+    }));
+    mock.module("./src/lib/codex/stats.ts", () => ({ buildPublicCodexStats: () => ({ version }) }));
+    const { getInitialGitHubActivity } = await import("./src/lib/github-activity-feed.ts");
+    const { getPublicCodexStats } = await import("./src/lib/codex/public-stats.ts");
+    const entries = new Map();
+    let stale = false;
+    const incrementalCache = {
+      generateSimpleCacheKey: async key => key,
+      get: async key => entries.has(key) ? { value: entries.get(key), isStale: stale } : null,
+      set: async (key, value) => { entries.set(key, value); },
+    };
+    const request = async () => {
+      const store = { incrementalCache, forceDynamic: true, pendingRevalidates: {} };
+      const result = await workAsyncStorage.run(store, () => Promise.all([
+        getInitialGitHubActivity(), getPublicCodexStats()
+      ]));
+      await Promise.all(Object.values(store.pendingRevalidates));
+      return result;
+    };
+    assert.deepEqual(await request(), [null, null]);
+    assert.equal(entries.size, 0);
+    unavailable = false;
+    assert.deepEqual(await request(), [{ version: 1 }, { version: 1 }]);
+    const afterFill = reads;
+    assert.deepEqual(await request(), [{ version: 1 }, { version: 1 }]);
+    assert.equal(reads, afterFill);
+    stale = true;
+    unavailable = true;
+    const errors = [];
+    console.error = (...args) => errors.push(args);
+    assert.deepEqual(await request(), [{ version: 1 }, { version: 1 }]);
+    assert.equal(errors.length, 2);
+    assert.equal(entries.size, 2);
+    unavailable = false;
+    version = 2;
+    assert.deepEqual(await request(), [{ version: 1 }, { version: 1 }]);
+    stale = false;
+    assert.deepEqual(await request(), [{ version: 2 }, { version: 2 }]);
+  `);
+});

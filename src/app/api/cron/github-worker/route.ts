@@ -16,27 +16,28 @@ export async function POST(request: Request) {
   if (!hasBearerSecret(authorization, env.CRON_SECRET)) {
     return Response.json({ ok: false }, { status: 401 });
   }
-  const batchSize = workerBatchSizeFrom(
-    new URL(request.url).searchParams.get("batch")
-  );
-  if (batchSize === null) {
+  const params = new URL(request.url).searchParams;
+  const publish = params.get("publish");
+  const batchSize = workerBatchSizeFrom(params.get("batch"));
+  if (batchSize === null || (publish !== null && publish !== "1")) {
     return Response.json({ ok: false }, { status: 400 });
   }
 
   try {
-    const activity = await runGitHubActivityWorker(
-      batchSize === undefined
-        ? { maximumDurationMs: GITHUB_WORKER_EXECUTION_DURATION_MS }
+    const activity = await runGitHubActivityWorker({
+      includeProjection: publish === "1",
+      maximumDurationMs: GITHUB_WORKER_EXECUTION_DURATION_MS,
+      ...(batchSize === undefined
+        ? {}
         : {
             commitLimit: batchSize,
-            maximumDurationMs: GITHUB_WORKER_EXECUTION_DURATION_MS,
             observationLimit: batchSize,
             pullRequestDiscoveryLimit: batchSize,
             pullRequestLimit: batchSize,
             pullRequestSignalLimit: batchSize,
             refLimit: 1,
-          }
-    );
+          }),
+    });
     return Response.json({
       activity,
       ok: true,

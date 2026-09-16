@@ -5,6 +5,7 @@ import { unstable_cache } from "next/cache";
 import { getDatabase, isDatabaseConfigured } from "@/db/client";
 import { codexAccounts } from "@/db/codex-schema";
 import { buildPublicCodexStats } from "@/lib/codex/stats";
+import { reportOperationalError } from "@/lib/operational-error";
 
 const readPublicCodexStats = async () => {
   const rows = await getDatabase()
@@ -26,5 +27,11 @@ const readCachedPublicCodexStats = unstable_cache(
   { revalidate: 900 }
 );
 
-export const getPublicCodexStats = async () =>
-  isDatabaseConfigured() ? await readCachedPublicCodexStats() : null;
+export const getPublicCodexStats = async () => {
+  try {
+    return isDatabaseConfigured() ? await readCachedPublicCodexStats() : null;
+  } catch (error) {
+    reportOperationalError("public_codex_stats", error);
+    return null;
+  }
+};
