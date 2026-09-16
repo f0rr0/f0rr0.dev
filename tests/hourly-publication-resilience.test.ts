@@ -149,3 +149,23 @@ test("live refresh retries a stale page on the next successful poll and stops on
     assert.equal(refreshes, 2);
   `);
 });
+
+test("repeated connection refusals keep a bounded reconnect delay", () => {
+  check(`
+    import assert from "node:assert/strict";
+    import { mock } from "bun:test";
+    mock.module("./src/env.ts", () => ({
+      env: { DATABASE_URL: "postgresql://test:test@127.0.0.1:1/unavailable" }
+    }));
+    const { getDatabase, closeDatabase } = await import("./src/db/client.ts");
+    const start = performance.now();
+    try {
+      for (let attempt = 0; attempt < 8; attempt++) {
+        await assert.rejects(getDatabase().execute("select 1"));
+      }
+      assert.ok(performance.now() - start < 12000);
+    } finally {
+      await closeDatabase();
+    }
+  `);
+}, 15_000);

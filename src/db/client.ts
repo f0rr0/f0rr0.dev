@@ -32,6 +32,8 @@ export const getDatabase = () => {
   }
 
   client = postgres(databaseUrl, {
+    // Keep repeated outages from adding up to 20 seconds before each reconnect.
+    backoff: () => 1,
     connect_timeout: 10,
     idle_timeout: 20,
     max: 1,
