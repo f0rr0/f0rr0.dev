@@ -1,5 +1,6 @@
 "use client";
 
+import { Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { track } from "@/lib/analytics";
@@ -48,6 +49,7 @@ export function CopyEmailButton({ email }: Readonly<{ email: string }>) {
       title={email}
       type="button"
     >
+      <Mail aria-hidden="true" className="size-4 shrink-0" />
       {email}
     </button>
   );
