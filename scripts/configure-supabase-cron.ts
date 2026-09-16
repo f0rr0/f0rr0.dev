@@ -5,6 +5,7 @@ import { githubTokensFrom } from "../src/lib/github-accounts";
 import {
   GITHUB_CRON_EXECUTION_DURATION_MS,
   GITHUB_EVENTS_CRON_JOB,
+  GITHUB_PUBLICATION_CRON_JOB,
   GITHUB_HEAD_REFS_CRON_JOB,
   GITHUB_REF_REPOSITORY_BATCH_SIZE,
   GITHUB_SUMMARY_CRON_JOB,
@@ -19,6 +20,7 @@ const SECRET_NAME = "github_sync_bearer_secret";
 const URL_NAME = "github_sync_url";
 const HEAD_REFS_URL_NAME = "github_head_refs_url";
 const SUMMARY_URL_NAME = "github_summary_url";
+const PUBLICATION_URL_NAME = "github_publication_url";
 const WORKER_URL_NAME = "github_worker_url";
 const CODEX_STATS_URL_NAME = "codex_stats_url";
 const CODEX_STATS_JOB_NAME = "codex-stats-every-fifteen-minutes";
@@ -79,6 +81,10 @@ export const supabaseCronUrlsFrom = (configuredSiteUrl: string) => {
     events,
     headRefs: headRefs.toString(),
     summary: new URL("/api/cron/github-summary", siteUrl).toString(),
+    publication: new URL(
+      "/api/cron/github-worker?publish=1",
+      siteUrl
+    ).toString(),
     worker: new URL("/api/cron/github-worker", siteUrl).toString(),
   };
 };
@@ -167,6 +173,13 @@ export const supabaseCronJobsFrom = (
       ...GITHUB_WORKER_CRON_JOB,
       urlName: WORKER_URL_NAME,
       url: urls.worker,
+      timeout: GITHUB_WORKER_HTTP_TIMEOUT_MS,
+      enabled: true,
+    },
+    {
+      ...GITHUB_PUBLICATION_CRON_JOB,
+      urlName: PUBLICATION_URL_NAME,
+      url: urls.publication,
       timeout: GITHUB_WORKER_HTTP_TIMEOUT_MS,
       enabled: true,
     },

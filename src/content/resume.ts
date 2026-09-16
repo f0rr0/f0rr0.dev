@@ -63,10 +63,6 @@ export interface ResumeLink {
   label: string;
 }
 
-export interface ResumeNavItem extends ResumeLink {
-  external?: boolean;
-}
-
 export interface PublicReference extends ResumeLink {
   note: string;
 }
@@ -233,8 +229,7 @@ export const resumeData = {
     { href: "/writing", label: "Writing" },
     { href: "/work", label: "Work" },
     { href: "/journey", label: "Journey" },
-    { external: true, href: primaryGitHubProfile.url, label: "GitHub" },
-  ] satisfies ResumeNavItem[],
+  ] satisfies ResumeLink[],
   links: [
     { href: `mailto:${person.email}`, label: person.email },
     ...socialProfiles

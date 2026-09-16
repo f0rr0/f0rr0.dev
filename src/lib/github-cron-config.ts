@@ -5,7 +5,13 @@ export const GITHUB_EVENTS_CRON_JOB = {
 
 export const GITHUB_WORKER_CRON_JOB = {
   name: "github-activity-worker-every-five-minutes",
-  schedule: "2-57/5 * * * *",
+  // The first worker run also publishes; the remaining runs only ingest.
+  schedule: "7-57/5 * * * *",
+} as const;
+
+export const GITHUB_PUBLICATION_CRON_JOB = {
+  name: "github-activity-publication-hourly",
+  schedule: "2 * * * *",
 } as const;
 
 export const GITHUB_SUMMARY_CRON_JOB = {

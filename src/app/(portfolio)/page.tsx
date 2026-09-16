@@ -143,15 +143,7 @@ export default async function Home() {
         </SiteSection>
 
         <GitHubTimeline initialPage={activity} preview />
-        {codexStats === null ? (
-          <SiteSection id="token-log" title="Token log">
-            <p className="py-2.5 text-muted-foreground">
-              Token activity is unavailable right now.
-            </p>
-          </SiteSection>
-        ) : (
-          <CodexStats stats={codexStats} />
-        )}
+        {codexStats === null ? null : <CodexStats stats={codexStats} />}
 
         <OpenSource github={github} />
       </SiteMain>

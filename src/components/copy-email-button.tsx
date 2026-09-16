@@ -1,5 +1,6 @@
 "use client";
 
+import { Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { track } from "@/lib/analytics";
@@ -40,7 +41,7 @@ export async function copyEmail(email: string) {
 export function CopyEmailButton({ email }: Readonly<{ email: string }>) {
   return (
     <button
-      aria-label="Copy email address"
+      aria-label={`Copy email address ${email}`}
       className="site-text-link inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
       onClick={() => {
         void copyEmail(email);
@@ -48,7 +49,8 @@ export function CopyEmailButton({ email }: Readonly<{ email: string }>) {
       title={email}
       type="button"
     >
-      Email
+      <Mail aria-hidden="true" className="size-4 shrink-0" />
+      {email}
     </button>
   );
 }
