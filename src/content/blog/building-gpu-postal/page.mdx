@@ -12,6 +12,8 @@ Most addresses are short. That makes them a tempting target for a small model: t
 
 I built [gpu-postal](https://github.com/f0rr0/gpu-postal) to split pasted address text into editable fields in the browser. The [demo](https://gpu-postal.f0rr0.dev/) runs the model locally with WebGPU. There is no API key, inference server, Wasm runtime or CPU fallback.
 
+![Address text passes through a compact WebGPU parser and returns editable fields.](./opengraph-image.webp)
+
 The current release is a **US-only**, 154,446-parameter model that returns original text spans for `street_address`, `locality`, `city`, `district`, `state`, `postcode` and `country`. It fills fields for you to review. It does not verify that an address exists or that it is deliverable. It can also be wrong about whether the input is an address at all.
 
 I wanted the whole thing to download with a page and run on the GPU. Once that part worked, the harder question was whether the parser was any good.
@@ -44,16 +46,17 @@ That left me with an awkward choice. I could spend the project making a generic 
 
 The pivot was inspired by [GPU Lexer](https://github.com/vercel-labs/gpu-lexer) and [GPU Time](https://github.com/arikchakma/gpu-time), both of which co-design compact sequence models and WebGPU kernels. The address model now looks roughly like this:
 
-<figure>
-  <Image
-    src="./model-pipeline.webp"
-    alt="A paper-cut diagram showing address text becoming UTF-8 byte features, passing through local context and forward and backward affine scans, then BIO scores and CRF decoding before returning original UTF-16 text spans."
-  />
-  <figcaption>
-    The model keeps the original characters at the edges of the system: bytes go
-    in, and spans over the user's text come back out.
-  </figcaption>
-</figure>
+```mermaid
+flowchart LR
+  accTitle: gpu-postal model pipeline
+  accDescr: Address text becomes byte features, passes through local features and bidirectional affine scans, then BIO scoring and CRF decoding return spans over the original text.
+  Input["Address text"] --> Bytes["UTF-8 bytes"]
+  Bytes --> Features["Local byte features"]
+  Features --> Scans["Forward + backward scans"]
+  Scans --> BIO["BIO scores"]
+  BIO --> CRF["CRF + Viterbi"]
+  CRF --> Spans["Original text spans"]
+```
 
 The scan is the key change. Instead of the GRU's gated recurrence, each direction applies a simpler learned affine recurrence of the form:
 
