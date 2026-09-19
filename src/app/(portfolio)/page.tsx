@@ -12,11 +12,7 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { WritingList } from "@/components/writing-list";
-import {
-  featuredProjectNames,
-  homeIntroduction,
-  projectEditorial,
-} from "@/content/home";
+import { homeIntroduction, projectEditorial } from "@/content/home";
 import { resumeData } from "@/content/resume";
 import { getBlogPosts } from "@/lib/blog-utils";
 import { getPublicCodexStats } from "@/lib/codex/public-stats";
@@ -50,12 +46,9 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
-  const projects = featuredProjectNames.flatMap((name) => {
-    const project = github.projects.find(
-      (candidate) => candidate.name === name
-    );
-    return project === undefined ? [] : [project];
-  });
+  const projects = github.projects
+    .filter(({ name }) => name !== "koa-webpack-boilerplate")
+    .slice(0, 4);
 
   return projects.length === 0 ? null : (
     <SiteSection id="open-source" title="Open source">
@@ -142,10 +135,9 @@ export default async function Home() {
           <WritingList posts={posts.slice(0, 3)} />
         </SiteSection>
 
+        <OpenSource github={github} />
         <GitHubTimeline initialPage={activity} preview />
         {codexStats === null ? null : <CodexStats stats={codexStats} />}
-
-        <OpenSource github={github} />
       </SiteMain>
     </SiteShell>
   );

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { featuredProjectNames, projectEditorial } from "../src/content/home.ts";
+import { projectEditorial } from "../src/content/home.ts";
 import {
   createUnavailableGitHubProfile,
   parseGitHubRepositoriesResponse,
@@ -50,7 +50,7 @@ describe("GitHub public profile", () => {
     const profile = createUnavailableGitHubProfile("f0rr0");
     expect(profile.status).toBe("unavailable");
     expect(profile.projects.map((project) => project.name).toSorted()).toEqual(
-      [...featuredProjectNames].toSorted()
+      Object.keys(projectEditorial).toSorted()
     );
     for (const project of profile.projects) {
       expect(project.description).toBe(

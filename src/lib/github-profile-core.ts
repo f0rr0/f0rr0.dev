@@ -44,12 +44,12 @@ const fallbackProjects = [
     updatedAt: null,
   },
   {
-    description: projectEditorial["thrift-compact-protocol"].description,
+    description: projectEditorial["f0rr0.dev"].description,
     forks: null,
     language: "TypeScript",
-    name: "thrift-compact-protocol",
+    name: "f0rr0.dev",
     stars: null,
-    topics: ["thrift", "typescript"],
+    topics: ["blog", "mdx", "static-site"],
     updatedAt: null,
   },
   {
