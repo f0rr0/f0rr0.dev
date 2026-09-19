@@ -2,19 +2,17 @@ export const homeIntroduction =
   "I’m a full-stack engineer in Mumbai. I build web and mobile products, and more recently, AI applications. My work often starts where the documentation ends.";
 
 export const projectEditorial = {
-  "thrift-compact-protocol": {
+  "f0rr0.dev": {
     bucket: "Open source" as const,
-    description:
-      "TypeScript encoder and decoder for Thrift’s compact protocol.",
+    description: "Source for this site and its public engineering log.",
   },
   oliphaunt: {
     bucket: "Open source" as const,
     description: "Embedded PostgreSQL tooling for applications and tests.",
   },
-  "pg-browser-proxy": {
+  "koa-webpack-boilerplate": {
     bucket: "Open source" as const,
-    description:
-      "Connect desktop database clients to PostgreSQL running in a browser.",
+    description: "Boilerplate for Koa apps with async/await and hot reloading.",
   },
   "react-native-rating": {
     bucket: "Open source" as const,
@@ -22,10 +20,3 @@ export const projectEditorial = {
       "React Native rating component built with Animated and the native driver.",
   },
 } as const;
-
-export const featuredProjectNames = [
-  "oliphaunt",
-  "thrift-compact-protocol",
-  "react-native-rating",
-  "pg-browser-proxy",
-] as const;

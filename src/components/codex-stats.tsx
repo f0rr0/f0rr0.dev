@@ -265,7 +265,12 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
             </dd>
           </div>
           {highlights.map(({ label, metric, tooltip, value }) => (
-            <div className="py-2.5" key={label}>
+            <div
+              className={
+                label === "Reasoning leaders" ? "col-span-2 py-2.5" : "py-2.5"
+              }
+              key={label}
+            >
               <dt className="flex items-center gap-1 text-muted-foreground">
                 {label}
                 {tooltip === null ? null : (
