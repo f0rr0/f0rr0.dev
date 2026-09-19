@@ -10,9 +10,10 @@ export const projectEditorial = {
     bucket: "Open source" as const,
     description: "Embedded PostgreSQL tooling for applications and tests.",
   },
-  "koa-webpack-boilerplate": {
+  "pg-browser-proxy": {
     bucket: "Open source" as const,
-    description: "Boilerplate for Koa apps with async/await and hot reloading.",
+    description:
+      "Connect desktop database clients to PostgreSQL running in a browser.",
   },
   "react-native-rating": {
     bucket: "Open source" as const,

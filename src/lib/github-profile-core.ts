@@ -53,12 +53,12 @@ const fallbackProjects = [
     updatedAt: null,
   },
   {
-    description: projectEditorial["koa-webpack-boilerplate"].description,
+    description: projectEditorial["pg-browser-proxy"].description,
     forks: null,
-    language: "JavaScript",
-    name: "koa-webpack-boilerplate",
+    language: null,
+    name: "pg-browser-proxy",
     stars: null,
-    topics: ["boilerplate", "koajs", "webpack"],
+    topics: ["postgresql"],
     updatedAt: null,
   },
 ] as const;

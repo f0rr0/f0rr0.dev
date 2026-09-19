@@ -267,7 +267,9 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
           {highlights.map(({ label, metric, tooltip, value }) => (
             <div
               className={
-                label === "Reasoning leaders" ? "col-span-2 py-2.5" : "py-2.5"
+                label === "Reasoning leaders"
+                  ? "py-2.5 sm:col-span-2"
+                  : "py-2.5"
               }
               key={label}
             >

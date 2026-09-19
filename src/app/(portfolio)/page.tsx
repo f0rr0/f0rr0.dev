@@ -46,7 +46,9 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
-  const projects = github.projects.slice(0, 4);
+  const projects = github.projects
+    .filter(({ name }) => name !== "koa-webpack-boilerplate")
+    .slice(0, 4);
 
   return projects.length === 0 ? null : (
     <SiteSection id="open-source" title="Open source">
