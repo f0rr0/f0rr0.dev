@@ -3,6 +3,13 @@ import type { NextConfig } from "next";
 
 import { env } from "./src/env";
 
+const blogSourceFiles = ["./src/content/blog/**/*.mdx"];
+const blogImageFiles = [
+  ...blogSourceFiles,
+  "./src/content/blog/**/opengraph-image.*",
+  "./src/content/blog/**/twitter-image.*",
+];
+
 const nextConfig: NextConfig = {
   headers: async () =>
     env.VERCEL_ENV === "preview"
@@ -39,16 +46,16 @@ const nextConfig: NextConfig = {
     "/*": ["./next.config.ts"],
   },
   outputFileTracingIncludes: {
-    "/": ["./src/content/**/*"],
-    "/writing/[slug]": ["./src/content/**/*"],
-    "/writing/[slug]/markdown": ["./src/content/**/*"],
-    "/writing/[slug]/opengraph-image": ["./src/content/**/*"],
-    "/writing/[slug]/share-image": ["./src/content/**/*"],
-    "/writing/[slug]/twitter-image": ["./src/content/**/*"],
-    "/llms.txt": ["./src/content/**/*"],
-    "/llms-full.txt": ["./src/content/**/*"],
-    "/rss.xml": ["./src/content/**/*"],
-    "/sitemap.xml": ["./src/content/**/*"],
+    "/": blogSourceFiles,
+    "/writing/[slug]": blogImageFiles,
+    "/writing/[slug]/markdown": blogSourceFiles,
+    "/writing/[slug]/opengraph-image": blogImageFiles,
+    "/writing/[slug]/share-image": blogImageFiles,
+    "/writing/[slug]/twitter-image": blogImageFiles,
+    "/llms.txt": blogSourceFiles,
+    "/llms-full.txt": blogSourceFiles,
+    "/rss.xml": blogSourceFiles,
+    "/sitemap.xml": blogSourceFiles,
   },
   reactCompiler: true,
   serverExternalPackages: ["@flukxr/typst-cli"],

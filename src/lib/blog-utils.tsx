@@ -43,7 +43,13 @@ export type BlogPost = BlogPostEntry & {
 
 const hasFile = async (relativePath: string) => {
   try {
-    await fs.access(path.join(BLOG_DIR, relativePath));
+    await fs.access(
+      path.join(
+        /* turbopackIgnore: true */
+        BLOG_DIR,
+        relativePath
+      )
+    );
     return true;
   } catch {
     return false;
@@ -97,7 +103,14 @@ const stripMetadataExport = (source: string) =>
     .trim();
 
 export const getBlogPostSource = cache(async (importPath: string) => {
-  const source = await fs.readFile(path.join(BLOG_DIR, importPath), "utf-8");
+  const source = await fs.readFile(
+    path.join(
+      /* turbopackIgnore: true */
+      BLOG_DIR,
+      importPath
+    ),
+    "utf-8"
+  );
   return stripMetadataExport(source);
 });
 
@@ -197,7 +210,11 @@ export const findMetadataImageAsset = async (
   const contentDir = getContentDirForImportPath(importPath);
 
   for (const extension of METADATA_IMAGE_MODULE_EXTENSIONS) {
-    const filePath = path.join(contentDir, `${baseName}${extension}`);
+    const filePath = path.join(
+      /* turbopackIgnore: true */
+      contentDir,
+      `${baseName}${extension}`
+    );
     if (await fileExists(filePath)) {
       return {
         filePath,
@@ -209,7 +226,11 @@ export const findMetadataImageAsset = async (
   }
 
   for (const extension of METADATA_IMAGE_EXTENSIONS) {
-    const filePath = path.join(contentDir, `${baseName}${extension}`);
+    const filePath = path.join(
+      /* turbopackIgnore: true */
+      contentDir,
+      `${baseName}${extension}`
+    );
     if (await fileExists(filePath)) {
       return {
         contentType: contentTypeForExtension(extension),
