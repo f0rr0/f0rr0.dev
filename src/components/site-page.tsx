@@ -29,7 +29,6 @@ export function SiteSection({
   children,
   className = "home-section mt-12 [scroll-margin-top:2rem]",
   heading: Heading = "h2",
-  headingClassName,
   description,
   href,
   linkLabel,
@@ -40,7 +39,6 @@ export function SiteSection({
   children: ReactNode;
   className?: string;
   heading?: "h1" | "h2";
-  headingClassName?: string;
   description?: string;
   href?: string;
   linkLabel?: string;
@@ -49,12 +47,9 @@ export function SiteSection({
 }>) {
   return (
     <section aria-labelledby={`${id}-title`} className={className} id={id}>
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <Heading
-          className={cn(
-            "section-title font-serif text-2xl font-normal text-foreground",
-            headingClassName
-          )}
+          className="section-title font-serif text-2xl font-normal text-foreground"
           id={`${id}-title`}
         >
           {description === undefined ? (
@@ -63,7 +58,7 @@ export function SiteSection({
             <InfoLabel label={title} description={description} />
           )}
         </Heading>
-        <div className="flex shrink-0 items-baseline justify-end gap-4">
+        <div className="flex h-8 shrink-0 items-center justify-end gap-4">
           {action}
           {href === undefined ? null : (
             <Link

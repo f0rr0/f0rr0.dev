@@ -16,7 +16,7 @@ export function GitHubTimeline({
 }>) {
   if (initialPage === null) {
     return preview ? null : (
-      <SiteSection heading="h1" id="timeline" title="Work">
+      <SiteSection className="" heading="h1" id="timeline" title="Work">
         <p className="text-muted-foreground">
           Work activity is temporarily unavailable.{" "}
           <a className="site-text-link" href={primaryGitHubProfile.url}>
@@ -27,29 +27,45 @@ export function GitHubTimeline({
       </SiteSection>
     );
   }
+  const content = (
+    <div className="grid gap-4">
+      <GitHubTimelinePager
+        initialPage={initialPage}
+        preview={preview}
+        now={new Date().toISOString()}
+        key={`${initialPage.head.feedRevision}:${initialPage.orderingRevision}`}
+      />
+    </div>
+  );
   return (
     <GitHubActivityLiveProvider
       feedRevision={initialPage.head.feedRevision}
       orderingRevision={initialPage.orderingRevision}
     >
-      <SiteSection
-        action={<GitHubActivityStatus initialHead={initialPage.head} />}
-        className={preview ? "home-section mt-12 [scroll-margin-top:2rem]" : ""}
-        heading={preview ? "h2" : "h1"}
-        headingClassName={preview ? undefined : "sr-only"}
-        href={preview ? "/work" : undefined}
-        id="timeline"
-        title="Work"
-      >
-        <div className="grid gap-4">
-          <GitHubTimelinePager
-            initialPage={initialPage}
-            preview={preview}
-            now={new Date().toISOString()}
-            key={`${initialPage.head.feedRevision}:${initialPage.orderingRevision}`}
-          />
-        </div>
-      </SiteSection>
+      {preview ? (
+        <SiteSection
+          action={<GitHubActivityStatus initialHead={initialPage.head} />}
+          href="/work"
+          id="timeline"
+          title="Work"
+        >
+          {content}
+        </SiteSection>
+      ) : (
+        <section
+          aria-labelledby="timeline-title"
+          className="relative"
+          id="timeline"
+        >
+          <h1 className="sr-only" id="timeline-title">
+            Work
+          </h1>
+          <div className="absolute end-0 -top-11">
+            <GitHubActivityStatus initialHead={initialPage.head} />
+          </div>
+          {content}
+        </section>
+      )}
     </GitHubActivityLiveProvider>
   );
 }

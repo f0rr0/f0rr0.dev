@@ -17,6 +17,37 @@ const percent = new Intl.NumberFormat(sitePreferences.language, {
   maximumFractionDigits: 1,
 });
 
+export function delegationLabelPositions(
+  data: readonly Pick<TokenRow, "value">[],
+  radius: number,
+  height: number
+) {
+  const total = data.reduce((sum, row) => sum + row.value, 0);
+  let consumed = 0;
+  const labels = data.map((row) => {
+    const angle =
+      ((90 - ((consumed + row.value / 2) / total) * 360) * -Math.PI) / 180;
+    consumed += row.value;
+    return {
+      side: Math.cos(angle) >= 0 ? 1 : -1,
+      y: height / 2 + Math.sin(angle) * radius,
+    };
+  });
+  // Three lines of 24px text need 72px between callout centers.
+  for (const side of [-1, 1]) {
+    const column = labels
+      .filter((label) => label.side === side)
+      .toSorted((a, b) => a.y - b.y);
+    for (let i = column.length - 2; i >= 0; i -= 1) {
+      column[i].y = Math.min(column[i].y, column[i + 1].y - 72);
+    }
+    for (let i = 0; i < column.length; i += 1) {
+      column[i].y = Math.max(column[i].y, i === 0 ? 36 : column[i - 1].y + 72);
+    }
+  }
+  return labels;
+}
+
 function DelegationSlices({ data }: { data: (TokenRow & { fill: string })[] }) {
   const width = useChartWidth() ?? 320;
   const height = useChartHeight() ?? 288;
@@ -25,6 +56,7 @@ function DelegationSlices({ data }: { data: (TokenRow & { fill: string })[] }) {
     0,
     Math.min(128, (width - 208) / 2, (height - 128) / 2)
   );
+  const labels = delegationLabelPositions(data, radius, height);
   return (
     <Pie
       data={data}
@@ -37,41 +69,47 @@ function DelegationSlices({ data }: { data: (TokenRow & { fill: string })[] }) {
       stroke="var(--background)"
       strokeWidth={2}
       isAnimationActive={false}
-      labelLine={({ points }: { points: { x: number; y: number }[] }) => {
-        const [start, end] = points;
-        const direction = end.x >= start.x ? 1 : -1;
-        return (
-          <path
-            d={`M${start.x},${start.y} L${end.x - direction * 8},${end.y}`}
-            fill="none"
-            stroke="var(--muted-foreground)"
-            strokeWidth={1}
-          />
-        );
-      }}
-      label={({ x, y, textAnchor, index }) => {
+      labelLine={false}
+      label={({ cx, cy, midAngle = 0, index }) => {
+        const angle = (-midAngle * Math.PI) / 180;
+        const direction = Math.cos(angle) >= 0 ? 1 : -1;
+        // Keep the entire label outside the ring, including near-vertical slices.
+        const x = cx + direction * (radius + 20);
+        const { y } = labels[index];
         const row = data[index];
         const words =
           row.label === "Other activity" ? ["Other", "activity"] : [row.label];
         return (
-          <text
-            x={x}
-            y={y}
-            dominantBaseline="central"
-            textAnchor={textAnchor}
-            className="fill-foreground text-base"
-          >
-            {words.map((word, i) => (
-              <tspan key={word} x={x} dy={i === 0 ? -words.length * 12 : 24}>
-                {word}
+          <g>
+            <path
+              d={`M${cx + Math.cos(angle) * radius},${cy + Math.sin(angle) * radius} L${x - direction * 8},${y}`}
+              fill="none"
+              stroke="var(--muted-foreground)"
+              strokeWidth={1}
+            />
+            <text
+              x={x}
+              y={y}
+              dominantBaseline="central"
+              textAnchor={direction === 1 ? "start" : "end"}
+              className="fill-foreground text-base"
+            >
+              {words.map((word, i) => (
+                <tspan key={word} x={x} dy={i === 0 ? -words.length * 12 : 24}>
+                  {word}
+                </tspan>
+              ))}
+              <tspan
+                x={x}
+                dy={24}
+                className="fill-muted-foreground tabular-nums"
+              >
+                {row.value > 0 && row.value < 0.1
+                  ? "<0.1%"
+                  : percent.format(row.value / 100)}
               </tspan>
-            ))}
-            <tspan x={x} dy={24} className="fill-muted-foreground tabular-nums">
-              {row.value > 0 && row.value < 0.1
-                ? "<0.1%"
-                : percent.format(row.value / 100)}
-            </tspan>
-          </text>
+            </text>
+          </g>
         );
       }}
     />
