@@ -1,7 +1,9 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { CodexActivity } from "@/components/codex-activity";
-import { CodexHighlights } from "@/components/codex-stats";
+import { CodexHighlights, CodexUsageLimit } from "@/components/codex-stats";
+import { CodexToolIcon } from "@/components/codex-tool-icon";
 import { SiteSection } from "@/components/site-page";
 import { TokenHistoryChart } from "@/components/token-history";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -62,7 +64,7 @@ function Ranking({
   unit,
   className = "",
 }: {
-  rows: readonly TokenRow[];
+  rows: readonly (TokenRow & { icon?: ReactNode })[];
   unit: string;
   className?: string;
 }) {
@@ -72,7 +74,10 @@ function Ranking({
       {rows.map((row) => (
         <div key={row.label} className="grid grid-rows-[1fr_auto]">
           <div className="flex items-baseline justify-between gap-4">
-            <dt className="min-w-0 wrap-anywhere">{row.label}</dt>
+            <dt className="flex min-w-0 items-start gap-2">
+              {row.icon}
+              <span className="min-w-0 wrap-anywhere">{row.label}</span>
+            </dt>
             <dd className="shrink-0 tabular-nums text-muted-foreground">
               {number.format(row.value)} {unit}
             </dd>
@@ -89,7 +94,13 @@ function Ranking({
   );
 }
 
-function Tools({ details }: { details: TokenDetails | null }) {
+function Tools({
+  details,
+  toolIcons,
+}: {
+  details: TokenDetails | null;
+  toolIcons: PublicCodexStats["insights"]["topTools"];
+}) {
   if (!details || (!details.plugins && !details.skills)) {
     return null;
   }
@@ -109,7 +120,23 @@ function Tools({ details }: { details: TokenDetails | null }) {
             className="min-w-0 scroll-mt-8 md:row-span-6 md:grid md:grid-rows-subgrid [&>div:first-child]:mb-4 md:[&>div:first-child]:mb-0"
           >
             <Ranking
-              rows={data.rows.slice(0, 5)}
+              rows={data.rows.slice(0, 5).map((row) => ({
+                ...row,
+                icon: (
+                  <CodexToolIcon
+                    tool={
+                      toolIcons.find(
+                        (tool) =>
+                          tool.name === row.label &&
+                          tool.kind === (id === "skills" ? "skill" : "plugin")
+                      ) ?? {
+                        name: row.label,
+                        kind: id === "skills" ? "skill" : "plugin",
+                      }
+                    }
+                  />
+                ),
+              }))}
               unit="calls"
               className="md:contents md:space-y-0"
             />
@@ -126,14 +153,19 @@ function Tools({ details }: { details: TokenDetails | null }) {
   );
 }
 
-function BreakdownContent({ details }: { details: TokenDetails | null }) {
+function BreakdownContent({
+  details,
+  toolIcons,
+}: {
+  details: TokenDetails | null;
+  toolIcons: PublicCodexStats["insights"]["topTools"];
+}) {
   if (details === null) {
     return <p className="text-muted-foreground">Temporarily unavailable.</p>;
   }
   const { activity } = details;
   return (
     <>
-      {" "}
       <dl className="token-stat-grid md:grid-cols-3!">
         {tokenPreferences.sections.activity ? (
           <>
@@ -167,7 +199,7 @@ function BreakdownContent({ details }: { details: TokenDetails | null }) {
           <Coverage status={details.models.status} />
         </SiteSection>
       ) : null}
-      <Tools details={details} />
+      <Tools details={details} toolIcons={toolIcons} />
     </>
   );
 }
@@ -175,7 +207,9 @@ function BreakdownContent({ details }: { details: TokenDetails | null }) {
 function Breakdowns({
   details,
   weekDetails,
+  toolIcons,
 }: {
+  toolIcons: PublicCodexStats["insights"]["topTools"];
   details: TokenDetails | null;
   weekDetails: TokenDetails | null;
 }) {
@@ -204,7 +238,7 @@ function Breakdowns({
           ] as const
         ).map(([days, periodDetails]) => (
           <TabsContent key={days} value={days} className="text-base">
-            <BreakdownContent details={periodDetails} />
+            <BreakdownContent details={periodDetails} toolIcons={toolIcons} />
           </TabsContent>
         ))}
       </SiteSection>
@@ -260,7 +294,12 @@ export function TokenUsageDetails({
               />
             </>
           ) : null}
-          <Breakdowns details={details} weekDetails={weekDetails} />
+          <Breakdowns
+            details={details}
+            weekDetails={weekDetails}
+            toolIcons={stats?.insights.topTools ?? []}
+          />
+          {stats ? <CodexUsageLimit stats={stats} /> : null}
         </>
       ) : null}
     </>

@@ -1,4 +1,4 @@
-# Token log setup
+# Tokens setup
 
 The portfolio reads sanitized Codex usage snapshots from Supabase. A scheduled
 Supabase cron calls a protected Vercel route every 15 minutes.
@@ -76,7 +76,7 @@ Edit `src/content/tokens.ts` for public presentation:
 
 - `enabled`: hides the route (404), navigation link, sitemap entry, and homepage
   preview when false. It also skips the additional analytics requests.
-- `homepagePreview`: displays the full Token log on the homepage.
+- `homepagePreview`: displays token totals and the calendar on the homepage.
 - `title` and `introduction`: write your own description of your AI practice.
 - Model, composition, and tool breakdowns default to 30 days, with a 7-day option; the history
   chart always shows the past year without a period control.
@@ -130,7 +130,9 @@ count is incomplete. Cumulative values sum known counts and use “Recorded tota
 when coverage is uncertain. History covers 365 dates ending today, independently
 of the calendar's 52-week alignment and future placeholder cells. Token totals,
 busiest day, and daily peak are omitted from the detail stats grid because the
-chart provides that context. The homepage retains its original statistics.
+chart provides that context. The homepage shows only token totals and the calendar. Detailed statistics and
+the current usage limit live on `/tokens`. Tool rankings reuse stored logos and
+the original tool/skill fallback icons.
 The latest returned day is a row timestamp, not a completeness watermark.
 No productivity, dollars saved, or code-authorship estimate is calculated.
 
@@ -143,7 +145,7 @@ configured database the page displays an unavailable state, not sample data.
 
 ### Layout contract
 
-The Token log uses the site's 16px body type with a 24px line height. These
+The Tokens page uses the site's 16px body type with a 24px line height. These
 relationships govern both the homepage and detail page:
 
 - Page intro: starts at the shared `SiteMain` 32px top inset, with the page

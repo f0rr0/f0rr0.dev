@@ -17,7 +17,7 @@ export interface TokenPreferences {
 export const tokenPreferences: TokenPreferences = {
   enabled: true,
   homepagePreview: true,
-  title: "Token log",
+  title: "Tokens",
   introduction:
     "I use AI to explore ideas, write and review code, and delegate work to agents. Here’s what that looks like in Codex.",
   sections: {
