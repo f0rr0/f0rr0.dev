@@ -37,8 +37,8 @@ export function TokenDelegation({ rows }: { rows: readonly TokenRow[] }) {
           data={data}
           dataKey="value"
           nameKey="label"
-          innerRadius="45%"
-          outerRadius="65%"
+          innerRadius="40%"
+          outerRadius="60%"
           startAngle={90}
           endAngle={-270}
           stroke="var(--background)"
