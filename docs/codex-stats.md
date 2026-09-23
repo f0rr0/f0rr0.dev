@@ -40,8 +40,9 @@ these in `.env.local` for local administration and in Vercel for the deployment:
 
 The job calls `POST /api/cron/codex-stats` at minutes 7, 22, 37, and 52 each hour,
 using `Authorization: Bearer <CRON_SECRET>`. Check the job in Supabase Cron and
-`codex_accounts.snapshot_at` after it runs. The public view is cached for 15
-minutes, so a new snapshot can take another cache interval to appear.
+`codex_accounts.snapshot_at` after it runs. A successful sync expires the public
+stats cache, so the next page request reads the new snapshot. The 15-minute cache
+expiry remains as a fallback. Pages already open update when reloaded.
 
 A 401 response means the route's bearer secret is missing or incorrect. A 503
 means sync failed; inspect the server's `codex_stats` error and check the database

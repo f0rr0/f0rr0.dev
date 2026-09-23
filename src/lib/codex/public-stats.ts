@@ -24,7 +24,7 @@ const readPublicCodexStats = async () => {
 const readCachedPublicCodexStats = unstable_cache(
   readPublicCodexStats,
   ["public-codex-stats-v6"],
-  { revalidate: 900 }
+  { revalidate: 900, tags: ["public-codex-stats"] }
 );
 
 export const getPublicCodexStats = async () => {
