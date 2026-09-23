@@ -371,7 +371,8 @@ test("delegation stays per-account and missing model detail preserves other metr
             attribution: [
               { thread_source: "user", value: 10, model: "private-field" },
               { thread_source: "subagent", value: 5 },
-              { thread_source: "unknown", value: 5 },
+              { thread_source: "unknown", value: 3 },
+              { thread_source: "thread_title", value: 2 },
             ],
           },
           {
@@ -402,7 +403,7 @@ test("delegation stays per-account and missing model detail preserves other metr
   expect(result.delegation?.accounts[0].rows).toEqual([
     { label: "Tasks", value: 40 },
     { label: "Subagents", value: 20 },
-    { label: "Unattributed", value: 40 },
+    { label: "Other activity", value: 40 },
   ]);
   expect(result.activity?.turns).toBe(10);
   expect(result.models?.rows).toEqual([{ label: "example-model", value: 3 }]);

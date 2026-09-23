@@ -69,7 +69,7 @@ const readCachedTokenDetails = unstable_cache(
       rows.map((row) => row.snapshot?.primaryLimit?.planType)
     );
   },
-  ["public-token-details-v4", JSON.stringify(tokenPreferences)],
+  ["public-token-details-v5", JSON.stringify(tokenPreferences)],
   { revalidate: 900, tags: ["public-codex-stats"] }
 );
 

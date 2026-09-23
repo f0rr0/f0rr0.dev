@@ -402,7 +402,7 @@ export function buildTokenDetails(
                 if (row.attribution === null || row.attribution === undefined) {
                   add(
                     values,
-                    "Unattributed",
+                    "Other activity",
                     Object.values(row.product_surface_usage_values).reduce(
                       (sum, value) => sum + value,
                       0
@@ -415,11 +415,7 @@ export function buildTokenDetails(
                         ? "Tasks"
                         : entry.thread_source === "subagent"
                           ? "Subagents"
-                          : entry.thread_source === null ||
-                              entry.thread_source === undefined ||
-                              entry.thread_source === "unknown"
-                            ? "Unattributed"
-                            : "Other activity";
+                          : "Other activity";
                     add(values, label, entry.value);
                   }
                 }
@@ -436,12 +432,7 @@ export function buildTokenDetails(
                           ? ""
                           : (accountLabels[indices[0]] ??
                             `Account ${indices[0] + 1}`),
-                      rows: [
-                        "Tasks",
-                        "Subagents",
-                        "Other activity",
-                        "Unattributed",
-                      ]
+                      rows: ["Tasks", "Subagents", "Other activity"]
                         .filter((label) => (values.get(label) ?? 0) > 0)
                         .map((label) => ({
                           label,
