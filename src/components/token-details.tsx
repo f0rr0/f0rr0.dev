@@ -203,7 +203,7 @@ function BreakdownContent({
       {metrics.length > 0 ? (
         <SiteSection
           id="breakdowns"
-          title="Token breakdown"
+          title="Input & output"
           className="scroll-mt-8"
           description="Input is context the AI reads; cached input is reused context; output is generated text."
           action={periods}
