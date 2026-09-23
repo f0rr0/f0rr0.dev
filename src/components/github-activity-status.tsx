@@ -143,16 +143,15 @@ export function GitHubActivityStatus({
 
   return (
     <div id="github-activity-status">
-      {latestAvailable ? (
-        <button
-          className="site-text-link inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 mt-2"
-          disabled={isRefreshing}
-          onClick={refreshLatest}
-          type="button"
-        >
-          {isRefreshing ? "Refreshing…" : "Refresh work"}
-        </button>
-      ) : null}
+      <button
+        className="site-text-link inline-flex min-h-11 w-24 items-center justify-end gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
+        style={{ visibility: latestAvailable ? "visible" : "hidden" }}
+        disabled={isRefreshing}
+        onClick={refreshLatest}
+        type="button"
+      >
+        {isRefreshing ? "Refreshing…" : "Refresh work"}
+      </button>
       <p aria-live="polite" className="sr-only" role="status">
         {latestAvailable
           ? "New work is available."

@@ -176,6 +176,19 @@ test("live refresh retries a stale page on the next successful poll and stops on
     query.dataUpdatedAt++;
     render();
     assert.equal(refreshes, 2);
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    let markup = renderToStaticMarkup(render());
+    assert.match(markup, /visibility:hidden/);
+    context.latestAvailable = true;
+    context.isRefreshing = true;
+    markup = renderToStaticMarkup(render());
+    assert.match(markup, /visibility:visible/);
+    assert.match(markup, /disabled=""/);
+    assert.match(markup, /Refreshing…/);
+    context.isRefreshing = false;
+    markup = renderToStaticMarkup(render());
+    assert.match(markup, /Refresh work/);
+    assert.doesNotMatch(markup, /disabled=""/);
   `);
 });
 

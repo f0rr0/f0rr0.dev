@@ -51,12 +51,16 @@ export default function JourneyPage() {
             action={
               <a
                 key="resume"
-                className="site-text-link inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
+                className="site-text-link inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm font-normal text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
                 href={resumePdfUrl}
                 download
                 aria-label="Résumé (PDF)"
               >
-                <Download aria-hidden="true" className="size-3.5" />
+                <Download
+                  aria-hidden="true"
+                  className="size-3.5 shrink-0"
+                  strokeWidth={1.5}
+                />
                 Résumé
               </a>
             }

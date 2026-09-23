@@ -1,5 +1,6 @@
 "use client";
 
+import { FoldVertical, UnfoldVertical } from "lucide-react";
 import {
   animate,
   AnimatePresence,
@@ -13,7 +14,6 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import { DisclosureChevron } from "@/components/ui/collapsible";
 import {
   TooltipContent,
   TooltipGroup,
@@ -134,11 +134,6 @@ function RoleMarkers({ role }: Readonly<{ role: ResumeRole }>) {
   return role.markers?.map((marker) => (
     <Badge
       variant="outline"
-      className={
-        marker === "leadership"
-          ? "border-leadership-border bg-leadership-background text-leadership-foreground"
-          : "border-hands-on-border bg-hands-on-background text-hands-on-foreground"
-      }
       key={marker}
       title={marker === "leadership" ? role.leadershipScope : undefined}
     >
@@ -168,18 +163,21 @@ function RoleBlock({
     }),
   };
   return (
-    <div className="journey-role contents [.journey[data-expanded='true']_&]:flex [.journey[data-expanded='true']_&]:flex-wrap [.journey[data-expanded='true']_&]:items-baseline [.journey[data-expanded='true']_&]:justify-between [.journey[data-expanded='true']_&]:[gap:0.25rem_1rem] [.journey[data-expanded='true']_&]:mt-4">
+    <div className="journey-role contents [.journey[data-expanded='true']_&]:grid [.journey[data-expanded='true']_&]:grid-cols-1 sm:[.journey[data-expanded='true']_&]:grid-cols-[minmax(0,1fr)_auto] [.journey[data-expanded='true']_&]:items-baseline [.journey[data-expanded='true']_&]:gap-x-2 [.journey[data-expanded='true']_&]:gap-y-1 sm:[.journey[data-expanded='true']_&]:gap-x-4 [.journey[data-expanded='true']_&]:mt-4">
       <motion.div
         layout="position"
-        className="journey-role-title [grid-column:2] mt-1 [.journey[data-expanded='false']_&]:justify-self-end [.journey[data-expanded='false']_&]:text-end sm:[.journey[data-expanded='false']_&]:[grid-column:3] sm:[.journey[data-expanded='false']_&]:[grid-row:1] sm:[.journey[data-expanded='false']_&]:self-end sm:[.journey[data-expanded='false']_&]:[margin-top:0] relative flex min-w-0 flex-wrap items-center gap-2"
+        className="journey-role-title sm:[.journey[data-expanded='true']_&]:block sm:[.journey[data-expanded='true']_&]:wrap-anywhere [grid-column:2] [.journey[data-expanded='true']_&]:[grid-column:1] mt-1 [.journey[data-expanded='true']_&]:mt-0 sm:[.journey[data-expanded='false']_&]:justify-self-end sm:[.journey[data-expanded='false']_&]:text-end sm:[.journey[data-expanded='false']_&]:[grid-column:3] sm:[.journey[data-expanded='false']_&]:[grid-row:1] sm:[.journey[data-expanded='false']_&]:self-end sm:[.journey[data-expanded='false']_&]:[margin-top:0] relative flex min-w-0 flex-wrap items-center gap-2"
       >
-        <motion.span layout="position" className="font-medium text-foreground">
+        <motion.span
+          layout="position"
+          className="font-light text-foreground max-sm:block max-sm:max-w-full max-sm:shrink-0 max-sm:overflow-x-auto max-sm:whitespace-nowrap"
+        >
           {role.title}
         </motion.span>
         <JourneyReveal
           expanded={expanded}
           inline
-          className="flex flex-wrap gap-2"
+          className="relative -top-[0.5px] ml-2 inline-flex flex-wrap gap-2 align-baseline empty:hidden max-sm:ml-0 max-sm:flex-nowrap"
           delay={0.12}
         >
           <RoleMarkers role={role} />
@@ -187,7 +185,7 @@ function RoleBlock({
       </motion.div>
       <motion.p
         layout="position"
-        className="journey-role-dates [grid-column:2] mt-2 [.journey[data-expanded='false']_&]:justify-self-end [.journey[data-expanded='false']_&]:text-end sm:[.journey[data-expanded='false']_&]:[grid-column:3] sm:[.journey[data-expanded='false']_&]:[grid-row:2] sm:[.journey[data-expanded='false']_&]:mt-1 relative text-xs text-muted-foreground"
+        className="journey-role-dates [grid-column:2] [.journey[data-expanded='true']_&]:[grid-column:1] sm:[.journey[data-expanded='true']_&]:[grid-column:2] sm:[.journey[data-expanded='true']_&]:[grid-row:1] sm:[.journey[data-expanded='true']_&]:text-end [.journey[data-expanded='true']_&]:whitespace-nowrap mt-1 sm:[.journey[data-expanded='false']_&]:justify-self-end sm:[.journey[data-expanded='false']_&]:text-end sm:[.journey[data-expanded='false']_&]:[grid-column:3] sm:[.journey[data-expanded='false']_&]:[grid-row:2] sm:[.journey[data-expanded='false']_&]:mt-1 relative text-xs text-muted-foreground tabular-nums"
       >
         <JourneyReveal
           expanded={expanded}
@@ -203,7 +201,7 @@ function RoleBlock({
       </motion.p>
       <JourneyReveal
         expanded={expanded}
-        className="journey-role-detail basis-full min-w-0"
+        className="journey-role-detail col-span-full min-w-0"
         delay={0.12}
       >
         {role.summary === undefined ? null : (
@@ -277,20 +275,20 @@ function ExperienceItem({
     <motion.li
       ref={entryRef}
       layout="position"
-      className="journey-entry relative [border-bottom:1px_solid_transparent] [transition:border-color_100ms_ease-out] grid [grid-template-columns:2.5rem_minmax(0,_1fr)] items-start gap-x-4 py-3 [.journey[data-expanded='false']_&:not(:last-child)]:[border-bottom-color:var(--border)] [.journey[data-expanded='false']_&:not(:last-child)]:[transition:border-color_140ms_ease-out_200ms] sm:[.journey[data-expanded='false']_&]:[grid-template-columns:2.5rem_minmax(0,_1fr)_minmax(0,_1.25fr)] motion-reduce:transition-none motion-reduce:[.journey[data-expanded='false']_&:not(:last-child)]:transition-none"
+      className="journey-entry relative [border-bottom:1px_solid_transparent] [transition:border-color_100ms_ease-out] grid [grid-template-columns:2.5rem_minmax(0,_1fr)] items-start gap-x-4 py-3 [.journey[data-expanded='false']_&:not(:last-child)]:[border-bottom-color:var(--border)] [.journey[data-expanded='false']_&:not(:last-child)]:[transition:border-color_140ms_ease-out_200ms] sm:[.journey[data-expanded='false']_&]:[grid-template-columns:2.5rem_fit-content(45%)_minmax(0,_1fr)] motion-reduce:transition-none motion-reduce:[.journey[data-expanded='false']_&:not(:last-child)]:transition-none"
     >
       <motion.div
         layout="position"
-        className="journey-logo [grid-column:1] [grid-row:1] self-center sm:[.journey[data-expanded='false']_&]:[grid-row:1_/_span_2]"
+        className="journey-logo [grid-column:1] [grid-row:1_/_span_2] self-start sm:[.journey[data-expanded='false']_&]:self-center [.journey[data-expanded='false']_&]:[grid-row:1_/_span_3] sm:[.journey[data-expanded='false']_&]:[grid-row:1_/_span_2]"
       >
         <CompanyLogo logo={item.logo} />
       </motion.div>
       <motion.div
         layout="position"
-        className="journey-company flex min-h-10 items-center self-center [grid-column:2] [grid-row:1] sm:[.journey[data-expanded='false']_&]:[grid-row:1_/_span_2] min-w-0"
+        className="journey-company flex min-h-10 [.journey[data-expanded='true']_&]:min-h-6 [.journey[data-expanded='true']_&]:self-start max-sm:[.journey[data-expanded='false']_&]:min-h-6 items-center self-center [grid-column:2] [grid-row:1] sm:[.journey[data-expanded='false']_&]:[grid-row:1_/_span_2] min-w-0"
       >
         <div className="relative flex flex-wrap items-center gap-x-2 gap-y-1">
-          <h3 className="font-semibold text-foreground">
+          <h3 className="text-foreground">
             <TooltipTrigger
               payload={
                 <TooltipContent
@@ -301,7 +299,9 @@ function ExperienceItem({
                   anchor={entryRef}
                 >
                   <p className="font-medium">{fullName}</p>
-                  <p className="mt-2 text-muted-foreground">{item.tagline}</p>
+                  {item.tagline ? (
+                    <p className="mt-2 text-muted-foreground">{item.tagline}</p>
+                  ) : null}
                   {item.roles.map((role) => {
                     const bullet = role.bullets?.[0];
                     return (
@@ -310,13 +310,16 @@ function ExperienceItem({
                         key={role.title}
                       >
                         {role.summary ??
-                          (typeof bullet === "string" ? bullet : bullet?.text)}
+                          (typeof bullet === "string"
+                            ? bullet
+                            : bullet?.text) ??
+                          role.title}
                       </p>
                     );
                   })}
                 </TooltipContent>
               }
-              className="journey-company-trigger underline [text-decoration-color:transparent] [text-underline-offset:0.2em] [transition:text-decoration-color_150ms_ease-out] [&:is(:hover,_:focus-visible)]:[text-decoration-color:currentColor] motion-reduce:transition-none relative block min-h-6 cursor-pointer text-start focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+              className="journey-company-trigger font-medium underline [text-decoration-color:transparent] [text-underline-offset:0.2em] [transition:text-decoration-color_150ms_ease-out] [&:is(:hover,_:focus-visible)]:[text-decoration-color:currentColor] motion-reduce:transition-none relative block min-h-6 cursor-pointer text-start focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
               onClick={onToggle}
               aria-expanded={expanded}
               aria-label={`${company}: ${expanded ? "hide details" : "show details"}`}
@@ -363,8 +366,8 @@ function ExperienceItem({
         </div>
       </motion.div>
       <JourneyReveal
-        expanded={expanded}
-        className="journey-tagline [grid-column:2] mt-2 text-xs text-muted-foreground"
+        expanded={expanded && item.tagline.length > 0}
+        className="journey-tagline [grid-column:2] mt-1 text-xs text-muted-foreground"
         delay={0.08}
       >
         <p>{item.tagline}</p>
@@ -390,6 +393,7 @@ export function Journey({
   action?: React.ReactNode;
 }>) {
   const [expanded, setExpanded] = useState(false);
+  const DetailsIcon = expanded ? FoldVertical : UnfoldVertical;
   const contentId = useId();
   const contentRef = useRef<HTMLDivElement>(null);
   const height = useMotionValue<number | string>("auto");
@@ -435,18 +439,27 @@ export function Journey({
             data-expanded={expanded}
             aria-label="Career history"
           >
-            <div className="flex min-h-11 items-center justify-between gap-4">
-              <button
-                type="button"
-                className="journey-toggle [transition:color_150ms_ease-out] motion-reduce:transition-none site-text-link inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
-                aria-expanded={expanded}
-                aria-controls={contentId}
-                onClick={toggle}
-              >
-                <DisclosureChevron />
-                Details
-              </button>
-              {action}
+            <div className="mb-4 flex items-baseline justify-between gap-3">
+              <h2 className="section-title font-serif text-2xl font-normal text-foreground">
+                Experience
+              </h2>
+              <div className="flex shrink-0 items-center justify-end gap-3">
+                {action}
+                <button
+                  type="button"
+                  className="journey-toggle site-text-link inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm font-normal text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
+                  aria-expanded={expanded}
+                  aria-controls={contentId}
+                  onClick={toggle}
+                >
+                  <DetailsIcon
+                    aria-hidden="true"
+                    className="size-3.5 shrink-0"
+                    strokeWidth={1.5}
+                  />
+                  Details
+                </button>
+              </div>
             </div>
             <motion.div style={{ height }}>
               <div
@@ -454,25 +467,7 @@ export function Journey({
                 id={contentId}
                 className="relative flow-root"
               >
-                <JourneyReveal
-                  expanded={expanded}
-                  className="mt-6"
-                  delay={0.04}
-                >
-                  <h2 className="section-title mb-4 font-serif text-2xl font-normal text-foreground">
-                    Skills
-                  </h2>
-                  <p className="mt-2 text-muted-foreground">
-                    {skills.join(" · ")}
-                  </p>
-                </JourneyReveal>
-                <motion.h2
-                  layout="position"
-                  className="section-title mb-4 font-serif text-2xl font-normal text-foreground mt-8"
-                >
-                  Experience
-                </motion.h2>
-                <ol className="mt-4">
+                <ol>
                   {experience.map((item) => (
                     <ExperienceItem
                       key={item.company}
@@ -490,13 +485,32 @@ export function Journey({
                     {education.map((item) => (
                       <ExperienceItem
                         key={item.company}
-                        item={item}
+                        item={{
+                          ...item,
+                          tagline: "",
+                          roles: item.roles.map((role) => ({
+                            ...role,
+                            title: `${item.tagline.replace(/\.$/, "").replace("Bachelor of Science", "B.S.")} — ${role.title}`,
+                          })),
+                        }}
                         expanded={expanded}
                         onToggle={toggle}
                       />
                     ))}
                   </ol>
                 </motion.div>
+                <JourneyReveal
+                  expanded={expanded}
+                  className="mt-8"
+                  delay={0.04}
+                >
+                  <h2 className="section-title mb-4 font-serif text-2xl font-normal text-foreground">
+                    Skills
+                  </h2>
+                  <p className="mt-2 text-muted-foreground">
+                    {skills.join(" · ")}
+                  </p>
+                </JourneyReveal>
               </div>
             </motion.div>
           </section>
