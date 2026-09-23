@@ -72,9 +72,12 @@ function Ranking({
               {unit === "%" ? "%" : ` ${unit}`}
             </dd>
           </div>
-          <div aria-hidden="true" className="mt-2 h-1 bg-muted">
+          <div
+            aria-hidden="true"
+            className="mt-2 h-1 overflow-hidden rounded-full bg-muted"
+          >
             <div
-              className="h-full bg-primary/70"
+              className="h-full rounded-full bg-primary"
               style={{ width: `${(row.value / maximum) * 100}%` }}
             />
           </div>

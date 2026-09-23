@@ -89,7 +89,7 @@ const LimitBar = ({
         aria-valuemax={100}
         aria-valuemin={0}
         aria-valuenow={Math.round(used)}
-        className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted"
+        className="mt-2 h-1 overflow-hidden rounded-full bg-muted"
         role="progressbar"
       >
         <div
