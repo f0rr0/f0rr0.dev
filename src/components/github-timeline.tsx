@@ -28,19 +28,19 @@ export function GitHubTimeline({
     );
   }
   return (
-    <SiteSection
-      className={preview ? "home-section mt-12 [scroll-margin-top:2rem]" : ""}
-      heading={preview ? "h2" : "h1"}
-      headingClassName={preview ? undefined : "sr-only"}
-      href={preview ? "/work" : undefined}
-      id="timeline"
-      title="Work"
+    <GitHubActivityLiveProvider
+      feedRevision={initialPage.head.feedRevision}
+      orderingRevision={initialPage.orderingRevision}
     >
-      <GitHubActivityLiveProvider
-        feedRevision={initialPage.head.feedRevision}
-        orderingRevision={initialPage.orderingRevision}
+      <SiteSection
+        action={<GitHubActivityStatus initialHead={initialPage.head} />}
+        className={preview ? "home-section mt-12 [scroll-margin-top:2rem]" : ""}
+        heading={preview ? "h2" : "h1"}
+        headingClassName={preview ? undefined : "sr-only"}
+        href={preview ? "/work" : undefined}
+        id="timeline"
+        title="Work"
       >
-        <GitHubActivityStatus initialHead={initialPage.head} />
         <div className="grid gap-4">
           <GitHubTimelinePager
             initialPage={initialPage}
@@ -49,7 +49,7 @@ export function GitHubTimeline({
             key={`${initialPage.head.feedRevision}:${initialPage.orderingRevision}`}
           />
         </div>
-      </GitHubActivityLiveProvider>
-    </SiteSection>
+      </SiteSection>
+    </GitHubActivityLiveProvider>
   );
 }

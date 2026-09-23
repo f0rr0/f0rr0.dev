@@ -24,6 +24,7 @@ export function SiteMain({ children, className }: Readonly<SiteMainProps>) {
 }
 
 export function SiteSection({
+  action,
   children,
   className = "home-section mt-12 [scroll-margin-top:2rem]",
   heading: Heading = "h2",
@@ -32,6 +33,7 @@ export function SiteSection({
   id,
   title,
 }: Readonly<{
+  action?: ReactNode;
   children: ReactNode;
   className?: string;
   heading?: "h1" | "h2";
@@ -52,16 +54,19 @@ export function SiteSection({
         >
           {title}
         </Heading>
-        {href === undefined ? null : (
-          <Link
-            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-sm font-ui text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
-            href={href}
-            prefetch={false}
-          >
-            All {title.toLowerCase()}
-            <ArrowRight aria-hidden="true" className="size-3.5" />
-          </Link>
-        )}
+        <div className="flex shrink-0 items-baseline justify-end gap-4">
+          {action}
+          {href === undefined ? null : (
+            <Link
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-sm font-ui text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+              href={href}
+              prefetch={false}
+            >
+              All {title.toLowerCase()}
+              <ArrowRight aria-hidden="true" className="size-3.5" />
+            </Link>
+          )}
+        </div>
       </div>
       {children}
     </section>
