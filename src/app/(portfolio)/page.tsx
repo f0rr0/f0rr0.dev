@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/hover-card";
 import { WritingList } from "@/components/writing-list";
 import { homeIntroduction, projectEditorial } from "@/content/home";
-import { resumeData } from "@/content/resume";
+import { primaryGitHubProfile, resumeData } from "@/content/resume";
 import { tokenPreferences } from "@/content/tokens";
 import { getBlogPosts } from "@/lib/blog-utils";
 import { getPublicCodexStats } from "@/lib/codex/public-stats";
@@ -52,7 +52,11 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
     .slice(0, 4);
 
   return projects.length === 0 ? null : (
-    <SiteSection id="open-source" title="Open source">
+    <SiteSection
+      href={`${primaryGitHubProfile.url}?tab=repositories&sort=stargazers`}
+      id="open-source"
+      title="Open source"
+    >
       <HoverCardGroup>
         <ol className="site-list divide-y divide-border">
           {projects.map((project) => (
