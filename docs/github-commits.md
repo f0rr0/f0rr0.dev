@@ -113,7 +113,7 @@ GITHUB_ACTIVITY_CURSOR_SECRET=<independent random secret>
 `OPENAI_API_KEY` is optional. Without it, factual work units continue to
 publish and summary claims remain untouched. `DATABASE_URL_UNPOOLED` is the
 optional direct/session-pooler override used by migrations and Supabase Cron
-configuration. `GITHUB_TOKEN` (or `GH_TOKEN`) is optional for public discovery and code embeds. Secrets and
+configuration. `GITHUB_TOKEN` is optional for public discovery and code embeds. Secrets and
 private evidence stay server-side.
 
 Configure tracked authors once in `src/content/site.ts` as `{ login, id }` records.

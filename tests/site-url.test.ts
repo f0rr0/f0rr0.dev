@@ -7,7 +7,6 @@ test("derives local and production URLs without an author-specific fallback", ()
   expect(
     siteOriginFrom({
       PORT: "",
-      NEXT_PUBLIC_PORT: "",
       VERCEL_PROJECT_PRODUCTION_URL: "",
     })
   ).toBe("http://localhost:3000");

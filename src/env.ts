@@ -11,7 +11,6 @@ export const env = createEnv({
     NEXT_PUBLIC_VERCEL_ENV: z
       .enum(["development", "preview", "production"])
       .optional(),
-    NEXT_PUBLIC_PORT: optionalString,
     NEXT_PUBLIC_POSTHOG_KEY: optionalString,
     NEXT_PUBLIC_POSTHOG_REGION: z.enum(["us", "eu"]).default("us"),
   },
@@ -20,7 +19,6 @@ export const env = createEnv({
     NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL:
       process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL,
     NEXT_PUBLIC_VERCEL_ENV: process.env.NEXT_PUBLIC_VERCEL_ENV,
-    NEXT_PUBLIC_PORT: process.env.NEXT_PUBLIC_PORT,
     NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY,
     NEXT_PUBLIC_POSTHOG_REGION: process.env.NEXT_PUBLIC_POSTHOG_REGION,
   },
@@ -29,7 +27,6 @@ export const env = createEnv({
     DATABASE_URL: z.url().optional(),
     DATABASE_URL_UNPOOLED: z.url().optional(),
     GITHUB_ACTIVITY_CURSOR_SECRET: z.string().min(32).optional(),
-    GH_TOKEN: optionalString,
     GITHUB_TOKENS: optionalString,
     GITHUB_TOKEN: optionalString,
     GITHUB_WEBHOOK_SECRET: z.string().min(32).optional(),

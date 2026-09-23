@@ -51,7 +51,7 @@ export const tokensForGitHubAccount = (login?: string) => {
       [
         ...(login === undefined ? [] : [tokens[login]]),
         ...Object.values(tokens),
-        env.GITHUB_TOKEN ?? env.GH_TOKEN,
+        env.GITHUB_TOKEN,
       ].flatMap((value) =>
         value === undefined || value.trim() === "" ? [] : [value.trim()]
       )

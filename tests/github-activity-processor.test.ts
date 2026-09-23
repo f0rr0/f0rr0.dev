@@ -16,7 +16,6 @@ import { mockFetch, env } from "./helpers.ts";
 
 const originalFetch = globalThis.fetch;
 const originalTokens = env.GITHUB_TOKENS;
-const originalGhToken = env.GH_TOKEN;
 const originalDefaultToken = env.GITHUB_TOKEN;
 
 const pushCommitValue = (sha: string, login: string, id: number) => ({
@@ -43,14 +42,12 @@ const restoreEnvironmentValue = (
 
 beforeEach(() => {
   delete env.GITHUB_TOKENS;
-  delete env.GH_TOKEN;
   delete env.GITHUB_TOKEN;
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   restoreEnvironmentValue("GITHUB_TOKENS", originalTokens);
-  restoreEnvironmentValue("GH_TOKEN", originalGhToken);
   restoreEnvironmentValue("GITHUB_TOKEN", originalDefaultToken);
 });
 
