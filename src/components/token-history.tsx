@@ -199,7 +199,7 @@ export function TokenHistoryChart({
     <Tabs defaultValue="cumulative" className="mt-12">
       <SiteSection
         id="token-history"
-        title="Tokens over time"
+        title="Token growth"
         className=""
         action={
           <TabsList aria-label="Token history view" variant="line">

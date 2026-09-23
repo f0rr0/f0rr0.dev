@@ -165,26 +165,16 @@ function Tools({
 
 function usageMetrics(details: TokenDetails | null) {
   const activity = details?.activity;
-  if (!activity) {
+  if (!activity || !tokenPreferences.sections.composition) {
     return [];
   }
   return [
-    ...(tokenPreferences.sections.activity
-      ? [
-          { label: "Text tokens", value: activity.tokens },
-          { label: "Turns", value: activity.turns },
-        ]
-      : []),
-    ...(tokenPreferences.sections.composition
-      ? [
-          {
-            label: "Input cache hit rate",
-            value: activity.cacheHit,
-            suffix: "%",
-          },
-          ...(activity.composition ?? []),
-        ]
-      : []),
+    ...(activity.composition ?? []),
+    {
+      label: "Input cache hit rate",
+      value: activity.cacheHit,
+      suffix: "%",
+    },
   ].filter((row) => row.value !== null);
 }
 
@@ -213,12 +203,12 @@ function BreakdownContent({
       {metrics.length > 0 ? (
         <SiteSection
           id="breakdowns"
-          title="Usage"
+          title="Token breakdown"
           className="scroll-mt-8"
           description="Input is context the AI reads; cached input is reused context; output is generated text."
           action={periods}
         >
-          <TokenStatGrid className="md:grid-cols-3">
+          <TokenStatGrid className="min-[34rem]:grid-cols-2 md:grid-cols-2">
             {metrics.map((row) => (
               <Metric key={row.label} {...row} />
             ))}

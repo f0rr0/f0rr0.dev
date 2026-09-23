@@ -123,7 +123,7 @@ export function CodexActivity({
       <Tabs className="gap-4" defaultValue={views[0][0]}>
         <SiteSection
           id="token-activity"
-          title="Activity"
+          title="Activity calendar"
           className=""
           action={
             <TabsList aria-label="Token activity interval" variant="line">
