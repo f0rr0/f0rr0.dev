@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { fetchAnalytics } from "@/lib/codex/analytics";
+import { buildTokenDetails, fetchAnalytics } from "@/lib/codex/analytics";
 import type { AnalyticsSnapshot } from "@/lib/codex/analytics";
 import {
   createCodexAccountSnapshot,
@@ -174,7 +174,7 @@ export const fetchCodexAccountSnapshot = async (
     responses.profile.json(),
   ]);
   const snapshot = createCodexAccountSnapshot(profile, usage);
-  const analyticsPromise = fetchAnalytics(
+  const analytics = await fetchAnalytics(
     {
       Authorization: `Bearer ${auth.tokens.access_token}`,
       "ChatGPT-Account-Id": auth.tokens.account_id,
@@ -185,18 +185,31 @@ export const fetchCodexAccountSnapshot = async (
     now,
     previousAnalytics
   );
-  const logos = await fetchPluginLogos(
-    snapshot.topInvocations
-      ?.filter(({ kind }) => kind === "plugin")
-      .map(({ name }) => name) ?? [],
-    auth,
-    fetcher
+  const names = [
+    ...new Set([
+      ...(snapshot.topInvocations
+        ?.filter(({ kind }) => kind === "plugin")
+        .map(({ name }) => name) ?? []),
+      ...([7, 30] as const).flatMap(
+        (days) =>
+          buildTokenDetails([analytics], days, now)
+            .plugins?.rows.slice(0, 5)
+            .map((row) => row.label) ?? []
+      ),
+    ]),
+  ];
+  const logos = await fetchPluginLogos(names, auth, fetcher);
+  analytics.pluginLogos = Object.fromEntries(
+    names.flatMap((name) => {
+      const logo = logos.get(name) ?? previousAnalytics?.pluginLogos?.[name];
+      return logo ? [[name, logo]] : [];
+    })
   );
   return {
     authJson: refreshed ? JSON.stringify(auth) : authJson,
     snapshot: {
       ...snapshot,
-      analytics: await analyticsPromise,
+      analytics,
       topInvocations:
         snapshot.topInvocations?.map((invocation) => ({
           ...invocation,

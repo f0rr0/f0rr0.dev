@@ -56,6 +56,8 @@ export const analyticsSchemas = {
 type Sources = typeof analyticsSchemas;
 export type AnalyticsKey = keyof Sources;
 export type AnalyticsSnapshot = {
+  pluginLogos?: Record<string, { logoUrl: string; logoUrlDark?: string }>;
+} & {
   [K in AnalyticsKey]?: {
     fetchedAt: string;
     start: string;
@@ -132,6 +134,8 @@ export async function fetchAnalytics(
 export interface TokenRow {
   label: string;
   value: number;
+  logoUrl?: string;
+  logoUrlDark?: string;
 }
 const ranked = (values: Map<string, number>): TokenRow[] =>
   [...values]
@@ -213,7 +217,16 @@ export function buildTokenDetails(
         }
       }
     }
-    return { rows: ranked(values), status: status(key) };
+    return {
+      rows: ranked(values).map((row) => ({
+        ...row,
+        ...(key === "plugins"
+          ? accounts.find((account) => account?.pluginLogos?.[row.label])
+              ?.pluginLogos?.[row.label]
+          : undefined),
+      })),
+      status: status(key),
+    };
   };
   return {
     start,

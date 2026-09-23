@@ -52,7 +52,7 @@ const readCachedTokenDetails = unstable_cache(
       days
     );
   },
-  ["public-token-details-v1", JSON.stringify(tokenPreferences)],
+  ["public-token-details-v2", JSON.stringify(tokenPreferences)],
   { revalidate: 900, tags: ["public-codex-stats"] }
 );
 

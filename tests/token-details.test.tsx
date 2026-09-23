@@ -188,3 +188,26 @@ test("disabled configuration hides the route and public data without querying a 
   expect(result.stderr.toString()).toBe("");
   expect(result.exitCode).toBe(0);
 });
+
+test("ranked tools carry dynamic logos without exposing excluded tool metadata", () => {
+  const account: AnalyticsSnapshot = {
+    ...fixture(),
+    pluginLogos: {
+      "public-tool": {
+        logoUrl: "https://files.openai.com/public.svg",
+        logoUrlDark: "https://files.openai.com/public-dark.svg",
+      },
+      "private-tool": { logoUrl: "https://files.openai.com/private.svg" },
+    },
+  };
+  const details = buildTokenDetails([account], 30, now, {
+    ...tokenPreferences,
+    excludedTools: ["private-tool"],
+  });
+  expect(details.plugins?.rows[0]).toEqual({
+    label: "public-tool",
+    value: 2,
+    ...account.pluginLogos?.["public-tool"],
+  });
+  expect(JSON.stringify(details)).not.toContain("private.svg");
+});

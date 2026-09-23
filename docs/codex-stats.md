@@ -132,7 +132,9 @@ of the calendar's 52-week alignment and future placeholder cells. Token totals,
 busiest day, and daily peak are omitted from the detail stats grid because the
 chart provides that context. The homepage shows only token totals and the calendar. Detailed statistics and
 the current usage limit live on `/tokens`. Tool rankings reuse stored logos and
-the original tool/skill fallback icons.
+the original tool/skill fallback icons. The existing authenticated plugin search
+also resolves logos for the top five tools in each 7/30-day window; failed lookups
+retain previously fetched logos.
 The latest returned day is a row timestamp, not a completeness watermark.
 No productivity, dollars saved, or code-authorship estimate is calculated.
 

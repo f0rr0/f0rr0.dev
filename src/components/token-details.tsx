@@ -124,16 +124,16 @@ function Tools({
                 ...row,
                 icon: (
                   <CodexToolIcon
-                    tool={
-                      toolIcons.find(
+                    tool={{
+                      ...toolIcons.find(
                         (tool) =>
                           tool.name === row.label &&
                           tool.kind === (id === "skills" ? "skill" : "plugin")
-                      ) ?? {
-                        name: row.label,
-                        kind: id === "skills" ? "skill" : "plugin",
-                      }
-                    }
+                      ),
+                      ...row,
+                      name: row.label,
+                      kind: id === "skills" ? "skill" : "plugin",
+                    }}
                   />
                 ),
               }))}
