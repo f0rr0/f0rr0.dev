@@ -1,4 +1,4 @@
-# Token log setup
+# Tokens setup
 
 The portfolio reads sanitized Codex usage snapshots from Supabase. A scheduled
 Supabase cron calls a protected Vercel route every 15 minutes.
@@ -54,6 +54,29 @@ To stop including an account, set its `codex_accounts.enabled` value to `false`.
 Rerun cron configuration after disabling every account to remove the scheduled
 Codex job.
 
+## Backfill
+
+With the production database environment loaded, run:
+
+```sh
+bun run codex:backfill 2020-01-01
+```
+
+Choose a date before your earliest usage. This requests every enabled account's
+activity, models, token components, tools, skills, and delegation history in
+batches of at most 365 days, using the stored credentials. It prints each batch's
+row counts and earliest returned dates. Empty periods are valid; unavailable
+upstream records cannot be reconstructed. Profile history is refreshed too.
+
+Each successful batch is saved. Rerunning replaces matching records without
+adding counts twice; missing dates and token fields retain their saved values.
+Failures exit nonzero and can be retried with the same command. Historical
+allowance records with changed units are archived rather than mixed together.
+The regular sync also preserves older history. No additional migration is needed;
+the command uses the existing snapshot column. Public caches expire within
+15 minutes; the development preview uses a separate fixture and does not verify
+production coverage.
+
 ## Stored data
 
 Account credentials stay encrypted in Supabase Vault; the table stores only
@@ -63,4 +86,42 @@ public snapshots.
 
 The sync refreshes account credentials automatically and combines account usage
 for display. Unique skills and percentage metrics use ranges where exact totals
-cannot be calculated; plan limits are combined only for matching plans and windows.
+cannot be calculated. Plan limits and allowance shares stay separate per account.
+
+## Detailed usage page
+
+`/tokens` uses the existing credentials, snapshot storage, and sync schedule.
+Breakdowns become available after the next successful sync. Register each
+underlying ChatGPT account only once; duplicate identities cause sync to fail.
+
+Configure public presentation in `src/content/tokens.ts`:
+
+- `enabled`: controls the route, navigation, sitemap entry, homepage preview,
+  and additional analytics requests.
+- `homepagePreview`: shows token totals and the calendar on the homepage.
+- `title`, `introduction`, and `workLink`: customize the copy and optional work link.
+- `sections`: controls activity, models, composition, tools, delegation, and limits.
+- `historyDays`: displayed analytics window (30–365 days); the first successful sync
+  fetches this window, then subsequent syncs refresh recent dates. Older stored rows are retained.
+- `rankingLimit`: number of ranked tools and skills displayed.
+- `accountLabels`: optional public labels keyed by registered account ID; defaults
+  to numbered accounts. Credentials and upstream account identities stay private.
+- `timeZone`: timezone for displaying allowance reset dates.
+- `excludedTools`: exact plugin/skill names to exclude from public data,
+  including older snapshots. Stored data is not deleted.
+
+Navigation labels and order are configured in `src/content/resume.ts`.
+
+### Data limitations
+
+The detailed breakdowns use internal Codex endpoints. History means available
+records within `historyDays`, not complete lifetime coverage. Changing the window
+triggers a fresh backfill. Requests fetch up to 100 named tools/skills; upstream may
+group additional entries. These sources may lag behind profile totals. Failed
+requests retain previous data; empty sections are hidden. Day boundaries are UTC.
+
+Token and invocation counts sum across accounts. Cache hit rate is weighted by
+input tokens from rows with all components reported; missing components are not
+zero. Model counts include reported background turns. Allowance shares are not
+token shares. Missing history stays unknown unless daily counts reconcile with
+lifetime usage. The longest-turn metric measures a single turn, not a whole chat.

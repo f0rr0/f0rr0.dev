@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 
 import { resumeData } from "@/content/resume";
+import { tokenPreferences } from "@/content/tokens";
 import { getBlogPosts } from "@/lib/blog-utils";
 import { publicUrl, resumePdfUrl } from "@/lib/site";
 
@@ -17,6 +18,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     newestDate([resumeUpdatedAt, latestPostDate]) ?? resumeUpdatedAt;
 
   return [
+    ...(tokenPreferences.enabled ? [{ url: publicUrl("/tokens") }] : []),
     {
       lastModified: siteUpdatedAt,
       url: publicUrl("/"),

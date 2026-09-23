@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { InfoLabel } from "@/components/info-label";
 import { cn } from "@/lib/utils";
 
 interface SiteMainProps {
@@ -29,7 +30,9 @@ export function SiteSection({
   className = "home-section mt-12 [scroll-margin-top:2rem]",
   heading: Heading = "h2",
   headingClassName,
+  description,
   href,
+  linkLabel,
   id,
   title,
 }: Readonly<{
@@ -38,13 +41,15 @@ export function SiteSection({
   className?: string;
   heading?: "h1" | "h2";
   headingClassName?: string;
+  description?: string;
   href?: string;
+  linkLabel?: string;
   id: string;
   title: string;
 }>) {
   return (
     <section aria-labelledby={`${id}-title`} className={className} id={id}>
-      <div className="mb-4 flex items-baseline justify-between gap-4">
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <Heading
           className={cn(
             "section-title font-serif text-2xl font-normal text-foreground",
@@ -52,7 +57,11 @@ export function SiteSection({
           )}
           id={`${id}-title`}
         >
-          {title}
+          {description === undefined ? (
+            title
+          ) : (
+            <InfoLabel label={title} description={description} />
+          )}
         </Heading>
         <div className="flex shrink-0 items-baseline justify-end gap-4">
           {action}
@@ -62,7 +71,7 @@ export function SiteSection({
               href={href}
               prefetch={false}
             >
-              All {title.toLowerCase()}
+              {linkLabel ?? `All ${title.toLowerCase()}`}
               <ArrowRight aria-hidden="true" className="size-3.5" />
             </Link>
           )}

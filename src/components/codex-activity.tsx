@@ -1,5 +1,7 @@
 "use client";
 
+import { SiteSection } from "@/components/site-page";
+import { TokenMonthAxis } from "@/components/token-month-axis";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   TooltipContent,
@@ -21,51 +23,13 @@ const weekStart = (day: string) => {
   return value;
 };
 
-export const activityIntensity = (
-  tokens: number,
-  minimum: number,
-  maximum: number
-) =>
-  tokens === 0
-    ? 0
-    : minimum === maximum
-      ? 1
-      : (Math.log(tokens) - Math.log(minimum)) /
-        (Math.log(maximum) - Math.log(minimum));
-
-const MonthAxis = ({
-  calendarOffset,
-  values,
-}: {
-  calendarOffset: number;
-  values: PublicCodexSeries["values"];
-}) => {
-  const columns = Math.ceil((calendarOffset + values.length) / 7);
-  const ticks = values.flatMap((point, index) =>
-    index === 0 ||
-    point.day.slice(0, 7) === (values[index - 1]?.day ?? point.day).slice(0, 7)
-      ? []
-      : [{ day: point.day, index }]
-  );
-  return (
-    <div
-      aria-hidden="true"
-      className="relative mt-2 h-4 max-sm:[&>span:nth-child(even)]:hidden"
-    >
-      {ticks.map((tick) => {
-        const position =
-          Math.floor((calendarOffset + tick.index) / 7) / (columns - 1);
-        return (
-          <span
-            className={`absolute -translate-x-1/2 font-sans text-xs text-muted-foreground ${position > 0.95 ? "-translate-x-full" : ""}`}
-            key={tick.day}
-            style={{ left: `${String(position * 100)}%` }}
-          >
-            {formatDate(tick.day, "month")}
-          </span>
-        );
-      })}
-    </div>
+export const activityThresholds = (counts: number[]) => {
+  const positive = counts
+    .filter((count) => count > 0)
+    .toSorted((a, b) => a - b);
+  return [0.25, 0.5, 0.75].map(
+    (quantile) =>
+      positive[Math.max(0, Math.ceil(positive.length * quantile) - 1)] ?? 0
   );
 };
 
@@ -76,11 +40,9 @@ const ActivityHeatmap = ({
   mode: "cumulative" | "daily" | "weekly";
   series: PublicCodexSeries;
 }) => {
-  const positiveTokens = series.values
-    .map(({ tokens }) => tokens)
-    .filter((tokens) => tokens > 0);
-  const minimum = Math.min(...positiveTokens);
-  const maximum = Math.max(...positiveTokens);
+  const thresholds = activityThresholds(
+    series.values.map(({ tokens }) => tokens)
+  );
   const leadingDays = date(series.values[0]?.day ?? "1970-01-04").getUTCDay();
   return (
     <figure>
@@ -93,15 +55,17 @@ const ActivityHeatmap = ({
           <span aria-hidden="true" key={`leading-${String(index)}`} />
         ))}
         {series.values.map(({ day, tokens }) => {
-          const ratio = activityIntensity(tokens, minimum, maximum);
+          const band = thresholds.filter(
+            (threshold) => tokens > threshold
+          ).length;
           const color =
             tokens === 0
               ? "bg-muted/60"
-              : ratio < 0.25
+              : band === 0
                 ? "bg-primary/25"
-                : ratio < 0.5
+                : band === 1
                   ? "bg-primary/45"
-                  : ratio < 0.75
+                  : band === 2
                     ? "bg-primary/70"
                     : "bg-primary";
           const dayLabel = formatDate(mode === "weekly" ? weekStart(day) : day);
@@ -121,7 +85,7 @@ const ActivityHeatmap = ({
           );
         })}
       </div>
-      <MonthAxis calendarOffset={leadingDays} values={series.values} />
+      <TokenMonthAxis calendarOffset={leadingDays} values={series.values} />
       {series.partial ? (
         <figcaption className="mt-1 font-sans text-xs text-muted-foreground">
           Partial history
@@ -140,26 +104,43 @@ export function CodexActivity({
   daily: PublicCodexSeries;
   weekly: PublicCodexSeries;
 }) {
+  const views = (
+    [
+      ["daily", "Daily", daily],
+      ["weekly", "Weekly", weekly],
+      ["cumulative", "Cumulative", cumulative],
+    ] as const
+  ).filter(
+    (entry) =>
+      entry[2].values.length > 0 &&
+      (!entry[2].partial || entry[2].values.some((point) => point.tokens > 0))
+  );
+  if (views.length === 0) {
+    return null;
+  }
   return (
     <TooltipGroup>
-      <Tabs className="mt-6 gap-4" defaultValue="daily">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <h3 className="text-sm font-medium text-foreground">Activity</h3>
-          <TabsList aria-label="Token activity interval" variant="line">
-            <TabsTrigger value="daily">Daily</TabsTrigger>
-            <TabsTrigger value="weekly">Weekly</TabsTrigger>
-            <TabsTrigger value="cumulative">Cumulative</TabsTrigger>
-          </TabsList>
-        </div>
-        <TabsContent value="daily">
-          <ActivityHeatmap mode="daily" series={daily} />
-        </TabsContent>
-        <TabsContent value="weekly">
-          <ActivityHeatmap mode="weekly" series={weekly} />
-        </TabsContent>
-        <TabsContent value="cumulative">
-          <ActivityHeatmap mode="cumulative" series={cumulative} />
-        </TabsContent>
+      <Tabs className="gap-4" defaultValue={views[0][0]}>
+        <SiteSection
+          id="token-activity"
+          title="Activity"
+          className=""
+          action={
+            <TabsList aria-label="Token activity interval" variant="line">
+              {views.map(([mode, label]) => (
+                <TabsTrigger key={mode} value={mode}>
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          }
+        >
+          {views.map(([mode, , series]) => (
+            <TabsContent key={mode} value={mode}>
+              <ActivityHeatmap mode={mode} series={series} />
+            </TabsContent>
+          ))}
+        </SiteSection>
       </Tabs>
     </TooltipGroup>
   );

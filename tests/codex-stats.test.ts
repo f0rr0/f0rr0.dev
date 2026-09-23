@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { activityIntensity } from "../src/components/codex-activity.tsx";
+import { activityThresholds } from "../src/components/codex-activity.tsx";
+import type { CodexAccountSnapshot } from "../src/lib/codex/stats";
 import {
   buildPublicCodexStats,
   createCodexAccountSnapshot,
@@ -83,11 +84,17 @@ const requireStats = <T>(stats: T | null): T => {
 };
 
 describe("public Codex statistics", () => {
-  test("whitelists upstream data and combines accounts", () => {
-    expect(activityIntensity(0, 1, 1000)).toBe(0);
-    expect(activityIntensity(10, 1, 1000)).toBeCloseTo(1 / 3);
-    expect(activityIntensity(1000, 1, 1000)).toBe(1);
+  test("calendar bands follow nonzero usage quartiles as counts grow", () => {
+    const counts = [0, 0, 1, 2, 3, 4, 5, 6, 7, 1000];
+    expect(activityThresholds(counts)).toEqual([2, 4, 6]);
+    expect(
+      activityThresholds(counts.map((count) => count * 1_000_000))
+    ).toEqual([2_000_000, 4_000_000, 6_000_000]);
+    expect(activityThresholds([0, 0])).toEqual([0, 0, 0]);
+    expect(activityThresholds([10, 10, 10])).toEqual([10, 10, 10]);
+  });
 
+  test("whitelists upstream data and combines accounts", () => {
     const first = createCodexAccountSnapshot(
       profile(80, [
         { start_date: "2026-01-29", tokens: 30 },
@@ -218,9 +225,14 @@ describe("public Codex statistics", () => {
         },
       ],
     });
-    expect(stats.primaryLimit).toEqual({
-      usedPercent: 50,
-    });
+    expect(stats.limits).toEqual([
+      {
+        label: "",
+        usedPercent: 50,
+        windowDurationMins: 300,
+        resetAt: null,
+      },
+    ]);
     expect(JSON.stringify(stats)).not.toContain("Spark");
 
     const partial = requireStats(
@@ -236,7 +248,7 @@ describe("public Codex statistics", () => {
     );
     expect(partial.totals.lifetimeTokens.partial).toBe(true);
     expect(partial.highlights.currentStreakDays.partial).toBe(true);
-    expect(partial.primaryLimit).toBeNull();
+    expect(partial.limits).toHaveLength(1);
 
     expect(
       requireStats(
@@ -320,7 +332,11 @@ describe("public Codex statistics", () => {
       new Date("2026-01-30T12:00:00.000Z")
     );
 
-    expect(calls.map(({ url }) => url)).toEqual([
+    expect(
+      calls
+        .filter(({ url }) => !url.includes("group_by=day"))
+        .map(({ url }) => url)
+    ).toEqual([
       "https://chatgpt.com/backend-api/wham/usage",
       "https://chatgpt.com/backend-api/wham/profiles/me",
       "https://auth.openai.com/oauth/token",
@@ -328,6 +344,13 @@ describe("public Codex statistics", () => {
       "https://chatgpt.com/backend-api/wham/profiles/me",
       "https://chatgpt.com/backend-api/ps/plugins/search?q=github&scope=GLOBAL&limit=5",
     ]);
+    const analyticsCalls = calls.filter(({ url }) =>
+      url.includes("group_by=day")
+    );
+    expect(analyticsCalls).toHaveLength(4);
+    expect(
+      analyticsCalls.every((call) => call.authorization === "Bearer new-access")
+    ).toBe(true);
     expect(calls.at(-1)?.authorization).toBe("Bearer new-access");
     expect(calls.at(-1)?.accountId).toBe("account-id");
     expect(calls.at(-1)?.productSku).toBe("codex");
@@ -349,4 +372,105 @@ describe("public Codex statistics", () => {
       logoUrlDark: "https://files.openai.com/content?id=github-dark",
     });
   });
+});
+
+test("limits retain separate reset windows and unknown invocation kinds do not discard a profile", () => {
+  const snapshot = createCodexAccountSnapshot(
+    profile(10, [], {
+      top_invocations: [
+        { type: "new-kind", usage_count: 3 },
+        { type: "plugin", plugin_name: "missing-count" },
+      ],
+    }),
+    {
+      rate_limit: {
+        primary_window: {
+          used_percent: 1,
+          limit_window_seconds: 18_000,
+          reset_at: 1_790_412_746,
+        },
+        secondary_window: {
+          used_percent: 60,
+          limit_window_seconds: 604_800,
+          reset_at: 1_790_662_689,
+        },
+      },
+    }
+  );
+  expect(snapshot.topInvocations).toEqual([]);
+  const stats = buildPublicCodexStats(
+    [{ snapshot, label: "Personal" }],
+    new Date("2026-09-23T12:00:00Z")
+  );
+  expect(stats?.limits).toEqual([
+    {
+      label: "Personal",
+      usedPercent: 1,
+      windowDurationMins: 300,
+      resetAt: 1_790_412_746,
+    },
+    {
+      label: "Personal",
+      usedPercent: 60,
+      windowDurationMins: 10_080,
+      resetAt: 1_790_662_689,
+    },
+  ]);
+});
+
+test("combined allowances preserve window durations and do not invent a shared reset", () => {
+  const account = (plan: string, used: number, reset: number) => ({
+    snapshot: createCodexAccountSnapshot(profile(0, []), {
+      plan_type: plan,
+      rate_limit: {
+        primary_window: {
+          used_percent: used,
+          limit_window_seconds: 18_000,
+          reset_at: reset,
+        },
+        secondary_window: {
+          used_percent: used + 10,
+          limit_window_seconds: 604_800,
+          reset_at: 200,
+        },
+      },
+    }),
+  });
+  const first = account("pro", 20, 100);
+  const second = account("pro", 60, 110);
+  expect(buildPublicCodexStats([first, second])?.limits).toEqual([
+    { label: "", usedPercent: 40, windowDurationMins: 300, resetAt: null },
+    { label: "", usedPercent: 50, windowDurationMins: 10_080, resetAt: 200 },
+  ]);
+  expect(
+    buildPublicCodexStats([first, account("plus", 60, 110)])?.limits
+  ).toHaveLength(4);
+  expect(
+    buildPublicCodexStats([first, second], new Date(), 3)?.limits
+  ).toHaveLength(4);
+});
+
+test("snapshot saves keep profile history when upstream shortens or omits it", async () => {
+  const { mergeCodexSnapshots } = await import("../src/lib/codex/store");
+  const base = {
+    dailyUsageBuckets: [{ startDate: "2020-01-01", tokens: 10 }],
+    cumulativeDailyUsageBuckets: [{ startDate: "2020-01-01", tokens: 10 }],
+    primaryLimit: null,
+    summary: {} as CodexAccountSnapshot["summary"],
+    topInvocations: null,
+  };
+  const next = {
+    ...base,
+    dailyUsageBuckets: [{ startDate: "2026-01-01", tokens: 20 }],
+    cumulativeDailyUsageBuckets: null,
+  };
+  const result = mergeCodexSnapshots(base, next);
+  expect(result.dailyUsageBuckets).toEqual([
+    ...base.dailyUsageBuckets,
+    ...next.dailyUsageBuckets,
+  ]);
+  expect(result.cumulativeDailyUsageBuckets).toEqual(
+    base.cumulativeDailyUsageBuckets
+  );
+  expect(mergeCodexSnapshots(result, next)).toEqual(result);
 });
