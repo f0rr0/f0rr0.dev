@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-// Isolate module mocks from the PostgreSQL integration tests.
+// Isolate module mocks from the rest of the test suite.
 const check = (source: string) => {
   const result = Bun.spawnSync([process.execPath, "--eval", source], {
     cwd: new URL("..", import.meta.url).pathname,

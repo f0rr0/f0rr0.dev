@@ -389,8 +389,8 @@ It does not query GitHub and therefore cannot independently prove ingestion
 completeness. Acceptance against real data must first run the relevant backfill
 and then compare selected PRs, refs, and weeks/months with GitHub itself.
 
-Behavioral tests cover these contracts rather than source strings or rendered
-class names:
+Use these contracts for automated checks and manual verification. Database
+persistence and concurrency behavior require manual verification:
 
 | Scenario                                                                | Expected behavior                                     |
 | ----------------------------------------------------------------------- | ----------------------------------------------------- |
@@ -422,6 +422,6 @@ bun test
 bun run build
 ```
 
-PostgreSQL-backed projection, feed, summary-store, and migration tests require
-Docker. Real-data verification is read-only; migration and backfill are
-separate explicit operations.
+The test suite runs without Docker or a PostgreSQL server; it does not exercise
+live database persistence or migrations. Real-data verification is read-only;
+migration and backfill are separate explicit operations.

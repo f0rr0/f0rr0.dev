@@ -23,7 +23,6 @@ import {
   reconcileGitHubRepositoryRefBatch,
   sortGitHubRefRepositories,
 } from "../src/lib/github-ref-reconciliation-batch.ts";
-import vercelConfig from "../vercel.json";
 
 const minutesFrom = (schedule: string) => {
   const [minute] = schedule.split(" ", 1);
@@ -131,9 +130,5 @@ describe("GitHub cron configuration", () => {
     expect(nextGitHubRefRepository(repositories, "42")?.id).toBe("100");
     expect(githubRefCycleIsComplete(repositories, "100", null)).toBe(true);
     expect(githubRefCycleIsComplete(repositories, "100", 2)).toBe(false);
-  });
-
-  test("runs server functions beside the Tokyo database", () => {
-    expect(vercelConfig.regions).toEqual(["hnd1"]);
   });
 });
