@@ -1,6 +1,6 @@
 "use client";
 
-import { Pie, PieChart, useChartWidth } from "recharts";
+import { Pie, PieChart, useChartHeight, useChartWidth } from "recharts";
 
 import { ChartContainer } from "@/components/ui/chart";
 import type { ChartConfig } from "@/components/ui/chart";
@@ -19,8 +19,12 @@ const percent = new Intl.NumberFormat(sitePreferences.language, {
 
 function DelegationSlices({ data }: { data: (TokenRow & { fill: string })[] }) {
   const width = useChartWidth() ?? 320;
-  // Reserve 80px per side for the connector and the longest label.
-  const radius = Math.max(0, Math.min(160, (width - 160) / 2));
+  const height = useChartHeight() ?? 288;
+  // Leave room for labels: 104px on each side and 64px above and below.
+  const radius = Math.max(
+    0,
+    Math.min(128, (width - 208) / 2, (height - 128) / 2)
+  );
   return (
     <Pie
       data={data}
@@ -55,14 +59,14 @@ function DelegationSlices({ data }: { data: (TokenRow & { fill: string })[] }) {
             y={y}
             dominantBaseline="central"
             textAnchor={textAnchor}
-            className="fill-foreground text-xs"
+            className="fill-foreground text-base"
           >
             {words.map((word, i) => (
-              <tspan key={word} x={x} dy={i === 0 ? -words.length * 8 : 16}>
+              <tspan key={word} x={x} dy={i === 0 ? -words.length * 12 : 24}>
                 {word}
               </tspan>
             ))}
-            <tspan x={x} dy={16} className="fill-muted-foreground tabular-nums">
+            <tspan x={x} dy={24} className="fill-muted-foreground tabular-nums">
               {row.value > 0 && row.value < 0.1
                 ? "<0.1%"
                 : percent.format(row.value / 100)}
