@@ -211,3 +211,31 @@ test("ranked tools carry dynamic logos without exposing excluded tool metadata",
   });
   expect(JSON.stringify(details)).not.toContain("private.svg");
 });
+
+test("empty sections disappear while reported zero usage remains visible", () => {
+  const empty = buildTokenDetails([{}], 30, now);
+  const html = renderToStaticMarkup(
+    <TokenUsageDetails stats={null} details={empty} />
+  );
+  for (const id of ["breakdowns", "models", "tools", "skills"]) {
+    expect(html).not.toContain(`id="${id}"`);
+  }
+  const zero = fixture();
+  zero.activity.response.data[0].totals = {
+    turns: 0,
+    uncached_text_input_tokens: 0,
+    cached_text_input_tokens: 0,
+    text_output_tokens: 0,
+  };
+  zero.activity.response.data[0].models = [];
+  zero.plugins.response.data = [];
+  const details = buildTokenDetails([zero], 30, now);
+  const zeroHtml = renderToStaticMarkup(
+    <TokenUsageDetails stats={null} details={details} weekDetails={empty} />
+  );
+  expect(zeroHtml).toContain('id="breakdowns"');
+  for (const id of ["models", "tools", "skills"]) {
+    expect(zeroHtml).not.toContain(`id="${id}"`);
+  }
+  expect(zeroHtml).not.toContain("Last 7 days");
+});

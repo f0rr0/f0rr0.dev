@@ -105,7 +105,8 @@ response retains that source's previous data, date range, and fetch timestamp.
 Other sources still update. A successful fetch is not proof of complete upstream
 coverage: Codex can lag by six hours, and sparse daily rows can reflect reporting
 gaps. Empty rows are shown as unavailable rather than invented zero totals.
-Explicit reported zero counts remain zero.
+Explicit reported zero counts remain zero. Sections and period options without
+reported data are omitted, including empty history charts and calendar views.
 
 Text-token and invocation counts sum across distinct accounts. Cache-hit rate is
 combined cached input divided by combined cached plus uncached input. Model bars

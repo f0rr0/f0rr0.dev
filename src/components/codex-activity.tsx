@@ -104,30 +104,42 @@ export function CodexActivity({
   daily: PublicCodexSeries;
   weekly: PublicCodexSeries;
 }) {
+  const views = (
+    [
+      ["daily", "Daily", daily],
+      ["weekly", "Weekly", weekly],
+      ["cumulative", "Cumulative", cumulative],
+    ] as const
+  ).filter(
+    (entry) =>
+      entry[2].values.length > 0 &&
+      (!entry[2].partial || entry[2].values.some((point) => point.tokens > 0))
+  );
+  if (views.length === 0) {
+    return null;
+  }
   return (
     <TooltipGroup>
-      <Tabs className="gap-4" defaultValue="daily">
+      <Tabs className="gap-4" defaultValue={views[0][0]}>
         <SiteSection
           id="token-activity"
           title="Activity"
           className=""
           action={
             <TabsList aria-label="Token activity interval" variant="line">
-              <TabsTrigger value="daily">Daily</TabsTrigger>
-              <TabsTrigger value="weekly">Weekly</TabsTrigger>
-              <TabsTrigger value="cumulative">Cumulative</TabsTrigger>
+              {views.map(([mode, label]) => (
+                <TabsTrigger key={mode} value={mode}>
+                  {label}
+                </TabsTrigger>
+              ))}
             </TabsList>
           }
         >
-          <TabsContent value="daily">
-            <ActivityHeatmap mode="daily" series={daily} />
-          </TabsContent>
-          <TabsContent value="weekly">
-            <ActivityHeatmap mode="weekly" series={weekly} />
-          </TabsContent>
-          <TabsContent value="cumulative">
-            <ActivityHeatmap mode="cumulative" series={cumulative} />
-          </TabsContent>
+          {views.map(([mode, , series]) => (
+            <TabsContent key={mode} value={mode}>
+              <ActivityHeatmap mode={mode} series={series} />
+            </TabsContent>
+          ))}
         </SiteSection>
       </Tabs>
     </TooltipGroup>

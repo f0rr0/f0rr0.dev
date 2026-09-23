@@ -101,18 +101,22 @@ function Tools({
   details: TokenDetails | null;
   toolIcons: PublicCodexStats["insights"]["topTools"];
 }) {
-  if (!details || (!details.plugins && !details.skills)) {
+  if (
+    ![details?.plugins, details?.skills].some(
+      (section) => (section?.rows.length ?? 0) > 0
+    )
+  ) {
     return null;
   }
   return (
     <div className="mt-12 grid gap-x-4 gap-y-12 md:grid-cols-2 md:gap-y-4">
       {(
         [
-          ["tools", "Tools", details.plugins],
-          ["skills", "Skills", details.skills],
+          ["tools", "Tools", details?.plugins],
+          ["skills", "Skills", details?.skills],
         ] as const
       ).map(([id, title, data]) =>
-        data ? (
+        data && data.rows.length > 0 ? (
           <SiteSection
             key={id}
             id={id}
@@ -140,11 +144,6 @@ function Tools({
               unit="calls"
               className="md:contents md:space-y-0"
             />
-            {data.rows.length === 0 && data.status.available > 0 ? (
-              <p className="text-base text-muted-foreground">
-                No calls reported.
-              </p>
-            ) : null}
             <Coverage status={data.status} />
           </SiteSection>
         ) : null
@@ -153,49 +152,75 @@ function Tools({
   );
 }
 
+function usageMetrics(details: TokenDetails | null) {
+  const activity = details?.activity;
+  if (!activity) {
+    return [];
+  }
+  return [
+    ...(tokenPreferences.sections.activity
+      ? [
+          { label: "Text tokens", value: activity.tokens },
+          { label: "Turns", value: activity.turns },
+        ]
+      : []),
+    ...(tokenPreferences.sections.composition
+      ? [
+          {
+            label: "Input cache hit rate",
+            value: activity.cacheHit,
+            suffix: "%",
+          },
+          ...(activity.composition ?? []),
+        ]
+      : []),
+  ].filter((row) => row.value !== null);
+}
+
+function hasBreakdowns(details: TokenDetails | null) {
+  return (
+    usageMetrics(details).length > 0 ||
+    [details?.models, details?.plugins, details?.skills].some(
+      (section) => (section?.rows.length ?? 0) > 0
+    )
+  );
+}
+
 function BreakdownContent({
   details,
   toolIcons,
+  periods,
 }: {
-  details: TokenDetails | null;
+  details: TokenDetails;
   toolIcons: PublicCodexStats["insights"]["topTools"];
+  periods: ReactNode;
 }) {
-  if (details === null) {
-    return <p className="text-muted-foreground">Temporarily unavailable.</p>;
-  }
-  const { activity } = details;
+  const metrics = usageMetrics(details);
   return (
     <>
-      <dl className="token-stat-grid md:grid-cols-3!">
-        {tokenPreferences.sections.activity ? (
-          <>
-            <Metric label="Text tokens" value={activity?.tokens ?? null} />
-            <Metric label="Turns" value={activity?.turns ?? null} />
-          </>
-        ) : null}
-        {tokenPreferences.sections.composition ? (
-          <>
-            <Metric
-              label="Input cache hit rate"
-              value={activity?.cacheHit ?? null}
-              suffix="%"
-            />
-            {(activity?.composition ?? []).map((row) => (
-              <Metric key={row.label} label={row.label} value={row.value} />
+      {metrics.length > 0 ? (
+        <SiteSection
+          id="breakdowns"
+          title="Usage"
+          className="scroll-mt-8"
+          description="Text tokens reported for this period. New input is fresh context. Cached input is context reused across requests. Output is generated text. The selected period also applies to models, tools, and skills below."
+          action={periods}
+        >
+          <dl className="token-stat-grid md:grid-cols-3!">
+            {metrics.map((row) => (
+              <Metric key={row.label} {...row} />
             ))}
-          </>
-        ) : null}
-      </dl>
-      {activity ? <Coverage status={activity.status} /> : null}
-      {details?.models ? (
+          </dl>
+          {details.activity ? (
+            <Coverage status={details.activity.status} />
+          ) : null}
+        </SiteSection>
+      ) : (
+        <div className="flex justify-end">{periods}</div>
+      )}
+      {details.models && details.models.rows.length > 0 ? (
         <SiteSection id="models" title="Models">
           <Ranking rows={details.models.rows} unit="turns" />
-          {details.models.rows.length === 0 &&
-          details.models.status.available > 0 ? (
-            <p className="text-base text-muted-foreground">
-              No turns reported for this period.
-            </p>
-          ) : null}
           <Coverage status={details.models.status} />
         </SiteSection>
       ) : null}
@@ -213,35 +238,43 @@ function Breakdowns({
   details: TokenDetails | null;
   weekDetails: TokenDetails | null;
 }) {
-  const { activity, models, plugins, skills } = details ?? weekDetails ?? {};
-  if (![activity, models, plugins, skills].some(Boolean)) {
+  const periods = (
+    [
+      [7, weekDetails],
+      [30, details],
+    ] as const
+  ).filter(
+    (entry): entry is readonly [7 | 30, TokenDetails] =>
+      entry[1] !== null && hasBreakdowns(entry[1])
+  );
+  if (periods.length === 0) {
     return null;
   }
-  return (
-    <Tabs defaultValue={30} className="mt-12">
-      <SiteSection
-        className="scroll-mt-8"
-        id="breakdowns"
-        title="Usage"
-        description="Text tokens reported for this period. New input is fresh context. Cached input is context reused across requests. Output is generated text. The selected period also applies to models, tools, and skills below."
-        action={
-          <TabsList aria-label="Usage period" variant="line">
-            <TabsTrigger value={7}>Last 7 days</TabsTrigger>
-            <TabsTrigger value={30}>Last 30 days</TabsTrigger>
-          </TabsList>
-        }
-      >
-        {(
-          [
-            [7, weekDetails],
-            [30, details],
-          ] as const
-        ).map(([days, periodDetails]) => (
-          <TabsContent key={days} value={days} className="text-base">
-            <BreakdownContent details={periodDetails} toolIcons={toolIcons} />
-          </TabsContent>
+  const controls =
+    periods.length > 1 ? (
+      <TabsList aria-label="Usage period" variant="line">
+        {periods.map(([days]) => (
+          <TabsTrigger key={days} value={days}>
+            Last {days} days
+          </TabsTrigger>
         ))}
-      </SiteSection>
+      </TabsList>
+    ) : (
+      <span className="text-sm text-muted-foreground">
+        Last {periods[0][0]} days
+      </span>
+    );
+  return (
+    <Tabs defaultValue={periods.at(-1)?.[0]} className="mt-12">
+      {periods.map(([days, periodDetails]) => (
+        <TabsContent key={days} value={days} className="text-base">
+          <BreakdownContent
+            details={periodDetails}
+            toolIcons={toolIcons}
+            periods={controls}
+          />
+        </TabsContent>
+      ))}
     </Tabs>
   );
 }
@@ -282,11 +315,11 @@ export function TokenUsageDetails({
           {stats && tokenPreferences.sections.activity ? (
             <>
               <section
-                className="mt-12 grid gap-6"
+                className="mt-12 grid gap-6 empty:hidden"
                 aria-label="Activity and workflow"
               >
                 <CodexActivity {...stats.activity} />
-                <CodexHighlights stats={stats} compact />
+                <CodexHighlights stats={stats} />
               </section>
               <TokenHistoryChart
                 history={stats.history}

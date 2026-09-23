@@ -142,7 +142,11 @@ function HistoryPlot({
                   ? {
                       value: annotation,
                       position: "left",
-                      offset: 10,
+                      offset: 16,
+                      dy: -12,
+                      stroke: "var(--background)",
+                      strokeWidth: 3,
+                      paintOrder: "stroke",
                       fill: "var(--foreground)",
                       fontSize: 12,
                     }
@@ -192,6 +196,9 @@ export function TokenHistoryChart({
   history: TokenHistory;
   today: string;
 }) {
+  if (!history.values.some((row) => row.day <= today && row.tokens !== null)) {
+    return null;
+  }
   return (
     <Tabs defaultValue="cumulative" className="mt-12">
       <SiteSection
