@@ -8,6 +8,7 @@ import {
   analyticsSchemas,
   buildTokenDetails,
   fetchAnalytics,
+  mergeAnalyticsSnapshots,
 } from "../src/lib/codex/analytics";
 import type { AnalyticsSnapshot } from "../src/lib/codex/analytics";
 import { mockFetch } from "./helpers";
@@ -296,7 +297,7 @@ test("empty sections disappear while reported zero usage remains visible", () =>
   expect(zeroHtml).not.toContain("Last 7 days");
 });
 
-test("backfills once, refreshes recent dates, and retains bounded history on failure", async () => {
+test("backfills once, refreshes recent dates, and retains archived history on failure", async () => {
   const first = fixture();
   const old = { ...first.activity.response.data[0], date: "2026-05-25" };
   const requested: URL[] = [];
@@ -346,7 +347,7 @@ test("backfills once, refreshes recent dates, and retains bounded history on fai
     new Date("2027-09-24T12:00:00Z"),
     next
   );
-  expect(expired.activity?.response.data).toEqual([]);
+  expect(expired.activity?.response.data).toEqual(next.activity?.response.data);
   requested.length = 0;
   await fetchAnalytics({}, fetcher, new Date("2026-12-24T12:00:00Z"), next);
   expect(
@@ -471,6 +472,7 @@ test("a change of allowance units cannot mix old percentages with credits", asyn
   expect(source.delegation?.response.data).toHaveLength(1);
   expect(source.delegation?.start).toBe("2026-08-25");
   expect(source.delegation?.historyDays).toBeUndefined();
+  expect(source.archivedDelegation).toEqual([old.delegation]);
 });
 
 test("delegation combines raw usage for matching plans before calculating shares", () => {
@@ -530,4 +532,55 @@ test("accounts starting on different dates do not imply missing usage", () => {
   expect(details.activity?.status.partial).toBe(false);
   expect(details.activity?.tokens).toBe(210);
   expect(details.models?.status.partial).toBe(false);
+});
+
+test("backfill preserves old days and missing fields, replaces corrections without double counting", async () => {
+  const previous = fixture();
+  const [old] = previous.activity.response.data;
+  const incoming = {
+    activity: {
+      ...previous.activity,
+      response: { data: [{ ...old, totals: { turns: 99 }, models: null }] },
+    },
+  };
+  const merged = mergeAnalyticsSnapshots(previous, incoming);
+  expect(merged.activity?.response.data[0].totals).toEqual({
+    ...old.totals,
+    turns: 99,
+  });
+  expect(merged.activity?.response.data[0].models).toEqual(old.models ?? []);
+  expect(mergeAnalyticsSnapshots(merged, incoming)).toEqual(merged);
+  const requested: URL[] = [];
+  const result = await fetchAnalytics(
+    {},
+    mockFetch(async (input) => {
+      requested.push(
+        new URL(input instanceof Request ? input.url : String(input))
+      );
+      return Response.json({ units: "percent", data: [] });
+    }),
+    now,
+    previous,
+    tokenPreferences,
+    { start: "2020-01-01", end: "2020-12-30" }
+  );
+  expect(requested).toHaveLength(4);
+  expect(
+    requested.every(
+      (url) => url.searchParams.get("start_date") === "2020-01-01"
+    )
+  ).toBe(true);
+  expect(result.activity?.response.data).toEqual(
+    previous.activity.response.data
+  );
+  expect(
+    fetchAnalytics(
+      {},
+      mockFetch(async () => new Response(null, { status: 503 })),
+      now,
+      previous,
+      tokenPreferences,
+      { start: "2020-01-01", end: "2020-12-30" }
+    )
+  ).rejects.toThrow("backfill failed");
 });

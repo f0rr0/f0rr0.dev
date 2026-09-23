@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { activityThresholds } from "../src/components/codex-activity.tsx";
+import type { CodexAccountSnapshot } from "../src/lib/codex/stats";
 import {
   buildPublicCodexStats,
   createCodexAccountSnapshot,
@@ -447,4 +448,29 @@ test("combined allowances preserve window durations and do not invent a shared r
   expect(
     buildPublicCodexStats([first, second], new Date(), 3)?.limits
   ).toHaveLength(4);
+});
+
+test("snapshot saves keep profile history when upstream shortens or omits it", async () => {
+  const { mergeCodexSnapshots } = await import("../src/lib/codex/store");
+  const base = {
+    dailyUsageBuckets: [{ startDate: "2020-01-01", tokens: 10 }],
+    cumulativeDailyUsageBuckets: [{ startDate: "2020-01-01", tokens: 10 }],
+    primaryLimit: null,
+    summary: {} as CodexAccountSnapshot["summary"],
+    topInvocations: null,
+  };
+  const next = {
+    ...base,
+    dailyUsageBuckets: [{ startDate: "2026-01-01", tokens: 20 }],
+    cumulativeDailyUsageBuckets: null,
+  };
+  const result = mergeCodexSnapshots(base, next);
+  expect(result.dailyUsageBuckets).toEqual([
+    ...base.dailyUsageBuckets,
+    ...next.dailyUsageBuckets,
+  ]);
+  expect(result.cumulativeDailyUsageBuckets).toEqual(
+    base.cumulativeDailyUsageBuckets
+  );
+  expect(mergeCodexSnapshots(result, next)).toEqual(result);
 });

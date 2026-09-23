@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import { tokenPreferences } from "@/content/tokens";
-import { buildTokenDetails, fetchAnalytics } from "@/lib/codex/analytics";
+import {
+  buildTokenDetails,
+  fetchAnalytics,
+  utcOffset,
+} from "@/lib/codex/analytics";
 import type { AnalyticsSnapshot } from "@/lib/codex/analytics";
 import {
   createCodexAccountSnapshot,
@@ -220,7 +224,7 @@ export const fetchCodexAccountSnapshot = async (
   };
 };
 
-export const syncCodexAccounts = async () => {
+const readUniqueCodexAccounts = async () => {
   const accounts = await readCodexAccounts();
   const identities = accounts.map(
     (account) => validateCodexAuthJson(account.authJson).tokens.account_id
@@ -230,6 +234,11 @@ export const syncCodexAccounts = async () => {
       "Register each Codex account only once to avoid double-counting."
     );
   }
+  return accounts;
+};
+
+export const syncCodexAccounts = async () => {
+  const accounts = await readUniqueCodexAccounts();
   const results = await Promise.allSettled(
     accounts.map(async (account) => {
       const result = await fetchCodexAccountSnapshot(
@@ -246,6 +255,86 @@ export const syncCodexAccounts = async () => {
   );
   if (failed !== undefined) {
     throw failed.reason;
+  }
+  return { updated: accounts.length };
+};
+
+export const backfillCodexAccounts = async (
+  since: string,
+  report: (message: string) => void
+) => {
+  const now = new Date();
+  const end = now.toISOString().slice(0, 10);
+  if (!z.iso.date().safeParse(since).success || since > end) {
+    throw new Error("Provide a valid backfill start date on or before today.");
+  }
+  const accounts = await readUniqueCodexAccounts();
+  if (!accounts.length) {
+    throw new Error("No enabled Codex accounts are configured.");
+  }
+  let failures = 0;
+  for (const account of accounts) {
+    try {
+      // Refresh credentials through the normal sync path, and persist rotations first.
+      const result = await fetchCodexAccountSnapshot(
+        account.authJson,
+        fetch,
+        now,
+        account.snapshot?.analytics
+      );
+      await saveCodexAccount(account, result.authJson, result.snapshot);
+      const auth = validateCodexAuthJson(result.authJson);
+      const headers = {
+        Authorization: `Bearer ${auth.tokens.access_token}`,
+        "ChatGPT-Account-Id": auth.tokens.account_id,
+        "OAI-Product-Sku": "codex",
+        "User-Agent": USER_AGENT,
+      };
+      for (let start = since; start <= end; start = utcOffset(start, 365)) {
+        const last = utcOffset(start, 364);
+        const range = { start, end: last < end ? last : end };
+        const analytics = await fetchAnalytics(
+          headers,
+          fetch,
+          now,
+          {},
+          tokenPreferences,
+          range
+        );
+        await saveCodexAccount(
+          { ...account, authJson: result.authJson },
+          result.authJson,
+          { ...result.snapshot, analytics }
+        );
+        report(
+          JSON.stringify({
+            account: account.id,
+            ...range,
+            sources: Object.fromEntries(
+              (["activity", "delegation", "plugins", "skills"] as const).map(
+                (key) => [
+                  key,
+                  {
+                    days: analytics[key]?.response.data.length ?? 0,
+                    firstDay: analytics[key]?.response.data[0]?.date ?? null,
+                  },
+                ]
+              )
+            ),
+          })
+        );
+      }
+    } catch (error) {
+      failures += 1;
+      report(
+        `${account.id}: ${error instanceof Error ? error.message : "Backfill failed"}`
+      );
+    }
+  }
+  if (failures) {
+    throw new Error(
+      `${failures} account backfill(s) failed. Saved history is retained; rerun to retry.`
+    );
   }
   return { updated: accounts.length };
 };

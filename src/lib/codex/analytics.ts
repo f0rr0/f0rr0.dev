@@ -80,6 +80,7 @@ export const analyticsSchemas = {
 type Sources = typeof analyticsSchemas;
 export type AnalyticsKey = keyof Sources;
 export type AnalyticsSnapshot = {
+  archivedDelegation?: NonNullable<AnalyticsSnapshot["delegation"]>[];
   pluginLogos?: Record<string, { logoUrl: string; logoUrlDark?: string }>;
 } & {
   [K in AnalyticsKey]?: {
@@ -90,6 +91,134 @@ export type AnalyticsSnapshot = {
     response: z.infer<Sources[K]>;
   };
 };
+
+// Updated values replace matching records; omitted records and fields survive.
+const mergeNamed = <T>(
+  old: readonly T[] | null | undefined,
+  next: readonly T[] | null | undefined,
+  name: (row: T) => string
+) => [
+  ...new Map(
+    [...(old ?? []), ...(next ?? [])].map((row) => [name(row), row])
+  ).values(),
+];
+
+type AnalyticsDay = z.infer<Sources[AnalyticsKey]>["data"][number];
+const mergeAnalyticsDay = (
+  retained: AnalyticsDay | undefined,
+  row: AnalyticsDay
+): AnalyticsDay => {
+  if (!retained) {
+    return row;
+  }
+  let value = row;
+  if ("totals" in retained && "totals" in row) {
+    value = {
+      ...row,
+      totals: {
+        turns: row.totals.turns,
+        uncached_text_input_tokens:
+          row.totals.uncached_text_input_tokens ??
+          retained.totals.uncached_text_input_tokens,
+        cached_text_input_tokens:
+          row.totals.cached_text_input_tokens ??
+          retained.totals.cached_text_input_tokens,
+        text_output_tokens:
+          row.totals.text_output_tokens ?? retained.totals.text_output_tokens,
+      },
+      models: mergeNamed(retained.models, row.models, (model) => model.model),
+    };
+  }
+  if ("plugin_usage_overviews" in retained && "plugin_usage_overviews" in row) {
+    value = {
+      ...row,
+      plugin_usage_overviews: mergeNamed(
+        retained.plugin_usage_overviews,
+        row.plugin_usage_overviews,
+        (item) => item.plugin_name
+      ),
+    };
+  }
+  if ("skill_usage_overviews" in retained && "skill_usage_overviews" in row) {
+    value = {
+      ...row,
+      skill_usage_overviews: mergeNamed(
+        retained.skill_usage_overviews,
+        row.skill_usage_overviews,
+        (item) => item.skill_name
+      ),
+    };
+  }
+  if ("attribution" in retained && "attribution" in row) {
+    value = {
+      ...row,
+      attribution: row.attribution ?? retained.attribution,
+    };
+  }
+  return value;
+};
+
+export function mergeAnalyticsSnapshots(
+  previous: AnalyticsSnapshot,
+  incoming: AnalyticsSnapshot
+): AnalyticsSnapshot {
+  const merged = { ...previous, ...incoming };
+  for (const key of Object.keys(analyticsSchemas) as AnalyticsKey[]) {
+    const old = previous[key];
+    const next = incoming[key];
+    if (!old || !next) {
+      continue;
+    }
+    if (
+      key === "delegation" &&
+      previous.delegation &&
+      incoming.delegation &&
+      previous.delegation.response.units !== incoming.delegation.response.units
+    ) {
+      const historical = incoming.delegation.end < previous.delegation.end;
+      const archived = historical ? incoming.delegation : previous.delegation;
+      merged.delegation = historical
+        ? previous.delegation
+        : incoming.delegation;
+      const archives = new Map(
+        (previous.archivedDelegation ?? []).map((source) => [
+          source.response.units,
+          source,
+        ])
+      );
+      const combined = mergeAnalyticsSnapshots(
+        { delegation: archives.get(archived.response.units) },
+        { delegation: archived }
+      ).delegation;
+      if (combined) {
+        archives.set(archived.response.units, combined);
+      }
+      merged.archivedDelegation = [...archives.values()];
+      continue;
+    }
+    const rows = new Map(old.response.data.map((row) => [row.date, row]));
+    for (const row of next.response.data) {
+      const retained = rows.get(row.date);
+      const value = mergeAnalyticsDay(retained, row);
+      rows.set(row.date, value);
+    }
+    Object.assign(merged, {
+      [key]: {
+        ...next,
+        start: old.start < next.start ? old.start : next.start,
+        end: old.end > next.end ? old.end : next.end,
+        response: {
+          ...next.response,
+          data: [...rows.values()].toSorted((a, b) =>
+            a.date.localeCompare(b.date)
+          ),
+        },
+      },
+    });
+  }
+  merged.pluginLogos = { ...previous.pluginLogos, ...incoming.pluginLogos };
+  return merged;
+}
 
 export const utcOffset = (date: string, days: number) => {
   const value = new Date(`${date}T00:00:00Z`);
@@ -109,12 +238,22 @@ export async function fetchAnalytics(
   fetcher: typeof fetch,
   now: Date,
   previous: AnalyticsSnapshot = {},
-  preferences = tokenPreferences
+  preferences = tokenPreferences,
+  range?: { start: string; end: string }
 ): Promise<AnalyticsSnapshot> {
-  if (!preferences.enabled) {
+  if (
+    range &&
+    (!day.safeParse(range.start).success ||
+      !day.safeParse(range.end).success ||
+      range.start > range.end ||
+      range.end > now.toISOString().slice(0, 10))
+  ) {
+    throw new Error("Invalid analytics backfill range.");
+  }
+  if (!preferences.enabled && !range) {
     return {};
   }
-  const end = now.toISOString().slice(0, 10);
+  const end = range?.end ?? now.toISOString().slice(0, 10);
   const historyDays = Math.max(
     30,
     Math.min(365, Math.floor(preferences.historyDays))
@@ -129,62 +268,19 @@ export async function fetchAnalytics(
     plugins: preferences.sections.tools,
     skills: preferences.sections.tools,
   };
-  const updateSource = (
-    key: AnalyticsKey,
-    response: z.infer<Sources[AnalyticsKey]>,
-    start: string
-  ) => {
-    const retained = previous[key];
-    const unitsChanged =
-      "units" in response &&
-      retained !== undefined &&
-      "units" in retained.response &&
-      response.units !== retained.response.units;
-    // Replace refreshed dates, retain older history, and bound snapshot size.
-    const data = new Map(
-      (unitsChanged ? [] : (retained?.response.data ?? []))
-        .filter((row) => row.date >= historyStart && row.date < start)
-        .map((row) => [row.date, row])
-    );
-    for (const row of response.data) {
-      if (row.date >= start && row.date <= end) {
-        data.set(row.date, row);
-      }
-    }
-    return [
-      key,
-      {
-        historyDays:
-          unitsChanged && start > historyStart ? undefined : historyDays,
-        fetchedAt: now.toISOString(),
-        start: unitsChanged
-          ? start
-          : retained?.historyDays === historyDays
-            ? retained.start > historyStart
-              ? retained.start
-              : historyStart
-            : historyStart,
-        end,
-        response: {
-          ...response,
-          data: [...data.values()].toSorted((a, b) =>
-            a.date.localeCompare(b.date)
-          ),
-        },
-      },
-    ];
-  };
   const entries = await Promise.all(
     (Object.keys(endpoints) as AnalyticsKey[]).map(async (key) => {
-      if (!enabled[key]) {
-        return [key, undefined];
+      if (!enabled[key] && !range) {
+        return [key, previous[key]];
       }
       const retained = previous[key];
       const refreshStart =
         retained?.historyDays === historyDays
           ? [utcOffset(end, -29), utcOffset(retained.end, 1)].toSorted()[0]
           : historyStart;
-      const start = refreshStart < historyStart ? historyStart : refreshStart;
+      const start =
+        range?.start ??
+        (refreshStart < historyStart ? historyStart : refreshStart);
       const params = new URLSearchParams({
         start_date: start,
         end_date: end,
@@ -211,14 +307,41 @@ export async function fetchAnalytics(
           throw new Error("Analytics unavailable");
         }
         const response = analyticsSchemas[key].parse(await result.json());
-        return updateSource(key, response, start);
+        const unitsChanged =
+          "units" in response &&
+          retained !== undefined &&
+          "units" in retained.response &&
+          response.units !== retained.response.units;
+        return [
+          key,
+          {
+            historyDays:
+              range || (unitsChanged && start > historyStart)
+                ? undefined
+                : historyDays,
+            fetchedAt: now.toISOString(),
+            start,
+            end,
+            response: {
+              ...response,
+              data: response.data
+                .filter((row) => row.date >= start && row.date <= end)
+                .toSorted((a, b) => a.date.localeCompare(b.date)),
+            },
+          },
+        ];
       } catch {
+        if (range) {
+          throw new Error(
+            `Codex ${key} backfill failed for ${start} through ${end}.`
+          );
+        }
         // Keep the original coverage and timestamp when an optional source fails.
         return [key, previous[key]];
       }
     })
   );
-  return Object.fromEntries(entries);
+  return mergeAnalyticsSnapshots(previous, Object.fromEntries(entries));
 }
 
 export interface TokenRow {

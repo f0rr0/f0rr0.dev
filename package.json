@@ -20,6 +20,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
+    "codex:backfill": "bun scripts/backfill-codex.ts",
     "codex:account": "bun scripts/configure-codex-account.ts",
     "github:sync": "bun scripts/sync-github-commits.ts",
     "github:verify": "bun scripts/verify-github-work-units.ts",

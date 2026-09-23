@@ -54,6 +54,29 @@ To stop including an account, set its `codex_accounts.enabled` value to `false`.
 Rerun cron configuration after disabling every account to remove the scheduled
 Codex job.
 
+## Backfill
+
+With the production database environment loaded, run:
+
+```sh
+bun run codex:backfill 2020-01-01
+```
+
+Choose a date before your earliest usage. This requests every enabled account's
+activity, models, token components, tools, skills, and delegation history in
+batches of at most 365 days, using the stored credentials. It prints each batch's
+row counts and earliest returned dates. Empty periods are valid; unavailable
+upstream records cannot be reconstructed. Profile history is refreshed too.
+
+Each successful batch is saved. Rerunning replaces matching records without
+adding counts twice; missing dates and token fields retain their saved values.
+Failures exit nonzero and can be retried with the same command. Historical
+allowance records with changed units are archived rather than mixed together.
+The regular sync also preserves older history. No additional migration is needed;
+the command uses the existing snapshot column. Public caches expire within
+15 minutes; the development preview uses a separate fixture and does not verify
+production coverage.
+
 ## Stored data
 
 Account credentials stay encrypted in Supabase Vault; the table stores only
@@ -78,8 +101,8 @@ Configure public presentation in `src/content/tokens.ts`:
 - `homepagePreview`: shows token totals and the calendar on the homepage.
 - `title`, `introduction`, and `workLink`: customize the copy and optional work link.
 - `sections`: controls activity, models, composition, tools, delegation, and limits.
-- `historyDays`: retained analytics window (30–365 days); the first successful sync
-  fetches this window, then subsequent syncs refresh recent dates and retain older rows.
+- `historyDays`: displayed analytics window (30–365 days); the first successful sync
+  fetches this window, then subsequent syncs refresh recent dates. Older stored rows are retained.
 - `rankingLimit`: number of ranked tools and skills displayed.
 - `accountLabels`: optional public labels keyed by registered account ID; defaults
   to numbered accounts. Credentials and upstream account identities stay private.
