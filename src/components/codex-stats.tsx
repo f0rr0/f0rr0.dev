@@ -1,8 +1,9 @@
-import { Info, Plug } from "lucide-react";
+import { Plug } from "lucide-react";
 import Image from "next/image";
 import type { ReactNode } from "react";
 
 import { CodexActivity } from "@/components/codex-activity";
+import { InfoLabel } from "@/components/info-label";
 import { SiteSection } from "@/components/site-page";
 import {
   Collapsible,
@@ -10,11 +11,7 @@ import {
   CollapsibleTrigger,
   DisclosureChevron,
 } from "@/components/ui/collapsible";
-import {
-  TooltipContent,
-  TooltipGroup,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { tokenPreferences } from "@/content/tokens";
 import type {
   PublicCodexMetric,
   PublicCodexRange,
@@ -105,11 +102,11 @@ const Metric = ({
   metric: PublicCodexMetric;
 }) => (
   <div className="py-2.5">
-    <dt className="text-xs text-muted-foreground">{label}</dt>
-    <dd className="mt-1 text-2xl font-medium tracking-tight text-foreground">
+    <dt className="text-base text-muted-foreground">{label}</dt>
+    <dd className="mt-1 text-base font-light tabular-nums text-foreground">
       {metric.value === null ? "—" : compactNumber.format(metric.value)}
       {metric.partial ? (
-        <span className="ml-2 text-xs text-muted-foreground">partial</span>
+        <span className="ml-2 text-base text-muted-foreground">partial</span>
       ) : null}
     </dd>
   </div>
@@ -146,7 +143,24 @@ const LimitBar = ({
   );
 };
 
-export function CodexStats({ stats }: { stats: PublicCodexStats }) {
+export function CodexTotals({ stats }: { stats: PublicCodexStats }) {
+  return (
+    <dl className="token-stat-grid">
+      <Metric label="Lifetime tokens" metric={stats.totals.lifetimeTokens} />
+      <Metric label="Today" metric={stats.totals.todayTokens} />
+      <Metric label="Last 7 days" metric={stats.totals.last7Days} />
+      <Metric label="Last 30 days" metric={stats.totals.last30Days} />
+    </dl>
+  );
+}
+
+export function CodexHighlights({
+  stats,
+  compact = false,
+}: {
+  stats: PublicCodexStats;
+  compact?: boolean;
+}) {
   const reasoningLeaders =
     stats.insights.reasoningEfforts.values.length === 0
       ? "—"
@@ -213,87 +227,86 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
   ];
 
   return (
-    <SiteSection id="token-log" title="Token log">
-      <dl className="grid grid-cols-2 gap-x-4 sm:grid-cols-4">
-        <Metric label="Lifetime tokens" metric={stats.totals.lifetimeTokens} />
-        <Metric label="Today" metric={stats.totals.todayTokens} />
-        <Metric label="Last 7 days" metric={stats.totals.last7Days} />
-        <Metric label="Last 30 days" metric={stats.totals.last30Days} />
-      </dl>
-
-      <CodexActivity {...stats.activity} />
-
-      <TooltipGroup>
-        <dl className="mt-4 grid grid-cols-2 gap-x-4 sm:grid-cols-4">
-          <div className="py-2.5">
-            <dt className="text-muted-foreground">Busiest day</dt>
-            <dd className="mt-1 text-foreground">
-              {stats.busiestDay === null ? (
-                "—"
+    <dl className="token-stat-grid">
+      {compact ? null : (
+        <div className="py-2.5">
+          <dt className="text-muted-foreground">Busiest day</dt>
+          <dd className="mt-1 text-base font-light tabular-nums text-foreground">
+            {stats.busiestDay === null ? (
+              "—"
+            ) : (
+              <>
+                {formatDate(stats.busiestDay.day)} ·{" "}
+                {compactNumber.format(stats.busiestDay.tokens)}
+              </>
+            )}
+            {stats.busiestDay?.partial === true ? " · partial" : ""}
+          </dd>
+        </div>
+      )}
+      <div className="py-2.5">
+        <dt className="text-muted-foreground">Longest chat</dt>
+        <dd className="mt-1 text-base font-light tabular-nums text-foreground">
+          {formatDuration(stats.totals.longestRunningTurnSec.value)}
+          {stats.totals.longestRunningTurnSec.partial ? " · partial" : ""}
+        </dd>
+      </div>
+      <div className="py-2.5">
+        <dt className="text-muted-foreground">Total chats</dt>
+        <dd className="mt-1 text-base font-light tabular-nums text-foreground">
+          {stats.totals.totalThreads.value === null
+            ? "—"
+            : number.format(stats.totals.totalThreads.value)}
+          {stats.totals.totalThreads.partial ? " · partial" : ""}
+        </dd>
+      </div>
+      <div className="py-2.5">
+        <dt className="text-muted-foreground">Total skills used</dt>
+        <dd className="mt-1 text-base font-light tabular-nums text-foreground">
+          {stats.totals.totalSkillsUsed.value === null
+            ? "—"
+            : number.format(stats.totals.totalSkillsUsed.value)}
+          {stats.totals.totalSkillsUsed.partial ? " · partial" : ""}
+        </dd>
+      </div>
+      {highlights
+        .filter((item) => !compact || item.label !== "Daily peak")
+        .map(({ label, metric, tooltip, value }) => (
+          <div className="py-2.5" key={label}>
+            <dt className="text-muted-foreground">
+              {tooltip === null ? (
+                label
               ) : (
-                <>
-                  {formatDate(stats.busiestDay.day)} ·{" "}
-                  {compactNumber.format(stats.busiestDay.tokens)}
-                </>
+                <InfoLabel label={label} description={tooltip} />
               )}
-              {stats.busiestDay?.partial === true ? " · partial" : ""}
+            </dt>
+            <dd className="mt-1 text-base font-light tabular-nums text-foreground">
+              {value}
+              {metric.partial ? " · partial" : ""}
             </dd>
           </div>
-          <div className="py-2.5">
-            <dt className="text-muted-foreground">Longest chat</dt>
-            <dd className="mt-1 text-foreground">
-              {formatDuration(stats.totals.longestRunningTurnSec.value)}
-              {stats.totals.longestRunningTurnSec.partial ? " · partial" : ""}
-            </dd>
-          </div>
-          <div className="py-2.5">
-            <dt className="text-muted-foreground">Total chats</dt>
-            <dd className="mt-1 text-foreground">
-              {stats.totals.totalThreads.value === null
-                ? "—"
-                : number.format(stats.totals.totalThreads.value)}
-              {stats.totals.totalThreads.partial ? " · partial" : ""}
-            </dd>
-          </div>
-          <div className="py-2.5">
-            <dt className="text-muted-foreground">Total skills used</dt>
-            <dd className="mt-1 text-foreground">
-              {stats.totals.totalSkillsUsed.value === null
-                ? "—"
-                : number.format(stats.totals.totalSkillsUsed.value)}
-              {stats.totals.totalSkillsUsed.partial ? " · partial" : ""}
-            </dd>
-          </div>
-          {highlights.map(({ label, metric, tooltip, value }) => (
-            <div
-              className={
-                label === "Reasoning leaders"
-                  ? "py-2.5 sm:col-span-2"
-                  : "py-2.5"
-              }
-              key={label}
-            >
-              <dt className="flex items-center gap-1 text-muted-foreground">
-                {label}
-                {tooltip === null ? null : (
-                  <TooltipTrigger
-                    payload={<TooltipContent>{tooltip}</TooltipContent>}
-                    aria-label={`${label}: ${tooltip}`}
-                    className="inline-flex size-6 items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                    type="button"
-                  >
-                    <Info aria-hidden="true" className="size-3" />
-                  </TooltipTrigger>
-                )}
-              </dt>
-              <dd className="mt-1 text-foreground">
-                {value}
-                {metric.partial ? " · partial" : ""}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </TooltipGroup>
+        ))}
+    </dl>
+  );
+}
+
+export function CodexStats({ stats }: { stats: PublicCodexStats }) {
+  return (
+    <SiteSection
+      id="token-log"
+      title={tokenPreferences.title}
+      href="/tokens"
+      linkLabel="All token usage"
+    >
+      <CodexTotals stats={stats} />
+
+      <div className="mt-6">
+        <CodexActivity {...stats.activity} />
+      </div>
+
+      <div className="mt-6">
+        <CodexHighlights stats={stats} />
+      </div>
 
       <Collapsible analytics={{ section: "token-log" }} className="mt-4">
         <CollapsibleTrigger className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group cursor-pointer">

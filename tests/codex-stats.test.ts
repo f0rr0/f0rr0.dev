@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { activityIntensity } from "../src/components/codex-activity.tsx";
+import { activityThresholds } from "../src/components/codex-activity.tsx";
 import {
   buildPublicCodexStats,
   createCodexAccountSnapshot,
@@ -83,11 +83,17 @@ const requireStats = <T>(stats: T | null): T => {
 };
 
 describe("public Codex statistics", () => {
-  test("whitelists upstream data and combines accounts", () => {
-    expect(activityIntensity(0, 1, 1000)).toBe(0);
-    expect(activityIntensity(10, 1, 1000)).toBeCloseTo(1 / 3);
-    expect(activityIntensity(1000, 1, 1000)).toBe(1);
+  test("calendar bands follow nonzero usage quartiles as counts grow", () => {
+    const counts = [0, 0, 1, 2, 3, 4, 5, 6, 7, 1000];
+    expect(activityThresholds(counts)).toEqual([2, 4, 6]);
+    expect(
+      activityThresholds(counts.map((count) => count * 1_000_000))
+    ).toEqual([2_000_000, 4_000_000, 6_000_000]);
+    expect(activityThresholds([0, 0])).toEqual([0, 0, 0]);
+    expect(activityThresholds([10, 10, 10])).toEqual([10, 10, 10]);
+  });
 
+  test("whitelists upstream data and combines accounts", () => {
     const first = createCodexAccountSnapshot(
       profile(80, [
         { start_date: "2026-01-29", tokens: 30 },
@@ -320,7 +326,11 @@ describe("public Codex statistics", () => {
       new Date("2026-01-30T12:00:00.000Z")
     );
 
-    expect(calls.map(({ url }) => url)).toEqual([
+    expect(
+      calls
+        .filter(({ url }) => !url.includes("group_by=day"))
+        .map(({ url }) => url)
+    ).toEqual([
       "https://chatgpt.com/backend-api/wham/usage",
       "https://chatgpt.com/backend-api/wham/profiles/me",
       "https://auth.openai.com/oauth/token",
@@ -328,6 +338,13 @@ describe("public Codex statistics", () => {
       "https://chatgpt.com/backend-api/wham/profiles/me",
       "https://chatgpt.com/backend-api/ps/plugins/search?q=github&scope=GLOBAL&limit=5",
     ]);
+    const analyticsCalls = calls.filter(({ url }) =>
+      url.includes("group_by=day")
+    );
+    expect(analyticsCalls).toHaveLength(3);
+    expect(
+      analyticsCalls.every((call) => call.authorization === "Bearer new-access")
+    ).toBe(true);
     expect(calls.at(-1)?.authorization).toBe("Bearer new-access");
     expect(calls.at(-1)?.accountId).toBe("account-id");
     expect(calls.at(-1)?.productSku).toBe("codex");

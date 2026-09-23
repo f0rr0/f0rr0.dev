@@ -1,5 +1,6 @@
 "use client";
 
+import { SiteSection } from "@/components/site-page";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   TooltipContent,
@@ -21,17 +22,15 @@ const weekStart = (day: string) => {
   return value;
 };
 
-export const activityIntensity = (
-  tokens: number,
-  minimum: number,
-  maximum: number
-) =>
-  tokens === 0
-    ? 0
-    : minimum === maximum
-      ? 1
-      : (Math.log(tokens) - Math.log(minimum)) /
-        (Math.log(maximum) - Math.log(minimum));
+export const activityThresholds = (counts: number[]) => {
+  const positive = counts
+    .filter((count) => count > 0)
+    .toSorted((a, b) => a - b);
+  return [0.25, 0.5, 0.75].map(
+    (quantile) =>
+      positive[Math.max(0, Math.ceil(positive.length * quantile) - 1)] ?? 0
+  );
+};
 
 const MonthAxis = ({
   calendarOffset,
@@ -76,11 +75,9 @@ const ActivityHeatmap = ({
   mode: "cumulative" | "daily" | "weekly";
   series: PublicCodexSeries;
 }) => {
-  const positiveTokens = series.values
-    .map(({ tokens }) => tokens)
-    .filter((tokens) => tokens > 0);
-  const minimum = Math.min(...positiveTokens);
-  const maximum = Math.max(...positiveTokens);
+  const thresholds = activityThresholds(
+    series.values.map(({ tokens }) => tokens)
+  );
   const leadingDays = date(series.values[0]?.day ?? "1970-01-04").getUTCDay();
   return (
     <figure>
@@ -93,15 +90,17 @@ const ActivityHeatmap = ({
           <span aria-hidden="true" key={`leading-${String(index)}`} />
         ))}
         {series.values.map(({ day, tokens }) => {
-          const ratio = activityIntensity(tokens, minimum, maximum);
+          const band = thresholds.filter(
+            (threshold) => tokens > threshold
+          ).length;
           const color =
             tokens === 0
               ? "bg-muted/60"
-              : ratio < 0.25
+              : band === 0
                 ? "bg-primary/25"
-                : ratio < 0.5
+                : band === 1
                   ? "bg-primary/45"
-                  : ratio < 0.75
+                  : band === 2
                     ? "bg-primary/70"
                     : "bg-primary";
           const dayLabel = formatDate(mode === "weekly" ? weekStart(day) : day);
@@ -142,24 +141,29 @@ export function CodexActivity({
 }) {
   return (
     <TooltipGroup>
-      <Tabs className="mt-6 gap-4" defaultValue="daily">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <h3 className="text-sm font-medium text-foreground">Activity</h3>
-          <TabsList aria-label="Token activity interval" variant="line">
-            <TabsTrigger value="daily">Daily</TabsTrigger>
-            <TabsTrigger value="weekly">Weekly</TabsTrigger>
-            <TabsTrigger value="cumulative">Cumulative</TabsTrigger>
-          </TabsList>
-        </div>
-        <TabsContent value="daily">
-          <ActivityHeatmap mode="daily" series={daily} />
-        </TabsContent>
-        <TabsContent value="weekly">
-          <ActivityHeatmap mode="weekly" series={weekly} />
-        </TabsContent>
-        <TabsContent value="cumulative">
-          <ActivityHeatmap mode="cumulative" series={cumulative} />
-        </TabsContent>
+      <Tabs className="gap-4" defaultValue="daily">
+        <SiteSection
+          id="token-activity"
+          title="Activity"
+          className=""
+          action={
+            <TabsList aria-label="Token activity interval" variant="line">
+              <TabsTrigger value="daily">Daily</TabsTrigger>
+              <TabsTrigger value="weekly">Weekly</TabsTrigger>
+              <TabsTrigger value="cumulative">Cumulative</TabsTrigger>
+            </TabsList>
+          }
+        >
+          <TabsContent value="daily">
+            <ActivityHeatmap mode="daily" series={daily} />
+          </TabsContent>
+          <TabsContent value="weekly">
+            <ActivityHeatmap mode="weekly" series={weekly} />
+          </TabsContent>
+          <TabsContent value="cumulative">
+            <ActivityHeatmap mode="cumulative" series={cumulative} />
+          </TabsContent>
+        </SiteSection>
       </Tabs>
     </TooltipGroup>
   );

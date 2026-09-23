@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+import { tokenPreferences } from "@/content/tokens";
+import type { AnalyticsSnapshot } from "@/lib/codex/analytics";
+import type { TokenHistory } from "@/lib/codex/history";
+
 const UTC_DAY = /^\d{4}-\d{2}-\d{2}$/u;
 const safeInteger = z.number().int().nonnegative();
 const nullableSafeInteger = safeInteger.nullable();
@@ -83,6 +87,7 @@ const authJsonSchema = z
   .loose();
 
 export interface CodexAccountSnapshot {
+  analytics?: AnalyticsSnapshot;
   cumulativeDailyUsageBuckets: readonly CodexUsageBucket[] | null;
   dailyUsageBuckets: readonly CodexUsageBucket[] | null;
   primaryLimit: {
@@ -137,6 +142,7 @@ export interface PublicCodexSeries {
 
 export interface PublicCodexStats {
   reportingDay: string;
+  history: TokenHistory;
   activity: {
     cumulative: PublicCodexSeries;
     daily: PublicCodexSeries;
@@ -416,6 +422,12 @@ const topTools = (
   const tools = new Map<string, CodexInvocation>();
   for (const { snapshot } of records) {
     for (const tool of snapshot.topInvocations ?? []) {
+      if (
+        !tokenPreferences.sections.tools ||
+        tokenPreferences.excludedTools.includes(tool.name)
+      ) {
+        continue;
+      }
       const key = `${tool.kind}:${tool.name}`;
       const existing = tools.get(key);
       if (existing === undefined) {
@@ -555,6 +567,16 @@ export const buildPublicCodexStats = (
 
   return {
     reportingDay: today,
+    history: {
+      partial: !dailyHistoryComplete,
+      values: Array.from({ length: 365 }, (_, index) => {
+        const day = utcDayOffset(today, index - 364);
+        return {
+          day,
+          tokens: combinedDaily.get(day) ?? (dailyHistoryComplete ? 0 : null),
+        };
+      }),
+    },
     activity: {
       cumulative: { partial: cumulativePartial, values: cumulativeUsage },
       daily: { partial: dailyPartial, values: dailyUsage },

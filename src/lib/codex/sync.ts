@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { fetchAnalytics } from "@/lib/codex/analytics";
+import type { AnalyticsSnapshot } from "@/lib/codex/analytics";
 import {
   createCodexAccountSnapshot,
   validateCodexAuthJson,
@@ -151,7 +153,8 @@ const refreshAuth = async (auth: CodexAuth, fetcher: Fetch, now: Date) => {
 export const fetchCodexAccountSnapshot = async (
   authJson: string,
   fetcher: Fetch = fetch,
-  now = new Date()
+  now = new Date(),
+  previousAnalytics?: AnalyticsSnapshot
 ) => {
   let auth = validateCodexAuthJson(authJson);
   let responses = await fetchSections(auth, fetcher);
@@ -171,6 +174,17 @@ export const fetchCodexAccountSnapshot = async (
     responses.profile.json(),
   ]);
   const snapshot = createCodexAccountSnapshot(profile, usage);
+  const analyticsPromise = fetchAnalytics(
+    {
+      Authorization: `Bearer ${auth.tokens.access_token}`,
+      "ChatGPT-Account-Id": auth.tokens.account_id,
+      "OAI-Product-Sku": "codex",
+      "User-Agent": USER_AGENT,
+    },
+    fetcher,
+    now,
+    previousAnalytics
+  );
   const logos = await fetchPluginLogos(
     snapshot.topInvocations
       ?.filter(({ kind }) => kind === "plugin")
@@ -182,6 +196,7 @@ export const fetchCodexAccountSnapshot = async (
     authJson: refreshed ? JSON.stringify(auth) : authJson,
     snapshot: {
       ...snapshot,
+      analytics: await analyticsPromise,
       topInvocations:
         snapshot.topInvocations?.map((invocation) => ({
           ...invocation,
@@ -193,9 +208,22 @@ export const fetchCodexAccountSnapshot = async (
 
 export const syncCodexAccounts = async () => {
   const accounts = await readCodexAccounts();
+  const identities = accounts.map(
+    (account) => validateCodexAuthJson(account.authJson).tokens.account_id
+  );
+  if (new Set(identities).size !== identities.length) {
+    throw new Error(
+      "Register each Codex account only once to avoid double-counting."
+    );
+  }
   const results = await Promise.allSettled(
     accounts.map(async (account) => {
-      const result = await fetchCodexAccountSnapshot(account.authJson);
+      const result = await fetchCodexAccountSnapshot(
+        account.authJson,
+        fetch,
+        new Date(),
+        account.snapshot?.analytics
+      );
       await saveCodexAccount(account, result.authJson, result.snapshot);
     })
   );

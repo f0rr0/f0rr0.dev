@@ -14,6 +14,7 @@ import {
 import { WritingList } from "@/components/writing-list";
 import { homeIntroduction, projectEditorial } from "@/content/home";
 import { resumeData } from "@/content/resume";
+import { tokenPreferences } from "@/content/tokens";
 import { getBlogPosts } from "@/lib/blog-utils";
 import { getPublicCodexStats } from "@/lib/codex/public-stats";
 import { getInitialGitHubActivity } from "@/lib/github-activity-feed";
@@ -120,7 +121,9 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
 
 export default async function Home() {
   const [codexStats, activity, posts, github] = await Promise.all([
-    getPublicCodexStats(),
+    tokenPreferences.enabled && tokenPreferences.homepagePreview
+      ? getPublicCodexStats()
+      : null,
     getInitialGitHubActivity(),
     getBlogPosts(),
     getGitHubProfile(),

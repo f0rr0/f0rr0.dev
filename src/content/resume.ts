@@ -228,6 +228,7 @@ export const resumeData = {
   navItems: [
     { href: "/writing", label: "Writing" },
     { href: "/work", label: "Work" },
+    { href: "/tokens", label: "Tokens" },
     { href: "/journey", label: "Journey" },
   ] satisfies ResumeLink[],
   links: [

@@ -10,6 +10,7 @@ const VAULT_DESCRIPTION = "Codex usage dashboard credentials";
 export interface StoredCodexAccount {
   authJson: string;
   id: string;
+  snapshot?: CodexAccountSnapshot | null;
 }
 
 export const codexAuthSecretName = (id: string) => `${AUTH_SECRET_PREFIX}${id}`;
@@ -20,20 +21,22 @@ export const readCodexAccounts = async (): Promise<
   const rows = await getDatabase().execute<{
     authJson: string | null;
     id: string;
+    snapshot: CodexAccountSnapshot | null;
   }>(sql`
     select
       account.id,
+      account.snapshot,
       secret.decrypted_secret as "authJson"
     from ${codexAccounts} as account
     left join vault.decrypted_secrets as secret
       on secret.name = ${AUTH_SECRET_PREFIX} || account.id
     where account.enabled
   `);
-  return rows.map(({ authJson, id }) => {
+  return rows.map(({ authJson, id, snapshot }) => {
     if (authJson === null) {
       throw new Error(`Codex auth secret is missing for ${id}.`);
     }
-    return { authJson, id };
+    return { authJson, id, snapshot };
   });
 };
 
