@@ -10,13 +10,8 @@ import { TokenStatGrid } from "@/components/token-stat-grid";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { sitePreferences } from "@/content/site";
 import { tokenPreferences } from "@/content/tokens";
-import type {
-  SourceStatus,
-  TokenDetails,
-  TokenRow,
-} from "@/lib/codex/analytics";
+import type { TokenDetails, TokenRow } from "@/lib/codex/analytics";
 import type { PublicCodexStats } from "@/lib/codex/stats";
-import { formatDate } from "@/lib/date";
 
 const number = new Intl.NumberFormat(sitePreferences.language);
 const compact = new Intl.NumberFormat(sitePreferences.language, {
@@ -26,19 +21,6 @@ const compact = new Intl.NumberFormat(sitePreferences.language, {
 const percent = new Intl.NumberFormat(sitePreferences.language, {
   maximumFractionDigits: 1,
 });
-
-function Coverage({ status }: { status: SourceStatus }) {
-  if (!status.partial && status.available > 0) {
-    return null;
-  }
-  return (
-    <p className="mt-4 text-base text-muted-foreground">
-      {status.available === 0
-        ? "Temporarily unavailable."
-        : "Some usage is missing from this breakdown."}
-    </p>
-  );
-}
 
 function Metric({
   label,
@@ -173,7 +155,6 @@ function Tools({
                 · {number.format(data.total)}{" "}
                 {id === "skills" ? "uses" : "calls"}
               </p>
-              <Coverage status={data.status} />
             </div>
           </SiteSection>
         ) : null
@@ -221,21 +202,12 @@ function BreakdownContent({
   details,
   toolIcons,
   periods,
-  history = false,
 }: {
   details: TokenDetails;
   toolIcons: PublicCodexStats["insights"]["topTools"];
   periods: ReactNode;
-  history?: boolean;
 }) {
   const metrics = usageMetrics(details);
-  const [firstDay] = [
-    details.activity?.status.firstDay,
-    details.plugins?.status.firstDay,
-    details.skills?.status.firstDay,
-  ]
-    .filter((value): value is string => typeof value === "string")
-    .toSorted();
   return (
     <>
       {metrics.length > 0 ? (
@@ -246,19 +218,11 @@ function BreakdownContent({
           description="Tokens are pieces of text the AI reads and writes. New input is fresh context, cached input is context reused across requests, and output is generated text. Cache hit rate is the share of input reused."
           action={periods}
         >
-          {history && firstDay ? (
-            <p className="mb-4 text-base text-muted-foreground">
-              Available records since {formatDate(firstDay)}.
-            </p>
-          ) : null}
           <TokenStatGrid className="md:grid-cols-3">
             {metrics.map((row) => (
               <Metric key={row.label} {...row} />
             ))}
           </TokenStatGrid>
-          {details.activity ? (
-            <Coverage status={details.activity.status} />
-          ) : null}
         </SiteSection>
       ) : (
         <div className="flex justify-end">{periods}</div>
@@ -270,7 +234,6 @@ function BreakdownContent({
           description="How often each model was used, including background tasks."
         >
           <Ranking rows={details.models.rows} unit="turns" />
-          <Coverage status={details.models.status} />
         </SiteSection>
       ) : null}
       {details.delegation && details.delegation.accounts.length > 0 ? (
@@ -293,7 +256,6 @@ function BreakdownContent({
               </div>
             ))}
           </div>
-          <Coverage status={details.delegation.status} />
         </SiteSection>
       ) : null}
       <Tools details={details} toolIcons={toolIcons} />
@@ -316,7 +278,13 @@ function Breakdowns({
     [
       [7, weekDetails, "Last 7 days"],
       [30, details, "Last 30 days"],
-      ["history", historyDetails, "History"],
+      [
+        "history",
+        historyDetails,
+        tokenPreferences.historyDays === 365
+          ? "Past year"
+          : `Last ${tokenPreferences.historyDays} days`,
+      ],
     ] as readonly (readonly [7 | 30 | "history", TokenDetails | null, string])[]
   ).filter(
     (entry): entry is readonly [7 | 30 | "history", TokenDetails, string] =>
@@ -350,7 +318,6 @@ function Breakdowns({
             details={periodDetails}
             toolIcons={toolIcons}
             periods={controls}
-            history={days === "history"}
           />
         </TabsContent>
       ))}

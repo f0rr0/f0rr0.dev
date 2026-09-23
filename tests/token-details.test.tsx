@@ -519,3 +519,14 @@ test("delegation combines raw usage for matching plans before calculating shares
       .delegation?.accounts
   ).toHaveLength(1);
 });
+
+test("accounts starting on different dates do not imply missing usage", () => {
+  const first = fixture();
+  const later = fixture();
+  first.activity.response.data[0].date = "2026-08-25";
+  later.activity.response.data[0].date = "2026-09-23";
+  const details = buildTokenDetails([first, later], 30, now);
+  expect(details.activity?.status.partial).toBe(false);
+  expect(details.activity?.tokens).toBe(210);
+  expect(details.models?.status.partial).toBe(false);
+});
