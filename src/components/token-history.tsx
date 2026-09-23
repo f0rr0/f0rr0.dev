@@ -91,7 +91,9 @@ function HistoryPlot({
               }}
               tickCount={3}
               domain={[0, "auto"]}
-              tickFormatter={(value) => compact.format(Number(value))}
+              tickFormatter={(value) =>
+                Number(value) === 0 ? "" : compact.format(Number(value))
+              }
             />
             <ChartTooltip
               filterNull={false}
