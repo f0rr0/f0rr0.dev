@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { CodexActivity } from "@/components/codex-activity";
 import { InfoLabel } from "@/components/info-label";
 import { SiteSection } from "@/components/site-page";
+import { TokenStatGrid } from "@/components/token-stat-grid";
 import { tokenPreferences } from "@/content/tokens";
 import type {
   PublicCodexMetric,
@@ -101,12 +102,12 @@ const LimitBar = ({
 
 export function CodexTotals({ stats }: { stats: PublicCodexStats }) {
   return (
-    <dl className="token-stat-grid empty:hidden">
+    <TokenStatGrid>
       <Metric label="Lifetime tokens" metric={stats.totals.lifetimeTokens} />
       <Metric label="Today" metric={stats.totals.todayTokens} />
       <Metric label="Last 7 days" metric={stats.totals.last7Days} />
       <Metric label="Last 30 days" metric={stats.totals.last30Days} />
-    </dl>
+    </TokenStatGrid>
   );
 }
 
@@ -195,7 +196,7 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
   }
 
   return (
-    <dl className="token-stat-grid empty:hidden">
+    <TokenStatGrid>
       {highlights.map(({ label, metric, tooltip, value }) => (
         <div className="py-2.5" key={label}>
           <dt className="text-muted-foreground">
@@ -211,7 +212,7 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
           </dd>
         </div>
       ))}
-    </dl>
+    </TokenStatGrid>
   );
 }
 

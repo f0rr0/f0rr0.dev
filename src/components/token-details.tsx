@@ -6,6 +6,7 @@ import { CodexHighlights, CodexUsageLimit } from "@/components/codex-stats";
 import { CodexToolIcon } from "@/components/codex-tool-icon";
 import { SiteSection } from "@/components/site-page";
 import { TokenHistoryChart } from "@/components/token-history";
+import { TokenStatGrid } from "@/components/token-stat-grid";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { sitePreferences } from "@/content/site";
 import { tokenPreferences } from "@/content/tokens";
@@ -206,11 +207,11 @@ function BreakdownContent({
           description="Text tokens reported for this period. New input is fresh context. Cached input is context reused across requests. Output is generated text. The selected period also applies to models, tools, and skills below."
           action={periods}
         >
-          <dl className="token-stat-grid md:grid-cols-3!">
+          <TokenStatGrid className="md:grid-cols-3">
             {metrics.map((row) => (
               <Metric key={row.label} {...row} />
             ))}
-          </dl>
+          </TokenStatGrid>
           {details.activity ? (
             <Coverage status={details.activity.status} />
           ) : null}
