@@ -108,7 +108,7 @@ function Tools({
   }
   return (
     <div
-      className="mt-12 grid gap-x-4 gap-y-12 md:grid-cols-2 md:gap-y-4"
+      className="mt-12 grid gap-x-12 gap-y-12 md:grid-cols-2 md:gap-y-4"
       style={
         { "--ranking-rows": tokenPreferences.rankingLimit + 1 } as CSSProperties
       }
@@ -130,7 +130,7 @@ function Tools({
                 : "Reusable instructions for tasks like writing, design, and code review."
             }
             action={
-              <span className="text-base text-muted-foreground tabular-nums">
+              <span className="font-ui text-sm text-muted-foreground tabular-nums">
                 {number.format(data.distinct)}{" "}
                 {data.distinct === 1
                   ? title.slice(0, -1).toLowerCase()
