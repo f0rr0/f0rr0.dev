@@ -154,6 +154,9 @@ relationships govern both the homepage and detail page:
   and the stats components have no external margins.
 - Heading to content: 16px (one body em), matching `SiteSection`; this keeps
   a heading closer to its content than to the preceding section.
+- Chart axes: calendar and line chart share `TokenMonthAxis`: 12px labels,
+  a 16px label row, and an 8px plot-to-label gap. Both show alternate months
+  below 640px. The line chart reserves 44px for its numeric y-axis.
 - Info labels: use `InfoLabel`, with a 2px layout gap, a 24px button,
   and a centered 12px glyph. The 6px inset inside the button makes the effective
   text-to-icon-box gap 8px (half a body em), rather than adding 8px on top of

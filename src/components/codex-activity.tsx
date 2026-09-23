@@ -1,6 +1,7 @@
 "use client";
 
 import { SiteSection } from "@/components/site-page";
+import { TokenMonthAxis } from "@/components/token-month-axis";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   TooltipContent,
@@ -29,42 +30,6 @@ export const activityThresholds = (counts: number[]) => {
   return [0.25, 0.5, 0.75].map(
     (quantile) =>
       positive[Math.max(0, Math.ceil(positive.length * quantile) - 1)] ?? 0
-  );
-};
-
-const MonthAxis = ({
-  calendarOffset,
-  values,
-}: {
-  calendarOffset: number;
-  values: PublicCodexSeries["values"];
-}) => {
-  const columns = Math.ceil((calendarOffset + values.length) / 7);
-  const ticks = values.flatMap((point, index) =>
-    index === 0 ||
-    point.day.slice(0, 7) === (values[index - 1]?.day ?? point.day).slice(0, 7)
-      ? []
-      : [{ day: point.day, index }]
-  );
-  return (
-    <div
-      aria-hidden="true"
-      className="relative mt-2 h-4 max-sm:[&>span:nth-child(even)]:hidden"
-    >
-      {ticks.map((tick) => {
-        const position =
-          Math.floor((calendarOffset + tick.index) / 7) / (columns - 1);
-        return (
-          <span
-            className={`absolute -translate-x-1/2 font-sans text-xs text-muted-foreground ${position > 0.95 ? "-translate-x-full" : ""}`}
-            key={tick.day}
-            style={{ left: `${String(position * 100)}%` }}
-          >
-            {formatDate(tick.day, "month")}
-          </span>
-        );
-      })}
-    </div>
   );
 };
 
@@ -120,7 +85,7 @@ const ActivityHeatmap = ({
           );
         })}
       </div>
-      <MonthAxis calendarOffset={leadingDays} values={series.values} />
+      <TokenMonthAxis calendarOffset={leadingDays} values={series.values} />
       {series.partial ? (
         <figcaption className="mt-1 font-sans text-xs text-muted-foreground">
           Partial history

@@ -11,6 +11,7 @@ import {
 } from "recharts";
 
 import { SiteSection } from "@/components/site-page";
+import { TokenMonthAxis } from "@/components/token-month-axis";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { sitePreferences } from "@/content/site";
@@ -56,7 +57,7 @@ function HistoryPlot({
     <>
       <ChartContainer
         config={config}
-        className="h-60 w-full aspect-auto sm:h-72 [&_.recharts-surface]:focus-visible:outline-2 [&_.recharts-surface]:focus-visible:outline-ring"
+        className="h-54 w-full aspect-auto sm:h-66 [&_.recharts-surface]:overflow-visible [&_.recharts-surface]:focus-visible:outline-2 [&_.recharts-surface]:focus-visible:outline-ring"
       >
         <LineChart
           accessibilityLayer
@@ -64,13 +65,7 @@ function HistoryPlot({
           margin={{ left: 0, right: 8, top: 24, bottom: 0 }}
         >
           <CartesianGrid vertical={false} />
-          <XAxis
-            dataKey="day"
-            tickLine={false}
-            axisLine={false}
-            minTickGap={48}
-            tickFormatter={(day) => formatDate(String(day), "month")}
-          />
+          <XAxis dataKey="day" hide />
           <YAxis
             tickLine={false}
             axisLine={false}
@@ -153,6 +148,7 @@ function HistoryPlot({
           ) : null}
         </LineChart>
       </ChartContainer>
+      <TokenMonthAxis values={rows} className="ml-11 mr-2" />
       <p className="sr-only">
         {annotation}
         {summary.partial
