@@ -113,7 +113,8 @@ show turns, not cost or token shares. A turn can involve more than one model.
 Daily delegation shares and unrecognized client labels are not published.
 The page shows the five most-used tools (reported plugins) and skills separately.
 A shared 7/30-day tab control updates usage, models, tools, and skills; 30 days is
-the default. Usage combines turns, total text tokens, input/output composition,
+the default. Both summaries load with the page; tabs switch locally without
+navigation or changing scroll position. Usage combines turns, total text tokens, input/output composition,
 and the weighted input cache hit rate in one grid. Both pages
 retain the calendar. Each calendar view recalculates its four color bands from
 the quartiles of its nonzero counts; zero stays separate and equal counts always

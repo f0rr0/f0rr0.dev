@@ -72,13 +72,14 @@ test("combines counts and weighted cache rate while preserving privacy", () => {
   expect(JSON.stringify(first.activity)).not.toContain("credits");
   expect(JSON.stringify(first.activity)).not.toContain("secret");
   const html = renderToStaticMarkup(
-    <TokenUsageDetails stats={null} details={result} days={7} />
+    <TokenUsageDetails stats={null} details={result} weekDetails={result} />
   );
   expect(html).toContain(">Models</h2>");
   expect(html).not.toContain("Account 2");
   expect(html).not.toContain("<details");
   expect(html).not.toContain("UTC");
   expect(html).toContain("Last 7 days");
+  expect(html).not.toContain("/tokens?days=");
   expect(html).not.toContain("private-tool");
 });
 

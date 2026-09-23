@@ -126,19 +126,65 @@ function Tools({ details }: { details: TokenDetails | null }) {
   );
 }
 
+function BreakdownContent({ details }: { details: TokenDetails | null }) {
+  if (details === null) {
+    return <p className="text-muted-foreground">Temporarily unavailable.</p>;
+  }
+  const { activity } = details;
+  return (
+    <>
+      {" "}
+      <dl className="token-stat-grid md:grid-cols-3!">
+        {tokenPreferences.sections.activity ? (
+          <>
+            <Metric label="Text tokens" value={activity?.tokens ?? null} />
+            <Metric label="Turns" value={activity?.turns ?? null} />
+          </>
+        ) : null}
+        {tokenPreferences.sections.composition ? (
+          <>
+            <Metric
+              label="Input cache hit rate"
+              value={activity?.cacheHit ?? null}
+              suffix="%"
+            />
+            {(activity?.composition ?? []).map((row) => (
+              <Metric key={row.label} label={row.label} value={row.value} />
+            ))}
+          </>
+        ) : null}
+      </dl>
+      {activity ? <Coverage status={activity.status} /> : null}
+      {details?.models ? (
+        <SiteSection id="models" title="Models">
+          <Ranking rows={details.models.rows} unit="turns" />
+          {details.models.rows.length === 0 &&
+          details.models.status.available > 0 ? (
+            <p className="text-base text-muted-foreground">
+              No turns reported for this period.
+            </p>
+          ) : null}
+          <Coverage status={details.models.status} />
+        </SiteSection>
+      ) : null}
+      <Tools details={details} />
+    </>
+  );
+}
+
 function Breakdowns({
   details,
-  days,
+  weekDetails,
 }: {
   details: TokenDetails | null;
-  days: 7 | 30;
+  weekDetails: TokenDetails | null;
 }) {
-  const { activity, models, plugins, skills } = details ?? {};
+  const { activity, models, plugins, skills } = details ?? weekDetails ?? {};
   if (![activity, models, plugins, skills].some(Boolean)) {
     return null;
   }
   return (
-    <Tabs value={days} className="mt-12">
+    <Tabs defaultValue={30} className="mt-12">
       <SiteSection
         className="scroll-mt-8"
         id="breakdowns"
@@ -146,60 +192,21 @@ function Breakdowns({
         description="Text tokens reported for this period. New input is fresh context. Cached input is context reused across requests. Output is generated text. The selected period also applies to models, tools, and skills below."
         action={
           <TabsList aria-label="Usage period" variant="line">
-            {([7, 30] as const).map((period) => (
-              <TabsTrigger
-                key={period}
-                value={period}
-                nativeButton={false}
-                render={
-                  <a
-                    href={`/tokens?days=${period}#breakdowns`}
-                    aria-label={`Last ${period} days`}
-                  />
-                }
-              >
-                Last {period} days
-              </TabsTrigger>
-            ))}
+            <TabsTrigger value={7}>Last 7 days</TabsTrigger>
+            <TabsTrigger value={30}>Last 30 days</TabsTrigger>
           </TabsList>
         }
       >
-        <TabsContent value={days} className="text-base">
-          <dl className="token-stat-grid md:grid-cols-3!">
-            {tokenPreferences.sections.activity ? (
-              <>
-                <Metric label="Text tokens" value={activity?.tokens ?? null} />
-                <Metric label="Turns" value={activity?.turns ?? null} />
-              </>
-            ) : null}
-            {tokenPreferences.sections.composition ? (
-              <>
-                <Metric
-                  label="Input cache hit rate"
-                  value={activity?.cacheHit ?? null}
-                  suffix="%"
-                />
-                {(activity?.composition ?? []).map((row) => (
-                  <Metric key={row.label} label={row.label} value={row.value} />
-                ))}
-              </>
-            ) : null}
-          </dl>
-          {activity ? <Coverage status={activity.status} /> : null}
-          {details?.models ? (
-            <SiteSection id="models" title="Models">
-              <Ranking rows={details.models.rows} unit="turns" />
-              {details.models.rows.length === 0 &&
-              details.models.status.available > 0 ? (
-                <p className="text-base text-muted-foreground">
-                  No turns reported for this period.
-                </p>
-              ) : null}
-              <Coverage status={details.models.status} />
-            </SiteSection>
-          ) : null}
-          <Tools details={details} />
-        </TabsContent>
+        {(
+          [
+            [7, weekDetails],
+            [30, details],
+          ] as const
+        ).map(([days, periodDetails]) => (
+          <TabsContent key={days} value={days} className="text-base">
+            <BreakdownContent details={periodDetails} />
+          </TabsContent>
+        ))}
       </SiteSection>
     </Tabs>
   );
@@ -208,9 +215,9 @@ function Breakdowns({
 export function TokenUsageDetails({
   stats,
   details,
-  days = 30,
+  weekDetails = null,
 }: {
-  days?: 7 | 30;
+  weekDetails?: TokenDetails | null;
   stats: PublicCodexStats | null;
   details: TokenDetails | null;
 }) {
@@ -253,7 +260,7 @@ export function TokenUsageDetails({
               />
             </>
           ) : null}
-          <Breakdowns details={details} days={days} />
+          <Breakdowns details={details} weekDetails={weekDetails} />
         </>
       ) : null}
     </>

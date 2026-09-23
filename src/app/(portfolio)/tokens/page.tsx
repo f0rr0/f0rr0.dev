@@ -28,23 +28,23 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function TokensPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ days?: string }>;
-}) {
+export default async function TokensPage() {
   if (!tokenPreferences.enabled) {
     notFound();
   }
-  const days = (await searchParams).days === "7" ? 7 : 30;
-  const [stats, details] = await Promise.all([
+  const [stats, details, weekDetails] = await Promise.all([
     getPublicCodexStats(),
-    getPublicTokenDetails(days),
+    getPublicTokenDetails(30),
+    getPublicTokenDetails(7),
   ]);
   return (
     <SiteShell activeHref="/tokens">
       <SiteMain>
-        <TokenUsageDetails stats={stats} details={details} days={days} />
+        <TokenUsageDetails
+          stats={stats}
+          details={details}
+          weekDetails={weekDetails}
+        />
       </SiteMain>
     </SiteShell>
   );
