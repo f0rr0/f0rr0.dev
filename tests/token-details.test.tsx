@@ -124,6 +124,57 @@ test("missing, zero, retained, and disabled sections stay distinct", () => {
   ).toBe(false);
 });
 
+test("missing token fields preserve turns and models without inventing zero usage", async () => {
+  const missing = {
+    date: "2026-09-23",
+    totals: { turns: 2 },
+    models: [{ model: "example-model", turns: 2 }],
+  };
+  const response = await fetchAnalytics(
+    {},
+    mockFetch(async () =>
+      Response.json({
+        data: [...fixture().activity.response.data, missing],
+      })
+    ),
+    now
+  );
+  expect(response.activity?.response.data).toHaveLength(2);
+  const mixed = buildTokenDetails([response, fixture()], 7, now);
+  expect(mixed.activity?.turns).toBe(8);
+  expect(mixed.models?.rows).toEqual([{ label: "example-model", value: 8 }]);
+  expect(mixed.models?.status.partial).toBe(false);
+  expect(mixed.activity?.tokens).toBe(210);
+  expect(mixed.activity?.cacheHit).toBe(90);
+  expect(mixed.activity?.status.partial).toBe(true);
+
+  for (const tokens of [
+    {},
+    { cached_text_input_tokens: null },
+    { text_output_tokens: 5 },
+  ]) {
+    const account = {
+      activity: {
+        ...meta,
+        response: analyticsSchemas.activity.parse({
+          data: [{ ...missing, totals: { turns: 2, ...tokens } }],
+        }),
+      },
+    };
+    const result = buildTokenDetails([account], 7, now);
+    expect(result.activity?.turns).toBe(2);
+    expect(result.activity?.tokens).toBeNull();
+    expect(result.activity?.composition).toBeNull();
+    expect(result.activity?.cacheHit).toBeNull();
+    expect(result.models?.rows).toEqual([{ label: "example-model", value: 2 }]);
+  }
+  expect(
+    analyticsSchemas.activity.safeParse({
+      data: [{ ...missing, totals: { turns: 2, text_output_tokens: -1 } }],
+    }).success
+  ).toBe(false);
+});
+
 test("optional source failures retain original timestamps while successful sources advance", async () => {
   const previous = fixture();
   previous.activity.fetchedAt = "2026-09-22T12:00:00Z";

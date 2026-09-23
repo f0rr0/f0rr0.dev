@@ -8,9 +8,9 @@ const name = z.string().trim().min(1).max(200);
 const day = z.iso.date();
 const totals = z.object({
   turns: count,
-  uncached_text_input_tokens: count,
-  cached_text_input_tokens: count,
-  text_output_tokens: count,
+  uncached_text_input_tokens: count.nullish(),
+  cached_text_input_tokens: count.nullish(),
+  text_output_tokens: count.nullish(),
 });
 
 export const analyticsSchemas = {
@@ -147,6 +147,35 @@ const add = (map: Map<string, number>, key: string, value: number) =>
 const cacheHitRate = (input: number, cached: number) =>
   input + cached > 0 ? (cached / (input + cached)) * 100 : null;
 
+function summarizeActivity(activity: z.infer<Sources["activity"]>["data"]) {
+  const sums = { turns: 0, input: 0, cached: 0, output: 0 };
+  let tokenRows = 0;
+  const models = new Map<string, number>();
+  for (const row of activity) {
+    sums.turns += row.totals.turns;
+    const {
+      uncached_text_input_tokens: input,
+      cached_text_input_tokens: cached,
+      text_output_tokens: output,
+    } = row.totals;
+    // Use the same reported days for token totals, composition, and cache rate.
+    if (
+      typeof input === "number" &&
+      typeof cached === "number" &&
+      typeof output === "number"
+    ) {
+      sums.input += input;
+      sums.cached += cached;
+      sums.output += output;
+      tokenRows += 1;
+    }
+    for (const model of row.models) {
+      add(models, model.model, model.turns);
+    }
+  }
+  return { sums, tokenRows, models };
+}
+
 export function buildTokenDetails(
   accounts: readonly (AnalyticsSnapshot | undefined)[],
   days: 7 | 30,
@@ -181,17 +210,7 @@ export function buildTokenDetails(
     (account) =>
       account?.activity?.response.data.filter((row) => inRange(row.date)) ?? []
   );
-  const sums = { turns: 0, input: 0, cached: 0, output: 0 };
-  const models = new Map<string, number>();
-  for (const row of activity) {
-    sums.turns += row.totals.turns;
-    sums.input += row.totals.uncached_text_input_tokens;
-    sums.cached += row.totals.cached_text_input_tokens;
-    sums.output += row.totals.text_output_tokens;
-    for (const model of row.models) {
-      add(models, model.model, model.turns);
-    }
-  }
+  const { sums, tokenRows, models } = summarizeActivity(activity);
   const tools = (key: "plugins" | "skills") => {
     const values = new Map<string, number>();
     for (const account of accounts) {
@@ -235,17 +254,21 @@ export function buildTokenDetails(
     activity:
       preferences.sections.activity || preferences.sections.composition
         ? {
-            status: status("activity"),
+            status: {
+              ...status("activity"),
+              partial:
+                status("activity").partial || tokenRows < activity.length,
+            },
             turns:
               preferences.sections.activity && activity.length
                 ? sums.turns
                 : null,
             tokens:
-              preferences.sections.activity && activity.length
+              preferences.sections.activity && tokenRows
                 ? sums.input + sums.cached + sums.output
                 : null,
             composition:
-              preferences.sections.composition && activity.length
+              preferences.sections.composition && tokenRows
                 ? [
                     { label: "New input", value: sums.input },
                     { label: "Cached input", value: sums.cached },
