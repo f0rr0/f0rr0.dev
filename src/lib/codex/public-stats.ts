@@ -35,7 +35,7 @@ const readPublicCodexStats = async () => {
 
 const readCachedPublicCodexStats = unstable_cache(
   readPublicCodexStats,
-  ["public-codex-stats-v9", JSON.stringify(tokenPreferences)],
+  ["public-codex-stats-v10", JSON.stringify(tokenPreferences)],
   { revalidate: 900, tags: ["public-codex-stats"] }
 );
 

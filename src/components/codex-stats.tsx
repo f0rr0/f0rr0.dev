@@ -253,11 +253,7 @@ export function CodexUsageLimit({ stats }: { stats: PublicCodexStats }) {
     timeZone: tokenPreferences.timeZone,
   });
   return (
-    <SiteSection
-      id="usage-limit"
-      title="Usage limits"
-      description="Current allowances are separate for each account and reset on different schedules. They are not pooled or averaged."
-    >
+    <SiteSection id="usage-limit" title="Usage limits">
       <div className="space-y-6">
         {stats.limits.map((limit, index) => {
           const window =
@@ -269,7 +265,7 @@ export function CodexUsageLimit({ stats }: { stats: PublicCodexStats }) {
           return (
             <div key={index}>
               <LimitBar
-                label={`${limit.label} · ${window}`}
+                label={limit.label ? `${limit.label} · ${window}` : window}
                 usedPercent={limit.usedPercent}
               />
               {limit.resetAt === null ? null : (

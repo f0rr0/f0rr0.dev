@@ -226,14 +226,8 @@ describe("public Codex statistics", () => {
     });
     expect(stats.limits).toEqual([
       {
-        label: "Account 1",
-        usedPercent: 25,
-        windowDurationMins: 300,
-        resetAt: null,
-      },
-      {
-        label: "Account 2",
-        usedPercent: 75,
+        label: "",
+        usedPercent: 50,
         windowDurationMins: 300,
         resetAt: null,
       },
@@ -421,4 +415,36 @@ test("limits retain separate reset windows and unknown invocation kinds do not d
       resetAt: 1_790_662_689,
     },
   ]);
+});
+
+test("combined allowances preserve window durations and do not invent a shared reset", () => {
+  const account = (plan: string, used: number, reset: number) => ({
+    snapshot: createCodexAccountSnapshot(profile(0, []), {
+      plan_type: plan,
+      rate_limit: {
+        primary_window: {
+          used_percent: used,
+          limit_window_seconds: 18_000,
+          reset_at: reset,
+        },
+        secondary_window: {
+          used_percent: used + 10,
+          limit_window_seconds: 604_800,
+          reset_at: 200,
+        },
+      },
+    }),
+  });
+  const first = account("pro", 20, 100);
+  const second = account("pro", 60, 110);
+  expect(buildPublicCodexStats([first, second])?.limits).toEqual([
+    { label: "", usedPercent: 40, windowDurationMins: 300, resetAt: null },
+    { label: "", usedPercent: 50, windowDurationMins: 10_080, resetAt: 200 },
+  ]);
+  expect(
+    buildPublicCodexStats([first, account("plus", 60, 110)])?.limits
+  ).toHaveLength(4);
+  expect(
+    buildPublicCodexStats([first, second], new Date(), 3)?.limits
+  ).toHaveLength(4);
 });

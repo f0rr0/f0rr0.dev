@@ -447,6 +447,49 @@ const topTools = (
     .slice(0, 4);
 };
 
+const combinedLimits = (
+  records: readonly CodexSnapshotRecord[],
+  expectedAccountCount: number
+): PublicCodexStats["limits"] => {
+  const limits = records.flatMap(({ snapshot, label }, index) =>
+    (
+      snapshot.limits ??
+      (snapshot.primaryLimit
+        ? [{ ...snapshot.primaryLimit, resetAt: null }]
+        : [])
+    ).map((limit) => ({ ...limit, label: label ?? `Account ${index + 1}` }))
+  );
+  const plans = new Set(
+    records.map(({ snapshot }) => snapshot.primaryLimit?.planType)
+  );
+  if (
+    records.length < 2 ||
+    records.length !== expectedAccountCount ||
+    plans.size !== 1 ||
+    (records[0]?.snapshot.primaryLimit?.planType ?? "") === ""
+  ) {
+    return limits;
+  }
+  return [...Map.groupBy(limits, (limit) => limit.windowDurationMins)].flatMap(
+    ([duration, group]) => {
+      if (duration === null || group.length !== expectedAccountCount) {
+        return group;
+      }
+      return [
+        {
+          label: "",
+          usedPercent:
+            sum(group.map((limit) => limit.usedPercent)) / group.length,
+          windowDurationMins: duration,
+          resetAt: group.every((limit) => limit.resetAt === group[0].resetAt)
+            ? group[0].resetAt
+            : null,
+        },
+      ];
+    }
+  );
+};
+
 export const buildPublicCodexStats = (
   records: readonly CodexSnapshotRecord[],
   now = new Date(),
@@ -613,14 +656,7 @@ export const buildPublicCodexStats = (
       skillsExplored: range(skillsExploredValues, maximum, sum),
       topTools: topTools(records),
     },
-    limits: records.flatMap(({ snapshot, label }, index) =>
-      (
-        snapshot.limits ??
-        (snapshot.primaryLimit
-          ? [{ ...snapshot.primaryLimit, resetAt: null }]
-          : [])
-      ).map((limit) => ({ ...limit, label: label ?? `Account ${index + 1}` }))
-    ),
+    limits: combinedLimits(records, expectedAccountCount),
     totals: {
       last30Days: totalDays(30),
       last7Days: totalDays(7),
