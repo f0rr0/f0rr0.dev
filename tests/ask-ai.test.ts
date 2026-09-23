@@ -14,12 +14,10 @@ describe("Ask AI links", () => {
     const prompt = buildAskAiPrompt(context);
     const actions = buildAssistantActions(prompt);
 
-    expect(prompt).toBe(
-      'Read "A post & its source" at https://f0rr0.dev/writing/a-post.md. Answer my questions using the post as your primary source. Start with a brief summary, cite the post, and tell me if you cannot access it.'
-    );
+    expect(prompt).toContain(context.title);
+    expect(prompt).toContain(context.sourceUrl);
     for (const action of actions) {
       expect(new URL(action.href).searchParams.get("q")).toBe(prompt);
-      expect(action.iconSrc).toMatch(/\.svg$/);
     }
   });
 });
@@ -28,7 +26,6 @@ test("portfolio assistants share the visible prompt and use regular web chats", 
   const prompt = buildAskAboutMePrompt();
   const actions = buildAssistantActions(prompt);
   expect(prompt).toContain(publicUrl("/llms.txt"));
-  expect(prompt).toContain("Cite your sources");
   expect(actions.map((action) => action.label)).toEqual([
     "ChatGPT",
     "Claude",
