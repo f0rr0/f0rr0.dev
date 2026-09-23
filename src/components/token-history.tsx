@@ -26,6 +26,23 @@ const compact = new Intl.NumberFormat(sitePreferences.language, {
 const number = new Intl.NumberFormat(sitePreferences.language);
 const config = { tokens: { label: "Tokens", color: "var(--foreground)" } };
 
+function historyAxis(
+  rows: TokenHistory["values"],
+  mode: "daily" | "cumulative"
+) {
+  if (mode === "daily") {
+    return {};
+  }
+  const maximum = Math.max(1, ...rows.map((row) => row.tokens ?? 0));
+  const step = 10 ** Math.floor(Math.log10(maximum)) / 5;
+  // Leave 15% headroom, then round up to a readable axis boundary.
+  const ceiling = Math.ceil((maximum * 1.15) / step) * step;
+  return {
+    domain: [0, ceiling] as [number, number],
+    ticks: [0, ceiling / 2, ceiling],
+  };
+}
+
 function HistoryPlot({
   history,
   today,
@@ -85,6 +102,7 @@ function HistoryPlot({
             }}
             tickCount={3}
             domain={[0, "auto"]}
+            {...historyAxis(rows, mode)}
             tickFormatter={(value) =>
               Number(value) === 0 ? "" : compact.format(Number(value))
             }

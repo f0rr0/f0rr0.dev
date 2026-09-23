@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -29,7 +29,6 @@ export function SiteSection({
   children,
   className = "home-section mt-12 [scroll-margin-top:2rem]",
   heading: Heading = "h2",
-  headingClassName,
   description,
   href,
   linkLabel,
@@ -40,21 +39,19 @@ export function SiteSection({
   children: ReactNode;
   className?: string;
   heading?: "h1" | "h2";
-  headingClassName?: string;
   description?: string;
   href?: string;
   linkLabel?: string;
   id: string;
   title: string;
 }>) {
+  const external = /^https?:\/\//u.test(href ?? "");
+  const LinkIcon = external ? ArrowUpRight : ArrowRight;
   return (
     <section aria-labelledby={`${id}-title`} className={className} id={id}>
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <Heading
-          className={cn(
-            "section-title font-serif text-2xl font-normal text-foreground",
-            headingClassName
-          )}
+          className="section-title font-serif text-2xl font-normal text-foreground"
           id={`${id}-title`}
         >
           {description === undefined ? (
@@ -63,16 +60,21 @@ export function SiteSection({
             <InfoLabel label={title} description={description} />
           )}
         </Heading>
-        <div className="flex shrink-0 items-baseline justify-end gap-4">
+        <div className="flex h-8 shrink-0 items-center justify-end gap-4">
           {action}
           {href === undefined ? null : (
             <Link
               className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-sm font-ui text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
               href={href}
               prefetch={false}
+              target={external ? "_blank" : undefined}
+              rel={external ? "noreferrer noopener" : undefined}
             >
               {linkLabel ?? `All ${title.toLowerCase()}`}
-              <ArrowRight aria-hidden="true" className="size-3.5" />
+              <LinkIcon aria-hidden="true" className="size-3.5" />
+              {external ? (
+                <span className="sr-only"> (opens in a new tab)</span>
+              ) : null}
             </Link>
           )}
         </div>
