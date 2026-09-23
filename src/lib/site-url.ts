@@ -33,7 +33,7 @@ export const siteOriginFrom = (environment: Partial<typeof env>) => {
     return productionSiteOrigin(environment.VERCEL_PROJECT_PRODUCTION_URL);
   }
   return new URL(
-    `http://localhost:${(environment.PORT?.trim() ?? "") || (environment.NEXT_PUBLIC_PORT?.trim() ?? "") || "3000"}`
+    `http://localhost:${(environment.PORT?.trim() ?? "") || "3000"}`
   ).origin;
 };
 

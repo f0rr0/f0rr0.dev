@@ -26,6 +26,24 @@ For local administration, use `bun run db:migrate` and `bun run supabase:cron`.
 Enable **Automatically expose System Environment Variables** in Vercel.
 `VERCEL_PROJECT_PRODUCTION_URL` supplies the canonical domain.
 
+## Configuration cleanup
+
+`GH_TOKEN` is no longer an application setting; move its value to `GITHUB_TOKEN`
+if you used it for public repository or embed access. The GitHub CLI can still
+use its own `GH_TOKEN`. `GITHUB_TOKENS` remains the account-to-token JSON map;
+it is separate from the optional single public-read token.
+
+`NEXT_PUBLIC_PORT` is removed. Start a custom local port with
+`PORT=4200 bun run dev`; browsers use their current origin. Next.js does not read
+`PORT` from `.env` files ([Next.js CLI documentation](https://nextjs.org/docs/app/api-reference/cli/next)). Leave `NODE_ENV` and Vercel's system variables to their
+platforms instead of copying blank overrides into `.env.local`.
+
+The runtime and operational database URLs remain separate because migrations
+need a direct or session-pooler connection. Cron authentication, webhook
+verification, and activity cursor signing also retain independent secrets.
+The public and server Vercel variables serve different execution environments.
+GitHub Actions' `ACTIVITY_*` secrets map to the application's environment names.
+
 ## Customization
 
 - [Resume content](resume-customization.md): identity, career, and generated PDF.

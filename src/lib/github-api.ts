@@ -148,7 +148,7 @@ const isRateLimited = async (response: Response) =>
       (await hasSecondaryRateLimitEvidence(response))));
 
 const readDefaultGitHubToken = () => {
-  const token = env.GITHUB_TOKEN?.trim() ?? env.GH_TOKEN?.trim();
+  const token = env.GITHUB_TOKEN?.trim();
   return token === undefined || token.length === 0 ? null : token;
 };
 

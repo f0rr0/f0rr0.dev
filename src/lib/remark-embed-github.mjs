@@ -476,7 +476,7 @@ async function fetchGitHubResource(parsed) {
             .map((segment) => encodeURIComponent(segment))
             .join("/")}?ref=${encodeURIComponent(parsed.commit)}`
         : `repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}`;
-  const token = env.GITHUB_TOKEN ?? env.GH_TOKEN;
+  const token = env.GITHUB_TOKEN;
   const headers = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": GITHUB_API_VERSION,
