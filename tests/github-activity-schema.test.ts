@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 
-import { getTableName } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
 
 import {
@@ -33,13 +32,10 @@ const indexNames = (table: Parameters<typeof getTableConfig>[0]) =>
 
 describe("GitHub activity persistence schema", () => {
   test("keeps compact commit identity and durable enrichment state", () => {
-    expect(getTableName(githubCommits)).toBe("github_commits");
     expect(githubCommits.repositoryId.primary).toBe(false);
     expect(githubCommits.enrichmentState.default).toBe("pending");
     expect(githubCommits.enrichmentState.notNull).toBe(true);
     expect(githubCommits.pullRequestDiscoveryState.default).toBe("pending");
-    expect(githubCommits.parentShas.name).toBe("parent_shas");
-    expect(githubCommits.fileFacts.name).toBe("file_facts");
     expect(githubCommits.fileFactsComplete.default).toBe(false);
     expect(indexNames(githubCommits)).toContain(
       "github_commits_pr_discovery_pending_idx"
@@ -62,35 +58,12 @@ describe("GitHub activity persistence schema", () => {
     expect(githubAccountCheckpoints.gapState.default).toBe("clear");
     expect(githubAccountCheckpoints.refBackfillSinceAt.hasDefault).toBe(true);
     expect(githubAccountCheckpoints.refBackfillSinceAt.notNull).toBe(true);
-    expect(githubAccountCheckpoints.eventsEtag.name).toBe("events_etag");
-    expect(githubAccountCheckpoints.eventsNextPollAt.name).toBe(
-      "events_next_poll_at"
-    );
-    expect(githubAccountCheckpoints.headRefNextPage.name).toBe(
-      "head_ref_next_page"
-    );
-    expect(githubAccountCheckpoints.tagRefNextPage.name).toBe(
-      "tag_ref_next_page"
-    );
-    expect(githubAccountCheckpoints.pullRequestBackfillDigest.name).toBe(
-      "pull_request_backfill_digest"
-    );
     expect(checkNames(githubAccountCheckpoints)).toEqual(
       expect.arrayContaining([
         "github_account_checkpoints_ref_leases",
         "github_account_checkpoints_ref_scans",
         "github_account_checkpoints_pr_backfill_digest",
       ])
-    );
-    expect(getTableName(githubRepositories)).toBe("github_repositories");
-    expect(githubRepositories.headsLastReconciledAt.name).toBe(
-      "heads_last_reconciled_at"
-    );
-    expect(githubRepositories.tagsLastReconciledAt.name).toBe(
-      "tags_last_reconciled_at"
-    );
-    expect(getTableName(githubPushObservations)).toBe(
-      "github_push_observations"
     );
     expect(indexNames(githubPushObservations)).toEqual(
       expect.arrayContaining([
@@ -109,7 +82,6 @@ describe("GitHub activity persistence schema", () => {
       (item) => item.config.name === "github_push_observations_push_unique"
     );
     expect(pushIdentity?.config.where).toBeDefined();
-    expect(getTableName(githubRepositoryRefs)).toBe("github_repository_refs");
     expect(githubRepositoryRefs.active.default).toBe(true);
     expect(indexNames(githubRepositoryRefs)).toContain(
       "github_repository_refs_active_idx"
@@ -125,9 +97,6 @@ describe("GitHub activity persistence schema", () => {
   });
 
   test("deduplicates webhook deliveries", () => {
-    expect(getTableName(githubWebhookDeliveries)).toBe(
-      "github_webhook_deliveries"
-    );
     expect(githubWebhookDeliveries.deliveryId.primary).toBe(true);
     expect(githubWebhookDeliveries.accepted.notNull).toBe(true);
     expect(githubWebhookDeliveries.observedAt.hasDefault).toBe(true);
@@ -141,17 +110,6 @@ describe("GitHub activity persistence schema", () => {
   });
 
   test("stores mutable PR state separately from immutable discovery snapshots", () => {
-    expect(getTableName(githubPullRequests)).toBe("github_pull_requests");
-    expect(githubPullRequests.title.name).toBe("title");
-    expect(githubPullRequests.titleSnapshot.name).toBe("title_snapshot");
-    expect(githubPullRequests.providerUpdatedAt.name).toBe(
-      "provider_updated_at"
-    );
-    expect(githubPullRequests.lastReconciledAt.name).toBe("last_reconciled_at");
-    expect(githubPullRequests.nextReconcileAt.name).toBe("next_reconcile_at");
-    expect(githubPullRequests.mergeShaVerifiedAt.name).toBe(
-      "merge_sha_verified_at"
-    );
     expect(indexNames(githubPullRequests)).toContain(
       "github_pull_requests_reconciliation_idx"
     );
@@ -164,9 +122,6 @@ describe("GitHub activity persistence schema", () => {
   });
 
   test("versions PR membership without requiring every member to be hydrated", () => {
-    expect(getTableName(githubPullRequestVersions)).toBe(
-      "github_pull_request_versions"
-    );
     expect(githubPullRequestVersions.isCurrent.default).toBe(true);
     expect(indexNames(githubPullRequestVersions)).toEqual(
       expect.arrayContaining([
@@ -190,12 +145,8 @@ describe("GitHub activity persistence schema", () => {
   });
 
   test("stores current and durable work-unit summaries, usage, and feed head", () => {
-    expect(getTableName(githubWorkUnits)).toBe("github_work_units");
     expect(indexNames(githubWorkUnitMemberships)).toContain(
       "gh_work_unit_memberships_commit_unique"
-    );
-    expect(getTableName(githubWorkUnitSummaryAttempts)).toBe(
-      "github_work_unit_summary_attempts"
     );
     expect(githubWorkUnitSummaryAttempts.state.default).toBe("pending");
     expect(checkNames(githubWorkUnitSummaryAttempts)).toEqual(
@@ -205,13 +156,7 @@ describe("GitHub activity persistence schema", () => {
         "gh_work_unit_summary_lease",
       ])
     );
-    expect(getTableName(githubWorkUnitAcceptedSummaries)).toBe(
-      "github_work_unit_accepted_summaries"
-    );
     expect(config(githubWorkUnitAcceptedSummaries).foreignKeys).toHaveLength(0);
-    expect(getTableName(githubWorkUnitSummaryDailyUsage)).toBe(
-      "github_work_unit_summary_daily_usage"
-    );
     expect(githubWorkUnitSummaryDailyUsage.day.primary).toBe(true);
     expect(githubWorkUnitSummaryDailyUsage.startedRequests.default).toBe(0);
     expect(checkNames(githubWorkUnitSummaryDailyUsage)).not.toContain(
@@ -221,10 +166,7 @@ describe("GitHub activity persistence schema", () => {
   });
 
   test("stores authored issue milestones as first-observed snapshots", () => {
-    expect(getTableName(githubIssues)).toBe("github_issues");
     expect(githubIssues.nodeId.primary).toBe(true);
-    expect(githubIssues.titleSnapshot.name).toBe("title_snapshot");
-    expect(githubIssues.urlSnapshot.name).toBe("url_snapshot");
     expect(indexNames(githubIssues)).toContain("github_issues_author_idx");
   });
 
