@@ -75,6 +75,10 @@ function HistoryPlot({
             tickSize={0}
             interval={0}
             tick={{
+              dy: -8,
+              stroke: "var(--background)",
+              strokeWidth: 3,
+              paintOrder: "stroke",
               fill: "var(--muted-foreground)",
               fontSize: 12,
               fontWeight: 300,
