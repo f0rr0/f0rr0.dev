@@ -93,9 +93,9 @@ test("public reads retain successful snapshots on outage and recover without cac
     }));
     mock.module("./src/db/client.ts", () => ({
       isDatabaseConfigured: () => true,
-      getDatabase: () => ({ select: () => ({ from: () => ({ where: async () => {
+      getDatabase: () => ({ select: () => ({ from: () => ({ where: () => ({ orderBy: async () => {
         await read(); return [];
-      } }) }) }),
+      } }) }) }) }),
     }));
     mock.module("./src/lib/codex/stats.ts", () => ({ buildPublicCodexStats: () => ({ version }) }));
     const { getInitialGitHubActivity } = await import("./src/lib/github-activity-feed.ts");

@@ -14,12 +14,34 @@ const totals = z.object({
 });
 
 export const analyticsSchemas = {
+  delegation: z.object({
+    units: z.string(),
+    data: z.array(
+      z.object({
+        date: day,
+        product_surface_usage_values: z.record(
+          z.string(),
+          z.number().nonnegative()
+        ),
+        attribution: z
+          .array(
+            z.object({
+              thread_source: name.nullish(),
+              value: z.number().nonnegative(),
+            })
+          )
+          .nullish(),
+      })
+    ),
+  }),
   activity: z.object({
     data: z.array(
       z.object({
         date: day,
         totals,
-        models: z.array(z.object({ model: name, turns: count })),
+        models: z
+          .array(z.object({ model: name, turns: count.nullish() }))
+          .nullish(),
       })
     ),
   }),
@@ -31,6 +53,7 @@ export const analyticsSchemas = {
         plugin_usage_overviews: z.array(
           z.object({
             plugin_name: name,
+            display_name: name.nullish(),
             invocation_counts: count,
           })
         ),
@@ -45,6 +68,7 @@ export const analyticsSchemas = {
         skill_usage_overviews: z.array(
           z.object({
             skill_name: name,
+            display_name: name.nullish(),
             invocation_counts: count,
           })
         ),
@@ -59,6 +83,7 @@ export type AnalyticsSnapshot = {
   pluginLogos?: Record<string, { logoUrl: string; logoUrlDark?: string }>;
 } & {
   [K in AnalyticsKey]?: {
+    historyDays?: number;
     fetchedAt: string;
     start: string;
     end: string;
@@ -73,6 +98,7 @@ export const utcOffset = (date: string, days: number) => {
 };
 
 const endpoints: Record<AnalyticsKey, string> = {
+  delegation: "/usage/daily-token-usage-breakdown",
   activity: "/analytics/daily-workspace-usage-counts",
   plugins: "/analytics/daily-plugin-usage-metrics",
   skills: "/analytics/daily-skill-usage-metrics",
@@ -89,8 +115,13 @@ export async function fetchAnalytics(
     return {};
   }
   const end = now.toISOString().slice(0, 10);
-  const start = utcOffset(end, -29);
+  const historyDays = Math.max(
+    30,
+    Math.min(365, Math.floor(preferences.historyDays))
+  );
+  const historyStart = utcOffset(end, 1 - historyDays);
   const enabled: Record<AnalyticsKey, boolean> = {
+    delegation: preferences.sections.delegation,
     activity:
       preferences.sections.activity ||
       preferences.sections.models ||
@@ -98,17 +129,76 @@ export async function fetchAnalytics(
     plugins: preferences.sections.tools,
     skills: preferences.sections.tools,
   };
+  const updateSource = (
+    key: AnalyticsKey,
+    response: z.infer<Sources[AnalyticsKey]>,
+    start: string
+  ) => {
+    const retained = previous[key];
+    const unitsChanged =
+      "units" in response &&
+      retained !== undefined &&
+      "units" in retained.response &&
+      response.units !== retained.response.units;
+    // Replace refreshed dates, retain older history, and bound snapshot size.
+    const data = new Map(
+      (unitsChanged ? [] : (retained?.response.data ?? []))
+        .filter((row) => row.date >= historyStart && row.date < start)
+        .map((row) => [row.date, row])
+    );
+    for (const row of response.data) {
+      if (row.date >= start && row.date <= end) {
+        data.set(row.date, row);
+      }
+    }
+    return [
+      key,
+      {
+        historyDays:
+          unitsChanged && start > historyStart ? undefined : historyDays,
+        fetchedAt: now.toISOString(),
+        start: unitsChanged
+          ? start
+          : retained?.historyDays === historyDays
+            ? retained.start > historyStart
+              ? retained.start
+              : historyStart
+            : historyStart,
+        end,
+        response: {
+          ...response,
+          data: [...data.values()].toSorted((a, b) =>
+            a.date.localeCompare(b.date)
+          ),
+        },
+      },
+    ];
+  };
   const entries = await Promise.all(
     (Object.keys(endpoints) as AnalyticsKey[]).map(async (key) => {
       if (!enabled[key]) {
         return [key, undefined];
       }
+      const retained = previous[key];
+      const refreshStart =
+        retained?.historyDays === historyDays
+          ? [utcOffset(end, -29), utcOffset(retained.end, 1)].toSorted()[0]
+          : historyStart;
+      const start = refreshStart < historyStart ? historyStart : refreshStart;
       const params = new URLSearchParams({
         start_date: start,
         end_date: end,
         group_by: "day",
       });
-      params.set("workspace_user", "true");
+      if (key !== "delegation") {
+        params.set("workspace_user", "true");
+      }
+      if (key === "plugins") {
+        params.set("top_plugin_limit", "100");
+      }
+      if (key === "skills") {
+        params.set("top_skill_limit", "100");
+      }
       try {
         const result = await fetcher(
           `https://chatgpt.com/backend-api/wham${endpoints[key]}?${params}`,
@@ -121,7 +211,7 @@ export async function fetchAnalytics(
           throw new Error("Analytics unavailable");
         }
         const response = analyticsSchemas[key].parse(await result.json());
-        return [key, { fetchedAt: now.toISOString(), start, end, response }];
+        return updateSource(key, response, start);
       } catch {
         // Keep the original coverage and timestamp when an optional source fails.
         return [key, previous[key]];
@@ -132,6 +222,7 @@ export async function fetchAnalytics(
 }
 
 export interface TokenRow {
+  name?: string;
   label: string;
   value: number;
   logoUrl?: string;
@@ -169,8 +260,10 @@ function summarizeActivity(activity: z.infer<Sources["activity"]>["data"]) {
       sums.output += output;
       tokenRows += 1;
     }
-    for (const model of row.models) {
-      add(models, model.model, model.turns);
+    for (const model of row.models ?? []) {
+      if (model.turns !== null && model.turns !== undefined) {
+        add(models, model.model, model.turns);
+      }
     }
   }
   return { sums, tokenRows, models };
@@ -178,9 +271,10 @@ function summarizeActivity(activity: z.infer<Sources["activity"]>["data"]) {
 
 export function buildTokenDetails(
   accounts: readonly (AnalyticsSnapshot | undefined)[],
-  days: 7 | 30,
+  days: number,
   now = new Date(),
-  preferences: TokenPreferences = tokenPreferences
+  preferences: TokenPreferences = tokenPreferences,
+  accountLabels: readonly string[] = []
 ) {
   const end = now.toISOString().slice(0, 10);
   const start = utcOffset(end, 1 - days);
@@ -204,6 +298,7 @@ export function buildTokenDetails(
         values.some((source) => source.start > start || source.end < end),
       fetchedAt: values.map((source) => source.fetchedAt).toSorted()[0] ?? null,
       latestDay: dates.at(-1) ?? null,
+      firstDay: dates[0] ?? null,
     };
   };
   const activity = accounts.flatMap(
@@ -212,6 +307,7 @@ export function buildTokenDetails(
   );
   const { sums, tokenRows, models } = summarizeActivity(activity);
   const tools = (key: "plugins" | "skills") => {
+    const labels = new Map<string, string>();
     const values = new Map<string, number>();
     for (const account of accounts) {
       if (key === "plugins") {
@@ -220,6 +316,9 @@ export function buildTokenDetails(
             for (const tool of row.plugin_usage_overviews) {
               if (!preferences.excludedTools.includes(tool.plugin_name)) {
                 add(values, tool.plugin_name, tool.invocation_counts);
+                if (typeof tool.display_name === "string") {
+                  labels.set(tool.plugin_name, tool.display_name);
+                }
               }
             }
           }
@@ -230,6 +329,9 @@ export function buildTokenDetails(
             for (const tool of row.skill_usage_overviews) {
               if (!preferences.excludedTools.includes(tool.skill_name)) {
                 add(values, tool.skill_name, tool.invocation_counts);
+                if (typeof tool.display_name === "string") {
+                  labels.set(tool.skill_name, tool.display_name);
+                }
               }
             }
           }
@@ -237,13 +339,22 @@ export function buildTokenDetails(
       }
     }
     return {
-      rows: ranked(values).map((row) => ({
-        ...row,
-        ...(key === "plugins"
-          ? accounts.find((account) => account?.pluginLogos?.[row.label])
-              ?.pluginLogos?.[row.label]
-          : undefined),
-      })),
+      total: [...values.values()].reduce((sum, value) => sum + value, 0),
+      distinct: [...values].filter(
+        ([label, value]) =>
+          value > 0 && !["other", "unknown"].includes(label.toLowerCase())
+      ).length,
+      rows: ranked(values)
+        .filter((row) => row.value > 0)
+        .map((row) => ({
+          ...row,
+          name: row.label,
+          label: labels.get(row.label) ?? row.label,
+          ...(key === "plugins"
+            ? accounts.find((account) => account?.pluginLogos?.[row.label])
+                ?.pluginLogos?.[row.label]
+            : undefined),
+        })),
       status: status(key),
     };
   };
@@ -251,6 +362,71 @@ export function buildTokenDetails(
     start,
     end,
     accountCount: accounts.length,
+    delegation: preferences.sections.delegation
+      ? {
+          accounts: accounts.flatMap((account, index) => {
+            const source = account?.delegation;
+            if (
+              !source ||
+              !["percent", "credits"].includes(source.response.units)
+            ) {
+              return [];
+            }
+            const values = new Map<string, number>();
+            for (const row of source.response.data.filter((row) =>
+              inRange(row.date)
+            )) {
+              if (row.attribution === null || row.attribution === undefined) {
+                add(
+                  values,
+                  "Unattributed",
+                  Object.values(row.product_surface_usage_values).reduce(
+                    (sum, value) => sum + value,
+                    0
+                  )
+                );
+              } else {
+                for (const entry of row.attribution) {
+                  const label =
+                    entry.thread_source === "user"
+                      ? "Tasks"
+                      : entry.thread_source === "subagent"
+                        ? "Subagents"
+                        : entry.thread_source === null ||
+                            entry.thread_source === undefined ||
+                            entry.thread_source === "unknown"
+                          ? "Unattributed"
+                          : "Other activity";
+                  add(values, label, entry.value);
+                }
+              }
+            }
+            const total = [...values.values()].reduce(
+              (sum, value) => sum + value,
+              0
+            );
+            return total > 0
+              ? [
+                  {
+                    label: accountLabels[index] ?? `Account ${index + 1}`,
+                    rows: [
+                      "Tasks",
+                      "Subagents",
+                      "Other activity",
+                      "Unattributed",
+                    ]
+                      .filter((label) => (values.get(label) ?? 0) > 0)
+                      .map((label) => ({
+                        label,
+                        value: ((values.get(label) ?? 0) / total) * 100,
+                      })),
+                  },
+                ]
+              : [];
+          }),
+          status: status("delegation"),
+        }
+      : null,
     activity:
       preferences.sections.activity || preferences.sections.composition
         ? {
@@ -281,7 +457,16 @@ export function buildTokenDetails(
           }
         : null,
     models: preferences.sections.models
-      ? { rows: ranked(models), status: status("activity") }
+      ? {
+          rows: ranked(models).filter((row) => row.value > 0),
+          status: {
+            ...status("activity"),
+            partial:
+              status("activity").partial ||
+              [...models.values()].reduce((sum, value) => sum + value, 0) !==
+                sums.turns,
+          },
+        }
       : null,
     plugins: preferences.sections.tools ? tools("plugins") : null,
     skills: preferences.sections.tools ? tools("skills") : null,

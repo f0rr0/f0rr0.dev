@@ -32,10 +32,13 @@ export default async function TokensPage() {
   if (!tokenPreferences.enabled) {
     notFound();
   }
-  const [stats, details, weekDetails] = await Promise.all([
+  const [stats, details, weekDetails, historyDetails] = await Promise.all([
     getPublicCodexStats(),
     getPublicTokenDetails(30),
     getPublicTokenDetails(7),
+    tokenPreferences.historyDays > 30
+      ? getPublicTokenDetails(tokenPreferences.historyDays)
+      : null,
   ]);
   return (
     <SiteShell activeHref="/tokens">
@@ -44,6 +47,7 @@ export default async function TokensPage() {
           stats={stats}
           details={details}
           weekDetails={weekDetails}
+          historyDetails={historyDetails}
         />
       </SiteMain>
     </SiteShell>

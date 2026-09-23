@@ -12,20 +12,30 @@ import { reportOperationalError } from "@/lib/operational-error";
 const readPublicCodexStats = async () => {
   const rows = await getDatabase()
     .select({
+      id: codexAccounts.id,
       snapshot: codexAccounts.snapshot,
     })
     .from(codexAccounts)
-    .where(eq(codexAccounts.enabled, true));
+    .where(eq(codexAccounts.enabled, true))
+    .orderBy(codexAccounts.id);
 
-  const records = rows.flatMap((row) =>
-    row.snapshot === null ? [] : [{ snapshot: row.snapshot }]
+  const records = rows.flatMap((row, index) =>
+    row.snapshot === null
+      ? []
+      : [
+          {
+            snapshot: row.snapshot,
+            label:
+              tokenPreferences.accountLabels[row.id] ?? `Account ${index + 1}`,
+          },
+        ]
   );
   return buildPublicCodexStats(records, new Date(), rows.length);
 };
 
 const readCachedPublicCodexStats = unstable_cache(
   readPublicCodexStats,
-  ["public-codex-stats-v8", JSON.stringify(tokenPreferences)],
+  ["public-codex-stats-v9", JSON.stringify(tokenPreferences)],
   { revalidate: 900, tags: ["public-codex-stats"] }
 );
 
@@ -41,22 +51,28 @@ export const getPublicCodexStats = async () => {
 };
 
 const readCachedTokenDetails = unstable_cache(
-  async (days: 7 | 30) => {
+  async (days: number) => {
     const rows = await getDatabase()
-      .select({ snapshot: codexAccounts.snapshot })
+      .select({ id: codexAccounts.id, snapshot: codexAccounts.snapshot })
       .from(codexAccounts)
       .where(eq(codexAccounts.enabled, true))
       .orderBy(codexAccounts.id);
     return buildTokenDetails(
       rows.map((row) => row.snapshot?.analytics),
-      days
+      days,
+      new Date(),
+      tokenPreferences,
+      rows.map(
+        (row, index) =>
+          tokenPreferences.accountLabels[row.id] ?? `Account ${index + 1}`
+      )
     );
   },
-  ["public-token-details-v2", JSON.stringify(tokenPreferences)],
+  ["public-token-details-v3", JSON.stringify(tokenPreferences)],
   { revalidate: 900, tags: ["public-codex-stats"] }
 );
 
-export async function getPublicTokenDetails(days: 7 | 30) {
+export async function getPublicTokenDetails(days: number) {
   if (!tokenPreferences.enabled || !isDatabaseConfigured()) {
     return null;
   }

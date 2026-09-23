@@ -67,14 +67,16 @@ test("combines counts and weighted cache rate while preserving privacy", () => {
   expect(result.activity?.turns).toBe(6);
   expect(result.activity?.cacheHit).toBeCloseTo((100 / 120) * 100);
   expect(result.models?.rows).toEqual([{ label: "example-model", value: 6 }]);
-  expect(result.plugins?.rows).toEqual([{ label: "public-tool", value: 4 }]);
+  expect(result.plugins?.rows).toEqual([
+    { name: "public-tool", label: "public-tool", value: 4 },
+  ]);
   expect(JSON.stringify(result)).not.toContain("private-tool");
   expect(JSON.stringify(first.activity)).not.toContain("credits");
   expect(JSON.stringify(first.activity)).not.toContain("secret");
   const html = renderToStaticMarkup(
     <TokenUsageDetails stats={null} details={result} weekDetails={result} />
   );
-  expect(html).toContain(">Models</h2>");
+  expect(html).toContain('id="models-title"');
   expect(html).not.toContain("Account 2");
   expect(html).not.toContain("<details");
   expect(html).not.toContain("UTC");
@@ -109,6 +111,8 @@ test("missing, zero, retained, and disabled sections stay distinct", () => {
       composition: false,
       models: false,
       tools: false,
+      delegation: false,
+      limits: false,
     },
   });
   expect(hidden.activity).toBeNull();
@@ -256,6 +260,7 @@ test("ranked tools carry dynamic logos without exposing excluded tool metadata",
     excludedTools: ["private-tool"],
   });
   expect(details.plugins?.rows[0]).toEqual({
+    name: "public-tool",
     label: "public-tool",
     value: 2,
     ...account.pluginLogos?.["public-tool"],
@@ -289,4 +294,180 @@ test("empty sections disappear while reported zero usage remains visible", () =>
     expect(zeroHtml).not.toContain(`id="${id}"`);
   }
   expect(zeroHtml).not.toContain("Last 7 days");
+});
+
+test("backfills once, refreshes recent dates, and retains bounded history on failure", async () => {
+  const first = fixture();
+  const old = { ...first.activity.response.data[0], date: "2026-05-25" };
+  const requested: URL[] = [];
+  const fetcher = mockFetch(async (input) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    requested.push(url);
+    return url.pathname.endsWith("daily-workspace-usage-counts")
+      ? Response.json({ data: [old, ...first.activity.response.data] })
+      : Response.json({ data: [] });
+  });
+  const initial = await fetchAnalytics({}, fetcher, now);
+  expect(
+    requested
+      .find((url) => url.pathname.endsWith("daily-workspace-usage-counts"))
+      ?.searchParams.get("start_date")
+  ).toBe("2025-09-24");
+  expect(
+    requested
+      .find((url) => url.pathname.endsWith("daily-skill-usage-metrics"))
+      ?.searchParams.get("top_skill_limit")
+  ).toBe("100");
+  expect(initial.activity?.response.data).toHaveLength(2);
+  requested.length = 0;
+  const next = await fetchAnalytics(
+    {},
+    fetcher,
+    new Date("2026-09-24T12:00:00Z"),
+    initial
+  );
+  expect(
+    requested
+      .find((url) => url.pathname.endsWith("daily-workspace-usage-counts"))
+      ?.searchParams.get("start_date")
+  ).toBe("2026-08-26");
+  expect(next.activity?.response.data).toHaveLength(2);
+  expect(next.activity?.response.data[0].date).toBe("2026-05-25");
+  const failure = await fetchAnalytics(
+    {},
+    mockFetch(async () => new Response(null, { status: 503 })),
+    new Date("2026-09-25T12:00:00Z"),
+    next
+  );
+  expect(failure.activity).toEqual(next.activity);
+  const expired = await fetchAnalytics(
+    {},
+    fetcher,
+    new Date("2027-09-24T12:00:00Z"),
+    next
+  );
+  expect(expired.activity?.response.data).toEqual([]);
+  requested.length = 0;
+  await fetchAnalytics({}, fetcher, new Date("2026-12-24T12:00:00Z"), next);
+  expect(
+    requested
+      .find((url) => url.pathname.endsWith("daily-workspace-usage-counts"))
+      ?.searchParams.get("start_date")
+  ).toBe("2026-09-25");
+});
+
+test("delegation stays per-account and missing model detail preserves other metrics", () => {
+  const account = fixture();
+  const input = {
+    ...account,
+    delegation: {
+      ...meta,
+      response: analyticsSchemas.delegation.parse({
+        units: "percent",
+        data: [
+          {
+            date: "2026-09-22",
+            product_surface_usage_values: { desktop_app: 20 },
+            attribution: [
+              { thread_source: "user", value: 10, model: "private-field" },
+              { thread_source: "subagent", value: 5 },
+              { thread_source: "unknown", value: 5 },
+            ],
+          },
+          {
+            date: "2026-09-23",
+            product_surface_usage_values: { desktop_app: 5 },
+          },
+        ],
+      }),
+    },
+  };
+  const second = {
+    ...input,
+    activity: {
+      ...meta,
+      response: analyticsSchemas.activity.parse({
+        data: [{ date: "2026-09-22", totals: { turns: 7 }, models: null }],
+      }),
+    },
+  };
+  const result = buildTokenDetails([input, second], 30, now, tokenPreferences, [
+    "Personal",
+    "Projects",
+  ]);
+  expect(result.delegation?.accounts.map((value) => value.label)).toEqual([
+    "Personal",
+    "Projects",
+  ]);
+  expect(result.delegation?.accounts[0].rows).toEqual([
+    { label: "Tasks", value: 40 },
+    { label: "Subagents", value: 20 },
+    { label: "Unattributed", value: 40 },
+  ]);
+  expect(result.activity?.turns).toBe(10);
+  expect(result.models?.rows).toEqual([{ label: "example-model", value: 3 }]);
+  expect(result.models?.status.partial).toBe(true);
+  expect(JSON.stringify(result)).not.toContain("private-field");
+});
+
+test("tool names combine across accounts independently of their display labels", () => {
+  const first = fixture();
+  first.plugins.response = analyticsSchemas.plugins.parse({
+    data: [
+      {
+        date: "2026-09-22",
+        plugin_usage_overviews: [
+          {
+            plugin_name: "public-tool",
+            display_name: "Readable Tool",
+            invocation_counts: 2,
+          },
+        ],
+      },
+    ],
+  });
+  const result = buildTokenDetails([first, first], 30, now);
+  expect(result.plugins?.rows).toEqual([
+    { name: "public-tool", label: "Readable Tool", value: 4 },
+  ]);
+  expect(result.plugins?.total).toBe(4);
+  expect(result.plugins?.distinct).toBe(1);
+});
+
+test("a change of allowance units cannot mix old percentages with credits", async () => {
+  const old = {
+    delegation: {
+      ...meta,
+      historyDays: 365,
+      start: "2025-09-24",
+      response: {
+        units: "percent",
+        data: [
+          {
+            date: "2026-05-25",
+            product_surface_usage_values: { desktop_app: 80 },
+          },
+        ],
+      },
+    },
+  };
+  const source = await fetchAnalytics(
+    {},
+    mockFetch(async () =>
+      Response.json({
+        units: "credits",
+        data: [
+          {
+            date: "2026-09-22",
+            product_surface_usage_values: { desktop_app: 10 },
+          },
+        ],
+      })
+    ),
+    now,
+    old
+  );
+  expect(source.delegation?.response.data).toHaveLength(1);
+  expect(source.delegation?.start).toBe("2026-08-25");
+  expect(source.delegation?.historyDays).toBeUndefined();
 });

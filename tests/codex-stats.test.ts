@@ -224,9 +224,20 @@ describe("public Codex statistics", () => {
         },
       ],
     });
-    expect(stats.primaryLimit).toEqual({
-      usedPercent: 50,
-    });
+    expect(stats.limits).toEqual([
+      {
+        label: "Account 1",
+        usedPercent: 25,
+        windowDurationMins: 300,
+        resetAt: null,
+      },
+      {
+        label: "Account 2",
+        usedPercent: 75,
+        windowDurationMins: 300,
+        resetAt: null,
+      },
+    ]);
     expect(JSON.stringify(stats)).not.toContain("Spark");
 
     const partial = requireStats(
@@ -242,7 +253,7 @@ describe("public Codex statistics", () => {
     );
     expect(partial.totals.lifetimeTokens.partial).toBe(true);
     expect(partial.highlights.currentStreakDays.partial).toBe(true);
-    expect(partial.primaryLimit).toBeNull();
+    expect(partial.limits).toHaveLength(1);
 
     expect(
       requireStats(
@@ -341,7 +352,7 @@ describe("public Codex statistics", () => {
     const analyticsCalls = calls.filter(({ url }) =>
       url.includes("group_by=day")
     );
-    expect(analyticsCalls).toHaveLength(3);
+    expect(analyticsCalls).toHaveLength(4);
     expect(
       analyticsCalls.every((call) => call.authorization === "Bearer new-access")
     ).toBe(true);
@@ -366,4 +377,48 @@ describe("public Codex statistics", () => {
       logoUrlDark: "https://files.openai.com/content?id=github-dark",
     });
   });
+});
+
+test("limits retain separate reset windows and unknown invocation kinds do not discard a profile", () => {
+  const snapshot = createCodexAccountSnapshot(
+    profile(10, [], {
+      top_invocations: [
+        { type: "new-kind", usage_count: 3 },
+        { type: "plugin", plugin_name: "missing-count" },
+      ],
+    }),
+    {
+      rate_limit: {
+        primary_window: {
+          used_percent: 1,
+          limit_window_seconds: 18_000,
+          reset_at: 1_790_412_746,
+        },
+        secondary_window: {
+          used_percent: 60,
+          limit_window_seconds: 604_800,
+          reset_at: 1_790_662_689,
+        },
+      },
+    }
+  );
+  expect(snapshot.topInvocations).toEqual([]);
+  const stats = buildPublicCodexStats(
+    [{ snapshot, label: "Personal" }],
+    new Date("2026-09-23T12:00:00Z")
+  );
+  expect(stats?.limits).toEqual([
+    {
+      label: "Personal",
+      usedPercent: 1,
+      windowDurationMins: 300,
+      resetAt: 1_790_412_746,
+    },
+    {
+      label: "Personal",
+      usedPercent: 60,
+      windowDurationMins: 10_080,
+      resetAt: 1_790_662_689,
+    },
+  ]);
 });

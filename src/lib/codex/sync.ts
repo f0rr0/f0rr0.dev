@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { tokenPreferences } from "@/content/tokens";
 import { buildTokenDetails, fetchAnalytics } from "@/lib/codex/analytics";
 import type { AnalyticsSnapshot } from "@/lib/codex/analytics";
 import {
@@ -190,11 +191,11 @@ export const fetchCodexAccountSnapshot = async (
       ...(snapshot.topInvocations
         ?.filter(({ kind }) => kind === "plugin")
         .map(({ name }) => name) ?? []),
-      ...([7, 30] as const).flatMap(
+      ...[7, 30, tokenPreferences.historyDays].flatMap(
         (days) =>
           buildTokenDetails([analytics], days, now)
-            .plugins?.rows.slice(0, 5)
-            .map((row) => row.label) ?? []
+            .plugins?.rows.slice(0, tokenPreferences.rankingLimit)
+            .map((row) => row.name ?? row.label) ?? []
       ),
     ]),
   ];

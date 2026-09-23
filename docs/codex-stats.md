@@ -63,7 +63,7 @@ public snapshots.
 
 The sync refreshes account credentials automatically and combines account usage
 for display. Unique skills and percentage metrics use ranges where exact totals
-cannot be calculated; plan limits are combined only for matching plans and windows.
+cannot be calculated. Plan limits and allowance shares stay separate per account.
 
 ## Detailed usage page
 
@@ -77,7 +77,13 @@ Configure public presentation in `src/content/tokens.ts`:
   and additional analytics requests.
 - `homepagePreview`: shows token totals and the calendar on the homepage.
 - `title`, `introduction`, and `workLink`: customize the copy and optional work link.
-- `sections`: controls activity, models, composition, and tools.
+- `sections`: controls activity, models, composition, tools, delegation, and limits.
+- `historyDays`: retained analytics window (30–365 days); the first successful sync
+  fetches this window, then subsequent syncs refresh recent dates and retain older rows.
+- `rankingLimit`: number of ranked tools and skills displayed.
+- `accountLabels`: optional public labels keyed by registered account ID; defaults
+  to numbered accounts. Credentials and upstream account identities stay private.
+- `timeZone`: timezone for displaying allowance reset dates.
 - `excludedTools`: exact plugin/skill names to exclude from public data,
   including older snapshots. Stored data is not deleted.
 
@@ -85,10 +91,14 @@ Navigation labels and order are configured in `src/content/resume.ts`.
 
 ### Data limitations
 
-The detailed breakdowns use internal Codex analytics endpoints for the past
-30 days. These may lag behind profile totals. Failed requests retain previous
-data; sections without reported data are hidden. Day boundaries are UTC.
+The detailed breakdowns use internal Codex endpoints. History means available
+records within `historyDays`, not complete lifetime coverage. Changing the window
+triggers a fresh backfill. Requests fetch up to 100 named tools/skills; upstream may
+group additional entries. These sources may lag behind profile totals. Failed
+requests retain previous data; empty sections are hidden. Day boundaries are UTC.
 
 Token and invocation counts sum across accounts. Cache hit rate is weighted by
-input tokens; model counts represent turns, not token shares or cost. Missing
-history stays unknown unless daily counts reconcile with lifetime usage.
+input tokens from rows with all components reported; missing components are not
+zero. Model counts include reported background turns. Allowance shares are not
+token shares. Missing history stays unknown unless daily counts reconcile with
+lifetime usage. The longest-turn metric measures a single turn, not a whole chat.

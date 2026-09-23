@@ -1,3 +1,5 @@
+import { sitePreferences } from "@/content/site";
+
 // Public presentation only. Account credentials stay in the existing server store.
 export interface TokenPreferences {
   enabled: boolean;
@@ -9,7 +11,13 @@ export interface TokenPreferences {
     models: boolean;
     composition: boolean;
     tools: boolean;
+    delegation: boolean;
+    limits: boolean;
   };
+  timeZone: string;
+  historyDays: number;
+  rankingLimit: number;
+  accountLabels: Readonly<Record<string, string>>;
   excludedTools: readonly string[];
   workLink: { href: string; label: string } | null;
 }
@@ -25,7 +33,13 @@ export const tokenPreferences: TokenPreferences = {
     models: true,
     composition: true,
     tools: true,
+    delegation: true,
+    limits: true,
   },
+  timeZone: sitePreferences.workLogTimeZone,
+  historyDays: 365,
+  rankingLimit: 5,
+  accountLabels: {},
   excludedTools: [],
   workLink: { href: "/work", label: "See what I’m shipping." },
 };

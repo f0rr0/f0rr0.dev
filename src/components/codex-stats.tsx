@@ -4,6 +4,7 @@ import { CodexActivity } from "@/components/codex-activity";
 import { InfoLabel } from "@/components/info-label";
 import { SiteSection } from "@/components/site-page";
 import { TokenStatGrid } from "@/components/token-stat-grid";
+import { sitePreferences } from "@/content/site";
 import { tokenPreferences } from "@/content/tokens";
 import type {
   PublicCodexMetric,
@@ -80,8 +81,8 @@ const LimitBar = ({
   return (
     <div>
       <div className="flex items-baseline justify-between gap-4 text-base text-muted-foreground">
-        <span>{label}</span>
-        <span>{Math.round(100 - used)}% left</span>
+        <span className="min-w-0 wrap-anywhere">{label}</span>
+        <span className="shrink-0">{Math.round(100 - used)}% left</span>
       </div>
       <div
         aria-label={`${label}: ${String(Math.round(used))}% used`}
@@ -131,13 +132,14 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
           : number.format(stats.totals.totalThreads.value),
     },
     {
-      label: "Longest chat",
+      label: "Longest turn",
       metric: stats.totals.longestRunningTurnSec,
-      tooltip: null,
+      tooltip:
+        "Longest reported AI turn, not a whole chat or a measure of uninterrupted productive work.",
       value: formatDuration(stats.totals.longestRunningTurnSec.value),
     },
     {
-      label: "Total skills used",
+      label: "Skill uses",
       metric: stats.totals.totalSkillsUsed,
       tooltip: null,
       value:
@@ -148,7 +150,8 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
     {
       label: "Skills explored",
       metric: stats.insights.skillsExplored,
-      tooltip: "Range across multiple agents.",
+      tooltip:
+        "Distinct lifetime skills fall within this range; overlap between accounts is unknown.",
       value: formatRange(stats.insights.skillsExplored, (value) =>
         number.format(value)
       ),
@@ -174,8 +177,8 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
       },
       tooltip:
         reasoningShare === "—"
-          ? "Leaders across multiple agents."
-          : `Each agent's leading level represents ${reasoningShare} of its usage.`,
+          ? "Most-used reasoning levels across connected accounts."
+          : `Each account’s leading level represents ${reasoningShare} of its usage.`,
       value:
         reasoningLeaders === "—" || reasoningShare === "—"
           ? reasoningLeaders
@@ -184,7 +187,8 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
     {
       label: "Fast mode",
       metric: stats.insights.fastModeUsagePercent,
-      tooltip: "Range across multiple agents.",
+      tooltip:
+        "Reported fast-mode share in each connected account. These percentages are not averaged.",
       value: formatRange(
         stats.insights.fastModeUsagePercent,
         (value) => `${value.toFixed(1)}%`
@@ -240,12 +244,43 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
 }
 
 export function CodexUsageLimit({ stats }: { stats: PublicCodexStats }) {
-  return stats.primaryLimit === null ? null : (
-    <SiteSection id="usage-limit" title="Usage limit">
-      <LimitBar
-        label="Current window"
-        usedPercent={stats.primaryLimit.usedPercent}
-      />
+  if (stats.limits.length === 0) {
+    return null;
+  }
+  const resetDate = new Intl.DateTimeFormat(sitePreferences.language, {
+    month: "short",
+    day: "numeric",
+    timeZone: tokenPreferences.timeZone,
+  });
+  return (
+    <SiteSection
+      id="usage-limit"
+      title="Usage limits"
+      description="Current allowances are separate for each account and reset on different schedules. They are not pooled or averaged."
+    >
+      <div className="space-y-6">
+        {stats.limits.map((limit, index) => {
+          const window =
+            limit.windowDurationMins === 10_080
+              ? "Weekly"
+              : limit.windowDurationMins === null
+                ? "Current window"
+                : `${number.format(limit.windowDurationMins / 60)}-hour window`;
+          return (
+            <div key={index}>
+              <LimitBar
+                label={`${limit.label} · ${window}`}
+                usedPercent={limit.usedPercent}
+              />
+              {limit.resetAt === null ? null : (
+                <p className="mt-2 text-base text-muted-foreground">
+                  Resets {resetDate.format(new Date(limit.resetAt * 1000))}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </SiteSection>
   );
 }

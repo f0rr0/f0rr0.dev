@@ -13,8 +13,8 @@ const topInvocationsSchema = z
     z.object({
       plugin_name: z.string().trim().min(1).max(160).nullish(),
       skill_name: z.string().trim().min(1).max(160).nullish(),
-      type: z.enum(["plugin", "skill"]),
-      usage_count: safeInteger,
+      type: z.string(),
+      usage_count: safeInteger.nullish(),
     })
   )
   .nullish();
@@ -55,21 +55,26 @@ const profileResponseSchema = z.object({
   }),
 });
 
+const limitWindowSchema = z.object({
+  limit_window_seconds: z.number().nonnegative().nullish(),
+  used_percent: z.number().nonnegative().nullish(),
+  reset_at: z.number().int().nonnegative().nullish(),
+});
 const usageResponseSchema = z.object({
   plan_type: z.string().max(80).nullable().optional(),
   rate_limit: z
     .object({
-      primary_window: z
-        .object({
-          limit_window_seconds: z.number().nonnegative().nullable().optional(),
-          used_percent: z.number().nonnegative().nullable().optional(),
-        })
-        .nullable()
-        .optional(),
+      primary_window: limitWindowSchema.nullish(),
+      secondary_window: limitWindowSchema.nullish(),
     })
-    .nullable()
-    .optional(),
+    .nullish(),
 });
+
+export interface CodexLimit {
+  usedPercent: number;
+  windowDurationMins: number | null;
+  resetAt: number | null;
+}
 
 const authJsonSchema = z
   .object({
@@ -87,6 +92,7 @@ const authJsonSchema = z
   .loose();
 
 export interface CodexAccountSnapshot {
+  limits?: readonly CodexLimit[];
   analytics?: AnalyticsSnapshot;
   cumulativeDailyUsageBuckets: readonly CodexUsageBucket[] | null;
   dailyUsageBuckets: readonly CodexUsageBucket[] | null;
@@ -161,9 +167,7 @@ export interface PublicCodexStats {
     skillsExplored: PublicCodexRange;
     topTools: readonly CodexInvocation[];
   };
-  primaryLimit: {
-    usedPercent: number;
-  } | null;
+  limits: readonly (CodexLimit & { label: string })[];
   totals: {
     last30Days: PublicCodexMetric;
     last7Days: PublicCodexMetric;
@@ -176,6 +180,7 @@ export interface PublicCodexStats {
 }
 
 export interface CodexSnapshotRecord {
+  label?: string;
   snapshot: CodexAccountSnapshot;
 }
 
@@ -186,7 +191,13 @@ const sanitizeBuckets = (value: z.infer<typeof usageBucketsSchema>) =>
   })) ?? null;
 
 const sanitizeInvocations = (value: z.infer<typeof topInvocationsSchema>) =>
-  value?.flatMap((invocation) => {
+  value?.flatMap((invocation): CodexInvocation[] => {
+    if (
+      (invocation.type !== "plugin" && invocation.type !== "skill") ||
+      typeof invocation.usage_count !== "number"
+    ) {
+      return [];
+    }
     const name =
       invocation.type === "plugin"
         ? invocation.plugin_name
@@ -202,6 +213,24 @@ const sanitizeInvocations = (value: z.infer<typeof topInvocationsSchema>) =>
         ];
   }) ?? null;
 
+const sanitizeLimits = (
+  limits: z.infer<typeof usageResponseSchema>["rate_limit"]
+): CodexLimit[] =>
+  [limits?.primary_window, limits?.secondary_window].flatMap((window) =>
+    window?.used_percent === null || window?.used_percent === undefined
+      ? []
+      : [
+          {
+            usedPercent: window.used_percent,
+            windowDurationMins:
+              typeof window.limit_window_seconds === "number"
+                ? window.limit_window_seconds / 60
+                : null,
+            resetAt: window.reset_at ?? null,
+          },
+        ]
+  );
+
 export const createCodexAccountSnapshot = (
   rawProfile: unknown,
   rawUsage: unknown
@@ -216,6 +245,7 @@ export const createCodexAccountSnapshot = (
       stats.cumulative_daily_usage_buckets
     ),
     dailyUsageBuckets: sanitizeBuckets(stats.daily_usage_buckets),
+    limits: sanitizeLimits(usage.rate_limit),
     primaryLimit:
       primary?.used_percent === null || primary?.used_percent === undefined
         ? null
@@ -383,37 +413,6 @@ const cumulativeSeries = (
     }
   }
   return result;
-};
-
-const mainPrimaryLimit = (
-  records: readonly CodexSnapshotRecord[],
-  expectedAccountCount: number
-): PublicCodexStats["primaryLimit"] => {
-  const limits: {
-    planType: string | null;
-    usedPercent: number;
-    windowDurationMins: number | null;
-  }[] = [];
-  for (const { snapshot } of records) {
-    const limit = snapshot.primaryLimit;
-    if (limit !== null && limit !== undefined) {
-      limits.push(limit);
-    }
-  }
-  const planTypes = new Set(limits.map((limit) => limit.planType));
-  const windowDurations = new Set(
-    limits.map((limit) => limit.windowDurationMins)
-  );
-  if (
-    limits.length !== expectedAccountCount ||
-    planTypes.size !== 1 ||
-    windowDurations.size !== 1
-  ) {
-    return null;
-  }
-  return {
-    usedPercent: sum(limits.map((limit) => limit.usedPercent)) / limits.length,
-  };
 };
 
 const topTools = (
@@ -614,7 +613,14 @@ export const buildPublicCodexStats = (
       skillsExplored: range(skillsExploredValues, maximum, sum),
       topTools: topTools(records),
     },
-    primaryLimit: mainPrimaryLimit(records, expectedAccountCount),
+    limits: records.flatMap(({ snapshot, label }, index) =>
+      (
+        snapshot.limits ??
+        (snapshot.primaryLimit
+          ? [{ ...snapshot.primaryLimit, resetAt: null }]
+          : [])
+      ).map((limit) => ({ ...limit, label: label ?? `Account ${index + 1}` }))
+    ),
     totals: {
       last30Days: totalDays(30),
       last7Days: totalDays(7),
