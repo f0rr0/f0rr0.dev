@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -45,6 +45,8 @@ export function SiteSection({
   id: string;
   title: string;
 }>) {
+  const external = /^https?:\/\//u.test(href ?? "");
+  const LinkIcon = external ? ArrowUpRight : ArrowRight;
   return (
     <section aria-labelledby={`${id}-title`} className={className} id={id}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -65,9 +67,14 @@ export function SiteSection({
               className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-sm font-ui text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
               href={href}
               prefetch={false}
+              target={external ? "_blank" : undefined}
+              rel={external ? "noreferrer noopener" : undefined}
             >
               {linkLabel ?? `All ${title.toLowerCase()}`}
-              <ArrowRight aria-hidden="true" className="size-3.5" />
+              <LinkIcon aria-hidden="true" className="size-3.5" />
+              {external ? (
+                <span className="sr-only"> (opens in a new tab)</span>
+              ) : null}
             </Link>
           )}
         </div>
