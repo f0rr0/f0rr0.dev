@@ -128,8 +128,10 @@ test("main page content produces consistent search and social metadata", async (
 
   for (const page of Object.values(pages)) {
     const metadata = buildPageMetadata(page);
-    expect(metadata.title.absolute).toBe(`${siteConfig.name} | ${page.title}`);
-    expect(metadata.description).toBe(siteConfig.description);
+    expect(metadata.title.absolute).toBe(
+      page.path === "/" ? siteConfig.name : `${page.title} | ${siteConfig.name}`
+    );
+    expect(metadata.description).toBe("Software and Writing");
     expect(metadata.openGraph.title).toBe(metadata.title.absolute);
     expect(metadata.twitter.title).toBe(metadata.title.absolute);
     expect(metadata.openGraph.description).toBe(metadata.description);
@@ -148,9 +150,9 @@ test("main page content produces consistent search and social metadata", async (
   }
 
   const minimal = buildPageMetadata({ title: "Example", path: "/example" });
-  expect(minimal.description).toBe(siteConfig.description);
-  expect(minimal.openGraph.description).toBe(siteConfig.description);
-  expect(minimal.twitter.description).toBe(siteConfig.description);
+  expect(minimal.description).toBe("Software and Writing");
+  expect(minimal.openGraph.description).toBe("Software and Writing");
+  expect(minimal.twitter.description).toBe("Software and Writing");
   expect(minimal.openGraph.type).toBe("website");
   expect(Object.hasOwn(minimal, "robots")).toBe(false);
   const { buildProfilePageJsonLd } = await import("../src/lib/structured-data");
@@ -163,7 +165,7 @@ test("main page content produces consistent search and social metadata", async (
     await import("../src/lib/structured-data");
   const collection = buildBlogCollectionJsonLd([]);
   expect(collection.name).toBe(buildPageMetadata(pages.writing).title.absolute);
-  expect(collection.description).toBe(siteConfig.description);
+  expect(collection.description).toBe("Software and Writing");
   expect(collection.url).toBe(publicUrl(pages.writing.path));
   const { resumeData } = await import("../src/content/resume");
   const { siteNavigation } = await import("../src/content/site");
@@ -176,7 +178,7 @@ test("main page content produces consistent search and social metadata", async (
     expect(page.path).toBe(link.path);
     expect(page.title).not.toBe(link.title);
   }
-  expect(pages.home.title).toBe(siteConfig.title);
+  expect(pages.home.title).toBe(siteConfig.name);
   expect(pages.home.title).not.toBe(siteConfig.author.role);
   expect(siteConfig.shareImage.alt).toContain(siteConfig.name);
   const { default: sharp } = await import("sharp");
@@ -221,7 +223,7 @@ test("blog metadata and JSON-LD share authored fields, URLs, images and dates", 
     const metadata = buildBlogMetadata(article);
     const schema = buildBlogPostingJsonLd(article);
     expect(metadata.title.absolute).toBe(
-      `${siteConfig.name} | ${post.metadata.title}`
+      `${post.metadata.title} | ${siteConfig.name}`
     );
     expect(metadata.openGraph.title).toBe(metadata.title.absolute);
     expect(metadata.twitter.title).toBe(metadata.title.absolute);

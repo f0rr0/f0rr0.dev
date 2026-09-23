@@ -16,14 +16,14 @@ export interface PageMetadataInput {
 
 export function buildPageMetadata({
   title: label,
-  description = siteConfig.description,
+  description = siteConfig.title,
   path,
   type = "website",
   image = siteConfig.shareImage,
   alternates,
   robots,
 }: PageMetadataInput) {
-  const title = `${siteConfig.name} | ${label}`;
+  const title = path === "/" ? label : `${label} | ${siteConfig.name}`;
   const images = [{ ...image }];
 
   return {
