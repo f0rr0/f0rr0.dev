@@ -5,7 +5,9 @@ import { JsonLd } from "@/components/json-ld";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { pages } from "@/content/pages";
 import { env } from "@/env";
+import { buildPageMetadata } from "@/lib/page-metadata";
 import { siteConfig } from "@/lib/site";
 import { buildRootJsonLd } from "@/lib/structured-data";
 
@@ -32,6 +34,7 @@ const serif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
+  ...buildPageMetadata(pages.home),
   alternates: {
     canonical: "/",
     types: {
@@ -57,17 +60,7 @@ export const metadata: Metadata = {
     },
   ],
   creator: siteConfig.author.name,
-  description: siteConfig.description,
   metadataBase: new URL(siteConfig.url),
-  openGraph: {
-    description: siteConfig.description,
-    locale: siteConfig.locale,
-    images: [siteConfig.author.image],
-    siteName: siteConfig.name,
-    title: siteConfig.name,
-    type: "website",
-    url: siteConfig.url,
-  },
   publisher: siteConfig.author.name,
   robots: {
     follow: true,
@@ -82,13 +75,7 @@ export const metadata: Metadata = {
   },
   title: {
     default: siteConfig.name,
-    template: `%s · ${siteConfig.name}`,
-  },
-  twitter: {
-    card: "summary",
-    description: siteConfig.description,
-    images: [siteConfig.author.image],
-    title: siteConfig.name,
+    template: `%s | ${siteConfig.name}`,
   },
 };
 

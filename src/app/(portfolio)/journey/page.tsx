@@ -1,38 +1,17 @@
 import { Download } from "lucide-react";
-import type { Metadata } from "next";
 
 import { Journey } from "@/components/journey";
 import { JsonLd } from "@/components/json-ld";
 import { SiteMain } from "@/components/site-page";
 import { SiteShell } from "@/components/site-shell";
+import { pages } from "@/content/pages";
 import { resumeData } from "@/content/resume";
-import { publicUrl, resumePdfUrl, siteConfig } from "@/lib/site";
+import { siteNavigation } from "@/content/site";
+import { buildPageMetadata } from "@/lib/page-metadata";
+import { resumePdfUrl } from "@/lib/site";
 import { buildProfilePageJsonLd } from "@/lib/structured-data";
 
-const resumeDescription = siteConfig.description;
-
-export const metadata: Metadata = {
-  alternates: {
-    canonical: "/journey",
-  },
-  description: resumeDescription,
-  openGraph: {
-    description: resumeDescription,
-    images: [resumeData.person.image],
-    locale: siteConfig.locale,
-    siteName: siteConfig.name,
-    title: `${siteConfig.name} Journey`,
-    type: "profile",
-    url: publicUrl("/journey"),
-  },
-  title: "Journey",
-  twitter: {
-    card: "summary",
-    description: resumeDescription,
-    images: [resumeData.person.image],
-    title: `${siteConfig.name} Journey`,
-  },
-};
+export const metadata = buildPageMetadata(pages.journey);
 
 const { education, experience, skills } = resumeData;
 const profileJsonLd = buildProfilePageJsonLd();
@@ -41,9 +20,9 @@ export default function JourneyPage() {
   return (
     <>
       <JsonLd data={profileJsonLd} />
-      <SiteShell activeHref="/journey">
+      <SiteShell activeHref={pages.journey.path}>
         <SiteMain>
-          <h1 className="sr-only">Journey</h1>
+          <h1 className="sr-only">{siteNavigation.journey.title}</h1>
           <Journey
             experience={experience}
             education={education}

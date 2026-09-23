@@ -4,7 +4,7 @@ import { CodexActivity } from "@/components/codex-activity";
 import { InfoLabel } from "@/components/info-label";
 import { SiteSection } from "@/components/site-page";
 import { TokenStatGrid } from "@/components/token-stat-grid";
-import { sitePreferences } from "@/content/site";
+import { siteNavigation, sitePreferences } from "@/content/site";
 import { tokenPreferences } from "@/content/tokens";
 import type {
   PublicCodexMetric,
@@ -227,7 +227,7 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
     <SiteSection
       id="token-log"
       title={tokenPreferences.title}
-      href="/tokens"
+      href={siteNavigation.tokens.path}
       linkLabel="All token usage"
     >
       <CodexTotals stats={stats} />

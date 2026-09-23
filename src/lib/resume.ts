@@ -5,6 +5,7 @@ import {
   resumeRoleMarkerLabels,
 } from "@/content/resume";
 import type { PublicReference, ResumeRole } from "@/content/resume";
+import { siteNavigation } from "@/content/site";
 import type { BlogPost } from "@/lib/blog-utils";
 import { publicUrl, resumePdfUrl } from "@/lib/site";
 
@@ -155,7 +156,7 @@ export const buildJsonResume = () => ({
     canonical: publicUrl("/resume.json"),
     lastModified: resumeData.lastUpdated,
     schema: "https://jsonresume.org/schema/",
-    source: publicUrl("/journey"),
+    source: publicUrl(siteNavigation.journey.path),
   },
   work: resumeData.experience.flatMap((item) =>
     item.roles.map((role) => {
@@ -213,7 +214,9 @@ const buildWritingSection = (
         `- [${post.metadata.title}](${localProfileUrl(`/writing/${post.slug}.md`)}) — ${post.date.toISOString().slice(0, 10)}. ${post.metadata.summary}`
     );
 
-  return links.length === 0 ? "" : `## Writing\n\n${links.join("\n")}\n\n`;
+  return links.length === 0
+    ? ""
+    : `## ${siteNavigation.writing.title}\n\n${links.join("\n")}\n\n`;
 };
 
 export const buildLlmsTxt = (
@@ -224,7 +227,7 @@ export const buildLlmsTxt = (
 
 - [JSON résumé](${localProfileUrl("/resume.json")}): Role titles, employers, dates, skills, and concise accomplishments in structured form.
 - [Detailed career context](${localProfileUrl("/llms-full.txt")}): Full work history, engineering decisions, leadership scope, client engagements, and source links. Read for technical interviews or role-fit questions.
-- [Journey](${localProfileUrl("/journey")}): Human-readable experience and education.
+- [${siteNavigation.journey.title}](${localProfileUrl(siteNavigation.journey.path)}): Human-readable experience and education.
 
 ## Selected References
 
@@ -241,8 +244,8 @@ ${resumeData.links.map((link) => `- [${link.label}](${link.href})`).join("\n")}
 ## Optional
 
 - [PDF résumé](${localProfileUrl(resumePdfUrl)}): Downloadable résumé.
-- [Work](${localProfileUrl("/work")}): Recent code activity.
-- [Writing](${localProfileUrl("/writing")}): All published articles; each article is also available at /writing/{slug}.md.
+- [${siteNavigation.work.title}](${localProfileUrl(siteNavigation.work.path)}): Recent code activity.
+- [${siteNavigation.writing.title}](${localProfileUrl(siteNavigation.writing.path)}): All published articles; each article is also available at /writing/{slug}.md.
 - [RSS](${localProfileUrl("/rss.xml")}): Article feed.
 `;
 
@@ -256,8 +259,8 @@ export const buildLlmsFullTxt = (blogPosts: BlogPost[] = []) => {
       note: "Selected work and writing.",
     },
     {
-      href: localProfileUrl("/journey"),
-      label: "Journey",
+      href: localProfileUrl(siteNavigation.journey.path),
+      label: siteNavigation.journey.title,
       note: "Experience, education, and contact details.",
     },
     {
@@ -364,7 +367,7 @@ ${publicReferences.map(markdownLink).join("\n")}
 
 ## Optional
 
-- [Writing](${localProfileUrl("/writing")}): Technical writing.
+- [${siteNavigation.writing.title}](${localProfileUrl(siteNavigation.writing.path)}): Technical writing.
 - [RSS](${localProfileUrl("/rss.xml")}): Subscribe to new articles.
 `;
 };

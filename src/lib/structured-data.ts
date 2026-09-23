@@ -10,8 +10,10 @@ import type {
   WithContext,
 } from "schema-dts";
 
+import { pages } from "@/content/pages";
 import { resumeData, socialProfiles } from "@/content/resume";
 import type { BlogPost } from "@/lib/blog-utils";
+import { buildBlogMetadata, buildPageMetadata } from "@/lib/page-metadata";
 import { publicUrl, siteConfig } from "@/lib/site";
 
 const personId = () => publicUrl("/#person");
@@ -40,7 +42,7 @@ const buildPersonNode = (): Person => ({
   knowsAbout: [...resumeData.skills],
   name: resumeData.person.name,
   sameAs,
-  url: publicUrl("/journey"),
+  url: publicUrl(pages.journey.path),
   worksFor: {
     "@type": "Organization",
     name: currentExperience?.company ?? "Current employer",
@@ -80,10 +82,10 @@ export const buildRootJsonLd = (): Graph => ({
 
 export const buildProfilePageJsonLd = (): WithContext<ProfilePage> => ({
   "@context": "https://schema.org",
-  "@id": publicUrl("/journey#profile"),
+  "@id": publicUrl(`${pages.journey.path}#profile`),
   "@type": "ProfilePage",
   dateModified: resumeData.lastUpdated,
-  description: siteConfig.description,
+  description: buildPageMetadata(pages.journey).description,
   isPartOf: {
     "@id": websiteId(),
     "@type": "WebSite",
@@ -91,19 +93,15 @@ export const buildProfilePageJsonLd = (): WithContext<ProfilePage> => ({
     url: publicUrl("/"),
   },
   mainEntity: buildPersonNode(),
-  name: `${siteConfig.name} Journey`,
-  url: publicUrl("/journey"),
+  name: buildPageMetadata(pages.journey).title.absolute,
+  url: publicUrl(pages.journey.path),
 });
 
-export const buildBlogPostingJsonLd = ({
-  image,
-  post,
-  url,
-}: {
-  image?: string;
-  post: BlogPost;
-  url: string;
-}): WithContext<BlogPosting> => {
+export const buildBlogPostingJsonLd = (
+  post: BlogPost
+): WithContext<BlogPosting> => {
+  const metadata = buildBlogMetadata(post);
+  const { url } = metadata.openGraph;
   const jsonLd: WithContext<BlogPosting> = {
     "@context": "https://schema.org",
     "@id": `${url}#article`,
@@ -112,11 +110,12 @@ export const buildBlogPostingJsonLd = ({
       "@id": personId(),
       "@type": "Person",
       name: post.metadata.author,
-      url: publicUrl("/journey"),
+      url: publicUrl(pages.journey.path),
     },
     dateModified: (post.updatedAt ?? post.date).toISOString(),
     datePublished: post.date.toISOString(),
-    description: post.metadata.summary,
+    description: metadata.description,
+    image: metadata.openGraph.images[0].url,
     headline: post.metadata.title,
     inLanguage: siteConfig.language,
     isPartOf: {
@@ -138,10 +137,6 @@ export const buildBlogPostingJsonLd = ({
     wordCount: post.wordCount,
   };
 
-  if (image !== undefined) {
-    jsonLd.image = image;
-  }
-
   return jsonLd;
 };
 
@@ -149,9 +144,9 @@ export const buildBlogCollectionJsonLd = (
   posts: BlogPost[]
 ): WithContext<CollectionPage> => ({
   "@context": "https://schema.org",
-  "@id": publicUrl("/writing#collection"),
+  "@id": publicUrl(`${pages.writing.path}#collection`),
   "@type": "CollectionPage",
-  description: `Notes on what ${resumeData.person.name} is building across product design, engineering, AI, and creative development.`,
+  description: buildPageMetadata(pages.writing).description,
   inLanguage: siteConfig.language,
   isPartOf: {
     "@id": websiteId(),
@@ -177,6 +172,6 @@ export const buildBlogCollectionJsonLd = (
     ),
     numberOfItems: posts.length,
   } satisfies ItemList,
-  name: `${siteConfig.name} Writing`,
-  url: publicUrl("/writing"),
+  name: buildPageMetadata(pages.writing).title.absolute,
+  url: publicUrl(pages.writing.path),
 });

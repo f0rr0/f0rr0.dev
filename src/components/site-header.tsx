@@ -3,13 +3,16 @@ import Link from "next/link";
 import { PortraitFace } from "@/components/portrait-face";
 import ThemeToggle from "@/components/ThemeToggle";
 import { resumeData } from "@/content/resume";
+import { siteNavigation } from "@/content/site";
 import { tokenPreferences } from "@/content/tokens";
 
 import { SiteMobileMenu } from "./site-mobile-menu";
 
+type PagePath = (typeof siteNavigation)[keyof typeof siteNavigation]["path"];
+
 export interface SiteHeaderProps {
-  activeHref?: "/writing" | "/journey" | "/work" | "/tokens";
-  currentPath?: "/" | "/writing" | "/journey" | "/work" | "/tokens";
+  activeHref?: PagePath;
+  currentPath?: "/" | PagePath;
 }
 
 export function SiteHeader({
@@ -17,7 +20,10 @@ export function SiteHeader({
   currentPath = activeHref ?? "/",
 }: Readonly<SiteHeaderProps>): React.ReactNode {
   const navigation = resumeData.navItems
-    .filter((item) => item.href !== "/tokens" || tokenPreferences.enabled)
+    .filter(
+      (item) =>
+        item.href !== siteNavigation.tokens.path || tokenPreferences.enabled
+    )
     .map((item) => {
       const props = {
         "aria-current":

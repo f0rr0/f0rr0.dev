@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 
+import { pages } from "@/content/pages";
 import { resumeData } from "@/content/resume";
 import { tokenPreferences } from "@/content/tokens";
 import { getBlogPosts } from "@/lib/blog-utils";
@@ -18,17 +19,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     newestDate([resumeUpdatedAt, latestPostDate]) ?? resumeUpdatedAt;
 
   return [
-    ...(tokenPreferences.enabled ? [{ url: publicUrl("/tokens") }] : []),
+    ...(tokenPreferences.enabled
+      ? [{ url: publicUrl(pages.tokens.path) }]
+      : []),
     {
       lastModified: siteUpdatedAt,
-      url: publicUrl("/"),
+      url: publicUrl(pages.home.path),
     },
     {
       lastModified: resumeUpdatedAt,
-      url: publicUrl("/journey"),
+      url: publicUrl(pages.journey.path),
     },
     {
-      url: publicUrl("/work"),
+      url: publicUrl(pages.work.path),
     },
     {
       lastModified: resumeUpdatedAt,
@@ -36,7 +39,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
     {
       lastModified: latestPostDate,
-      url: publicUrl("/writing"),
+      url: publicUrl(pages.writing.path),
     },
     ...posts.map((post) => ({
       lastModified: post.updatedAt ?? post.date,
