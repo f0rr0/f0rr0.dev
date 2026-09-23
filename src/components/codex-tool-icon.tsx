@@ -45,7 +45,7 @@ export function CodexToolIcon({
   tool: Pick<CodexInvocation, "name" | "kind" | "logoUrl" | "logoUrlDark">;
 }) {
   return (
-    <span className="inline-flex size-6 shrink-0 items-center justify-center text-foreground">
+    <span className="inline-flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-muted text-foreground dark:border-white/10">
       {tool.logoUrl === undefined ? null : (
         <Image
           alt=""
