@@ -62,14 +62,23 @@ function HistoryPlot({
         <LineChart
           accessibilityLayer
           data={rows}
-          margin={{ left: 0, right: 8, top: 24, bottom: 0 }}
+          margin={{ left: 0, right: 0, top: 24, bottom: 0 }}
         >
           <CartesianGrid vertical={false} />
           <XAxis dataKey="day" hide />
           <YAxis
             tickLine={false}
             axisLine={false}
+            mirror
             width={44}
+            tickMargin={0}
+            tickSize={0}
+            interval={0}
+            tick={{
+              fill: "var(--muted-foreground)",
+              fontSize: 12,
+              fontWeight: 300,
+            }}
             tickCount={3}
             domain={[0, "auto"]}
             tickFormatter={(value) => compact.format(Number(value))}
@@ -148,7 +157,7 @@ function HistoryPlot({
           ) : null}
         </LineChart>
       </ChartContainer>
-      <TokenMonthAxis values={rows} className="ml-11 mr-2" />
+      <TokenMonthAxis values={rows} />
       <p className="sr-only">
         {annotation}
         {summary.partial
