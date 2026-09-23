@@ -25,7 +25,7 @@ export function TokenDelegation({ rows }: { rows: readonly TokenRow[] }) {
   return (
     <ChartContainer
       config={config}
-      className="mx-auto h-56 w-full max-w-lg aspect-auto sm:h-80"
+      className="mx-auto h-56 w-full max-w-xl aspect-auto min-[360px]:h-72 sm:h-96"
       initialDimension={{ width: 320, height: 224 }}
       role="img"
       aria-label={data
@@ -44,7 +44,18 @@ export function TokenDelegation({ rows }: { rows: readonly TokenRow[] }) {
           stroke="var(--background)"
           strokeWidth={2}
           isAnimationActive={false}
-          labelLine={{ stroke: "var(--muted-foreground)", strokeWidth: 1 }}
+          labelLine={({ points }: { points: { x: number; y: number }[] }) => {
+            const [start, end] = points;
+            const direction = end.x >= start.x ? 1 : -1;
+            return (
+              <path
+                d={`M${start.x},${start.y} L${end.x - direction * 12},${end.y} L${end.x - direction * 8},${end.y}`}
+                fill="none"
+                stroke="var(--muted-foreground)"
+                strokeWidth={1}
+              />
+            );
+          }}
           label={({ x, y, textAnchor, index }) => {
             const row = data[index];
             const words =
@@ -55,11 +66,12 @@ export function TokenDelegation({ rows }: { rows: readonly TokenRow[] }) {
               <text
                 x={x}
                 y={y}
+                dominantBaseline="central"
                 textAnchor={textAnchor}
                 className="fill-foreground text-xs"
               >
                 {words.map((word, i) => (
-                  <tspan key={word} x={x} dy={i === 0 ? -8 : 16}>
+                  <tspan key={word} x={x} dy={i === 0 ? -words.length * 8 : 16}>
                     {word}
                   </tspan>
                 ))}
