@@ -277,12 +277,14 @@ function BreakdownContent({
         <SiteSection
           id="delegation"
           title="Tasks and subagents"
-          description="Subagents are additional AI workers that take on parts of a task. Percentages show how each account’s usage is split. Unattributed means Codex did not identify the activity."
+          description="Subagents are additional AI workers that take on parts of a task. Percentages show the share of usage spent on each kind of activity. Unattributed means Codex did not identify the activity."
         >
-          <div className="grid gap-x-4 gap-y-8 md:grid-cols-2">
+          <div
+            className={`grid gap-x-4 gap-y-8 ${details.delegation.accounts.length > 1 ? "md:grid-cols-2" : ""}`}
+          >
             {details.delegation.accounts.map((account, index) => (
               <div key={index} className="min-w-0">
-                {details.accountCount > 1 ? (
+                {account.label && details.accountCount > 1 ? (
                   <p className="mb-4 text-base text-muted-foreground">
                     {account.label}
                   </p>

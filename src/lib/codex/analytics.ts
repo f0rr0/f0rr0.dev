@@ -269,12 +269,33 @@ function summarizeActivity(activity: z.infer<Sources["activity"]>["data"]) {
   return { sums, tokenRows, models };
 }
 
+const delegationGroups = (
+  accounts: readonly (AnalyticsSnapshot | undefined)[],
+  accountPlans: readonly (string | null | undefined)[]
+) => {
+  const units = accounts[0]?.delegation?.response.units;
+  const matchingUnits = accounts.every(
+    (account) => account?.delegation?.response.units === units
+  );
+  const matchingPlans =
+    (accountPlans[0] ?? "") !== "" &&
+    accounts.every((_, index) => accountPlans[index] === accountPlans[0]);
+  const combineDelegation =
+    matchingUnits &&
+    (units === "credits" || (units === "percent" && matchingPlans));
+  const accountIndices = accounts.map((_, index) => index);
+  return combineDelegation
+    ? [accountIndices]
+    : accountIndices.map((index) => [index]);
+};
+
 export function buildTokenDetails(
   accounts: readonly (AnalyticsSnapshot | undefined)[],
   days: number,
   now = new Date(),
   preferences: TokenPreferences = tokenPreferences,
-  accountLabels: readonly string[] = []
+  accountLabels: readonly string[] = [],
+  accountPlans: readonly (string | null | undefined)[] = []
 ) {
   const end = now.toISOString().slice(0, 10);
   const start = utcOffset(end, 1 - days);
@@ -364,66 +385,73 @@ export function buildTokenDetails(
     accountCount: accounts.length,
     delegation: preferences.sections.delegation
       ? {
-          accounts: accounts.flatMap((account, index) => {
-            const source = account?.delegation;
-            if (
-              !source ||
-              !["percent", "credits"].includes(source.response.units)
-            ) {
-              return [];
-            }
-            const values = new Map<string, number>();
-            for (const row of source.response.data.filter((row) =>
-              inRange(row.date)
-            )) {
-              if (row.attribution === null || row.attribution === undefined) {
-                add(
-                  values,
-                  "Unattributed",
-                  Object.values(row.product_surface_usage_values).reduce(
-                    (sum, value) => sum + value,
-                    0
-                  )
-                );
-              } else {
-                for (const entry of row.attribution) {
-                  const label =
-                    entry.thread_source === "user"
-                      ? "Tasks"
-                      : entry.thread_source === "subagent"
-                        ? "Subagents"
-                        : entry.thread_source === null ||
-                            entry.thread_source === undefined ||
-                            entry.thread_source === "unknown"
-                          ? "Unattributed"
-                          : "Other activity";
-                  add(values, label, entry.value);
+          accounts: delegationGroups(accounts, accountPlans).flatMap(
+            (indices) => {
+              const source = accounts[indices[0]]?.delegation;
+              if (
+                !source ||
+                !["percent", "credits"].includes(source.response.units)
+              ) {
+                return [];
+              }
+              const values = new Map<string, number>();
+              const rows = indices.flatMap(
+                (index) => accounts[index]?.delegation?.response.data ?? []
+              );
+              for (const row of rows.filter((row) => inRange(row.date))) {
+                if (row.attribution === null || row.attribution === undefined) {
+                  add(
+                    values,
+                    "Unattributed",
+                    Object.values(row.product_surface_usage_values).reduce(
+                      (sum, value) => sum + value,
+                      0
+                    )
+                  );
+                } else {
+                  for (const entry of row.attribution) {
+                    const label =
+                      entry.thread_source === "user"
+                        ? "Tasks"
+                        : entry.thread_source === "subagent"
+                          ? "Subagents"
+                          : entry.thread_source === null ||
+                              entry.thread_source === undefined ||
+                              entry.thread_source === "unknown"
+                            ? "Unattributed"
+                            : "Other activity";
+                    add(values, label, entry.value);
+                  }
                 }
               }
+              const total = [...values.values()].reduce(
+                (sum, value) => sum + value,
+                0
+              );
+              return total > 0
+                ? [
+                    {
+                      label:
+                        indices.length > 1
+                          ? ""
+                          : (accountLabels[indices[0]] ??
+                            `Account ${indices[0] + 1}`),
+                      rows: [
+                        "Tasks",
+                        "Subagents",
+                        "Other activity",
+                        "Unattributed",
+                      ]
+                        .filter((label) => (values.get(label) ?? 0) > 0)
+                        .map((label) => ({
+                          label,
+                          value: ((values.get(label) ?? 0) / total) * 100,
+                        })),
+                    },
+                  ]
+                : [];
             }
-            const total = [...values.values()].reduce(
-              (sum, value) => sum + value,
-              0
-            );
-            return total > 0
-              ? [
-                  {
-                    label: accountLabels[index] ?? `Account ${index + 1}`,
-                    rows: [
-                      "Tasks",
-                      "Subagents",
-                      "Other activity",
-                      "Unattributed",
-                    ]
-                      .filter((label) => (values.get(label) ?? 0) > 0)
-                      .map((label) => ({
-                        label,
-                        value: ((values.get(label) ?? 0) / total) * 100,
-                      })),
-                  },
-                ]
-              : [];
-          }),
+          ),
           status: status("delegation"),
         }
       : null,

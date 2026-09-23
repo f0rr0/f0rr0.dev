@@ -471,3 +471,51 @@ test("a change of allowance units cannot mix old percentages with credits", asyn
   expect(source.delegation?.start).toBe("2026-08-25");
   expect(source.delegation?.historyDays).toBeUndefined();
 });
+
+test("delegation combines raw usage for matching plans before calculating shares", () => {
+  const account = (units: string, tasks: number, subagents: number) => ({
+    delegation: {
+      ...meta,
+      response: analyticsSchemas.delegation.parse({
+        units,
+        data: [
+          {
+            date: "2026-09-22",
+            product_surface_usage_values: { desktop_app: tasks + subagents },
+            attribution: [
+              { thread_source: "user", value: tasks },
+              { thread_source: "subagent", value: subagents },
+            ],
+          },
+        ],
+      }),
+    },
+  });
+  const first = account("percent", 9, 1);
+  const second = account("percent", 1, 89);
+  const details = (accounts: (typeof first)[], plans: string[]) =>
+    buildTokenDetails(accounts, 30, now, tokenPreferences, [], plans);
+  expect(details([first, second], ["pro", "pro"]).delegation?.accounts).toEqual(
+    [
+      {
+        label: "",
+        rows: [
+          { label: "Tasks", value: 10 },
+          { label: "Subagents", value: 90 },
+        ],
+      },
+    ]
+  );
+  expect(
+    details([first, second], ["pro", "plus"]).delegation?.accounts
+  ).toHaveLength(2);
+  expect(details([first, second], []).delegation?.accounts).toHaveLength(2);
+  expect(
+    details([first, account("credits", 1, 9)], ["pro", "pro"]).delegation
+      ?.accounts
+  ).toHaveLength(2);
+  expect(
+    details([account("credits", 9, 1), account("credits", 1, 89)], [])
+      .delegation?.accounts
+  ).toHaveLength(1);
+});
