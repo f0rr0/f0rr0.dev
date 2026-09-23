@@ -55,123 +55,125 @@ function HistoryPlot({
   const marked = mode === "daily" ? peak : last;
   return (
     <>
-      <div className="relative">
-        {mode === "cumulative" ? (
-          <p className="absolute right-0 top-0 text-xs text-foreground">
-            {annotation}
-          </p>
-        ) : null}
-        <ChartContainer
-          config={config}
-          className="h-54 w-full aspect-auto sm:h-66 [&_.recharts-surface]:overflow-visible [&_.recharts-surface]:focus-visible:outline-2 [&_.recharts-surface]:focus-visible:outline-ring"
+      <ChartContainer
+        config={config}
+        className="h-54 w-full aspect-auto sm:h-66 [&_.recharts-surface]:overflow-visible [&_.recharts-surface]:focus-visible:outline-2 [&_.recharts-surface]:focus-visible:outline-ring"
+      >
+        <LineChart
+          accessibilityLayer
+          data={rows}
+          margin={{ left: 0, right: 0, top: 24, bottom: 0 }}
         >
-          <LineChart
-            accessibilityLayer
-            data={rows}
-            margin={{ left: 0, right: 0, top: 24, bottom: 0 }}
-          >
-            <CartesianGrid vertical={false} />
-            <XAxis dataKey="day" hide />
-            <YAxis
-              tickLine={false}
-              axisLine={false}
-              mirror
-              width={44}
-              tickMargin={0}
-              tickSize={0}
-              interval={0}
-              tick={{
-                dy: -8,
-                stroke: "var(--background)",
-                strokeWidth: 3,
-                paintOrder: "stroke",
-                fill: "var(--muted-foreground)",
+          <CartesianGrid vertical={false} />
+          <XAxis dataKey="day" hide />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            mirror
+            width={44}
+            tickMargin={0}
+            tickSize={0}
+            interval={0}
+            tick={{
+              dy: -8,
+              stroke: "var(--background)",
+              strokeWidth: 3,
+              paintOrder: "stroke",
+              fill: "var(--muted-foreground)",
+              fontSize: 12,
+              fontWeight: 300,
+            }}
+            tickCount={3}
+            domain={[0, "auto"]}
+            tickFormatter={(value) =>
+              Number(value) === 0 ? "" : compact.format(Number(value))
+            }
+          />
+          <ChartTooltip
+            filterNull={false}
+            content={({ active, payload }) => {
+              const row = payload?.[0]?.payload as
+                | (typeof rows)[number]
+                | undefined;
+              return active && row !== undefined ? (
+                <div className="rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm">
+                  <p>{formatDate(row.day)}</p>
+                  <p>
+                    {row.tokens === null
+                      ? "Usage unavailable"
+                      : `${number.format(row.tokens)} ${mode === "cumulative" && summary.partial ? "recorded " : ""}tokens`}
+                  </p>
+                  {row.day === today ? (
+                    <p className="text-muted-foreground">Today is incomplete</p>
+                  ) : null}
+                </div>
+              ) : null;
+            }}
+          />
+          <Line
+            type="linear"
+            dataKey="tokens"
+            stroke="var(--color-tokens)"
+            strokeWidth={1.5}
+            dot={false}
+            connectNulls={false}
+            isAnimationActive={false}
+          />
+          {mode !== "daily" || marked === undefined ? null : (
+            <ReferenceLine
+              y={marked.tokens ?? 0}
+              stroke="var(--muted-foreground)"
+              strokeDasharray="3 3"
+              label={{
+                value: annotation,
+                position: "insideTopLeft",
+                fill: "var(--foreground)",
                 fontSize: 12,
-                fontWeight: 300,
               }}
-              tickCount={3}
-              domain={[0, "auto"]}
-              tickFormatter={(value) =>
-                Number(value) === 0 ? "" : compact.format(Number(value))
+            />
+          )}
+          {marked === undefined ? null : (
+            <ReferenceDot
+              x={marked.day}
+              y={marked.tokens ?? 0}
+              r={3}
+              label={
+                mode === "cumulative"
+                  ? {
+                      value: annotation,
+                      position: "left",
+                      offset: 10,
+                      fill: "var(--foreground)",
+                      fontSize: 12,
+                    }
+                  : undefined
               }
+              fill="var(--foreground)"
+              stroke="var(--background)"
             />
-            <ChartTooltip
-              filterNull={false}
-              content={({ active, payload }) => {
-                const row = payload?.[0]?.payload as
-                  | (typeof rows)[number]
-                  | undefined;
-                return active && row !== undefined ? (
-                  <div className="rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm">
-                    <p>{formatDate(row.day)}</p>
-                    <p>
-                      {row.tokens === null
-                        ? "Usage unavailable"
-                        : `${number.format(row.tokens)} ${mode === "cumulative" && summary.partial ? "recorded " : ""}tokens`}
-                    </p>
-                    {row.day === today ? (
-                      <p className="text-muted-foreground">
-                        Today is incomplete
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null;
+          )}
+          {mode === "cumulative" && cumulativePeak !== undefined ? (
+            <ReferenceDot
+              x={cumulativePeak.day}
+              y={cumulativePeak.tokens ?? 0}
+              r={4}
+              fill="var(--foreground)"
+              stroke="var(--background)"
+              label={{
+                value: peakLabel,
+                position:
+                  rows.findIndex((row) => row.day === cumulativePeak.day) >
+                  rows.length / 2
+                    ? "left"
+                    : "right",
+                offset: 10,
+                fill: "var(--foreground)",
+                fontSize: 12,
               }}
             />
-            <Line
-              type="linear"
-              dataKey="tokens"
-              stroke="var(--color-tokens)"
-              strokeWidth={1.5}
-              dot={false}
-              connectNulls={false}
-              isAnimationActive={false}
-            />
-            {mode !== "daily" || marked === undefined ? null : (
-              <ReferenceLine
-                y={marked.tokens ?? 0}
-                stroke="var(--muted-foreground)"
-                strokeDasharray="3 3"
-                label={{
-                  value: annotation,
-                  position: "insideTopLeft",
-                  fill: "var(--foreground)",
-                  fontSize: 12,
-                }}
-              />
-            )}
-            {marked === undefined ? null : (
-              <ReferenceDot
-                x={marked.day}
-                y={marked.tokens ?? 0}
-                r={3}
-                fill="var(--foreground)"
-                stroke="var(--background)"
-              />
-            )}
-            {mode === "cumulative" && cumulativePeak !== undefined ? (
-              <ReferenceDot
-                x={cumulativePeak.day}
-                y={cumulativePeak.tokens ?? 0}
-                r={4}
-                fill="var(--foreground)"
-                stroke="var(--background)"
-                label={{
-                  value: peakLabel,
-                  position:
-                    rows.findIndex((row) => row.day === cumulativePeak.day) >
-                    rows.length / 2
-                      ? "left"
-                      : "right",
-                  offset: 10,
-                  fill: "var(--foreground)",
-                  fontSize: 12,
-                }}
-              />
-            ) : null}
-          </LineChart>
-        </ChartContainer>
-      </div>
+          ) : null}
+        </LineChart>
+      </ChartContainer>
       <TokenMonthAxis values={rows} />
       <p className="sr-only">
         {annotation}
