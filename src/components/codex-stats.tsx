@@ -135,7 +135,7 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
       label: "Longest turn",
       metric: stats.totals.longestRunningTurnSec,
       tooltip:
-        "Longest reported AI turn, not a whole chat or a measure of uninterrupted productive work.",
+        "The longest time Codex spent responding to a single request, including tool use and waiting.",
       value: formatDuration(stats.totals.longestRunningTurnSec.value),
     },
     {
@@ -151,7 +151,7 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
       label: "Skills explored",
       metric: stats.insights.skillsExplored,
       tooltip:
-        "Distinct lifetime skills fall within this range; overlap between accounts is unknown.",
+        "The number of different skills used. The range accounts for skills that may appear in more than one account.",
       value: formatRange(stats.insights.skillsExplored, (value) =>
         number.format(value)
       ),
@@ -176,9 +176,7 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
           stats.insights.reasoningEffortPercent.partial,
       },
       tooltip:
-        reasoningShare === "—"
-          ? "Most-used reasoning levels across connected accounts."
-          : `Each account’s leading level represents ${reasoningShare} of its usage.`,
+        "The most-used settings for how much time the AI spends thinking. Percentages show how often each account used its leading setting.",
       value:
         reasoningLeaders === "—" || reasoningShare === "—"
           ? reasoningLeaders
@@ -188,7 +186,7 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
       label: "Fast mode",
       metric: stats.insights.fastModeUsagePercent,
       tooltip:
-        "Reported fast-mode share in each connected account. These percentages are not averaged.",
+        "How often fast mode was used for quicker responses. The range spans connected accounts.",
       value: formatRange(
         stats.insights.fastModeUsagePercent,
         (value) => `${value.toFixed(1)}%`

@@ -136,8 +136,8 @@ function Tools({
             title={title}
             description={
               id === "tools"
-                ? "Reported plugin invocations, not every shell command or built-in tool call. Counts combine connected accounts."
-                : "Reported skill uses, combined by skill name across connected accounts. A use does not establish that a check passed."
+                ? "Extensions Codex uses to work with apps, services, and the computer."
+                : "Reusable instructions that guide Codex through tasks such as writing, design, and code review."
             }
             className="min-w-0 scroll-mt-8 md:row-span-[var(--ranking-rows)] md:grid md:grid-rows-subgrid [&>div:first-child]:mb-4 md:[&>div:first-child]:mb-0"
           >
@@ -243,7 +243,7 @@ function BreakdownContent({
           id="breakdowns"
           title="Usage"
           className="scroll-mt-8"
-          description="Reported text tokens may lag behind the profile totals in the charts. New input is fresh context; cached input reuses context across requests; output is generated text. Cache hit rate measures reused input, not money saved. The selected period applies to every breakdown below."
+          description="Tokens are pieces of text the AI reads and writes. New input is fresh context, cached input is context reused across requests, and output is generated text. Cache hit rate is the share of input reused."
           action={periods}
         >
           {history && firstDay ? (
@@ -267,7 +267,7 @@ function BreakdownContent({
         <SiteSection
           id="models"
           title="Models"
-          description="Reported AI turns, including background activity—not tokens, cost, or only messages typed by a person. Counts combine connected accounts."
+          description="How often each model was used, including background tasks."
         >
           <Ranking rows={details.models.rows} unit="turns" />
           <Coverage status={details.models.status} />
@@ -277,7 +277,7 @@ function BreakdownContent({
         <SiteSection
           id="delegation"
           title="Tasks and subagents"
-          description="Share of reported usage within each account, not token shares or task counts. Allowances differ, so accounts are shown separately. Other activity includes background features; unattributed usage stays visible."
+          description="Subagents are additional AI workers that take on parts of a task. Percentages show how each account’s usage is split. Unattributed means Codex did not identify the activity."
         >
           <div className="grid gap-x-4 gap-y-8 md:grid-cols-2">
             {details.delegation.accounts.map((account, index) => (
