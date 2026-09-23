@@ -171,6 +171,14 @@ export function CodexHighlights({
   );
   const highlights = [
     {
+      label: "Skills explored",
+      metric: stats.insights.skillsExplored,
+      tooltip: "Range across multiple agents.",
+      value: formatRange(stats.insights.skillsExplored, (value) =>
+        number.format(value)
+      ),
+    },
+    {
       label: "Current streak",
       metric: stats.highlights.currentStreakDays,
       tooltip: null,
@@ -192,23 +200,6 @@ export function CodexHighlights({
           : compactNumber.format(stats.highlights.peakDailyTokens.value),
     },
     {
-      label: "Fast mode",
-      metric: stats.insights.fastModeUsagePercent,
-      tooltip: "Range across multiple agents.",
-      value: formatRange(
-        stats.insights.fastModeUsagePercent,
-        (value) => `${value.toFixed(1)}%`
-      ),
-    },
-    {
-      label: "Skills explored",
-      metric: stats.insights.skillsExplored,
-      tooltip: "Range across multiple agents.",
-      value: formatRange(stats.insights.skillsExplored, (value) =>
-        number.format(value)
-      ),
-    },
-    {
       label: "Reasoning leaders",
       metric: {
         partial:
@@ -223,6 +214,15 @@ export function CodexHighlights({
         reasoningLeaders === "—" || reasoningShare === "—"
           ? reasoningLeaders
           : `${reasoningLeaders} · ${reasoningShare}`,
+    },
+    {
+      label: "Fast mode",
+      metric: stats.insights.fastModeUsagePercent,
+      tooltip: "Range across multiple agents.",
+      value: formatRange(
+        stats.insights.fastModeUsagePercent,
+        (value) => `${value.toFixed(1)}%`
+      ),
     },
   ];
 
@@ -245,19 +245,19 @@ export function CodexHighlights({
         </div>
       )}
       <div className="py-2.5">
-        <dt className="text-muted-foreground">Longest chat</dt>
-        <dd className="mt-1 text-base font-light tabular-nums text-foreground">
-          {formatDuration(stats.totals.longestRunningTurnSec.value)}
-          {stats.totals.longestRunningTurnSec.partial ? " · partial" : ""}
-        </dd>
-      </div>
-      <div className="py-2.5">
         <dt className="text-muted-foreground">Total chats</dt>
         <dd className="mt-1 text-base font-light tabular-nums text-foreground">
           {stats.totals.totalThreads.value === null
             ? "—"
             : number.format(stats.totals.totalThreads.value)}
           {stats.totals.totalThreads.partial ? " · partial" : ""}
+        </dd>
+      </div>
+      <div className="py-2.5">
+        <dt className="text-muted-foreground">Longest chat</dt>
+        <dd className="mt-1 text-base font-light tabular-nums text-foreground">
+          {formatDuration(stats.totals.longestRunningTurnSec.value)}
+          {stats.totals.longestRunningTurnSec.partial ? " · partial" : ""}
         </dd>
       </div>
       <div className="py-2.5">

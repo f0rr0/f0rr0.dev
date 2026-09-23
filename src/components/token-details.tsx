@@ -168,8 +168,8 @@ function Breakdowns({
           <dl className="token-stat-grid md:grid-cols-3!">
             {tokenPreferences.sections.activity ? (
               <>
-                <Metric label="Turns" value={activity?.turns ?? null} />
                 <Metric label="Text tokens" value={activity?.tokens ?? null} />
+                <Metric label="Turns" value={activity?.turns ?? null} />
               </>
             ) : null}
             {tokenPreferences.sections.composition ? (

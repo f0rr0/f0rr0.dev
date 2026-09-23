@@ -158,6 +158,10 @@ relationships govern both the homepage and detail page:
   and a centered 12px glyph. The 6px inset inside the button makes the effective
   text-to-icon-box gap 8px (half a body em), rather than adding 8px on top of
   that inset. Labels may wrap; buttons never shrink.
+- Reading order: activity pairs chat count/duration, skill usage/breadth,
+  streaks, and reasoning/fast mode. Usage leads with total text tokens, turns,
+  and cache reuse, then new input, cached input, and output. Rankings descend
+  by reported count. This order stays the same at every breakpoint.
 - Stat cells: 24px label + 4px gap + 24px value + 10px top/bottom padding =
   72px (three body lines). The 4px gap binds each label to its value. Shared
   grid tracks grow for wrapped text instead of clipping it or shifting only
