@@ -23,3 +23,22 @@ test("section archive links use the internal work and writing pages", () => {
   );
   expect(html).not.toContain("<a ");
 });
+
+test("section headers preserve actions alongside custom archive links", () => {
+  const html = renderToStaticMarkup(
+    <SiteSection
+      action={<span>Updated recently</span>}
+      href="/tokens"
+      linkLabel="All token usage"
+      id="tokens"
+      title="Tokens"
+      description="Token activity"
+    >
+      <p>Preview</p>
+    </SiteSection>
+  );
+  expect(html).toContain("Updated recently");
+  expect(html).toContain('href="/tokens"');
+  expect(html).toContain("All token usage");
+  expect(html).toContain('id="tokens-title"');
+});
