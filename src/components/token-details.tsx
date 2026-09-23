@@ -5,6 +5,7 @@ import { CodexActivity } from "@/components/codex-activity";
 import { CodexHighlights, CodexUsageLimit } from "@/components/codex-stats";
 import { CodexToolIcon } from "@/components/codex-tool-icon";
 import { SiteSection } from "@/components/site-page";
+import { TokenDelegation } from "@/components/token-delegation";
 import { TokenHistoryChart } from "@/components/token-history";
 import { TokenStatGrid } from "@/components/token-stat-grid";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -47,7 +48,9 @@ function Ranking({
   rows,
   unit,
   className = "",
+  bars = true,
 }: {
+  bars?: boolean;
   rows: readonly (TokenRow & { icon?: ReactNode })[];
   unit: string;
   className?: string;
@@ -72,15 +75,17 @@ function Ranking({
               {unit === "%" ? "%" : ` ${unit}`}
             </dd>
           </div>
-          <div
-            aria-hidden="true"
-            className="mt-2 h-1 overflow-hidden rounded-full bg-muted"
-          >
+          {bars ? (
             <div
-              className="h-full rounded-full bg-primary"
-              style={{ width: `${(row.value / maximum) * 100}%` }}
-            />
-          </div>
+              aria-hidden="true"
+              className="mt-2 h-1 overflow-hidden rounded-full bg-muted"
+            >
+              <div
+                className="h-full rounded-full bg-primary"
+                style={{ width: `${(row.value / maximum) * 100}%` }}
+              />
+            </div>
+          ) : null}
         </div>
       ))}
     </dl>
@@ -156,6 +161,7 @@ function Tools({
                     />
                   ),
                 }))}
+              bars={false}
               unit={id === "skills" ? "uses" : "calls"}
               className="md:contents md:space-y-0"
             />
@@ -245,7 +251,7 @@ function BreakdownContent({
                     {account.label}
                   </p>
                 ) : null}
-                <Ranking rows={account.rows} unit="%" />
+                <TokenDelegation rows={account.rows} />
               </div>
             ))}
           </div>
