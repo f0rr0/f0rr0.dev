@@ -102,7 +102,7 @@ function Tools({
     <div
       className="mt-12 grid gap-x-4 gap-y-12 md:grid-cols-2 md:gap-y-4"
       style={
-        { "--ranking-rows": tokenPreferences.rankingLimit + 2 } as CSSProperties
+        { "--ranking-rows": tokenPreferences.rankingLimit + 1 } as CSSProperties
       }
     >
       {(
@@ -118,8 +118,18 @@ function Tools({
             title={title}
             description={
               id === "tools"
-                ? "Extensions Codex uses to work with apps, services, and the computer."
-                : "Reusable instructions that guide Codex through tasks such as writing, design, and code review."
+                ? "Extensions for working with apps, services, and the computer."
+                : "Reusable instructions for tasks like writing, design, and code review."
+            }
+            action={
+              <span className="text-base text-muted-foreground tabular-nums">
+                {number.format(data.distinct)}{" "}
+                {data.distinct === 1
+                  ? title.slice(0, -1).toLowerCase()
+                  : title.toLowerCase()}{" "}
+                · {number.format(data.total)}{" "}
+                {id === "skills" ? "uses" : "calls"}
+              </span>
             }
             className="min-w-0 scroll-mt-8 md:row-span-[var(--ranking-rows)] md:grid md:grid-rows-subgrid [&>div:first-child]:mb-4 md:[&>div:first-child]:mb-0"
           >
@@ -146,16 +156,6 @@ function Tools({
               unit={id === "skills" ? "uses" : "calls"}
               className="md:contents md:space-y-0"
             />
-            <div className="mt-4 text-base text-muted-foreground md:mt-0">
-              <p>
-                {number.format(data.distinct)}{" "}
-                {data.distinct === 1
-                  ? title.slice(0, -1).toLowerCase()
-                  : title.toLowerCase()}{" "}
-                · {number.format(data.total)}{" "}
-                {id === "skills" ? "uses" : "calls"}
-              </p>
-            </div>
           </SiteSection>
         ) : null
       )}
@@ -215,7 +215,7 @@ function BreakdownContent({
           id="breakdowns"
           title="Usage"
           className="scroll-mt-8"
-          description="Tokens are pieces of text the AI reads and writes. New input is fresh context, cached input is context reused across requests, and output is generated text. Cache hit rate is the share of input reused."
+          description="Input is context the AI reads; cached input is reused context; output is generated text."
           action={periods}
         >
           <TokenStatGrid className="md:grid-cols-3">
@@ -240,7 +240,7 @@ function BreakdownContent({
         <SiteSection
           id="delegation"
           title="Tasks and subagents"
-          description="Subagents are additional AI workers that take on parts of a task. Percentages show the share of usage spent on each kind of activity. Unattributed means Codex did not identify the activity."
+          description="Usage split between main tasks, delegated AI workers, and other activity."
         >
           <div
             className={`grid gap-x-4 gap-y-8 ${details.delegation.accounts.length > 1 ? "md:grid-cols-2" : ""}`}

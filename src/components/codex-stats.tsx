@@ -134,8 +134,7 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
     {
       label: "Longest turn",
       metric: stats.totals.longestRunningTurnSec,
-      tooltip:
-        "The longest time Codex spent responding to a single request, including tool use and waiting.",
+      tooltip: "Longest response to one request, including tools and waiting.",
       value: formatDuration(stats.totals.longestRunningTurnSec.value),
     },
     {
@@ -151,7 +150,7 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
       label: "Skills explored",
       metric: stats.insights.skillsExplored,
       tooltip:
-        "The number of different skills used. The range accounts for skills that may appear in more than one account.",
+        "Distinct skills used; the range allows for overlap between accounts.",
       value: formatRange(stats.insights.skillsExplored, (value) =>
         number.format(value)
       ),
@@ -176,7 +175,7 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
           stats.insights.reasoningEffortPercent.partial,
       },
       tooltip:
-        "The most-used settings for how much time the AI spends thinking. Percentages show how often each account used its leading setting.",
+        "Most-used thinking levels and their share of each account’s usage.",
       value:
         reasoningLeaders === "—" || reasoningShare === "—"
           ? reasoningLeaders
@@ -185,8 +184,7 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
     {
       label: "Fast mode",
       metric: stats.insights.fastModeUsagePercent,
-      tooltip:
-        "How often fast mode was used for quicker responses. The range spans connected accounts.",
+      tooltip: "Share of usage in fast mode, ranging across accounts.",
       value: formatRange(
         stats.insights.fastModeUsagePercent,
         (value) => `${value.toFixed(1)}%`
