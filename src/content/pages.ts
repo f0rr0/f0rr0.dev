@@ -6,7 +6,7 @@ import { siteConfig } from "@/lib/site";
 // Edit each page once; search and social metadata use the same fields.
 export const pages = {
   home: {
-    title: siteConfig.title,
+    title: siteConfig.name,
     path: "/",
   },
   journey: {
