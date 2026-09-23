@@ -51,21 +51,21 @@ export function CodexToolIcon({
           alt=""
           className={
             tool.logoUrlDark === undefined
-              ? "size-3.5 object-contain"
-              : "size-3.5 object-contain dark:hidden"
+              ? "size-full object-cover"
+              : "size-full object-cover dark:hidden"
           }
-          height={14}
+          height={24}
           src={tool.logoUrl}
-          width={14}
+          width={24}
         />
       )}
       {tool.logoUrlDark === undefined ? null : (
         <Image
           alt=""
-          className="hidden size-3.5 object-contain dark:block"
-          height={14}
+          className="hidden size-full object-cover dark:block"
+          height={24}
           src={tool.logoUrlDark}
-          width={14}
+          width={24}
         />
       )}
       {tool.logoUrl === undefined ? (
