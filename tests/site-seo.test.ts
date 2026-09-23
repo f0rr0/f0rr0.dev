@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
 test("deployment aliases never replace public identity, and only previews receive noindex headers", () => {
   for (const deployment of ["preview", "production"] as const) {
@@ -118,4 +119,138 @@ test("an alternate profile drives site identity, structured exports, education a
   expect(output.guide).toContain(
     "https://alice.example/resume/sid-jain-resume.pdf"
   );
+});
+
+test("main page content produces consistent search and social metadata", async () => {
+  const { pages } = await import("../src/content/pages");
+  const { buildPageMetadata } = await import("../src/lib/page-metadata");
+  const { siteConfig, publicUrl } = await import("../src/lib/site");
+
+  for (const page of Object.values(pages)) {
+    const metadata = buildPageMetadata(page);
+    expect(metadata.title.absolute).toBe(`${siteConfig.name} | ${page.title}`);
+    expect(metadata.description).toBe(siteConfig.description);
+    expect(metadata.openGraph.title).toBe(metadata.title.absolute);
+    expect(metadata.twitter.title).toBe(metadata.title.absolute);
+    expect(metadata.openGraph.description).toBe(metadata.description);
+    expect(metadata.twitter.description).toBe(metadata.description);
+    expect(metadata.alternates.canonical).toBe(publicUrl(page.path));
+    expect(metadata.openGraph.url).toBe(metadata.alternates.canonical);
+    expect(metadata.openGraph.locale).toBe(siteConfig.locale);
+    expect(metadata.openGraph.siteName).toBe(siteConfig.name);
+    expect(metadata.openGraph.type).toBe(
+      page.path === "/journey" ? "profile" : "website"
+    );
+    expect(metadata.twitter.card).toBe("summary_large_image");
+    expect(metadata.openGraph.images).toEqual([siteConfig.shareImage]);
+    expect(metadata.twitter.images).toEqual([siteConfig.shareImage]);
+    expect(JSON.stringify(metadata)).not.toMatch(/[—·]/);
+  }
+
+  const minimal = buildPageMetadata({ title: "Example", path: "/example" });
+  expect(minimal.description).toBe(siteConfig.description);
+  expect(minimal.openGraph.description).toBe(siteConfig.description);
+  expect(minimal.twitter.description).toBe(siteConfig.description);
+  expect(minimal.openGraph.type).toBe("website");
+  expect(Object.hasOwn(minimal, "robots")).toBe(false);
+  const { buildProfilePageJsonLd } = await import("../src/lib/structured-data");
+  const profile = buildProfilePageJsonLd();
+  const journey = buildPageMetadata(pages.journey);
+  expect(profile.description).toBe(journey.description);
+  expect(profile.name).toBe(journey.title.absolute);
+  expect(profile.url).toBe(journey.alternates.canonical);
+  const { buildBlogCollectionJsonLd } =
+    await import("../src/lib/structured-data");
+  const collection = buildBlogCollectionJsonLd([]);
+  expect(collection.name).toBe(buildPageMetadata(pages.writing).title.absolute);
+  expect(collection.description).toBe(siteConfig.description);
+  expect(collection.url).toBe(publicUrl(pages.writing.path));
+  const { resumeData } = await import("../src/content/resume");
+  const { siteNavigation } = await import("../src/content/site");
+  for (const [key, link] of Object.entries(siteNavigation)) {
+    expect(resumeData.navItems).toContainEqual({
+      href: link.path,
+      label: link.title,
+    });
+    const page = pages[key as keyof typeof siteNavigation];
+    expect(page.path).toBe(link.path);
+    expect(page.title).not.toBe(link.title);
+  }
+  expect(pages.home.title).toBe(siteConfig.title);
+  expect(pages.home.title).not.toBe(siteConfig.author.role);
+  expect(siteConfig.shareImage.alt).toContain(siteConfig.name);
+  const { default: sharp } = await import("sharp");
+  const image = await sharp(`public${siteConfig.shareImage.url}`).metadata();
+  expect(image.width).toBe(siteConfig.shareImage.width);
+  expect(image.height).toBe(siteConfig.shareImage.height);
+  expect(image.format).toBe("png");
+
+  const writing = buildPageMetadata(pages.writing);
+  expect(writing.alternates.types).toEqual({
+    "application/rss+xml": "/rss.xml",
+  });
+  const published = buildPageMetadata({ ...pages.tokens, robots: undefined });
+  expect(Object.hasOwn(published, "robots")).toBe(false);
+  const hidden = buildPageMetadata({
+    ...pages.tokens,
+    robots: { index: false, follow: false },
+  });
+  expect(hidden.robots).toEqual({ index: false, follow: false });
+});
+
+test("blog metadata and JSON-LD share authored fields, URLs, images and dates", async () => {
+  const { buildBlogMetadata } = await import("../src/lib/page-metadata");
+  const { buildBlogPostingJsonLd } = await import("../src/lib/structured-data");
+  const { siteConfig } = await import("../src/lib/site");
+  const post = {
+    slug: "example",
+    importPath: "example/page.mdx",
+    metadata: {
+      title: "A new idea",
+      summary: "What I learned.",
+      author: siteConfig.name,
+      date: "2026-09-01",
+      tags: ["engineering"],
+    },
+    date: new Date("2026-09-01"),
+    readingTime: "1 min read",
+    wordCount: 100,
+  };
+  for (const updatedAt of [undefined, new Date("2026-09-02")]) {
+    const article = { ...post, updatedAt };
+    const metadata = buildBlogMetadata(article);
+    const schema = buildBlogPostingJsonLd(article);
+    expect(metadata.title.absolute).toBe(
+      `${siteConfig.name} | ${post.metadata.title}`
+    );
+    expect(metadata.openGraph.title).toBe(metadata.title.absolute);
+    expect(metadata.twitter.title).toBe(metadata.title.absolute);
+    expect(metadata.openGraph.type).toBe("article");
+    expect(metadata.description).toBe(post.metadata.summary);
+    expect(schema.headline).toBe(post.metadata.title);
+    expect(schema.description).toBe(metadata.description);
+    expect(schema.url).toBe(metadata.alternates.canonical);
+    expect(schema.url).toBe(metadata.openGraph.url);
+    expect(schema.image).toBe(metadata.openGraph.images[0].url);
+    expect(metadata.twitter.images).toEqual(metadata.openGraph.images);
+    expect(metadata.twitter.images[0].alt).toBe(post.metadata.title);
+    expect(schema.datePublished).toBe(metadata.openGraph.publishedTime);
+    expect(schema.dateModified).toBe(
+      metadata.openGraph.modifiedTime ?? metadata.openGraph.publishedTime
+    );
+    expect(schema.author).toMatchObject(metadata.authors[0]);
+    expect(schema.keywords).toEqual(metadata.keywords);
+    expect(metadata.alternates.types).toMatchObject({
+      "text/markdown": `${metadata.alternates.canonical}.md`,
+    });
+    expect(JSON.stringify({ metadata, schema })).not.toMatch(/[—·]/);
+  }
+  for (const path of new Bun.Glob("src/content/blog/**/*.mdx").scanSync(".")) {
+    const source = readFileSync(path, "utf-8");
+    const authoredMetadata = /export const metadata = \{[\s\S]*?^\};/m.exec(
+      source
+    )?.[0];
+    expect(authoredMetadata, path).toBeDefined();
+    expect(authoredMetadata, path).not.toMatch(/[—·]/);
+  }
 });

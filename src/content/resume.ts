@@ -1,4 +1,4 @@
-import { githubAccounts } from "./site";
+import { githubAccounts, siteNavigation } from "./site";
 
 export interface LogoAsset {
   alt: string;
@@ -225,12 +225,10 @@ export const resumeData = {
       ...new Set(socialProfiles.map(({ username }) => username)),
     ],
   },
-  navItems: [
-    { href: "/writing", label: "Writing" },
-    { href: "/work", label: "Work" },
-    { href: "/tokens", label: "Tokens" },
-    { href: "/journey", label: "Journey" },
-  ] satisfies ResumeLink[],
+  navItems: Object.values(siteNavigation).map(({ title, path }) => ({
+    href: path,
+    label: title,
+  })),
   links: [
     { href: `mailto:${person.email}`, label: person.email },
     ...socialProfiles

@@ -1,4 +1,4 @@
-import { sitePreferences } from "@/content/site";
+import { siteNavigation, sitePreferences } from "@/content/site";
 
 // Public presentation only. Account credentials stay in the existing server store.
 export interface TokenPreferences {
@@ -25,7 +25,7 @@ export interface TokenPreferences {
 export const tokenPreferences: TokenPreferences = {
   enabled: true,
   homepagePreview: true,
-  title: "Tokens",
+  title: siteNavigation.tokens.title,
   introduction:
     "I use AI to explore ideas, write and review code, and delegate work to agents. Here’s what that looks like in Codex.",
   sections: {

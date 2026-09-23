@@ -1,30 +1,17 @@
-import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { SiteMain } from "@/components/site-page";
 import { SiteShell } from "@/components/site-shell";
 import { TokenUsageDetails } from "@/components/token-details";
+import { pages } from "@/content/pages";
 import { tokenPreferences } from "@/content/tokens";
 import {
   getPublicCodexStats,
   getPublicTokenDetails,
 } from "@/lib/codex/public-stats";
-import { publicUrl, siteConfig } from "@/lib/site";
+import { buildPageMetadata } from "@/lib/page-metadata";
 
-export const metadata: Metadata = {
-  title: tokenPreferences.title,
-  description: tokenPreferences.introduction,
-  alternates: { canonical: "/tokens" },
-  openGraph: {
-    title: `${siteConfig.name} — ${tokenPreferences.title}`,
-    description: tokenPreferences.introduction,
-    url: publicUrl("/tokens"),
-    images: [siteConfig.author.image],
-  },
-  robots: tokenPreferences.enabled
-    ? undefined
-    : { index: false, follow: false },
-};
+export const metadata = buildPageMetadata(pages.tokens);
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +28,7 @@ export default async function TokensPage() {
       : null,
   ]);
   return (
-    <SiteShell activeHref="/tokens">
+    <SiteShell activeHref={pages.tokens.path}>
       <SiteMain>
         <TokenUsageDetails
           stats={stats}

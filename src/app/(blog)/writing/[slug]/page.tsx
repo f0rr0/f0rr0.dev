@@ -11,6 +11,7 @@ import MDXImage from "@/components/mdx/MDXImage";
 import { SiteMain } from "@/components/site-page";
 import { SiteShell } from "@/components/site-shell";
 import { Separator } from "@/components/ui/separator";
+import { siteNavigation } from "@/content/site";
 import { buildAskAiPrompt } from "@/lib/ask-ai";
 import {
   getBlogPost,
@@ -18,7 +19,8 @@ import {
   importBlogPostModule,
 } from "@/lib/blog-utils";
 import { formatDate } from "@/lib/date";
-import { publicUrl, siteConfig } from "@/lib/site";
+import { buildBlogMetadata } from "@/lib/page-metadata";
+import { publicUrl } from "@/lib/site";
 import { buildBlogPostingJsonLd } from "@/lib/structured-data";
 
 type PageParams = Promise<{ slug: string }>;
@@ -45,40 +47,7 @@ export async function generateMetadata({
     return {};
   }
 
-  const { metadata, date, updatedAt } = post;
-  const url = publicUrl(`/writing/${slug}`);
-  const shareImageUrl = publicUrl(`/writing/${slug}/share-image`);
-
-  return {
-    alternates: {
-      canonical: url,
-      types: {
-        "text/markdown": publicUrl(`/writing/${slug}.md`),
-        "application/rss+xml": publicUrl("/rss.xml"),
-      },
-    },
-    description: metadata.summary,
-    keywords: metadata.tags,
-    openGraph: {
-      authors: [publicUrl("/journey")],
-      description: metadata.summary,
-      locale: siteConfig.locale,
-      images: [{ alt: metadata.title, url: shareImageUrl }],
-      modifiedTime: updatedAt?.toISOString(),
-      publishedTime: date.toISOString(),
-      siteName: siteConfig.name,
-      title: metadata.title,
-      type: "article",
-      url,
-    },
-    title: metadata.title,
-    twitter: {
-      card: "summary_large_image",
-      description: metadata.summary,
-      images: [shareImageUrl],
-      title: metadata.title,
-    },
-  };
+  return buildBlogMetadata(post);
 }
 
 export default async function BlogPostPage({ params }: { params: PageParams }) {
@@ -100,12 +69,7 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
   }
 
   const Content = module.default;
-  const url = publicUrl(`/writing/${slug}`);
-  const jsonLd = buildBlogPostingJsonLd({
-    image: publicUrl(`/writing/${slug}/share-image`),
-    post,
-    url,
-  });
+  const jsonLd = buildBlogPostingJsonLd(post);
 
   const mdxComponents = {
     Image: (props) => <MDXImage {...props} />,
@@ -114,7 +78,7 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
 
   return (
     <SiteShell
-      activeHref="/writing"
+      activeHref={siteNavigation.writing.path}
       askAiContext={{
         label: "This article",
         title: metadata.title,

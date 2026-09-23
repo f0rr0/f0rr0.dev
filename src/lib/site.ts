@@ -10,10 +10,17 @@ export const siteConfig = {
     name: resumeData.person.name,
     role: resumeData.person.role,
   },
-  description: `${resumeData.person.name}. ${resumeData.summary}`,
+  title: sitePreferences.title,
+  description: sitePreferences.description,
   language: sitePreferences.language,
   locale: sitePreferences.language.replace("-", "_"),
   name: resumeData.person.name,
+  shareImage: {
+    alt: `${resumeData.person.name} (@${primaryGitHubProfile.username}) in a collage with Mumbai and Delhi landmarks`,
+    height: 907,
+    url: "/sid-jain-og.png",
+    width: 1734,
+  },
   shortName: primaryGitHubProfile.username.toUpperCase(),
   url: CANONICAL_SITE_URL,
 };

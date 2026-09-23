@@ -44,7 +44,7 @@ export const renderBlogShareImage = (metadata: BlogPostMetadata) =>
         {metadata.title}
       </div>
       <div style={{ color: "#78716c", display: "flex", fontSize: 22 }}>
-        {metadata.date.slice(0, 4)} · Personal notes
+        {metadata.date.slice(0, 4)} | Personal notes
       </div>
     </div>,
     { height: 630, width: 1200 }

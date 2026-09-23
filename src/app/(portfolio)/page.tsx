@@ -1,5 +1,4 @@
 import { Star, GitFork } from "lucide-react";
-import type { Metadata } from "next";
 
 import { CodexStats } from "@/components/codex-stats";
 import { GitHubTimeline } from "@/components/github-timeline";
@@ -13,36 +12,18 @@ import {
 } from "@/components/ui/hover-card";
 import { WritingList } from "@/components/writing-list";
 import { homeIntroduction, projectEditorial } from "@/content/home";
+import { pages } from "@/content/pages";
 import { primaryGitHubProfile, resumeData } from "@/content/resume";
+import { siteNavigation } from "@/content/site";
 import { tokenPreferences } from "@/content/tokens";
 import { getBlogPosts } from "@/lib/blog-utils";
 import { getPublicCodexStats } from "@/lib/codex/public-stats";
 import { getInitialGitHubActivity } from "@/lib/github-activity-feed";
 import { getGitHubProfile } from "@/lib/github-profile";
 import type { GitHubProfile } from "@/lib/github-profile";
-import { publicUrl, siteConfig } from "@/lib/site";
+import { buildPageMetadata } from "@/lib/page-metadata";
 
-const { description } = siteConfig;
-const title = `${siteConfig.author.name} — ${siteConfig.author.role}`;
-const images = [
-  { alt: title, height: 630, url: "/opengraph-image", width: 1200 },
-];
-
-export const metadata: Metadata = {
-  alternates: { canonical: "/" },
-  description,
-  openGraph: {
-    description,
-    images,
-    locale: siteConfig.locale,
-    siteName: siteConfig.name,
-    title,
-    type: "website",
-    url: publicUrl("/"),
-  },
-  title: { absolute: title },
-  twitter: { card: "summary_large_image", description, images, title },
-};
+export const metadata = buildPageMetadata(pages.home);
 
 export const dynamic = "force-dynamic";
 
@@ -133,12 +114,16 @@ export default async function Home() {
     getGitHubProfile(),
   ]);
   return (
-    <SiteShell currentPath="/">
+    <SiteShell currentPath={pages.home.path}>
       <SiteMain>
         <h1 className="sr-only">{resumeData.person.name}</h1>
         <p>{homeIntroduction}</p>
 
-        <SiteSection href="/writing" id="writing" title="Writing">
+        <SiteSection
+          href={pages.writing.path}
+          id="writing"
+          title={siteNavigation.writing.title}
+        >
           <WritingList posts={posts.slice(0, 3)} />
         </SiteSection>
 
