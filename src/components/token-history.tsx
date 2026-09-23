@@ -143,10 +143,6 @@ function HistoryPlot({
                       value: annotation,
                       position: "left",
                       offset: 16,
-                      dy: -12,
-                      stroke: "var(--background)",
-                      strokeWidth: 3,
-                      paintOrder: "stroke",
                       fill: "var(--foreground)",
                       fontSize: 12,
                     }
@@ -170,7 +166,7 @@ function HistoryPlot({
                   rows.length / 2
                     ? "left"
                     : "right",
-                offset: 10,
+                offset: 16,
                 fill: "var(--foreground)",
                 fontSize: 12,
               }}
