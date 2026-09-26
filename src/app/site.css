@@ -2,7 +2,7 @@
 
 @theme inline {
   --text-sm--line-height: calc(20 / 14);
-  --font-sans: var(--font-dm-sans);
+  --radius-heatmap: 0.2rem;
   --font-serif: var(--font-instrument-serif);
   --font-mono: var(--font-geist-mono);
   --shadow-site-soft: var(--shadow-soft);
@@ -47,6 +47,7 @@
 }
 /* Override the upstream root tokens regardless of import order. */
 html:root {
+  --font-sans: var(--font-dm-sans);
   --motion-fast: 150ms;
   --motion-layout: 240ms;
   --motion-exit: 100ms;

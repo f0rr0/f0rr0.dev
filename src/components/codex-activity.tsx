@@ -78,7 +78,7 @@ const ActivityHeatmap = ({
                 </TooltipContent>
               }
               aria-label={`${dayLabel}: ${number.format(tokens)} tokens`}
-              className={`aspect-square min-w-0 rounded-[0.2rem] outline-none motion-safe:transition-transform motion-safe:hover:scale-125 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring ${color}`}
+              className={`aspect-square min-w-0 rounded-heatmap outline-none motion-safe:transition-transform motion-safe:hover:scale-125 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring ${color}`}
               tabIndex={tokens === 0 ? -1 : 0}
               type="button"
             />
