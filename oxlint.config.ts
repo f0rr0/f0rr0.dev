@@ -87,7 +87,7 @@ export default defineConfig({
               {
                 pattern: "(?:^|:)\\[transition(?:-duration)?:",
                 message:
-                  "Use transition utilities with motion tokens, or the shared motion selectors in globals.css.",
+                  "Use transition utilities with motion tokens, or the shared motion selectors in site.css.",
               },
             ],
           },
