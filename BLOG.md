@@ -19,6 +19,9 @@ For voice, storytelling, and editorial review, use the
 [blog-writing skill](.rulesync/skills/blog-writing/SKILL.md).
 This guide covers the site's MDX and publishing mechanics.
 
+See [Article layout](docs/article-layout.md) for the reading grid, typography,
+wide figures, disclosures and responsive sidenotes.
+
 ## Content structure
 
 - Preferred layout (folder per post):

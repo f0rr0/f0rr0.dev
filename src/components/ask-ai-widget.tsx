@@ -29,7 +29,7 @@ export function AskAiWidget({
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
         aria-label="Ask an AI"
-        className="group fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-40 inline-flex h-11 items-center gap-2 rounded-full bg-muted py-2 pr-2 pl-3 text-sm font-medium text-popover-foreground shadow-site-floating ring-1 ring-border dark:ring-0 transition-colors duration-150 hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring motion-reduce:transition-none sm:right-6 sm:bottom-6 print:hidden"
+        className="group z-40 inline-flex min-h-11 items-center gap-2 rounded-full bg-muted py-2 pr-2 pl-3 text-sm font-medium text-popover-foreground shadow-site-floating ring-1 ring-border dark:ring-0 transition-colors duration-150 hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring motion-reduce:transition-none min-[92rem]:fixed min-[92rem]:end-6 min-[92rem]:bottom-6 print:hidden"
         openOnHover
         delay={250}
         closeDelay={300}

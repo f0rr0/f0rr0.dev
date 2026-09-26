@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./article.css";
 @custom-variant dark (&:is(.dark *));
 @plugin "@tailwindcss/typography";
 @theme inline {
@@ -81,7 +82,7 @@
   }
 
   body {
-    @apply bg-background text-base font-light text-foreground;
+    @apply bg-background text-base font-normal text-foreground;
   }
 }
 :root {

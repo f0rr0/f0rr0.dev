@@ -13,10 +13,7 @@ interface SiteMainProps {
 export function SiteMain({ children, className }: Readonly<SiteMainProps>) {
   return (
     <main
-      className={cn(
-        "site-container mx-auto w-full max-w-192 px-4 sm:px-8 lg:px-12 flex-1 pb-12 pt-8",
-        className
-      )}
+      className={cn("site-container flex-1 pb-12 pt-8", className)}
       id="main-content"
     >
       {children}

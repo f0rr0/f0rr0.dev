@@ -14,6 +14,7 @@ export const metadata = {
 - [Lists](#lists)
 - [Blockquotes](#blockquotes)
 - [Code blocks](#code-blocks)
+- [Disclosures](#disclosures)
 - [Images](#images)
 - [GitHub embeds](#github-embeds)
 - [Tables](#tables)
@@ -27,6 +28,25 @@ An article should feel comfortable to read, whether it contains a short update
 or a detailed technical explanation. This paragraph shows the default reading
 size, line length, and spacing alongside **strong emphasis**, _italic emphasis_,
 **_both together_**, and ~~deleted text~~.
+
+The reading column keeps a consistent measure while images can use the wider
+tracks.[^measure] Notes share grid rows with the prose, so even a long
+annotation cannot collide with the next paragraph or figure.[^grid]
+
+The same note can be referenced later without repeating its content.[^measure]
+
+[^measure]:
+    The reading column is calibrated against actual line lengths in Geist.
+    Its width is a constraint, not a literal character count; verify it again
+    if the reading font changes.
+
+[^grid]:
+    Both notes in this paragraph occupy one margin list. Its height
+    contributes to the shared grid rows, preserving space for every note.
+
+    On smaller screens and in print, the same content remains in the endnotes
+    with its original reference links and return links. No duplicate copy or
+    JavaScript positioning is needed.
 
 Inline code such as `next.config.ts` should sit naturally in a sentence. A longer
 identifier like `createSyntaxHighlightedBlogPostPreview` should wrap without
@@ -149,6 +169,34 @@ Unlabelled fences retain the same controls and a readable fallback:
 src/content/blog/my-post/page.mdx
 ```
 
+## Disclosures
+
+Related details can stay close to the explanation without interrupting the reading flow.
+
+<details>
+  <summary>What belongs in a useful review?</summary>
+
+- A concrete observation from the rendered page.
+- The consequence for someone reading it.
+- A change that addresses the shared cause.
+
+A longer explanation can contain another paragraph without detaching the list from its summary.[^disclosure]
+
+</details>
+
+<details>
+  <summary>How do the checks fit together?</summary>
+
+1. Read the article at a narrow and a wide viewport.
+2. Follow its links and controls with the keyboard.
+3. Check notes, figures, and tables at the boundaries.
+
+</details>
+
+The following section returns to the normal article flow.
+
+[^disclosure]: A note referenced inside a disclosure remains an endnote, so its position never depends on whether the disclosure is open.
+
 ## Images
 
 ### Relative Markdown image
@@ -171,7 +219,7 @@ This photograph loads directly from its remote URL:
 
 The same local image can use the explicit `<Image />` component inside a figure:
 
-<figure>
+<figure className="article-wide">
   <Image src="./mountains.jpg" width={1200} height={800} alt="A wide mountain valley framed by evergreen trees" />
   <figcaption>A local photograph with its natural proportions and a caption close to the image.</figcaption>
 </figure>
@@ -208,7 +256,7 @@ The same local image can use the explicit `<Image />` component inside a figure:
 
 The image renderer also supports SVG diagrams without rasterizing them:
 
-![Top artists from the 2018 music review](../2018-music-in-review/artists.svg)
+<Image className="article-chart" src="../2018-music-in-review/artists.svg" alt="Top artists from the 2018 music review" />
 
 ### Animated image
 
@@ -327,13 +375,18 @@ stateDiagram-v2
   Decided --> [*]
 ```
 
+<details>
+  <summary>Inspect the diagram failure state</summary>
+  <Mermaid chart="This is not a Mermaid diagram." />
+</details>
+
 ## Links and dates
 
 - [Internal navigation](/writing)
 - [External documentation](https://nextjs.org/docs)
 - [An anchor on this page](#typography)
 - Automatic URL linking: https://nextjs.org/docs
-- A localized date: <time dateTime="2026-09-07T12:00:00Z" />
+- A localized date: <time dateTime="2026-09-07T12:00:00Z">September 7, 2026</time>
 
 ## Footnotes
 

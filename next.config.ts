@@ -89,6 +89,11 @@ const remarkEmbedGitHub = new URL(
   import.meta.url
 ).pathname;
 
+const rehypeArticleGrid = new URL(
+  "src/lib/rehype-article-grid.mjs",
+  import.meta.url
+).pathname;
+
 const withMDX = createMDX({
   options: {
     rehypePlugins: [
@@ -115,6 +120,7 @@ const withMDX = createMDX({
           keepBackground: false,
         },
       ],
+      rehypeArticleGrid,
     ],
     remarkPlugins: [
       remarkStaticImageImports,

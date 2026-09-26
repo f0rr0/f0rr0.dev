@@ -1,5 +1,7 @@
 "use client";
 
+/* oxlint-disable jsx-a11y/no-noninteractive-tabindex -- Scrollable diagram source needs keyboard access. */
+
 import { Maximize2, Minimize2, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import type { Mermaid, MermaidConfig, RenderResult } from "mermaid";
 import { useTheme } from "next-themes";
@@ -431,16 +433,27 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
         ) : null}
         {status === "error" ? (
           <div
-            className="mermaid-error flex min-h-30 items-center justify-center gap-3 text-muted-foreground font-sans [font-size:0.875rem] flex-col [gap:0.2rem] text-center [&_strong]:text-foreground [&_strong]:[font-size:0.875rem] [&_strong]:[font-weight:650] [&_span]:[font-size:0.75rem]"
+            className="mermaid-error flex min-h-30 flex-col items-center justify-center gap-3 text-center font-sans text-sm text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground"
             role="alert"
           >
             <strong>Diagram unavailable</strong>
-            <span>The Mermaid source could not be rendered.</span>
+            <span>Read the diagram source below.</span>
+            <details className="w-full text-start">
+              <summary>View diagram source</summary>
+              <pre
+                tabIndex={0}
+                role="region"
+                aria-label="Diagram source"
+                className="overflow-x-auto rounded bg-background p-4 text-sm"
+              >
+                <code>{chart}</code>
+              </pre>
+            </details>
           </div>
         ) : null}
       </div>
       <div className="mermaid-toolbar print:hidden">
-        <span className="mermaid-diagram-type overflow-hidden [color:color-mix(in_oklab,_var(--foreground)_88%,_var(--muted-foreground))] [font-size:0.75rem] font-medium leading-snug text-ellipsis whitespace-nowrap">
+        <span className="mermaid-diagram-type min-w-0 [color:color-mix(in_oklab,_var(--foreground)_88%,_var(--muted-foreground))] [font-size:0.75rem] font-medium leading-snug">
           {diagramType}
         </span>
         <div className="mermaid-toolbar-actions flex shrink-0 items-center gap-1">
@@ -457,7 +470,7 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
             <ZoomOut aria-hidden="true" />
           </button>
           <button
-            aria-label="Reset diagram zoom"
+            aria-label={`Reset diagram zoom (currently ${Math.round(zoom * 100)}%)`}
             className="mermaid-control mermaid-zoom-reset tabular-nums min-w-16 max-sm:[&_span]:hidden"
             disabled={zoom === 1 || diagram === null}
             onClick={() => {

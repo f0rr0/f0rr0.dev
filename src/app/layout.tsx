@@ -15,6 +15,7 @@ import "./globals.css";
 
 const sans = Geist({
   display: "swap",
+  style: ["normal", "italic"],
   subsets: ["latin"],
   variable: "--font-geist",
 });
@@ -93,7 +94,7 @@ export default function RootLayout({
       <head>
         <link href="/llms.txt" rel="describedby" />
       </head>
-      <body className="min-h-screen font-sans antialiased [&_:is(h1,h2,h3,h4,h5,h6)]:font-normal [&_:is(a,button,summary)]:decoration-wavy [&_:is(a,button,summary)]:decoration-1 [&_:is(a,button,summary)]:underline-offset-4 [&_:is(a,button)_:is(h3,span)]:decoration-wavy [&_:is(a,button)_:is(h3,span)]:decoration-1 [&_:is(a,button)_:is(h3,span)]:underline-offset-4">
+      <body className="min-h-screen font-sans antialiased [&_:is(a,button,summary)]:decoration-wavy [&_:is(a,button,summary)]:decoration-1 [&_:is(a,button,summary)]:underline-offset-4 [&_:is(a,button)_:is(h3,span)]:decoration-wavy [&_:is(a,button)_:is(h3,span)]:decoration-1 [&_:is(a,button)_:is(h3,span)]:underline-offset-4">
         <JsonLd data={buildRootJsonLd()} />
         <ThemeProvider
           attribute="class"
