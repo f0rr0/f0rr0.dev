@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { DM_Sans, Geist_Mono, Instrument_Serif } from "next/font/google";
 
 import { JsonLd } from "@/components/json-ld";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -13,11 +13,11 @@ import { buildRootJsonLd } from "@/lib/structured-data";
 
 import "./globals.css";
 
-const sans = Geist({
+const sans = DM_Sans({
   display: "swap",
   style: ["normal", "italic"],
   subsets: ["latin"],
-  variable: "--font-geist",
+  variable: "--font-dm-sans",
 });
 
 const mono = Geist_Mono({

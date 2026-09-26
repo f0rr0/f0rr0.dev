@@ -362,7 +362,7 @@ function renderShell({ content, href, label }) {
   return `<a title="${escapeHtml(label)}" class="github-embed flex min-w-0 flex-col gap-3 overflow-hidden rounded-lg border p-4 font-sans text-sm font-normal leading-5 no-underline bg-card border-border text-card-foreground hover:border-control-border-hover focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-3 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:fill-current [&_.github-embed-title]:font-medium [&_.github-embed-title]:leading-5 [&_.github-embed-description]:text-sm [&_.github-embed-description]:leading-5 [&_.github-embed-description]:text-muted-foreground [&_.github-embed-stats]:mt-auto [&_.github-embed-stats]:flex [&_.github-embed-stats]:flex-wrap [&_.github-embed-stats]:gap-4 [&_.github-embed-stats]:text-xs [&_.github-embed-stats]:leading-5 [&_.github-embed-stats]:text-muted-foreground [&_.github-embed-stats_>_span]:inline-flex [&_.github-embed-stats_>_span]:items-center [&_.github-embed-stats_>_span]:gap-1" href="${escapeHtml(href)}" rel="noreferrer noopener" target="_blank">${content}</a>`;
 }
 
-// Align Geist’s visible lettering with the Octicon, not only its line box.
+// Align the visible lettering with the Octicon, not only its line box.
 function renderHeader(content, badge = "") {
   return `<span class="github-embed-header flex min-w-0 items-center gap-2 text-muted-foreground">
     ${icons.repository}

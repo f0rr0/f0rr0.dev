@@ -181,3 +181,6 @@ relative to the homepage. Articles now inherit the shared 16px/24px body style;
 section headings match the site's 24px/32px scale. Article titles are 30px/36px,
 h3 is 18px/28px, and h4–h6 are 16px/24px. This supersedes the original type-size
 measurements; the current specification is in [Reading layout system](article-layout.md).
+
+DM Sans now supplies the default sans and reading face, including normal and
+italic styles. Instrument Serif headings and Geist Mono code retain their roles.

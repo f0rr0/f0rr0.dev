@@ -2,7 +2,7 @@
 
 The shared implementation is `src/app/article.css`. It uses Tailwind v4's existing
 spacing unit and type sizes, with CSS Grid named tracks and `grid-cols-subgrid`.
-Geist remains the reading face; Instrument Serif supplies titles and section
+DM Sans is the default sans and reading face; Instrument Serif supplies titles and section
 headings. Geist Mono is reserved for code. The header, writing list, article,
 and footer share one reading edge.
 
@@ -61,19 +61,19 @@ capacity rather than device categories.
 All sizes are rem-based. Line heights are unitless and scale with user font
 settings. Pixel equivalents below assume a 16px root.
 
-| Role                                | Tailwind size               | Leading | Face / weight           |
-| ----------------------------------- | --------------------------- | ------- | ----------------------- |
-| Article title                       | `text-3xl`, 30px            | 36px    | Instrument Serif, 400   |
-| Site section / article h2           | `text-2xl`, 24px            | 32px    | Instrument Serif, 400   |
-| Subsection, h3                      | `text-lg`, 18px             | 28px    | Geist, 500              |
-| h4                                  | `text-base`, 16px           | 24px    | Geist, 600              |
-| h5                                  | `text-base`, 16px           | 24px    | Geist, 500              |
-| h6                                  | `text-base`, 16px           | 24px    | Geist italic, 500       |
-| Homepage / article body             | inherited `text-base`, 16px | 24px    | Geist, 400              |
-| Table / expanded disclosure         | `text-base`, 16px           | 24px    | Geist, 400              |
-| Caption / note / disclosure summary | `text-sm`, 14px             | 20px    | Geist, 400; summary 500 |
-| Code                                | `text-sm`, 14px             | 24px    | Geist Mono, 400         |
-| Toolbar label                       | `text-xs`, 12px             | 20px    | Geist, 400              |
+| Role                                | Tailwind size               | Leading | Face / weight             |
+| ----------------------------------- | --------------------------- | ------- | ------------------------- |
+| Article title                       | `text-3xl`, 30px            | 36px    | Instrument Serif, 400     |
+| Site section / article h2           | `text-2xl`, 24px            | 32px    | Instrument Serif, 400     |
+| Subsection, h3                      | `text-lg`, 18px             | 28px    | DM Sans, 500              |
+| h4                                  | `text-base`, 16px           | 24px    | DM Sans, 600              |
+| h5                                  | `text-base`, 16px           | 24px    | DM Sans, 500              |
+| h6                                  | `text-base`, 16px           | 24px    | DM Sans italic, 500       |
+| Homepage / article body             | inherited `text-base`, 16px | 24px    | DM Sans, 400              |
+| Table / expanded disclosure         | `text-base`, 16px           | 24px    | DM Sans, 400              |
+| Caption / note / disclosure summary | `text-sm`, 14px             | 20px    | DM Sans, 400; summary 500 |
+| Code                                | `text-sm`, 14px             | 24px    | Geist Mono, 400           |
+| Toolbar label                       | `text-xs`, 12px             | 20px    | DM Sans, 400              |
 
 Articles share the homepage body size and section-heading scale. Only the article
 title adds a larger step. Deep headings use weight and italic style at body size
@@ -85,7 +85,7 @@ paragraphs retain normal wrapping and a ragged edge. Code preserves whitespace;
 its toolbars use normal wrapping. These are browser-native enhancements, with
 normal wrapping as the fallback. See [Tailwind text wrapping](https://tailwindcss.com/docs/text-wrap).
 Inline links retain the site's wavy underline without gaining an unrelated bold
-weight. Real normal and italic Geist faces are loaded. Code stays at the loaded
+weight. Real normal and italic DM Sans faces are loaded. Code stays at the loaded
 normal mono weight rather than synthesizing a heavier face.
 
 ## Vertical relationships
