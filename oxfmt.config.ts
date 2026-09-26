@@ -6,6 +6,8 @@ export default defineConfig({
   // Preserve authored and historical code samples exactly as published.
   embeddedLanguageFormatting: "off",
   ignorePatterns: [
+    // Keep registry-generated shadcn sources unchanged.
+    "src/components/ui/**",
     ...(ultracite.ignorePatterns ?? []),
     "**/.rulesync",
     "**/.rulesync/**",

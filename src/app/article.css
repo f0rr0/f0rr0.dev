@@ -1,0 +1,437 @@
+@layer components {
+  :root {
+    /* Shared reading measure for the site and articles. */
+    --site-measure: --spacing(156);
+    --site-gutter: clamp(--spacing(4), 4vw, --spacing(6));
+  }
+
+  .site-container {
+    width: 100%;
+    max-width: calc(var(--site-measure) + 2 * var(--site-gutter));
+    margin-inline: auto;
+    padding-inline: var(--site-gutter);
+  }
+}
+
+@layer utilities {
+  .article-main {
+    max-width: none;
+    padding-inline: 0;
+  }
+
+  .article-layout {
+    --article-wing: --spacing(40);
+    --article-note: --spacing(56);
+    --article-gap: --spacing(8);
+    @apply grid text-foreground;
+    grid-template-columns:
+      [full-start] minmax(var(--site-gutter), 1fr)
+      [wide-start] minmax(0, var(--article-wing))
+      [content-start] min(
+        calc(100% - 2 * var(--site-gutter)),
+        var(--site-measure)
+      )
+      [content-end] minmax(0, var(--article-wing))
+      [wide-end] minmax(var(--site-gutter), 1fr) [full-end];
+  }
+
+  .article-header {
+    grid-column: content;
+    @apply mb-12 min-w-0;
+  }
+
+  .article-title {
+    @apply text-balance font-serif text-2xl font-normal text-foreground;
+  }
+  .article-meta {
+    @apply mt-3;
+  }
+
+  .article-prose {
+    @apply grid grid-cols-subgrid min-w-0 max-w-none;
+    grid-column: full;
+    overflow-wrap: anywhere;
+  }
+
+  /* One flow scale for blocks and their margin notes. More space before a
+     group than inside it; semantic neighbours override the default once. */
+  .article-prose [data-article-kind] {
+    --article-space: --spacing(6);
+  }
+  .article-prose
+    :is([data-article-kind="media"], [data-article-after="media"]) {
+    --article-space: --spacing(8);
+  }
+  .article-prose :is([data-article-kind="h3"], [data-article-kind="h4"]) {
+    --article-space: --spacing(8);
+  }
+  .article-prose
+    :is(
+      [data-article-kind="h1"],
+      [data-article-kind="h2"],
+      [data-article-kind="rule"]
+    ) {
+    --article-space: --spacing(12);
+  }
+  .article-prose [data-article-kind="list"][data-article-after="paragraph"],
+  .article-prose [data-article-after^="h"] {
+    --article-space: --spacing(3);
+  }
+  .article-prose [data-article-kind^="h"][data-article-after^="h"] {
+    --article-space: --spacing(4);
+  }
+  .article-prose
+    [data-article-kind="disclosure"][data-article-after="disclosure"] {
+    --article-space: --spacing(2);
+  }
+  .article-prose [data-article-after="rule"] {
+    --article-space: --spacing(8);
+  }
+  .article-prose [data-article-kind]:not([data-article-after]) {
+    --article-space: 0px;
+  }
+
+  .article-block {
+    grid-column: content;
+    @apply flow-root min-w-0;
+    margin-block-start: var(--article-space);
+  }
+  .article-block[data-article-wide] {
+    grid-column: wide;
+  }
+  .article-prose
+    :where(
+      p,
+      h1,
+      h2,
+      h3,
+      h4,
+      h5,
+      h6,
+      ul,
+      ol,
+      li,
+      figure,
+      blockquote,
+      pre,
+      details,
+      hr
+    ) {
+    margin-block: 0;
+  }
+  .article-prose .article-block > * {
+    margin-block: 0;
+  }
+
+  .article-prose :is(h1, h2) {
+    @apply font-serif text-xl font-normal text-foreground;
+  }
+  .article-prose :is(h3, h4, h5, h6) {
+    @apply font-sans text-base font-medium text-foreground;
+  }
+  .article-prose :is(h1, h2, h3, h4, h5, h6) {
+    @apply text-balance scroll-mt-8;
+  }
+  .article-prose strong {
+    @apply font-medium text-foreground;
+  }
+  .article-prose a:not(.github-embed) {
+    @apply text-foreground underline;
+    font-weight: inherit;
+    text-decoration-thickness: from-font;
+    text-decoration-skip-ink: auto;
+  }
+  .article-prose a:focus-visible {
+    @apply rounded-sm outline-2 outline-offset-4 outline-ring;
+  }
+  .article-prose a.heading-anchor {
+    @apply text-inherit no-underline;
+  }
+  .article-prose a.heading-anchor:hover {
+    @apply underline;
+  }
+
+  .article-prose :is(ul, ol) {
+    @apply ps-6;
+  }
+  .article-prose ul {
+    list-style-type: disc;
+  }
+  .article-prose ol {
+    list-style-type: decimal;
+  }
+  .article-prose li::marker {
+    @apply text-muted-foreground;
+  }
+  .article-prose li + li {
+    @apply mt-2;
+  }
+  .article-prose :is(li, blockquote, details) > * + * {
+    @apply mt-4;
+  }
+  .article-prose li > :is(ul, ol) {
+    @apply mt-2;
+  }
+  .article-prose .contains-task-list {
+    @apply list-none ps-0;
+  }
+  .article-prose .task-list-item {
+    @apply relative ps-6;
+  }
+  .article-prose .task-list-item > input {
+    @apply absolute start-0 top-2 m-0 size-3;
+  }
+
+  .article-prose :is(pre, code) {
+    @apply font-mono;
+  }
+  .article-prose code:not(pre code) {
+    @apply rounded bg-muted px-[0.3em] py-[0.1em] font-normal text-foreground;
+    font-size: var(--text-sm);
+    line-height: inherit;
+    box-decoration-break: clone;
+  }
+  .article-prose blockquote {
+    @apply border-s-2 border-muted-foreground/40 ps-4 font-normal not-italic;
+  }
+  .article-prose hr {
+    @apply border-border;
+  }
+
+  .article-prose img {
+    @apply mx-auto block h-auto max-w-full rounded-lg;
+    outline: 1px solid light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
+    outline-offset: -1px;
+  }
+  .article-prose figure > p:has(> img:only-child) {
+    @apply m-0;
+  }
+  .article-prose figcaption {
+    @apply mx-auto mt-3 text-start font-sans text-sm font-normal text-pretty text-muted-foreground;
+    max-width: var(--site-measure);
+  }
+  .article-prose .article-screenshot {
+    @apply mx-auto max-w-80;
+  }
+  .article-prose :is(.article-screenshot, .article-screenshot-grid) {
+    @apply scroll-mt-8;
+  }
+  .article-prose :is(.article-screenshot, .article-screenshot-grid) img {
+    @apply m-0 w-full;
+  }
+  .article-prose .article-screenshot-grid {
+    @apply mx-auto grid w-full gap-6;
+    max-width: var(--site-measure);
+    grid-template-columns: repeat(
+      auto-fit,
+      minmax(min(100%, --spacing(64)), 1fr)
+    );
+  }
+  .article-prose .article-screenshot-grid figure {
+    @apply m-0 min-w-0 w-full max-w-80 justify-self-center;
+  }
+
+  .article-prose details {
+    @apply text-base;
+    line-height: 1.5;
+  }
+  .article-prose summary {
+    @apply min-h-11 cursor-pointer py-3 font-sans text-sm font-normal text-pretty text-foreground;
+  }
+  .article-prose summary:hover {
+    @apply text-foreground underline;
+  }
+  .article-prose summary:focus-visible {
+    @apply rounded-sm outline-2 outline-offset-4 outline-ring;
+  }
+  .article-prose details > :not(summary) {
+    margin-inline-start: --spacing(4);
+  }
+  .article-prose details > summary + * {
+    @apply mt-3;
+  }
+
+  .article-block:has(> table) {
+    @apply overflow-x-auto rounded-lg border border-border;
+    overscroll-behavior-inline: contain;
+  }
+  .article-block:has(> table):focus-visible {
+    @apply outline-2 outline-offset-4 outline-ring;
+  }
+  .article-prose .article-chart {
+    background: #171717;
+  }
+
+  .article-prose table {
+    @apply w-full text-base;
+    border-collapse: collapse;
+    overflow-wrap: normal;
+    line-height: 1.5;
+  }
+  .article-prose :is(th, td) {
+    @apply px-4 py-3 text-start align-top;
+  }
+  .article-prose th {
+    @apply bg-muted font-medium text-foreground;
+  }
+  .article-prose tbody tr:not(:last-child),
+  .article-prose thead {
+    @apply border-b border-border;
+  }
+  .article-prose tbody tr:last-child {
+    @apply border-b-0;
+  }
+  .article-prose table code {
+    overflow-wrap: normal;
+  }
+
+  .article-prose :is(.code-block, .mermaid-block) {
+    @apply overflow-hidden rounded-lg border border-border bg-muted;
+  }
+  .dark .article-prose .code-block {
+    @apply bg-background;
+  }
+  .article-prose
+    :is(.code-block-toolbar, .github-code-embed-toolbar, .mermaid-toolbar) {
+    @apply m-0 flex min-h-12 max-w-none flex-wrap items-center justify-between gap-2 px-2 py-1 font-sans text-sm text-wrap;
+  }
+  .article-prose :is(.code-block-copy, .code-block-language, .mermaid-control) {
+    @apply inline-flex min-h-10 min-w-10 items-center justify-center gap-1.5 rounded px-2 py-2 font-sans text-sm font-normal text-muted-foreground;
+  }
+  .article-prose :is(.code-block-copy, .mermaid-control) {
+    @apply cursor-pointer;
+  }
+  .article-prose :is(.code-block-copy, .mermaid-control):hover:not(:disabled) {
+    @apply bg-background text-foreground;
+  }
+  .article-prose
+    :is(
+      .code-block-copy,
+      .code-block-language,
+      .mermaid-control
+    ):focus-visible {
+    @apply outline-2 outline-offset-1 outline-ring;
+  }
+  .article-prose .mermaid-control:disabled {
+    @apply cursor-default opacity-35;
+  }
+  .article-prose
+    :is(.code-block-copy, .code-block-language, .mermaid-control)
+    svg {
+    @apply size-4;
+    stroke-width: 1.5;
+  }
+  @media (pointer: coarse) {
+    .article-prose
+      :is(.code-block-copy, .code-block-language, .mermaid-control) {
+      @apply min-h-11 min-w-11;
+    }
+  }
+  .article-prose .code-block pre > code {
+    @apply text-sm;
+  }
+  .article-prose .github-embed-repository {
+    @apply whitespace-normal;
+    overflow-wrap: anywhere;
+  }
+  .article-prose .github-code-embed-source {
+    @apply h-auto min-h-10;
+  }
+  .article-prose .mermaid-toolbar-actions {
+    @apply min-w-0 max-w-full flex-wrap;
+  }
+  .article-prose .github-code-embed-source-label {
+    @apply whitespace-normal;
+    overflow-wrap: anywhere;
+  }
+  .article-prose :is(code[data-theme], code[data-theme] span) {
+    color: color-mix(in srgb, var(--shiki-light) 60%, var(--foreground));
+    font-style: normal;
+    font-weight: 400;
+  }
+  .dark .article-prose :is(code[data-theme], code[data-theme] span) {
+    color: color-mix(in srgb, var(--shiki-dark) 78%, var(--foreground));
+  }
+
+  .article-prose > .footnotes {
+    grid-column: content;
+    @apply mt-12 min-w-0 border-t border-border pt-6 text-sm;
+  }
+  .article-prose .footnotes :is(p + p, ol + ol) {
+    @apply mt-3;
+  }
+  .article-prose .footnotes p {
+    @apply text-pretty;
+  }
+  .article-prose .footnotes li + li {
+    @apply mt-4;
+  }
+  .article-prose .footnotes li,
+  .article-prose a[data-footnote-ref] {
+    @apply scroll-mt-8;
+  }
+  .article-prose a[data-footnote-ref] {
+    @apply no-underline;
+  }
+  .article-prose .footnotes .sr-only {
+    @apply m-0;
+  }
+
+  /* 39rem measure + 2 × (14rem note + 2rem gap + 1.5rem gutter). */
+  @container article (min-width: 75rem) {
+    .article-block {
+      grid-row: var(--article-row);
+    }
+    .article-prose > .footnotes {
+      display: contents;
+    }
+    .article-prose .footnotes > .article-sidenotes {
+      grid-column: content-end / full-end;
+      grid-row: var(--article-row) / span var(--article-span);
+      width: var(--article-note);
+      margin-inline-start: var(--article-gap);
+      margin-block-start: var(--article-space);
+      @apply self-start text-sm text-muted-foreground;
+    }
+    .article-prose .footnotes > ol:not(.article-sidenotes) {
+      grid-column: content;
+      @apply mt-12;
+    }
+  }
+
+  @media print {
+    .article-layout {
+      max-width: var(--site-measure);
+      margin-inline: auto;
+    }
+    .article-layout,
+    .article-prose {
+      display: block;
+    }
+    .article-header {
+      @apply mb-8;
+    }
+    .article-prose > .footnotes {
+      display: block;
+    }
+    .article-prose .footnotes > .article-sidenotes {
+      width: auto;
+      margin-inline: 0;
+      @apply mt-3;
+    }
+    .article-prose details::details-content {
+      content-visibility: visible;
+    }
+    .article-prose
+      :is(.code-block-copy, .mermaid-toolbar, .code-block-language) {
+      display: none;
+    }
+    .article-prose :is(h1, h2, h3, h4, h5, h6) {
+      break-after: avoid;
+    }
+    .article-prose :is(p, li) {
+      orphans: 3;
+      widows: 3;
+    }
+  }
+}

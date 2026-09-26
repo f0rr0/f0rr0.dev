@@ -9,9 +9,12 @@ export const metadata = {
 
 _Cross Posted from [Engineering @ Housing](https://medium.com/engineering-housing/how-we-built-our-react-native-app-3380a33811ac)_
 
-![housing.com/apps](./hero.png)
+<figure>
 
-[housing.com/apps](http://housing.com/apps)
+![Housing search on iOS and Android](./hero.png)
+
+  <figcaption><a href="http://housing.com/apps">housing.com/apps</a></figcaption>
+</figure>
 
 Last year we [launched our PWA](https://medium.com/engineering-housing/progressing-mobile-web-fac3efb8b454) with
 an aim to improve the experience of our users on slow and inconsistent network
@@ -23,7 +26,7 @@ too.
 > An ideal mobile application should be an extension of the mobile web instead of
 > being a replacement.
 
-#### Challenges
+## Challenges
 
 1. We are building experiences on 3 different platforms, namely: Android, iOS and
    the web (desktop and mobile).
@@ -36,7 +39,7 @@ too.
 4. Finally, we would have to build and strategically expand 3 separate teams of
    developers for each of the 3 platforms.
 
-#### Objectives
+## Objectives
 
 To overcome these challenges, we decided to place our bets on the newly emerging
 breed of cross-platform native apps built with a modern frontend stack in
@@ -54,7 +57,7 @@ JavaScript. We began implementing the apps with the following main objectives:
    engineers for the web and the dependence on platform specific native developers
    should be reduced. This is also in line with increasing the [bus factor](https://en.wikipedia.org/wiki/Bus_factor) at Housing.
 
-#### Stack
+## Stack
 
 - [react-navigation](http://reactnavigation.org/) — still in its early days but it
   solves the much debated navigation issue in a declarative manner using the
@@ -83,7 +86,7 @@ JavaScript. We began implementing the apps with the following main objectives:
   [AsyncStorage](https://facebook.github.io/react-native/docs/asyncstorage.html)
   layer.
 
-#### Tooling
+## Tooling
 
 ![](./tools.png)
 
@@ -98,9 +101,12 @@ well:
   deploying it internally so that designers have access to actual components as
   well.
 
+<figure>
+
 ![Styleguide (Consistent across Android and iOS)](./styleguide.png)
 
-Styleguide (Consistent across Android and iOS)
+  <figcaption>Styleguide (Consistent across Android and iOS)</figcaption>
+</figure>
 
 - [codepush](https://microsoft.github.io/code-push/) — this is one area where
   react native apps really shine. We use codepush for releasing unobtrusive over
@@ -128,7 +134,7 @@ Styleguide (Consistent across Android and iOS)
 > More than 90% of the app’s source code is in JavaScript while not compromising
 > on performance and quality.
 
-### Learnings
+## Learnings
 
 React Native is a **relatively** young platform. The community around it is
 still deliberating on best practices and the _right way_ to do certain things.
@@ -230,7 +236,7 @@ const statusBarMiddleware = ({ getState }) => next => (action) => {
 }
 ```
 
-### Build Pipeline
+## Build Pipeline
 
 ![](./pipeline.png)
 
@@ -304,7 +310,7 @@ This code sits beside the main application code. Since the CI pulls in a fresh
 version of our repo before each build, it is ridiculously easy to modify the
 build pipeline without breaking the CI.
 
-### Pro-Tips
+## Pro-Tips
 
 1. Read the [docs](https://facebook.github.io/react-native/) as well as the
    [release notes](https://github.com/facebook/react-native/releases).
@@ -319,7 +325,7 @@ build pipeline without breaking the CI.
 5. Always test on a real device.
 6. [Knowing React](https://facebook.github.io/react/) is a pre-requisite.
 
-### Acknowledgement
+## Acknowledgement
 
 _[Siddharth](https://twitter.com/f0rr0)_,
 _[Bhavir](https://twitter.com/shahbhavir)_,

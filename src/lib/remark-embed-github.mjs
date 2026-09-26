@@ -359,15 +359,15 @@ async function renderCodeReference(parsed, data) {
 }
 
 function renderShell({ content, href, label }) {
-  return `<a aria-label="${escapeHtml(label)}" class="github-embed flex min-w-0 flex-col gap-3 overflow-hidden rounded-lg border p-4 font-sans text-sm font-normal leading-5 no-underline bg-card border-border text-card-foreground hover:border-control-border-hover focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-3 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:fill-current [&_.github-embed-title]:font-medium [&_.github-embed-title]:leading-5 [&_.github-embed-description]:text-sm [&_.github-embed-description]:leading-5 [&_.github-embed-description]:text-muted-foreground [&_.github-embed-stats]:mt-auto [&_.github-embed-stats]:flex [&_.github-embed-stats]:flex-wrap [&_.github-embed-stats]:gap-4 [&_.github-embed-stats]:text-xs [&_.github-embed-stats]:leading-5 [&_.github-embed-stats]:text-muted-foreground [&_.github-embed-stats_>_span]:inline-flex [&_.github-embed-stats_>_span]:items-center [&_.github-embed-stats_>_span]:gap-1" href="${escapeHtml(href)}" rel="noreferrer noopener" target="_blank">${content}</a>`;
+  return `<a title="${escapeHtml(label)}" class="github-embed flex min-w-0 flex-col gap-3 overflow-hidden rounded-lg border p-4 font-sans text-sm font-normal leading-5 no-underline bg-card border-border text-card-foreground hover:border-control-border-hover focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-3 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:fill-current [&_.github-embed-title]:font-medium [&_.github-embed-title]:leading-5 [&_.github-embed-description]:text-sm [&_.github-embed-description]:leading-5 [&_.github-embed-description]:text-muted-foreground [&_.github-embed-stats]:mt-auto [&_.github-embed-stats]:flex [&_.github-embed-stats]:flex-wrap [&_.github-embed-stats]:gap-4 [&_.github-embed-stats]:text-sm [&_.github-embed-stats]:leading-5 [&_.github-embed-stats]:text-muted-foreground [&_.github-embed-stats_>_span]:inline-flex [&_.github-embed-stats_>_span]:items-center [&_.github-embed-stats_>_span]:gap-1" href="${escapeHtml(href)}" rel="noreferrer noopener" target="_blank">${content}</a>`;
 }
 
-// Align Geist’s visible lettering with the Octicon, not only its line box.
+// Align the visible lettering with the Octicon, not only its line box.
 function renderHeader(content, badge = "") {
   return `<span class="github-embed-header flex min-w-0 items-center gap-2 text-muted-foreground">
     ${icons.repository}
     <span class="github-embed-repository min-w-0 -translate-y-px truncate text-sm font-medium leading-5 text-foreground">${content}</span>
-    ${badge === "" ? "" : `<span class="shrink-0 rounded-full border px-2 text-xs leading-5 border-border">${badge}</span>`}
+    ${badge === "" ? "" : `<span class="shrink-0 rounded-full border px-2 text-sm leading-5 border-border">${badge}</span>`}
     <span class="ms-auto shrink-0 ps-2 text-foreground [&_svg]:size-5" title="GitHub">${icons.mark}</span>
   </span>`;
 }
@@ -394,7 +394,7 @@ function renderPullRequest(parsed, data) {
     content: `
       ${renderHeader(`${escapeHtml(parsed.owner)} / ${escapeHtml(parsed.repo)}`)}
       <span class="github-embed-title">${escapeHtml(data.title)} #${data.number}</span>
-      <span class="github-embed-meta flex flex-wrap items-center gap-2 text-xs leading-5 text-muted-foreground">
+      <span class="github-embed-meta flex flex-wrap items-center gap-2 text-sm leading-5 text-muted-foreground">
         <span class="github-embed-status github-embed-status-${status} inline-flex h-7 shrink-0 items-center gap-1 rounded-full bg-muted px-2 font-normal text-muted-foreground ${statusIconColors[status]}">${icons[status]}${status.charAt(0).toUpperCase() + status.slice(1)}</span>
         <span>${escapeHtml(data.user.login)} · <time datetime="${escapeHtml(statusDate)}">${dateFormatter.format(new Date(statusDate))}</time></span>
       </span>

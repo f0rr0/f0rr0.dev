@@ -11,7 +11,7 @@ export const metadata = {
 
 Written at Kerckhoff Coffee House ~ LA Westside
 
-#### Yet Another JavaScript Framework?
+## Yet Another JavaScript Framework?
 
 [Node.js](https://nodejs.org/en/about/) itself offers a
 [http](https://nodejs.org/docs/latest/doc/api/http.html#http_http) module which
@@ -21,7 +21,7 @@ API is very low-level. This is where frameworks like
 [Express](http://expressjs.com/), [Hapi](http://hapijs.com/),
 [Restify](http://restify.com/), and [Koa](http://koajs.com/) come in.
 
-#### Quick Word on Express
+## Quick Word on Express
 
 Express is undoubtedly the most popular Node.js application framework in use
 today. A quick check reveals that 10434 packages on
@@ -34,7 +34,7 @@ which eventually got acquired by IBM. The current lead maintainer of the project
 say](https://github.com/expressjs/express/issues/2844#issuecomment-173758490)
 about StrongLoop/IBM.
 
-#### Aloha Koa
+## Aloha Koa
 
 The initial commit for Koa was 3 years ago, by none other than the man himself —
 [TJ Holowaychuk](https://medium.com/u/bbb3c7ccb0a0). He described it back then
@@ -60,7 +60,7 @@ supported](https://bugs.chromium.org/p/v8/issues/detail?id=4483) natively in
 [V8](https://developers.google.com/v8/) (underlying engine behind the Node.js
 runtime) yet.
 
-#### Tools of the Trade
+## Tools of the Trade
 
 Since Node.js (V8) does not support `async` functions natively, we will use
 [Babel](https://babeljs.io/) to transpile them. JavaScript, as a language, is
@@ -75,7 +75,7 @@ To build our application, we will use the [Webpack](https://webpack.github.io/)
 module bundler which provides an infrastructure for building and transforming
 modules. It is discussed in detail in the subsequent sections.
 
-#### Talk is Cheap. Show Me the Code.
+## Talk is Cheap. Show Me the Code.
 
 The final GitHub repository is linked [here](https://github.com/f0rr0/koa-webpack-boilerplate). Before you begin hacking, make sure you have the latest version of Node.js
 [installed](https://nodejs.org/en/). I prefer to use
@@ -92,7 +92,7 @@ sudo n latest
 To use some npm commands without `sudo` you might have to [fix
 permissions](https://docs.npmjs.com/getting-started/fixing-npm-permissions).
 
-#### Boilerplate for Boilerplate
+## Boilerplate for Boilerplate
 
 We need to set up a minimal NPM package with a `package.json` file, a directory
 for source, and certain essential files for our development tools.
@@ -112,9 +112,16 @@ npm start
 
 If you want to be articulate and follow from scratch, the following GIF will help:
 
-![](./bootstrap.gif)
+<details>
+  <summary>Watch the project bootstrap walkthrough</summary>
 
-#### Unbundling Webpack
+![Watch the project bootstrap walkthrough](./bootstrap.gif)
+
+Close this disclosure to hide the animation.
+
+</details>
+
+## Unbundling Webpack
 
 Webpack was authored by JavaScript superhero [Tobias
 Koppers](https://github.com/sokra). It is used in the
@@ -232,7 +239,7 @@ process.binding("natives");
 
 This returns an object with all the native modules like `dns`, `domain`, `events`, `fs`, `http` etc.
 
-#### Dabble in Babel
+## Dabble in Babel
 
 Babel is used in the [wild](https://babeljs.io/users/) by the likes of Facebook, Netflix, Airbnb and Yahoo. As mentioned earlier, we will use Babel to transpile our ES6/7 code. This is accomplished from within webpack via the `babel-loader`. Our config looks for files ending in `.js` in the `./src` directory and loads them with `babel-loader`. Before you can use it though, you need to install it:
 
@@ -259,7 +266,7 @@ can use it:
 npm install -D babel-plugin-transform-async-to-generator
 ```
 
-#### Catch ’em All With Koa
+## Catch ’em All With Koa
 
 With our build tools in place, we can start writing the server finally. As mentioned earlier, Koa is a very minimal framework and does not offer much out of the box. Everything in Koa is middleware and there are quite a few of them. We will be using Koa 2 which can be installed with the `next` dist-tag. Go ahead and install Koa and a couple of middleware like so:
 
@@ -411,7 +418,7 @@ like so:
 
 ![](./stats.png)
 
-#### Do You Even HMR?
+## Do You Even HMR?
 
 If you play around with what we have so far, you’ll tend to notice that our workflow is still a little complicated. We need to manually restart our server whenever we make changes since a new bundle is generated. To get past that we may use a process manager ([pm2](http://pm2.keymetrics.io/), [nodemon](http://nodemon.io/), [StrongLoopPM](http://strong-pm.io/)) to watch our files and trigger a webpack build before restarting our server. This definitely removes the hassle of doing it manually. However, it works well if we are not doing anything stateful or don’t care about losing state in our server code. Go ahead and take a look at [Dan Abramov](https://medium.com/u/a3a8af6addc1)’s [react-hot-loader](https://gaearon.github.io/react-hot-loader/) if this doesn’t make sense. Let us leverage Webpack’s [Hot Module Replacement](https://webpack.github.io/docs/hot-module-replacement.html) API to hot patch our server side code. For now, we will restrict ourselves to the development environment.
 
@@ -435,9 +442,16 @@ tab as before. Make changes to the `stats.js` module and refresh your browser to
 see them live **without restarting the server**. The GIF below illustrates this
 in the terminal:
 
-![](./final.gif)
+<details>
+  <summary>Watch the completed application walkthrough</summary>
 
-#### Fin?
+![Watch the completed application walkthrough](./final.gif)
+
+Close this disclosure to hide the animation.
+
+</details>
+
+## Fin?
 
 HMR is theoretically possible in production but has not been tested enough. It
 is better to stick to a process manager when in production. On the development

@@ -9,7 +9,7 @@ test("deployment aliases never replace public identity, and only previews receiv
         "--eval",
         `const { default: config } = await import("./next.config.ts");
          const { siteConfig, publicUrl } = await import("./src/lib/site.ts");
-         console.log(JSON.stringify({ origin: siteConfig.url, article: publicUrl("/writing/example"), headers: await config.headers(), redirects: await config.redirects(), rewrites: await config.rewrites() }));`,
+         console.log(JSON.stringify({ origin: siteConfig.url, article: publicUrl("/writing/example"), headers: await config.headers(), redirects: await config.redirects(), rewrites: await config.rewrites?.() ?? [] }));`,
       ],
       {
         env: {
@@ -40,9 +40,7 @@ test("deployment aliases never replace public identity, and only previews receiv
       },
       { source: "/resume", destination: "/journey", permanent: true },
     ]);
-    expect(output.rewrites).toEqual([
-      { source: "/writing/:slug.md", destination: "/writing/:slug/markdown" },
-    ]);
+    expect(output.rewrites).toEqual([]);
     expect(output.headers).toEqual(
       deployment === "preview"
         ? [
@@ -242,8 +240,8 @@ test("blog metadata and JSON-LD share authored fields, URLs, images and dates", 
     );
     expect(schema.author).toMatchObject(metadata.authors[0]);
     expect(schema.keywords).toEqual(metadata.keywords);
-    expect(metadata.alternates.types).toMatchObject({
-      "text/markdown": `${metadata.alternates.canonical}.md`,
+    expect(metadata.alternates.types).toEqual({
+      "application/rss+xml": new URL("/rss.xml", siteConfig.url).href,
     });
     expect(JSON.stringify({ metadata, schema })).not.toMatch(/[—·]/);
   }

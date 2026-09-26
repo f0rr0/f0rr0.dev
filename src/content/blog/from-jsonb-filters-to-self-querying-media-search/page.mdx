@@ -16,13 +16,6 @@ Embeddings got me the first part. They could connect a question to an image desc
 
 In September 2024, I explored this through two TypeScript prototypes. One started with the structured content we already had. The other put a language model in front of media retrieval. The useful bit was where they met.
 
-<figure id="paper-illustration">
-
-![An editor compares a forearm illustration with the matching picture in a lesson, while setting aside a lower-leg image.](./choosing-a-teaching-image.webp)
-
-  <figcaption>An image of the right subject can still be the wrong choice for a lesson.</figcaption>
-</figure>
-
 ## Give the database a small vocabulary
 
 Our content already lived in two worlds. Status, version, organisation and project were ordinary relational fields. The shape of a question varied, so much of its content lived in PostgreSQL's [JSONB](https://www.postgresql.org/docs/current/datatype-json.html). Tags, media and collections had their own relationships.

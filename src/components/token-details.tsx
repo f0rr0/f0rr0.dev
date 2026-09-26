@@ -35,7 +35,7 @@ function Metric({
   return (
     <div className="min-w-0 py-2.5">
       <dt className="text-base text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-base font-light tabular-nums">
+      <dd className="mt-1 text-base font-normal tabular-nums">
         {value === null
           ? "—"
           : `${suffix === "%" ? percent.format(value) : compact.format(value)}${suffix}`}
@@ -108,7 +108,7 @@ function Tools({
   }
   return (
     <div
-      className="mt-12 grid gap-x-12 gap-y-12 md:grid-cols-2 md:gap-y-4"
+      className="mt-12 grid gap-12 md:grid-cols-2 md:gap-y-4"
       style={
         { "--ranking-rows": tokenPreferences.rankingLimit + 1 } as CSSProperties
       }
@@ -130,7 +130,7 @@ function Tools({
                 : "Reusable instructions for tasks like writing, design, and code review."
             }
             action={
-              <span className="font-ui text-sm text-muted-foreground tabular-nums">
+              <span className="text-sm text-muted-foreground tabular-nums">
                 {number.format(data.distinct)}{" "}
                 {data.distinct === 1
                   ? title.slice(0, -1).toLowerCase()
@@ -139,7 +139,7 @@ function Tools({
                 {id === "skills" ? "uses" : "calls"}
               </span>
             }
-            className="min-w-0 scroll-mt-8 md:row-span-[var(--ranking-rows)] md:grid md:grid-rows-subgrid [&>div:first-child]:mb-4 md:[&>div:first-child]:mb-0"
+            className="min-w-0 scroll-mt-8 md:row-span-(--ranking-rows) md:grid md:grid-rows-subgrid [&>div:first-child]:mb-4 md:[&>div:first-child]:mb-0"
           >
             <Ranking
               rows={data.rows
@@ -296,7 +296,11 @@ function Breakdowns({
     periods.length > 1 ? (
       <TabsList aria-label="Usage period" variant="line">
         {periods.map(([days, , label]) => (
-          <TabsTrigger key={days} value={days}>
+          <TabsTrigger
+            className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none"
+            key={days}
+            value={days}
+          >
             {label}
           </TabsTrigger>
         ))}

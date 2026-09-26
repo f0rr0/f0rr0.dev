@@ -89,13 +89,6 @@ export interface GitHubActivityPullRequestReference {
   repositoryId: string;
 }
 
-export interface GitHubActivityPullRequestSource {
-  commitShas: readonly string[];
-  commits: readonly GitHubCommit[];
-  membershipComplete: boolean;
-  pullRequest: GitHubPullRequest;
-}
-
 export interface GitHubActivityPullRequestMembershipSource {
   commitShas: readonly string[];
   commits: readonly GitHubCommit[];

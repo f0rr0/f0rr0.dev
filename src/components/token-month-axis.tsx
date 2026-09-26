@@ -19,7 +19,7 @@ export const TokenMonthAxis = ({
   return (
     <div
       aria-hidden="true"
-      className={`relative mt-2 h-4 max-sm:[&>span:nth-child(even)]:hidden ${className}`}
+      className={`relative mt-2 h-5 max-sm:[&>span:nth-child(even)]:hidden ${className}`}
     >
       {ticks.map((tick) => {
         const position =
@@ -29,7 +29,7 @@ export const TokenMonthAxis = ({
               Math.max(1, columns - 1);
         return (
           <span
-            className={`absolute -translate-x-1/2 font-sans text-xs text-muted-foreground ${position > 0.95 ? "-translate-x-full" : position < 0.05 ? "translate-x-0" : ""}`}
+            className={`absolute -translate-x-1/2 font-sans text-sm text-muted-foreground ${position > 0.95 ? "-translate-x-full" : position < 0.05 ? "translate-x-0" : ""}`}
             key={tick.day}
             style={{ left: `${String(position * 100)}%` }}
           >

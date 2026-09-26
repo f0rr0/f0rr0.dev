@@ -153,57 +153,6 @@ const transformJsxImage = (node, imports, importAliases, counterRef) => {
   srcAttribute.value = createIdentifierExpression(identifier);
 };
 
-const createImageManifest = (aliases) => ({
-  type: "mdxjsEsm",
-  value: "export const blogImages = {};",
-  data: {
-    estree: {
-      type: "Program",
-      sourceType: "module",
-      body: [
-        {
-          type: "ExportNamedDeclaration",
-          specifiers: [],
-          source: null,
-          declaration: {
-            type: "VariableDeclaration",
-            kind: "const",
-            declarations: [
-              {
-                type: "VariableDeclarator",
-                id: { type: "Identifier", name: "blogImages" },
-                init: {
-                  type: "ObjectExpression",
-                  properties: [...aliases].map(([url, identifier]) => ({
-                    type: "Property",
-                    kind: "init",
-                    method: false,
-                    shorthand: false,
-                    computed: false,
-                    key: {
-                      type: "Literal",
-                      value: url.startsWith("@/../public")
-                        ? url.slice("@/../public".length)
-                        : url,
-                    },
-                    value: {
-                      type: "MemberExpression",
-                      computed: false,
-                      optional: false,
-                      object: { type: "Identifier", name: identifier },
-                      property: { type: "Identifier", name: "src" },
-                    },
-                  })),
-                },
-              },
-            ],
-          },
-        },
-      ],
-    },
-  },
-});
-
 const remarkStaticImageImports = () => (tree) => {
   const imports = [];
   const importAliases = new Map();
@@ -255,11 +204,7 @@ const remarkStaticImageImports = () => (tree) => {
   });
 
   if (imports.length > 0 && Array.isArray(tree.children)) {
-    tree.children = [
-      ...imports,
-      createImageManifest(importAliases),
-      ...tree.children,
-    ];
+    tree.children = [...imports, ...tree.children];
   }
 };
 

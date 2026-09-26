@@ -19,21 +19,22 @@ export function SiteShell({
   currentPath = activeHref ?? "/",
 }: Readonly<SiteShellProps>) {
   return (
-    <div className="flex min-h-screen flex-col pb-[calc(5rem+env(safe-area-inset-bottom))] print:pb-0 bg-background font-sans text-foreground antialiased">
+    <div className="flex min-h-screen flex-col pb-[env(safe-area-inset-bottom)] print:pb-0 bg-background font-sans text-foreground antialiased">
       <a
-        className="sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-50 focus:rounded-sm focus:bg-background focus:p-3 focus:outline-2 focus:outline-ring"
+        className="sr-only focus:not-sr-only focus:fixed focus:inset-s-4 focus:top-4 focus:z-50 focus:rounded-sm focus:bg-background focus:p-3 focus:outline-2 focus:outline-ring"
         href="#main-content"
       >
         Skip to content
       </a>
       <SiteHeader activeHref={activeHref} currentPath={currentPath} />
       {children}
-      <SiteFooter />
-      <AskAiWidget
-        key={askAiContext?.prompt ?? "profile"}
-        profilePrompt={buildAskAboutMePrompt()}
-        pageContext={askAiContext}
-      />
+      <SiteFooter>
+        <AskAiWidget
+          key={askAiContext?.prompt ?? "profile"}
+          profilePrompt={buildAskAboutMePrompt()}
+          pageContext={askAiContext}
+        />
+      </SiteFooter>
     </div>
   );
 }

@@ -3,13 +3,13 @@ import { Star, GitFork } from "lucide-react";
 import { CodexStats } from "@/components/codex-stats";
 import { GitHubTimeline } from "@/components/github-timeline";
 import { LanguageIcon } from "@/components/language-icon";
-import { SiteMain, SiteSection } from "@/components/site-page";
-import { SiteShell } from "@/components/site-shell";
 import {
   HoverCardGroup,
   HoverCardContent,
   HoverCardTrigger,
-} from "@/components/ui/hover-card";
+} from "@/components/site-hover-card";
+import { SiteMain, SiteSection } from "@/components/site-page";
+import { SiteShell } from "@/components/site-shell";
 import { WritingList } from "@/components/writing-list";
 import { homeIntroduction, projectEditorial } from "@/content/home";
 import { pages } from "@/content/pages";
@@ -39,20 +39,20 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
       title="Open source"
     >
       <HoverCardGroup>
-        <ol className="site-list divide-y divide-border">
+        <ol className="divide-y divide-border">
           {projects.map((project) => (
             <li key={project.name}>
               <HoverCardTrigger
                 payload={
                   <HoverCardContent side="left">
                     <div className="p-4">
-                      <p className="break-words">{project.name}</p>
+                      <p className="wrap-break-word">{project.name}</p>
                       <p className="mt-2 text-muted-foreground">
                         {projectEditorial[
                           project.name as keyof typeof projectEditorial
                         ]?.description ?? project.description}
                       </p>
-                      <div className="site-row-meta flex min-h-6 shrink-0 items-center gap-2 text-xs text-muted-foreground tabular-nums mt-2 justify-start">
+                      <div className="site-row-meta flex min-h-6 shrink-0 items-center gap-2 text-sm text-muted-foreground tabular-nums mt-2 justify-start">
                         {project.language === null ? null : (
                           <LanguageIcon language={project.language} />
                         )}
@@ -78,18 +78,18 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
                     </div>
                   </HoverCardContent>
                 }
-                className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group"
+                className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-3 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group"
                 href={project.url}
                 rel="noopener noreferrer"
                 target="_blank"
               >
-                <span className="site-row-title min-w-0 truncate font-light [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
+                <span className="min-w-0 truncate font-normal group-hover:underline">
                   {project.name}
                 </span>
                 {project.stars === null ? null : (
                   <span
                     aria-label={`${String(project.stars)} GitHub stars`}
-                    className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground tabular-nums"
+                    className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums"
                   >
                     <Star aria-hidden="true" className="size-3" />
                     {project.stars}

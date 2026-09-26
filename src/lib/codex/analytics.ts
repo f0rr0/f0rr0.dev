@@ -616,4 +616,3 @@ export function buildTokenDetails(
 }
 
 export type TokenDetails = ReturnType<typeof buildTokenDetails>;
-export type SourceStatus = NonNullable<TokenDetails["activity"]>["status"];

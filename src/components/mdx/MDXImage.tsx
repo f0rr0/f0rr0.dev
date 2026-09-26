@@ -16,8 +16,7 @@ type MDXImageProps = Omit<
   loading?: "lazy" | "eager";
 };
 
-const DEFAULT_SIZES =
-  "auto, (min-width: 1024px) 672px, (min-width: 768px) 704px, (min-width: 640px) calc(100vw - 64px), calc(100vw - 32px)";
+const DEFAULT_SIZES = "auto, (min-width: 72rem) 64rem, calc(100vw - 2rem)";
 
 const parseDimension = (value?: number | string) => {
   if (typeof value === "number") {

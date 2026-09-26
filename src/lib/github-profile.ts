@@ -9,7 +9,7 @@ import {
 } from "@/lib/github-profile-core";
 import type { GitHubProfile } from "@/lib/github-profile-core";
 
-export type { GitHubProfile, GitHubProject } from "@/lib/github-profile-core";
+export type { GitHubProfile } from "@/lib/github-profile-core";
 
 const GITHUB_LOGIN = primaryGitHubProfile.username;
 const GITHUB_CACHE_SECONDS = 60 * 60 * 12;

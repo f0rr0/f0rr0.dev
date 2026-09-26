@@ -4,7 +4,7 @@ import {
   TooltipContent,
   TooltipGroup,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/site-tooltip";
 
 export function InfoLabel({
   label,

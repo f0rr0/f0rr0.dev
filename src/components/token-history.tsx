@@ -74,7 +74,7 @@ function HistoryPlot({
     <>
       <ChartContainer
         config={config}
-        className="h-54 w-full aspect-auto sm:h-66 [&_.recharts-surface]:overflow-visible [&_.recharts-surface]:focus-visible:outline-2 [&_.recharts-surface]:focus-visible:outline-ring"
+        className="text-sm h-54 w-full aspect-auto sm:h-66 [&_.recharts-surface]:overflow-visible [&_.recharts-surface]:focus-visible:outline-2 [&_.recharts-surface]:focus-visible:outline-ring"
       >
         <LineChart
           accessibilityLayer
@@ -97,8 +97,8 @@ function HistoryPlot({
               strokeWidth: 3,
               paintOrder: "stroke",
               fill: "var(--muted-foreground)",
-              fontSize: 12,
-              fontWeight: 300,
+              fontSize: 14,
+              fontWeight: 400,
             }}
             tickCount={3}
             domain={[0, "auto"]}
@@ -146,7 +146,7 @@ function HistoryPlot({
                 value: annotation,
                 position: "insideTopLeft",
                 fill: "var(--foreground)",
-                fontSize: 12,
+                fontSize: 14,
               }}
             />
           )}
@@ -162,7 +162,7 @@ function HistoryPlot({
                       position: "left",
                       offset: 16,
                       fill: "var(--foreground)",
-                      fontSize: 12,
+                      fontSize: 14,
                     }
                   : undefined
               }
@@ -178,7 +178,7 @@ function HistoryPlot({
               fill="var(--foreground)"
               stroke="var(--background)"
               label={{
-                value: peakLabel,
+                value: peakLabel.split(" · ")[0],
                 position:
                   rows.findIndex((row) => row.day === cumulativePeak.day) >
                   rows.length / 2
@@ -186,7 +186,7 @@ function HistoryPlot({
                     : "right",
                 offset: 16,
                 fill: "var(--foreground)",
-                fontSize: 12,
+                fontSize: 14,
               }}
             />
           ) : null}
@@ -221,8 +221,18 @@ export function TokenHistoryChart({
         className=""
         action={
           <TabsList aria-label="Token history view" variant="line">
-            <TabsTrigger value="daily">Daily</TabsTrigger>
-            <TabsTrigger value="cumulative">Cumulative</TabsTrigger>
+            <TabsTrigger
+              className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none"
+              value="daily"
+            >
+              Daily
+            </TabsTrigger>
+            <TabsTrigger
+              className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none"
+              value="cumulative"
+            >
+              Cumulative
+            </TabsTrigger>
           </TabsList>
         }
       >

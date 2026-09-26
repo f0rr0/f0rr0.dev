@@ -16,13 +16,6 @@ I started with Brave Core `1.51.40`, on Chromium `111.0.5563.64`. The immediate 
 
 Brave offered a great deal that would have been wasteful to reproduce: Chromium integration, selected privacy infrastructure, and years of decisions about carrying a browser downstream. It also arrived as a product with assumptions of its own. Before we invested in Veera's product surface, I needed to know whether a small team could separate those assumptions from the platform beneath them and understand what remained.
 
-<figure id="paper-illustration">
-
-![Paper hands lift browser interface panels to reveal layered pages and source documents beneath.](./browser-teardown.webp)
-
-  <figcaption>Taking features out exposed the paths that assembled the browser.</figcaption>
-</figure>
-
 ## Taking Brave apart
 
 The first thing to understand was how Brave sits on top of Chromium. [Brave Core](https://github.com/brave/brave-core) is an overlay: a set of changes applied to an upstream browser. It pins an upstream revision, applies patches, adds its own [GN](https://gn.googlesource.com/gn/+/main/docs/quick_start.md) targets, and substitutes selected source files during compilation. Brave's own [patching and `chromium_src` documentation](https://github.com/brave/brave-core/blob/master/docs/patching_and_chromium_src.md) is the best concise explanation of this arrangement.

@@ -5,7 +5,7 @@ import { buildAskAboutMePrompt } from "../src/lib/resume.ts";
 import { publicUrl } from "../src/lib/site.ts";
 
 const context = {
-  sourceUrl: "https://f0rr0.dev/writing/a-post.md",
+  sourceUrl: "https://f0rr0.dev/writing/a-post",
   title: "A post & its source",
 };
 

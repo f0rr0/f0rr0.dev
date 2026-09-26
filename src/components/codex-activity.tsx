@@ -1,13 +1,13 @@
 "use client";
 
 import { SiteSection } from "@/components/site-page";
-import { TokenMonthAxis } from "@/components/token-month-axis";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   TooltipContent,
   TooltipGroup,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/site-tooltip";
+import { TokenMonthAxis } from "@/components/token-month-axis";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { PublicCodexSeries } from "@/lib/codex/stats";
 import { formatDate } from "@/lib/date";
 
@@ -78,7 +78,7 @@ const ActivityHeatmap = ({
                 </TooltipContent>
               }
               aria-label={`${dayLabel}: ${number.format(tokens)} tokens`}
-              className={`aspect-square min-w-0 rounded-[0.2rem] outline-none motion-safe:transition-transform motion-safe:hover:scale-125 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring ${color}`}
+              className={`aspect-square min-w-0 rounded-heatmap outline-none motion-safe:transition-transform motion-safe:hover:scale-125 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring ${color}`}
               tabIndex={tokens === 0 ? -1 : 0}
               type="button"
             />
@@ -87,7 +87,7 @@ const ActivityHeatmap = ({
       </div>
       <TokenMonthAxis calendarOffset={leadingDays} values={series.values} />
       {series.partial ? (
-        <figcaption className="mt-1 font-sans text-xs text-muted-foreground">
+        <figcaption className="mt-1 font-sans text-sm text-muted-foreground">
           Partial history
         </figcaption>
       ) : null}
@@ -128,7 +128,11 @@ export function CodexActivity({
           action={
             <TabsList aria-label="Token activity interval" variant="line">
               {views.map(([mode, label]) => (
-                <TabsTrigger key={mode} value={mode}>
+                <TabsTrigger
+                  className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none"
+                  key={mode}
+                  value={mode}
+                >
                   {label}
                 </TabsTrigger>
               ))}

@@ -55,7 +55,6 @@ export function buildBlogMetadata(post: BlogPost) {
     image: { alt: post.metadata.title, url: publicUrl(`${path}/share-image`) },
     alternates: {
       types: {
-        "text/markdown": publicUrl(`${path}.md`),
         "application/rss+xml": publicUrl("/rss.xml"),
       },
     },

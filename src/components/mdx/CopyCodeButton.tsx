@@ -8,7 +8,7 @@ import {
   TooltipContent,
   TooltipGroup,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/site-tooltip";
 import { track } from "@/lib/analytics";
 
 type CopyStatus = "copied" | "error" | "idle";

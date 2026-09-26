@@ -1,4 +1,5 @@
 import { Rss } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { CopyEmailButton } from "@/components/copy-email-button";
 import {
@@ -8,13 +9,13 @@ import {
 } from "@/content/resume";
 import { publicUrl } from "@/lib/site";
 
-export function SiteFooter() {
+export function SiteFooter({ children }: Readonly<{ children?: ReactNode }>) {
   return (
-    <footer className="site-container mx-auto w-full max-w-192 px-4 sm:px-8 lg:px-12 pb-8 print:hidden">
+    <footer className="site-container pb-8 print:hidden">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-border pt-4">
         <nav
           aria-label="Contact and feed"
-          className="flex flex-wrap items-center gap-x-6 gap-y-2"
+          className="flex min-w-0 max-w-full flex-wrap items-center gap-x-6 gap-y-2"
         >
           <CopyEmailButton email={resumeData.person.email} />
           {socialProfiles
@@ -52,6 +53,7 @@ export function SiteFooter() {
             RSS
           </a>
         </nav>
+        {children}
       </div>
     </footer>
   );

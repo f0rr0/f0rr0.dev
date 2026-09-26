@@ -13,10 +13,7 @@ interface SiteMainProps {
 export function SiteMain({ children, className }: Readonly<SiteMainProps>) {
   return (
     <main
-      className={cn(
-        "site-container mx-auto w-full max-w-192 px-4 sm:px-8 lg:px-12 flex-1 pb-12 pt-8",
-        className
-      )}
+      className={cn("site-container flex-1 pb-12 pt-8", className)}
       id="main-content"
     >
       {children}
@@ -27,7 +24,7 @@ export function SiteMain({ children, className }: Readonly<SiteMainProps>) {
 export function SiteSection({
   action,
   children,
-  className = "home-section mt-12 [scroll-margin-top:2rem]",
+  className = "mt-12 scroll-mt-8",
   heading: Heading = "h2",
   description,
   href,
@@ -51,7 +48,10 @@ export function SiteSection({
     <section aria-labelledby={`${id}-title`} className={className} id={id}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <Heading
-          className="section-title font-serif text-2xl font-normal text-foreground"
+          className={cn(
+            "font-serif font-normal text-foreground",
+            Heading === "h1" ? "text-2xl" : "text-xl"
+          )}
           id={`${id}-title`}
         >
           {description === undefined ? (
@@ -64,7 +64,7 @@ export function SiteSection({
           {action}
           {href === undefined ? null : (
             <Link
-              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-sm font-ui text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
               href={href}
               prefetch={false}
               target={external ? "_blank" : undefined}

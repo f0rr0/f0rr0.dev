@@ -3,19 +3,19 @@
 import { CircleDot, FolderGit2, LockKeyhole } from "lucide-react";
 import Image from "next/image";
 
+import { DateTime } from "@/components/date-time";
 import { LanguageIcon } from "@/components/language-icon";
-import { LocalDateTime } from "@/components/local-date-time";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
   DisclosureChevron,
-} from "@/components/ui/collapsible";
+} from "@/components/site-collapsible";
 import {
   TooltipContent,
   TooltipGroup,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/site-tooltip";
 import { dateKey, formatDate, WORK_LOG_TIME_ZONE } from "@/lib/date";
 import {
   getVisibleGitHubActivityDays,
@@ -70,7 +70,7 @@ function RepositoryIdentity({
           />
         )}
         {isPrivate && repository.avatarUrl !== null ? (
-          <span className="absolute -end-0.5 -bottom-0.5 grid size-3.5 place-items-center rounded-full bg-background ring-1 ring-background">
+          <span className="absolute -inset-e-0.5 -bottom-0.5 grid size-3.5 place-items-center rounded-full bg-background ring-1 ring-background">
             <LockKeyhole className="size-2.5" />
           </span>
         ) : null}
@@ -91,7 +91,7 @@ function DiffCounters({
   facts: Pick<PublicGitHubWorkUnitFacts, "additions" | "deletions">;
 }>) {
   return (
-    <span className="inline-flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+    <span className="inline-flex items-center gap-2 text-sm text-muted-foreground tabular-nums">
       <span className="text-[light-dark(oklch(0.48_0.12_155),oklch(0.75_0.13_155))]">
         <span className="sr-only">Added </span>+
         {countFormatter.format(facts.additions)}
@@ -110,7 +110,7 @@ function WorkUnitFacts({
   const commits = `${countFormatter.format(facts.ownedCommitCount)} ${facts.ownedCommitCount === 1 ? "commit" : "commits"}`;
   const files = `${countFormatter.format(facts.uniqueFileCount)} ${facts.uniqueFileCount === 1 ? "file" : "files"}`;
   return (
-    <div className="site-row-meta flex min-h-6 shrink-0 items-center gap-2 text-xs text-muted-foreground tabular-nums flex-wrap justify-start">
+    <div className="site-row-meta flex min-h-6 shrink-0 items-center gap-2 text-sm text-muted-foreground tabular-nums flex-wrap justify-start">
       <span>
         {commits} · {files}
       </span>
@@ -154,17 +154,18 @@ function WorkUnitRow({
           <CollapsibleTrigger className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group cursor-pointer" />
         }
       >
-        <span className="site-row-title min-w-0 truncate font-light [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
+        <span className="min-w-0 font-normal disclosure-title group-hover:underline">
           {headline}
         </span>
-        <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground tabular-nums">
+        <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
           <span className="hidden sm:inline-flex">
             <DiffCounters facts={item.facts} />
           </span>
-          <LocalDateTime
+          <DateTime
             className="whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
+            timeZone={WORK_LOG_TIME_ZONE}
           />
           <DisclosureChevron />
         </span>
@@ -196,14 +197,15 @@ function IssueRow({
         target={item.destination === null ? undefined : "_blank"}
         title={item.title}
       >
-        <span className="site-row-title min-w-0 truncate font-light [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
+        <span className="min-w-0 truncate font-normal group-hover:underline">
           {item.title}
         </span>
-        <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground tabular-nums">
-          <LocalDateTime
+        <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
+          <DateTime
             className="whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
+            timeZone={WORK_LOG_TIME_ZONE}
           />
           <CircleDot aria-hidden="true" className="size-4" />
         </span>
@@ -235,7 +237,7 @@ function RepositoryGroup({
       <h4 className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
         <RepositoryIdentity repository={group.repository} />
       </h4>
-      <ol className="site-list divide-y divide-border">
+      <ol className="divide-y divide-border">
         {visibleItems.map((item) => (
           <ActivityItem item={item} key={item.id} />
         ))}
@@ -243,14 +245,14 @@ function RepositoryGroup({
       {hiddenItems.length === 0 ? null : (
         <Collapsible>
           <CollapsibleContent>
-            <ol className="site-list divide-y divide-border border-t border-border">
+            <ol className="divide-y divide-border border-t border-border">
               {hiddenItems.map((item) => (
                 <ActivityItem item={item} key={item.id} />
               ))}
             </ol>
           </CollapsibleContent>
           <CollapsibleTrigger className="site-row grid min-h-11 w-full grid-cols-[minmax(0,max-content)_auto] items-start justify-start gap-x-1.5 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group/more cursor-pointer pt-0">
-            <span className="site-row-title min-w-0 truncate font-light [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none text-muted-foreground">
+            <span className="min-w-0 truncate font-normal text-muted-foreground">
               <span className="group-data-panel-open/more:hidden">
                 Show {countFormatter.format(hiddenItems.length)} more
               </span>
@@ -258,7 +260,7 @@ function RepositoryGroup({
                 Show less
               </span>
             </span>
-            <span className="site-row-meta flex translate-y-px min-h-6 shrink-0 items-center justify-end text-xs text-muted-foreground tabular-nums">
+            <span className="site-row-meta flex translate-y-px min-h-6 shrink-0 items-center justify-end text-sm text-muted-foreground tabular-nums">
               <DisclosureChevron />
             </span>
           </CollapsibleTrigger>
@@ -290,22 +292,19 @@ function GitHubActivityDay({
   );
   return (
     <section aria-labelledby={`activity-day-${day.day}`}>
-      <header className="site-row min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring work-log-day-header flex flex-wrap rounded-none border-y border-border py-2">
-        <h3 className="site-row-meta flex min-h-6 shrink-0 items-center gap-1 text-xs text-muted-foreground tabular-nums justify-start font-medium sm:gap-2">
+      <header className="site-row min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring flex flex-wrap rounded-none border-y border-border py-2">
+        <h3 className="site-row-meta flex min-h-6 shrink-0 items-center gap-1 text-sm text-muted-foreground tabular-nums justify-start font-medium sm:gap-2">
           <time
-            className="work-log-date font-mono font-normal uppercase tracking-tight sm:tracking-wider"
+            className="font-sans font-normal"
             dateTime={day.day}
             id={`activity-day-${day.day}`}
           >
             {formatDate(day.day, "weekday")}
           </time>
-          <span title={`Days are grouped in ${WORK_LOG_TIME_ZONE}`}>
-            {WORK_LOG_TIME_ZONE}
-          </span>
         </h3>
         <dl
           aria-label={`Totals for ${day.day}`}
-          className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground tabular-nums ms-auto whitespace-nowrap"
+          className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums ms-auto whitespace-nowrap"
         >
           <div>
             <dt className="sr-only">Commits across repositories</dt>

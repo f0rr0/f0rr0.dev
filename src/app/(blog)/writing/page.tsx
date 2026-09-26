@@ -20,7 +20,7 @@ export default async function BlogIndexPage() {
       askAiContext={{
         label: "My writing",
         title: `${siteConfig.name}’s writing`,
-        prompt: `Read ${publicUrl("/llms.txt")} and ${publicUrl(pages.writing.path)}. Help me explore ${siteConfig.name}’s published articles. Recommend an article to start with, then answer my questions using the linked Markdown posts as sources. Cite the articles you use and say if you cannot access them.`,
+        prompt: `Read ${publicUrl("/llms.txt")} and ${publicUrl(pages.writing.path)}. Help me explore ${siteConfig.name}’s published articles. Recommend an article to start with, then answer my questions using the linked articles as sources. Cite the articles you use and say if you cannot access them.`,
       }}
     >
       <JsonLd data={buildBlogCollectionJsonLd(posts)} />

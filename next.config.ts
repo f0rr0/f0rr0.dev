@@ -21,6 +21,9 @@ const nextConfig: NextConfig = {
         ]
       : [],
   experimental: {
+    // Reused compiler output has served stale Tailwind theme values.
+    turbopackFileSystemCacheForBuild: false,
+    turbopackFileSystemCacheForDev: false,
     useTypeScriptCli: true,
   },
   images: {
@@ -48,7 +51,6 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/": blogSourceFiles,
     "/writing/[slug]": blogImageFiles,
-    "/writing/[slug]/markdown": blogSourceFiles,
     "/writing/[slug]/opengraph-image": blogImageFiles,
     "/writing/[slug]/share-image": blogImageFiles,
     "/writing/[slug]/twitter-image": blogImageFiles,
@@ -70,12 +72,6 @@ const nextConfig: NextConfig = {
     },
     { source: "/resume", destination: "/journey", permanent: true },
   ],
-  rewrites: async () => [
-    {
-      destination: "/writing/:slug/markdown",
-      source: "/writing/:slug.md",
-    },
-  ],
 };
 
 const remarkStaticImageImports = new URL(
@@ -86,6 +82,11 @@ const remarkMermaid = new URL("src/lib/remark-mermaid.mjs", import.meta.url)
   .pathname;
 const remarkEmbedGitHub = new URL(
   "src/lib/remark-embed-github.mjs",
+  import.meta.url
+).pathname;
+
+const rehypeArticleGrid = new URL(
+  "src/lib/rehype-article-grid.mjs",
   import.meta.url
 ).pathname;
 
@@ -115,6 +116,7 @@ const withMDX = createMDX({
           keepBackground: false,
         },
       ],
+      rehypeArticleGrid,
     ],
     remarkPlugins: [
       remarkStaticImageImports,

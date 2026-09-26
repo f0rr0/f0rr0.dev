@@ -18,13 +18,6 @@ One Saturday in 2025, Hinge was showing me one profile at a time. I wanted to se
 
 The first client fetched the recommendation feeds, joined them to profiles and media, and saved the information needed to act later. It gave me the queue I wanted: I could look without making a choice just to move the interface along.
 
-<figure id="paper-illustration">
-
-![A hand spreads five fictional profile cards while another edits a separate conversation draft with a pencil.](./queue-on-my-terms.webp)
-
-  <figcaption>A queue gave me room to look, leave, and choose later.</figcaption>
-</figure>
-
 ## A card is a join
 
 A recommendation card wasn't a card on the wire. The feed carried a subject identifier, an origin, and a rating token needed for a later like or skip. Profile details and media came from separate requests. Chat crossed into Sendbird, with its own credentials, REST resources, and WebSocket session. Mixing up any of those joins could show the right photo beside the wrong action token, which is the sort of bug one notices rather quickly.

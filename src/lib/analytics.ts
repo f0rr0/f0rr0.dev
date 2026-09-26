@@ -15,7 +15,6 @@ interface AnalyticsEvents {
     placement: string;
   };
   ask_ai_clicked: { provider: string; placement: string };
-  markdown_opened: { destination_path: string; placement: string };
   resume_download_clicked: { destination_path: string; placement: string };
   article_depth_reached: { article_slug: string; depth_percent: number };
   email_copied: { method: "clipboard" | "fallback" };
@@ -95,12 +94,6 @@ export function classifyLink(href: string, origin: string) {
     return { event: "ask_ai_clicked" as const, properties: { provider } };
   }
   if (url.origin === origin) {
-    if (url.pathname.endsWith(".md")) {
-      return {
-        event: "markdown_opened" as const,
-        properties: { destination_path: url.pathname },
-      };
-    }
     if (url.pathname.endsWith(".pdf")) {
       return {
         event: "resume_download_clicked" as const,
