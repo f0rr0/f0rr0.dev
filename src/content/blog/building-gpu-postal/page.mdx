@@ -12,8 +12,6 @@ Most addresses are short. That makes them a tempting target for a small model: t
 
 I built [gpu-postal](https://github.com/f0rr0/gpu-postal) to split pasted address text into editable fields in the browser. The [demo](https://gpu-postal.f0rr0.dev/) runs the model locally with WebGPU. There is no API key, inference server, Wasm runtime or CPU fallback.
 
-![Address text passes through a compact WebGPU parser and returns editable fields.](./opengraph-image.webp)
-
 The current release is a **US-only**, 154,446-parameter model that returns original text spans for `street_address`, `locality`, `city`, `district`, `state`, `postcode` and `country`. It fills fields for you to review. It does not verify that an address exists or that it is deliverable. It can also be wrong about whether the input is an address at all.
 
 I wanted the whole thing to download with a page and run on the GPU. Once that part worked, the harder question was whether the parser was any good.
@@ -166,17 +164,6 @@ The runtime has a small, fixed contract:
 4. Read back the field emissions.
 5. Run the CRF's Viterbi decoder on the CPU.
 6. Convert BIO paths to UTF-16 spans over the original string.
-
-<figure>
-  <Image
-    src="./runtime-quantization.webp"
-    alt="A paper-cut diagram showing compact int5 weight codes being restored to float32, processed by a WGSL WebGPU compute pass, then read back to TypeScript for Viterbi decoding and UTF-16 spans."
-  />
-  <figcaption>
-    Int5 describes the stored weights. The browser restores them to float32 before
-    the WGSL compute pass, then leaves the small structured decoder in TypeScript.
-  </figcaption>
-</figure>
 
 The fixed shape keeps the runtime small. There is no operator registry, dynamic graph or backend selector to maintain. The trade-off is that this is not a general model runner. It is one parser with one model format.
 

@@ -16,13 +16,6 @@ My first implementation had reservations, captures, releases, microcredits, and 
 
 Getting there involved deciding what a credit meant, which state deserved to exist, and what an error actually told me.
 
-<figure>
-
-![Two couriers bring unmarked job slips to a shared workshop till holding a lone paper token.](./competing-requests.webp)
-
-  <figcaption>Both requests reach for the same remaining balance.</figcaption>
-</figure>
-
 ## Make a credit mean something
 
 I pegged one Namefi AI Credit to one US cent. A purchase of 1,000 credits represents $10; a 200-credit operation costs $2. The purchase amount and the credit quantity now use the same scale.
@@ -78,13 +71,6 @@ For a successful job, stop after the second row. There is no settlement entry ju
 
 The customer-visible trade-off is real: the amount is spent while work is running. If failure handling is delayed, the refund is delayed too. I also gave up partial capture in favour of a full refund of the original charge. This fits the current fixed-price operations; it would need revisiting for open-ended usage or partial-delivery pricing.
 
-<figure>
-
-![A workshop clerk returns a token after a failed print job while receipts marked Paid and Returned remain together in the ledger.](./charge-and-refund.webp)
-
-  <figcaption>The return gets a new entry. The earlier charge remains in the record.</figcaption>
-</figure>
-
 ## Does the minus sign belong in the row?
 
 The earlier ledger stored signed deltas for both balance and reservation changes. A reserve increased the reserved delta without moving the balance. A capture decreased both. Summing a column gave its projection directly.
@@ -117,13 +103,6 @@ I kept two accounting tables: an append-only ledger and a per-user balance proje
 The balance projection is useful because the UI and admission path need the current balance without asking every caller to sum a user's entire history. But giving application code two writes—append an entry, update a balance—also gives it two things to keep in agreement.
 
 In the latest implementation, an `AFTER INSERT` ledger trigger updates the account in the same transaction. The projection is named `ai_credit_readonly_accounts`, and direct writes are rejected. Separate triggers reject ledger updates, deletes, and truncation. A correction goes through a new entry.
-
-<figure>
-
-![A receipt enters a paper ledger whose gears and belt drive a protected, unnumbered balance gauge.](./ledger-projection.webp)
-
-  <figcaption>The ledger drives the balance. The gauge has no independent write path.</figcaption>
-</figure>
 
 I moved the write primitives into PL/pgSQL functions: one accepts a top-up or charge, and another refunds an existing charge. TypeScript selects the price and coordinates the product operation; PostgreSQL validates the ledger write and maintains the balance. These are stored functions called through `SELECT`, so they participate in the caller's transaction.
 
@@ -213,15 +192,6 @@ Credit purchases made that distinction especially concrete. Fulfillment adds the
 Now consider an activity whose transaction commits, but whose completion acknowledgement never reaches Temporal. The account has its credits. The order item says it succeeded. The workflow sees an activity failure or timeout.
 
 If I treat that error as proof of failed fulfillment, I can refund a payment after delivering its credits. If I blindly repeat the top-up, I can deliver them twice.
-
-<figure>
-
-![A purchase receipt marked Recorded remains safely filed while its acknowledgement envelope tears in transit, leaving the recipient with no reply.](./lost-acknowledgement.webp)
-
-  <figcaption>
-    The credits can be recorded even when the acknowledgement never arrives.
-  </figcaption>
-</figure>
 
 The fulfillment activity handles redelivery by reading the durable order item. If it is already `SUCCEEDED`, it returns that item without adding credits again. On the failure path, an attempted status change only applies while the item is still `CREATED`. If that update changes nothing, the code reads the existing terminal status. An already successful purchase stays successful.
 

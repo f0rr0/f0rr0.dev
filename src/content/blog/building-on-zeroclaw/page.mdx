@@ -20,13 +20,6 @@ After going through this loop enough times, I began wondering whether AI could d
 
 It sounded like a fun weekend project. It also sounded like an excellent excuse to hack on [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw).
 
-<figure id="paper-illustration" className="article-wide">
-
-![A paper kitchen scene with a cook chopping vegetables, a pantry of ingredients, and a family member using a phone at a nearby desk.](./lunch-decision-v2.webp)
-
-  <figcaption>Messages, pantry photos, and old orders finally add up to lunch.</figcaption>
-</figure>
-
 ## Why ZeroClaw
 
 I had already used ZeroClaw at work and spent enough time inside its Rust runtime to know where the interesting seams were. Two of my fixes had made it upstream: one for authenticated Slack attachments and Socket Mode hardening, and a much smaller one that made Slack's `mention_only` setting work end to end. So channels, attachments, reply policy and long-running agents were familiar territory.

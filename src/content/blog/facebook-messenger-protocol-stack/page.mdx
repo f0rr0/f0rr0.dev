@@ -33,13 +33,6 @@ client.on(PacketType.PingReq, () => {
 
 That looks laughably small after an evening spent doubting the transport. It also set the method for everything that followed: start with the public standard, keep what matches, and put each private variation behind a narrow seam.
 
-<figure id="paper-illustration" className="article-wide">
-
-![A coral packet marked C0 00 travels from a server toward a client computer, above an engineer's notebook and network cable.](./backwards-packet.webp)
-
-  <figcaption>The useful clue was a keepalive travelling the wrong way.</figcaption>
-</figure>
-
 I worked with my own accounts and test devices, using Ghidra to follow native code and Burp Suite and Frida to compare what the app did with what went over the wire. Each small experiment gave me another piece of the conversation.
 
 ## One identity across two transports
