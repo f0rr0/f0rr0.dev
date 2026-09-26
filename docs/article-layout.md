@@ -61,30 +61,29 @@ capacity rather than device categories.
 All sizes are rem-based. Line heights are unitless and scale with user font
 settings. Pixel equivalents below assume a 16px root.
 
-| Role                                | Tailwind size               | Leading | Face / weight             |
-| ----------------------------------- | --------------------------- | ------- | ------------------------- |
-| Article title                       | `text-3xl`, 30px            | 36px    | Instrument Serif, 400     |
-| Site section / article h2           | `text-2xl`, 24px            | 32px    | Instrument Serif, 400     |
-| Subsection, h3                      | `text-lg`, 18px             | 28px    | DM Sans, 500              |
-| h4                                  | `text-base`, 16px           | 24px    | DM Sans, 600              |
-| h5                                  | `text-base`, 16px           | 24px    | DM Sans, 500              |
-| h6                                  | `text-base`, 16px           | 24px    | DM Sans italic, 500       |
-| Homepage / article body             | inherited `text-base`, 16px | 24px    | DM Sans, 400              |
-| Table / expanded disclosure         | `text-base`, 16px           | 24px    | DM Sans, 400              |
-| Caption / note / disclosure summary | `text-sm`, 14px             | 20px    | DM Sans, 400; summary 500 |
-| Code                                | `text-sm`, 14px             | 24px    | Geist Mono, 400           |
-| Toolbar label                       | `text-xs`, 12px             | 20px    | DM Sans, 400              |
+| Role                                                        | Tailwind size     | Leading | Face / weight         |
+| ----------------------------------------------------------- | ----------------- | ------- | --------------------- |
+| Page / article title and brand                              | `text-2xl`, 24px  | 32px    | Instrument Serif, 400 |
+| Site section / article h2                                   | `text-xl`, 20px   | 28px    | Instrument Serif, 400 |
+| Article h3–h6                                               | `text-base`, 16px | 24px    | DM Sans, 500          |
+| Homepage / article body and list titles                     | `text-base`, 16px | 24px    | DM Sans, 400          |
+| Metadata, controls, captions, notes, chart and embed labels | `text-sm`, 14px   | 20px    | DM Sans, 400          |
+| Code blocks                                                 | `text-sm`, 14px   | 20px    | Geist Mono, 400       |
 
-Articles share the homepage body size and section-heading scale. Only the article
-title adds a larger step. Deep headings use weight and italic style at body size
-rather than introducing more sizes. These roles stay the same on narrow screens.
+Articles and the homepage share the same body and heading scale. Deeper article
+headings use medium weight at body size, without extra sizes or italic styling.
+Selected tabs and meaningful emphasis use 500; ordinary text uses 400. These roles
+stay the same on narrow screens. Inline code uses 14px and inherits its line height.
+Ordinary text uses foreground or muted foreground; status and syntax colors remain.
+Live charts, Mermaid labels, and notifications share the small-text role. Typography
+inside image assets and social previews is independent of this live-text system.
 
 Headings use `text-balance` to even out short multiline titles. Captions, notes,
 and disclosure summaries use `text-pretty` to improve their final lines. Long-form
 paragraphs retain normal wrapping and a ragged edge. Code preserves whitespace;
 its toolbars use normal wrapping. These are browser-native enhancements, with
 normal wrapping as the fallback. See [Tailwind text wrapping](https://tailwindcss.com/docs/text-wrap).
-Inline links retain the site's wavy underline without gaining an unrelated bold
+Inline links use a straight underline without gaining an unrelated bold
 weight. Real normal and italic DM Sans faces are loaded. Code stays at the loaded
 normal mono weight rather than synthesizing a heavier face.
 

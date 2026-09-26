@@ -34,6 +34,8 @@ const compatibilityRules = {
 export default defineConfig({
   extends: [core, react, next],
   ignorePatterns: [
+    // Keep registry-generated shadcn sources unchanged.
+    "src/components/ui/**",
     ...(core.ignorePatterns ?? []),
     "**/.rulesync",
     "**/.rulesync/**",

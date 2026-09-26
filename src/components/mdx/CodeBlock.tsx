@@ -6,7 +6,7 @@ import {
   TooltipContent,
   TooltipGroup,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/site-tooltip";
 import {
   getCodeLanguageIconUrl,
   getCodeLanguageName,
@@ -84,19 +84,19 @@ export default function CodeBlock({
 
     return (
       <figure
-        className={`${codeBlockClassName} github-code-embed [&_pre[data-theme]]:max-h-128 [&_pre[data-theme]]:overflow-y-auto [&_pre[data-theme]]:[overscroll-behavior:contain] [&_[data-line-number]]:block [&_[data-line-number]]:min-w-full [&_[data-line-number]]:pr-5 [&_[data-line-number]::before]:inline-block [&_[data-line-number]::before]:w-15 [&_[data-line-number]::before]:[margin-right:0.875rem] [&_[data-line-number]::before]:[border-right:1px_solid_color-mix(in_oklab,_var(--border)_78%,_transparent)] [&_[data-line-number]::before]:pr-3 [&_[data-line-number]::before]:text-secondary-foreground [&_[data-line-number]::before]:[content:attr(data-line-number)] [&_[data-line-number]::before]:tabular-nums [&_[data-line-number]::before]:text-right [&_[data-line-number]::before]:select-none  max-sm:[&_[data-line-number]]:pr-4 max-sm:[&_[data-line-number]::before]:w-14 max-sm:[&_[data-line-number]::before]:[margin-right:0.75rem] max-sm:[&_[data-line-number]::before]:[padding-right:0.65rem] print:shadow-none print:[&_pre[data-theme]]:[max-height:none] print:[&_pre[data-theme]]:overflow-visible print:[&_pre[data-theme]]:whitespace-pre-wrap print:[&_pre[data-theme]_>_code]:[width:auto] print:[&_pre[data-theme]_>_code]:wrap-anywhere`}
+        className={`${codeBlockClassName} github-code-embed [&_pre[data-theme]]:max-h-128 [&_pre[data-theme]]:overflow-y-auto [&_pre[data-theme]]:[overscroll-behavior:contain] [&_[data-line-number]]:block [&_[data-line-number]]:min-w-full [&_[data-line-number]]:pr-5 [&_[data-line-number]::before]:inline-block [&_[data-line-number]::before]:w-15 [&_[data-line-number]::before]:[margin-right:0.875rem] [&_[data-line-number]::before]:[border-right:1px_solid_color-mix(in_oklab,_var(--border)_78%,_transparent)] [&_[data-line-number]::before]:pr-3 [&_[data-line-number]::before]:text-muted-foreground [&_[data-line-number]::before]:[content:attr(data-line-number)] [&_[data-line-number]::before]:tabular-nums [&_[data-line-number]::before]:text-right [&_[data-line-number]::before]:select-none  max-sm:[&_[data-line-number]]:pr-4 max-sm:[&_[data-line-number]::before]:w-14 max-sm:[&_[data-line-number]::before]:[margin-right:0.75rem] max-sm:[&_[data-line-number]::before]:[padding-right:0.65rem] print:shadow-none print:[&_pre[data-theme]]:[max-height:none] print:[&_pre[data-theme]]:overflow-visible print:[&_pre[data-theme]]:whitespace-pre-wrap print:[&_pre[data-theme]_>_code]:[width:auto] print:[&_pre[data-theme]_>_code]:wrap-anywhere`}
         data-language={language}
       >
         <figcaption className="github-code-embed-toolbar">
           <a
             aria-label={`View ${owner}/${repo}/${filePath}, ${lineLabel}, on GitHub`}
-            className="github-code-embed-source inline-flex h-8 min-w-0 items-center gap-2 rounded px-2 text-secondary-foreground no-underline hover:underline hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:fill-current"
+            className="github-code-embed-source inline-flex h-8 min-w-0 items-center gap-2 rounded px-2 text-muted-foreground no-underline hover:underline hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:fill-current"
             href={sourceHref}
             rel="noreferrer noopener"
             target="_blank"
           >
             <GitHubMark />
-            <span className="github-code-embed-source-label overflow-hidden text-ellipsis text-xs font-normal leading-4 whitespace-nowrap">
+            <span className="github-code-embed-source-label overflow-hidden text-ellipsis text-sm font-normal whitespace-nowrap">
               {owner}/{repo}/{filePath}
             </span>
           </a>

@@ -184,3 +184,24 @@ measurements; the current specification is in [Reading layout system](article-la
 
 DM Sans now supplies the default sans and reading face, including normal and
 italic styles. Instrument Serif headings and Geist Mono code retain their roles.
+
+## Approved typography consolidation
+
+The approved before/after comparison consolidates live text to 24/32 page titles,
+20/28 serif section headings, 16/24 body text, and 14/20 small text and code.
+Article h2 and homepage sections both use Instrument Serif. Article h3–h6 use
+DM Sans 500 at body size. Ordinary text uses 400 or 500, foreground or muted
+foreground, and straight link underlines. Homepage and article body colors match.
+Chart labels, Mermaid text, toolbar labels, controls, and notifications follow the
+same roles. Text baked into images is outside this change.
+
+The production build was checked at 1440px and 320px after consolidation. Body
+text is 16/24; titles 24/32; section headings 20/28; captions, code, Mermaid,
+tooltips, and notifications 14/20. No horizontal page overflow was observed.
+Live chart checks used temporary local sample data, then removed it. The
+cumulative peak label omits its date to fit narrow screens; the tooltip retains it.
+
+Shadcn's base-vega components were refreshed from the current registry. Site
+preview grouping, disclosure analytics/animation, and the animated copy control
+live outside `components/ui`; typography overrides use props. Generated sources
+are excluded from local lint/format rewrites so registry updates remain reviewable.

@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export function AnimatedCopyButton({
   value,
@@ -48,7 +49,7 @@ export function AnimatedCopyButton({
   return (
     <>
       <Button
-        className={className}
+        className={cn("font-normal", className)}
         variant="ghost"
         onClick={() => {
           void copy();
@@ -88,7 +89,7 @@ export function AnimatedCopyButton({
       <p
         role="status"
         className={
-          status === "error" ? "text-xs text-muted-foreground" : "sr-only"
+          status === "error" ? "text-sm text-muted-foreground" : "sr-only"
         }
       >
         {status === "error"

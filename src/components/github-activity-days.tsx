@@ -10,12 +10,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
   DisclosureChevron,
-} from "@/components/ui/collapsible";
+} from "@/components/site-collapsible";
 import {
   TooltipContent,
   TooltipGroup,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/site-tooltip";
 import { dateKey, formatDate, WORK_LOG_TIME_ZONE } from "@/lib/date";
 import {
   getVisibleGitHubActivityDays,
@@ -91,7 +91,7 @@ function DiffCounters({
   facts: Pick<PublicGitHubWorkUnitFacts, "additions" | "deletions">;
 }>) {
   return (
-    <span className="inline-flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+    <span className="inline-flex items-center gap-2 text-sm text-muted-foreground tabular-nums">
       <span className="text-[light-dark(oklch(0.48_0.12_155),oklch(0.75_0.13_155))]">
         <span className="sr-only">Added </span>+
         {countFormatter.format(facts.additions)}
@@ -110,7 +110,7 @@ function WorkUnitFacts({
   const commits = `${countFormatter.format(facts.ownedCommitCount)} ${facts.ownedCommitCount === 1 ? "commit" : "commits"}`;
   const files = `${countFormatter.format(facts.uniqueFileCount)} ${facts.uniqueFileCount === 1 ? "file" : "files"}`;
   return (
-    <div className="site-row-meta flex min-h-6 shrink-0 items-center gap-2 text-xs text-muted-foreground tabular-nums flex-wrap justify-start">
+    <div className="site-row-meta flex min-h-6 shrink-0 items-center gap-2 text-sm text-muted-foreground tabular-nums flex-wrap justify-start">
       <span>
         {commits} · {files}
       </span>
@@ -154,10 +154,10 @@ function WorkUnitRow({
           <CollapsibleTrigger className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group cursor-pointer" />
         }
       >
-        <span className="site-row-title min-w-0 truncate font-light [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
+        <span className="site-row-title min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
           {headline}
         </span>
-        <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground tabular-nums">
+        <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
           <span className="hidden sm:inline-flex">
             <DiffCounters facts={item.facts} />
           </span>
@@ -196,10 +196,10 @@ function IssueRow({
         target={item.destination === null ? undefined : "_blank"}
         title={item.title}
       >
-        <span className="site-row-title min-w-0 truncate font-light [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
+        <span className="site-row-title min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
           {item.title}
         </span>
-        <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground tabular-nums">
+        <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
           <LocalDateTime
             className="whitespace-nowrap"
             dateTime={item.activityAt}
@@ -250,7 +250,7 @@ function RepositoryGroup({
             </ol>
           </CollapsibleContent>
           <CollapsibleTrigger className="site-row grid min-h-11 w-full grid-cols-[minmax(0,max-content)_auto] items-start justify-start gap-x-1.5 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group/more cursor-pointer pt-0">
-            <span className="site-row-title min-w-0 truncate font-light [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none text-muted-foreground">
+            <span className="site-row-title min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none text-muted-foreground">
               <span className="group-data-panel-open/more:hidden">
                 Show {countFormatter.format(hiddenItems.length)} more
               </span>
@@ -258,7 +258,7 @@ function RepositoryGroup({
                 Show less
               </span>
             </span>
-            <span className="site-row-meta flex translate-y-px min-h-6 shrink-0 items-center justify-end text-xs text-muted-foreground tabular-nums">
+            <span className="site-row-meta flex translate-y-px min-h-6 shrink-0 items-center justify-end text-sm text-muted-foreground tabular-nums">
               <DisclosureChevron />
             </span>
           </CollapsibleTrigger>
@@ -291,9 +291,9 @@ function GitHubActivityDay({
   return (
     <section aria-labelledby={`activity-day-${day.day}`}>
       <header className="site-row min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring work-log-day-header flex flex-wrap rounded-none border-y border-border py-2">
-        <h3 className="site-row-meta flex min-h-6 shrink-0 items-center gap-1 text-xs text-muted-foreground tabular-nums justify-start font-medium sm:gap-2">
+        <h3 className="site-row-meta flex min-h-6 shrink-0 items-center gap-1 text-sm text-muted-foreground tabular-nums justify-start font-medium sm:gap-2">
           <time
-            className="work-log-date font-mono font-normal uppercase tracking-tight sm:tracking-wider"
+            className="work-log-date font-sans font-normal"
             dateTime={day.day}
             id={`activity-day-${day.day}`}
           >
@@ -305,7 +305,7 @@ function GitHubActivityDay({
         </h3>
         <dl
           aria-label={`Totals for ${day.day}`}
-          className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground tabular-nums ms-auto whitespace-nowrap"
+          className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums ms-auto whitespace-nowrap"
         >
           <div>
             <dt className="sr-only">Commits across repositories</dt>

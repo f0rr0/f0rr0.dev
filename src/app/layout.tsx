@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { DM_Sans, Geist_Mono, Instrument_Serif } from "next/font/google";
 
 import { JsonLd } from "@/components/json-ld";
+import { TooltipProvider } from "@/components/site-tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { pages } from "@/content/pages";
 import { env } from "@/env";
 import { buildPageMetadata } from "@/lib/page-metadata";
@@ -94,7 +94,7 @@ export default function RootLayout({
       <head>
         <link href="/llms.txt" rel="describedby" />
       </head>
-      <body className="min-h-screen font-sans antialiased [&_:is(a,button,summary)]:decoration-wavy [&_:is(a,button,summary)]:decoration-1 [&_:is(a,button,summary)]:underline-offset-4 [&_:is(a,button)_:is(h3,span)]:decoration-wavy [&_:is(a,button)_:is(h3,span)]:decoration-1 [&_:is(a,button)_:is(h3,span)]:underline-offset-4">
+      <body className="min-h-screen font-sans antialiased [&_:is(a,button,summary)]:decoration-solid [&_:is(a,button,summary)]:decoration-1 [&_:is(a,button,summary)]:underline-offset-4 [&_:is(a,button)_:is(h3,span)]:decoration-solid [&_:is(a,button)_:is(h3,span)]:decoration-1 [&_:is(a,button)_:is(h3,span)]:underline-offset-4">
         <JsonLd data={buildRootJsonLd()} />
         <ThemeProvider
           attribute="class"
@@ -103,7 +103,15 @@ export default function RootLayout({
           enableSystem
         >
           <TooltipProvider>{children}</TooltipProvider>
-          <Toaster />
+          <Toaster
+            toastOptions={{
+              classNames: {
+                toast: "cn-toast font-sans! text-sm!",
+                title: "text-sm! font-normal!",
+                description: "text-sm! font-normal!",
+              },
+            }}
+          />
         </ThemeProvider>
       </body>
     </html>

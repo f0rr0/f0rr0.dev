@@ -35,7 +35,7 @@ function Metric({
   return (
     <div className="min-w-0 py-2.5">
       <dt className="text-base text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-base font-light tabular-nums">
+      <dd className="mt-1 text-base font-normal tabular-nums">
         {value === null
           ? "—"
           : `${suffix === "%" ? percent.format(value) : compact.format(value)}${suffix}`}
@@ -130,7 +130,7 @@ function Tools({
                 : "Reusable instructions for tasks like writing, design, and code review."
             }
             action={
-              <span className="font-ui text-sm text-muted-foreground tabular-nums">
+              <span className="text-sm text-muted-foreground tabular-nums">
                 {number.format(data.distinct)}{" "}
                 {data.distinct === 1
                   ? title.slice(0, -1).toLowerCase()
@@ -296,7 +296,11 @@ function Breakdowns({
     periods.length > 1 ? (
       <TabsList aria-label="Usage period" variant="line">
         {periods.map(([days, , label]) => (
-          <TabsTrigger key={days} value={days}>
+          <TabsTrigger
+            className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-150 motion-reduce:transition-none"
+            key={days}
+            value={days}
+          >
             {label}
           </TabsTrigger>
         ))}

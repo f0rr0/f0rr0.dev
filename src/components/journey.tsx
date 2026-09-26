@@ -13,12 +13,12 @@ import {
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import {
   TooltipContent,
   TooltipGroup,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/site-tooltip";
+import { Badge } from "@/components/ui/badge";
 import {
   resumeCompanyStageLabels,
   resumeRoleMarkerLabels,
@@ -133,6 +133,7 @@ function BulletLogo({
 function RoleMarkers({ role }: Readonly<{ role: ResumeRole }>) {
   return role.markers?.map((marker) => (
     <Badge
+      className="h-7 text-sm"
       variant="outline"
       key={marker}
       title={marker === "leadership" ? role.leadershipScope : undefined}
@@ -170,7 +171,7 @@ function RoleBlock({
       >
         <motion.span
           layout="position"
-          className="font-light text-foreground max-sm:block max-sm:max-w-full max-sm:shrink-0 max-sm:overflow-x-auto max-sm:whitespace-nowrap"
+          className="font-normal text-foreground max-sm:block max-sm:max-w-full max-sm:shrink-0 max-sm:overflow-x-auto max-sm:whitespace-nowrap"
         >
           {role.title}
         </motion.span>
@@ -185,7 +186,7 @@ function RoleBlock({
       </motion.div>
       <motion.p
         layout="position"
-        className="journey-role-dates [grid-column:2] [.journey[data-expanded='true']_&]:[grid-column:1] sm:[.journey[data-expanded='true']_&]:[grid-column:2] sm:[.journey[data-expanded='true']_&]:[grid-row:1] sm:[.journey[data-expanded='true']_&]:text-end [.journey[data-expanded='true']_&]:whitespace-nowrap mt-1 sm:[.journey[data-expanded='false']_&]:justify-self-end sm:[.journey[data-expanded='false']_&]:text-end sm:[.journey[data-expanded='false']_&]:[grid-column:3] sm:[.journey[data-expanded='false']_&]:[grid-row:2] sm:[.journey[data-expanded='false']_&]:mt-1 relative text-xs text-muted-foreground tabular-nums"
+        className="journey-role-dates [grid-column:2] [.journey[data-expanded='true']_&]:[grid-column:1] sm:[.journey[data-expanded='true']_&]:[grid-column:2] sm:[.journey[data-expanded='true']_&]:[grid-row:1] sm:[.journey[data-expanded='true']_&]:text-end [.journey[data-expanded='true']_&]:whitespace-nowrap mt-1 sm:[.journey[data-expanded='false']_&]:justify-self-end sm:[.journey[data-expanded='false']_&]:text-end sm:[.journey[data-expanded='false']_&]:[grid-column:3] sm:[.journey[data-expanded='false']_&]:[grid-row:2] sm:[.journey[data-expanded='false']_&]:mt-1 relative text-sm text-muted-foreground tabular-nums"
       >
         <JourneyReveal
           expanded={expanded}
@@ -356,6 +357,7 @@ function ExperienceItem({
               delay={0.12}
             >
               <Badge
+                className="h-7 text-sm"
                 variant="outline"
                 title={`Company stage during this role: ${companyStage}`}
               >
@@ -367,7 +369,7 @@ function ExperienceItem({
       </motion.div>
       <JourneyReveal
         expanded={expanded && item.tagline.length > 0}
-        className="journey-tagline [grid-column:2] mt-1 text-xs text-muted-foreground"
+        className="journey-tagline [grid-column:2] mt-1 text-sm text-muted-foreground"
         delay={0.08}
       >
         <p>{item.tagline}</p>
@@ -440,7 +442,7 @@ export function Journey({
             aria-label="Career history"
           >
             <div className="mb-4 flex items-baseline justify-between gap-3">
-              <h2 className="section-title font-serif text-2xl font-normal text-foreground">
+              <h2 className="section-title font-serif text-xl font-normal text-foreground">
                 Experience
               </h2>
               <div className="flex shrink-0 items-center justify-end gap-3">
@@ -478,7 +480,7 @@ export function Journey({
                   ))}
                 </ol>
                 <motion.div layout="position" className="mt-8">
-                  <h2 className="section-title mb-4 font-serif text-2xl font-normal text-foreground">
+                  <h2 className="section-title mb-4 font-serif text-xl font-normal text-foreground">
                     Education
                   </h2>
                   <ol className="mt-4">
@@ -504,7 +506,7 @@ export function Journey({
                   className="mt-8"
                   delay={0.04}
                 >
-                  <h2 className="section-title mb-4 font-serif text-2xl font-normal text-foreground">
+                  <h2 className="section-title mb-4 font-serif text-xl font-normal text-foreground">
                     Skills
                   </h2>
                   <p className="mt-2 text-muted-foreground">

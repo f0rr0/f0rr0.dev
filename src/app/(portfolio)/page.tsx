@@ -3,13 +3,13 @@ import { Star, GitFork } from "lucide-react";
 import { CodexStats } from "@/components/codex-stats";
 import { GitHubTimeline } from "@/components/github-timeline";
 import { LanguageIcon } from "@/components/language-icon";
-import { SiteMain, SiteSection } from "@/components/site-page";
-import { SiteShell } from "@/components/site-shell";
 import {
   HoverCardGroup,
   HoverCardContent,
   HoverCardTrigger,
-} from "@/components/ui/hover-card";
+} from "@/components/site-hover-card";
+import { SiteMain, SiteSection } from "@/components/site-page";
+import { SiteShell } from "@/components/site-shell";
 import { WritingList } from "@/components/writing-list";
 import { homeIntroduction, projectEditorial } from "@/content/home";
 import { pages } from "@/content/pages";
@@ -52,7 +52,7 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
                           project.name as keyof typeof projectEditorial
                         ]?.description ?? project.description}
                       </p>
-                      <div className="site-row-meta flex min-h-6 shrink-0 items-center gap-2 text-xs text-muted-foreground tabular-nums mt-2 justify-start">
+                      <div className="site-row-meta flex min-h-6 shrink-0 items-center gap-2 text-sm text-muted-foreground tabular-nums mt-2 justify-start">
                         {project.language === null ? null : (
                           <LanguageIcon language={project.language} />
                         )}
@@ -89,7 +89,7 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
                 {project.stars === null ? null : (
                   <span
                     aria-label={`${String(project.stars)} GitHub stars`}
-                    className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground tabular-nums"
+                    className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums"
                   >
                     <Star aria-hidden="true" className="size-3" />
                     {project.stars}

@@ -23,7 +23,7 @@
     --article-wing: --spacing(40);
     --article-note: --spacing(56);
     --article-gap: --spacing(8);
-    @apply grid text-secondary-foreground;
+    @apply grid text-foreground;
     grid-template-columns:
       [full-start] minmax(var(--site-gutter), 1fr)
       [wide-start] minmax(0, var(--article-wing))
@@ -41,7 +41,7 @@
   }
 
   .article-title {
-    @apply text-balance font-serif text-3xl font-normal text-foreground;
+    @apply text-balance font-serif text-2xl font-normal text-foreground;
   }
   .article-meta {
     @apply mt-3;
@@ -124,31 +124,19 @@
   }
 
   .article-prose :is(h1, h2) {
-    @apply font-serif text-2xl font-normal text-foreground;
+    @apply font-serif text-xl font-normal text-foreground;
   }
-  .article-prose h3 {
-    @apply font-sans text-lg font-medium text-foreground;
-  }
-  .article-prose :is(h4, h5, h6) {
-    @apply font-sans text-base text-foreground;
-  }
-  .article-prose h4 {
-    @apply font-semibold;
-  }
-  .article-prose h5 {
-    @apply font-medium;
-  }
-  .article-prose h6 {
-    @apply font-medium italic;
+  .article-prose :is(h3, h4, h5, h6) {
+    @apply font-sans text-base font-medium text-foreground;
   }
   .article-prose :is(h1, h2, h3, h4, h5, h6) {
     @apply text-balance scroll-mt-8;
   }
   .article-prose strong {
-    @apply font-semibold text-foreground;
+    @apply font-medium text-foreground;
   }
   .article-prose a:not(.github-embed) {
-    @apply text-primary underline;
+    @apply text-foreground underline;
     font-weight: inherit;
     text-decoration-thickness: from-font;
     text-decoration-skip-ink: auto;
@@ -199,7 +187,8 @@
   }
   .article-prose code:not(pre code) {
     @apply rounded bg-muted px-[0.3em] py-[0.1em] font-normal text-foreground;
-    font-size: 0.875em;
+    font-size: var(--text-sm);
+    line-height: inherit;
     box-decoration-break: clone;
   }
   .article-prose blockquote {
@@ -220,7 +209,6 @@
   .article-prose figcaption {
     @apply mx-auto mt-3 text-start font-sans text-sm font-normal text-pretty text-muted-foreground;
     max-width: var(--site-measure);
-    line-height: calc(20 / 14);
   }
   .article-prose .article-screenshot {
     @apply mx-auto max-w-80;
@@ -248,8 +236,7 @@
     line-height: 1.5;
   }
   .article-prose summary {
-    @apply min-h-11 cursor-pointer py-3 font-sans text-sm font-medium text-pretty text-secondary-foreground;
-    line-height: calc(20 / 14);
+    @apply min-h-11 cursor-pointer py-3 font-sans text-sm font-normal text-pretty text-foreground;
   }
   .article-prose summary:hover {
     @apply text-foreground underline;
@@ -285,7 +272,7 @@
     @apply px-4 py-3 text-start align-top;
   }
   .article-prose th {
-    @apply bg-muted font-semibold text-foreground;
+    @apply bg-muted font-medium text-foreground;
   }
   .article-prose tbody tr:not(:last-child),
   .article-prose thead {
@@ -306,12 +293,10 @@
   }
   .article-prose
     :is(.code-block-toolbar, .github-code-embed-toolbar, .mermaid-toolbar) {
-    @apply m-0 flex min-h-12 max-w-none flex-wrap items-center justify-between gap-2 px-2 py-1 font-sans text-xs text-wrap;
-    line-height: calc(20 / 12);
+    @apply m-0 flex min-h-12 max-w-none flex-wrap items-center justify-between gap-2 px-2 py-1 font-sans text-sm text-wrap;
   }
   .article-prose :is(.code-block-copy, .code-block-language, .mermaid-control) {
-    @apply inline-flex min-h-10 min-w-10 items-center justify-center gap-1.5 rounded px-2 py-2 font-sans text-xs font-normal text-secondary-foreground;
-    line-height: calc(20 / 12);
+    @apply inline-flex min-h-10 min-w-10 items-center justify-center gap-1.5 rounded px-2 py-2 font-sans text-sm font-normal text-muted-foreground;
   }
   .article-prose :is(.code-block-copy, .mermaid-control) {
     @apply cursor-pointer;
@@ -343,8 +328,7 @@
     }
   }
   .article-prose .code-block pre > code {
-    font-size: var(--text-sm);
-    line-height: calc(24 / 14);
+    @apply text-sm;
   }
   .article-prose .github-embed-repository {
     @apply whitespace-normal;
@@ -353,34 +337,25 @@
   .article-prose .github-code-embed-source {
     @apply h-auto min-h-10;
   }
-  .article-prose .mermaid-diagram-type {
-    line-height: calc(20 / 12);
-  }
   .article-prose .mermaid-toolbar-actions {
     @apply min-w-0 max-w-full flex-wrap;
   }
   .article-prose .github-code-embed-source-label {
-    line-height: calc(20 / 12);
     @apply whitespace-normal;
     overflow-wrap: anywhere;
   }
   .article-prose :is(code[data-theme], code[data-theme] span) {
     color: color-mix(in srgb, var(--shiki-light) 60%, var(--foreground));
-    font-style: var(--shiki-light-font-style);
-    font-weight: var(--shiki-light-font-weight);
-    text-decoration: var(--shiki-light-text-decoration);
+    font-style: normal;
+    font-weight: 400;
   }
   .dark .article-prose :is(code[data-theme], code[data-theme] span) {
     color: color-mix(in srgb, var(--shiki-dark) 78%, var(--foreground));
-    font-style: var(--shiki-dark-font-style);
-    font-weight: var(--shiki-dark-font-weight);
-    text-decoration: var(--shiki-dark-text-decoration);
   }
 
   .article-prose > .footnotes {
     grid-column: content;
     @apply mt-12 min-w-0 border-t border-border pt-6 text-sm;
-    line-height: calc(20 / 14);
   }
   .article-prose .footnotes :is(p + p, ol + ol) {
     @apply mt-3;
@@ -417,7 +392,6 @@
       margin-inline-start: var(--article-gap);
       margin-block-start: var(--article-space);
       @apply self-start text-sm text-muted-foreground;
-      line-height: calc(20 / 14);
     }
     .article-prose .footnotes > ol:not(.article-sidenotes) {
       grid-column: content;

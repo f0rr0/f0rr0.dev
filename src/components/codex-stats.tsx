@@ -61,7 +61,7 @@ const Metric = ({
   metric.value === null ? null : (
     <div className="py-2.5">
       <dt className="text-base text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-base font-light tabular-nums text-foreground">
+      <dd className="mt-1 text-base font-normal tabular-nums text-foreground">
         {metric.value === null ? "—" : compactNumber.format(metric.value)}
         {metric.partial ? (
           <span className="ml-2 text-base text-muted-foreground">partial</span>
@@ -206,7 +206,7 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
               <InfoLabel label={label} description={tooltip} />
             )}
           </dt>
-          <dd className="mt-1 text-base font-light tabular-nums text-foreground">
+          <dd className="mt-1 text-base font-normal tabular-nums text-foreground">
             {value}
             {metric.partial ? " · partial" : ""}
           </dd>

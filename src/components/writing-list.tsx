@@ -7,7 +7,7 @@ import {
   HoverCardGroup,
   HoverCardContent,
   HoverCardTrigger,
-} from "@/components/ui/hover-card";
+} from "@/components/site-hover-card";
 import {
   findMetadataImageAsset,
   importMetadataImageModule,
@@ -55,7 +55,7 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
                     <p className="text-muted-foreground">
                       {post.metadata.summary}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                       <LocalDateTime dateTime={post.date.toISOString()} /> ·{" "}
                       {post.readingTime}
                       {post.metadata.draft === true ? " · Draft preview" : ""}
@@ -70,7 +70,7 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
                 {post.metadata.title}
               </span>
               <LocalDateTime
-                className="site-row-meta min-h-6 shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground tabular-nums hidden sm:flex"
+                className="site-row-meta min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums hidden sm:flex"
                 dateTime={post.date.toISOString()}
               />
             </HoverCardTrigger>

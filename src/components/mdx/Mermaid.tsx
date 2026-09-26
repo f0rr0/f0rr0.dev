@@ -181,8 +181,10 @@ function createMermaidConfig({
     suppressErrorRendering: true,
     theme: "base",
     themeCSS: `
-      .label, .nodeLabel, .edgeLabel, .messageText, .loopText {
+      text, foreignObject, .label, .nodeLabel, .edgeLabel, .messageText, .loopText {
+        font-size: 14px;
         font-weight: 400;
+        line-height: calc(20 / 14);
       }
       .edgeLabel {
         border-radius: 0.375rem;
@@ -200,7 +202,7 @@ function createMermaidConfig({
       secondaryTextColor: color("--foreground"),
       tertiaryColor: color("--muted"),
       tertiaryBorderColor: color("--border"),
-      tertiaryTextColor: color("--secondary-foreground"),
+      tertiaryTextColor: color("--foreground"),
       lineColor: color("--muted-foreground"),
       textColor: color("--foreground"),
       mainBkg: color("--background"),
@@ -421,7 +423,7 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
         {status === "loading" && diagram === null ? (
           <div
             aria-live="polite"
-            className="mermaid-placeholder flex min-h-30 items-center justify-center gap-3 text-muted-foreground font-sans [font-size:0.875rem]"
+            className="mermaid-placeholder flex min-h-30 items-center justify-center gap-3 text-muted-foreground font-sans text-sm"
             role="status"
           >
             <span
@@ -433,7 +435,7 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
         ) : null}
         {status === "error" ? (
           <div
-            className="mermaid-error flex min-h-30 flex-col items-center justify-center gap-3 text-center font-sans text-sm text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground"
+            className="mermaid-error flex min-h-30 flex-col items-center justify-center gap-3 text-center font-sans text-sm text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground"
             role="alert"
           >
             <strong>Diagram unavailable</strong>
@@ -453,7 +455,7 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
         ) : null}
       </div>
       <div className="mermaid-toolbar print:hidden">
-        <span className="mermaid-diagram-type min-w-0 [color:color-mix(in_oklab,_var(--foreground)_88%,_var(--muted-foreground))] [font-size:0.75rem] font-medium leading-snug">
+        <span className="mermaid-diagram-type min-w-0 text-sm font-normal text-muted-foreground">
           {diagramType}
         </span>
         <div className="mermaid-toolbar-actions flex shrink-0 items-center gap-1">

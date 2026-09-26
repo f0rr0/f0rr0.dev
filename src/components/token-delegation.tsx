@@ -124,7 +124,7 @@ export function TokenDelegation({ rows }: { rows: readonly TokenRow[] }) {
   return (
     <ChartContainer
       config={config}
-      className="mx-auto h-72 w-full aspect-auto sm:h-96"
+      className="text-sm mx-auto h-72 w-full aspect-auto sm:h-96"
       initialDimension={{ width: 320, height: 288 }}
       role="img"
       aria-label={data
