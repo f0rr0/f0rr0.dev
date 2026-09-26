@@ -21,6 +21,9 @@ const nextConfig: NextConfig = {
         ]
       : [],
   experimental: {
+    // Reused compiler output has served stale Tailwind theme values. See docs/css-build-cache.md.
+    turbopackFileSystemCacheForBuild: false,
+    turbopackFileSystemCacheForDev: false,
     useTypeScriptCli: true,
   },
   images: {
