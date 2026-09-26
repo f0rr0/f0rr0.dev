@@ -173,3 +173,11 @@ The metadata row was deliberately simplified in the initial redesign: horizontal
 borders removed, the vertical separator replaced with a dot, date/read-time type
 increased from 12px to 14px, and wrapping allowed. Its title separation is 12px.
 The Markdown action and the date/read-time values were preserved.
+
+## Typography revision after preview review
+
+The original 18px article body and 30px section headings above were too large
+relative to the homepage. Articles now inherit the shared 16px/24px body style;
+section headings match the site's 24px/32px scale. Article titles are 30px/36px,
+h3 is 18px/28px, and h4–h6 are 16px/24px. This supersedes the original type-size
+measurements; the current specification is in [Reading layout system](article-layout.md).

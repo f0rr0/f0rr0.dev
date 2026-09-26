@@ -32,21 +32,19 @@ It is not a claim that a particular pixel value is scientifically optimal.
 
 ## Horizontal grid
 
-| Role                  | Constraint                                         | Reason                                                                                              |
-| --------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Reading column        | `--spacing(156)` = 39rem / 624px                   | Calibrated to about 70 characters on full lines in Geist at 18px; shared with navigation and footer |
-| Media                 | Reading column + two `--spacing(40)` wings = 944px | Gives images, tables, and diagrams room without widening prose                                      |
-| Outer inset           | `clamp(1rem, 4vw, 1.5rem)`                         | Preserves a usable edge on small screens, then caps the gutter                                      |
-| Annotation            | `--spacing(56)` = 224px                            | Secondary reading column using 14/20 type                                                           |
-| Annotation separation | `--spacing(8)` = 32px                              | Separates notes from prose without making them unrelated                                            |
-| Portrait image        | At most `--spacing(80)` = 320px                    | Preserves the intended size of phone screenshots                                                    |
-| Portrait pair         | Reading column, 24px internal gap                  | Uses the same reading edges; stacks when two useful image widths no longer fit                      |
+| Role                  | Constraint                                         | Reason                                                                         |
+| --------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Reading column        | `--spacing(156)` = 39rem / 624px                   | Shared with homepage body text, navigation, and footer                         |
+| Media                 | Reading column + two `--spacing(40)` wings = 944px | Gives images, tables, and diagrams room without widening prose                 |
+| Outer inset           | `clamp(1rem, 4vw, 1.5rem)`                         | Preserves a usable edge on small screens, then caps the gutter                 |
+| Annotation            | `--spacing(56)` = 224px                            | Secondary reading column using 14/20 type                                      |
+| Annotation separation | `--spacing(8)` = 32px                              | Separates notes from prose without making them unrelated                       |
+| Portrait image        | At most `--spacing(80)` = 320px                    | Preserves the intended size of phone screenshots                               |
+| Portrait pair         | Reading column, 24px internal gap                  | Uses the same reading edges; stacks when two useful image widths no longer fit |
 
-An earlier `60ch` measure produced approximately 80–88 characters on full lines
-in the opening ZeroClaw paragraphs. A narrower measure produced a median of 71.
-The final 39rem width rounds that approximately 621px calibration onto the shared
-spacing module. Recheck actual line lengths if the font or body size changes;
-`ch` describes the zero glyph, not average letters.
+The shared width remains 39rem. Body text inherits the site's 16px/24px default;
+articles do not set a separate reading size. Line length varies with the text and
+font metrics, so recheck actual paragraphs when changing the measure or font.
 
 The two media wings shrink first. Once they reach zero, prose and media shrink
 together inside the outer insets. The reading column stays centered with or
@@ -63,24 +61,23 @@ capacity rather than device categories.
 All sizes are rem-based. Line heights are unitless and scale with user font
 settings. Pixel equivalents below assume a 16px root.
 
-| Role                                | Tailwind size     | Leading                                  | Face / weight           |
-| ----------------------------------- | ----------------- | ---------------------------------------- | ----------------------- |
-| Article title                       | `text-4xl`, 36px  | 52px on narrow screens; 44px from 40rem  | Instrument Serif, 400   |
-| Section, h2                         | `text-3xl`, 30px  | 44px on narrow screens; 40px above 40rem | Instrument Serif, 400   |
-| Subsection, h3                      | `text-xl`, 20px   | 28px                                     | Geist, 500              |
-| h4                                  | `text-lg`, 18px   | 28px                                     | Geist, 600              |
-| h5                                  | `text-lg`, 18px   | 28px                                     | Geist, 500              |
-| h6                                  | `text-lg`, 18px   | 28px                                     | Geist italic, 500       |
-| Article body                        | `text-lg`, 18px   | 28px                                     | Geist, 400              |
-| Table / expanded disclosure         | `text-base`, 16px | 24px                                     | Geist, 400              |
-| Caption / note / disclosure summary | `text-sm`, 14px   | 20px                                     | Geist, 400; summary 500 |
-| Code                                | `text-sm`, 14px   | 24px                                     | Geist Mono, 400         |
-| Toolbar label                       | `text-xs`, 12px   | 20px                                     | Geist, 400              |
+| Role                                | Tailwind size               | Leading | Face / weight           |
+| ----------------------------------- | --------------------------- | ------- | ----------------------- |
+| Article title                       | `text-3xl`, 30px            | 36px    | Instrument Serif, 400   |
+| Site section / article h2           | `text-2xl`, 24px            | 32px    | Instrument Serif, 400   |
+| Subsection, h3                      | `text-lg`, 18px             | 28px    | Geist, 500              |
+| h4                                  | `text-base`, 16px           | 24px    | Geist, 600              |
+| h5                                  | `text-base`, 16px           | 24px    | Geist, 500              |
+| h6                                  | `text-base`, 16px           | 24px    | Geist italic, 500       |
+| Homepage / article body             | inherited `text-base`, 16px | 24px    | Geist, 400              |
+| Table / expanded disclosure         | `text-base`, 16px           | 24px    | Geist, 400              |
+| Caption / note / disclosure summary | `text-sm`, 14px             | 20px    | Geist, 400; summary 500 |
+| Code                                | `text-sm`, 14px             | 24px    | Geist Mono, 400         |
+| Toolbar label                       | `text-xs`, 12px             | 20px    | Geist, 400              |
 
-The serif's optical size matters: a 24px Instrument Serif section heading looked
-weaker than a 20px Geist subsection. Increasing the section size establishes the
-intended hierarchy. Deep levels retain readable sizes and distinguish weight,
-style, and spacing. The title remains larger than every section at mobile widths.
+Articles share the homepage body size and section-heading scale. Only the article
+title adds a larger step. Deep headings use weight and italic style at body size
+rather than introducing more sizes. These roles stay the same on narrow screens.
 
 Headings use `text-balance` to even out short multiline titles. Captions, notes,
 and disclosure summaries use `text-pretty` to improve their final lines. Long-form

@@ -1,6 +1,6 @@
 @layer components {
   :root {
-    /* 156 Tailwind units, calibrated to ~70 characters in Geist at 18px. */
+    /* Shared reading measure for the site and articles. */
     --site-measure: --spacing(156);
     --site-gutter: clamp(--spacing(4), 4vw, --spacing(6));
   }
@@ -23,8 +23,7 @@
     --article-wing: --spacing(40);
     --article-note: --spacing(56);
     --article-gap: --spacing(8);
-    @apply grid text-lg font-normal text-secondary-foreground;
-    line-height: calc(28 / 18);
+    @apply grid text-secondary-foreground;
     grid-template-columns:
       [full-start] minmax(var(--site-gutter), 1fr)
       [wide-start] minmax(0, var(--article-wing))
@@ -42,13 +41,7 @@
   }
 
   .article-title {
-    @apply text-balance font-serif text-4xl font-normal text-foreground;
-    line-height: calc(52 / 36);
-  }
-  @media (min-width: 40rem) {
-    .article-title {
-      line-height: calc(44 / 36);
-    }
+    @apply text-balance font-serif text-3xl font-normal text-foreground;
   }
   .article-meta {
     @apply mt-3;
@@ -131,21 +124,13 @@
   }
 
   .article-prose :is(h1, h2) {
-    @apply font-serif text-3xl font-normal text-foreground;
-    line-height: calc(40 / 30);
-  }
-  @media (max-width: 40rem) {
-    .article-prose :is(h1, h2) {
-      line-height: calc(44 / 30);
-    }
+    @apply font-serif text-2xl font-normal text-foreground;
   }
   .article-prose h3 {
-    @apply font-sans text-xl font-medium text-foreground;
-    line-height: calc(28 / 20);
+    @apply font-sans text-lg font-medium text-foreground;
   }
   .article-prose :is(h4, h5, h6) {
-    @apply font-sans text-lg text-foreground;
-    line-height: calc(28 / 18);
+    @apply font-sans text-base text-foreground;
   }
   .article-prose h4 {
     @apply font-semibold;
