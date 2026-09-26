@@ -120,13 +120,12 @@ allowed to determine natural height.
 
 ## Content behavior
 
-Standard top-level Markdown images, linked images, image figures, tables, code
-blocks, and Mermaid diagrams use the wider tracks automatically. Images retain their natural
+Standard top-level Markdown images, linked images, image figures, tables,
+and Mermaid diagrams use the wider tracks automatically. Images retain their natural
 aspect ratio and are not enlarged beyond their intrinsic width. Captions return
-to the reading measure. Fenced code, highlighted code figures, and GitHub excerpts share the media
-tracks and retain native keyboard scrolling for long lines. Code nested in a
-list or disclosure stays inside that parent. Wide code blocks also stop a
-sidenote span, so annotations cannot overlap their frame.
+to the reading measure. Fenced code, highlighted code figures, and GitHub excerpts
+use the normal reading column and retain native keyboard scrolling for long lines.
+Code nested in a list or disclosure stays inside that parent.
 
 ```mdx
 <figure>

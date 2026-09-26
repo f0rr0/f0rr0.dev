@@ -97,6 +97,7 @@ export default function rehypeArticleGrid() {
       const wide =
         hasClass("article-wide") ||
         (media &&
+          !isCode(node) &&
           !hasClass("article-screenshot") &&
           !hasClass("article-screenshot-grid"));
       if (isImageParagraph(node)) {

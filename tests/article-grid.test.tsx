@@ -69,7 +69,7 @@ plain text
 
 [^c]: Note C stays at the end.
 
-[^d]: This note must stop before the wide code block.
+[^d]: This note can continue beside reading-width code blocks.
 `,
     {
       ...runtime,
@@ -84,8 +84,15 @@ plain text
   expect(html).toContain("<h2>Heading</h2>");
   expect(html.match(/class="article-sidenotes"/g)).toHaveLength(2);
   expect(html).toContain('style="--article-row:2;--article-span:2"');
-  expect(html).toContain('style="--article-row:10;--article-span:1"');
-  expect(html.match(/data-article-wide="true"/g)).toHaveLength(7);
+  expect(html).toContain('style="--article-row:10;--article-span:4"');
+  expect(html.match(/data-article-wide="true"/g)).toHaveLength(4);
+  for (const row of [11, 12, 13]) {
+    const block = new RegExp(
+      `<div[^>]*style="--article-row:${row}"[^>]*>`
+    ).exec(html)?.[0];
+    expect(block).toBeDefined();
+    expect(block).not.toContain("data-article-wide");
+  }
   expect(html).toContain(
     'style="--article-row:11"><figure data-rehype-pretty-code-figure'
   );
