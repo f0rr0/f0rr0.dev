@@ -129,7 +129,7 @@ export function CodexActivity({
             <TabsList aria-label="Token activity interval" variant="line">
               {views.map(([mode, label]) => (
                 <TabsTrigger
-                  className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-150 motion-reduce:transition-none"
+                  className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none"
                   key={mode}
                   value={mode}
                 >

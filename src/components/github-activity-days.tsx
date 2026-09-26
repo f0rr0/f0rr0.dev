@@ -3,8 +3,8 @@
 import { CircleDot, FolderGit2, LockKeyhole } from "lucide-react";
 import Image from "next/image";
 
+import { DateTime } from "@/components/date-time";
 import { LanguageIcon } from "@/components/language-icon";
-import { LocalDateTime } from "@/components/local-date-time";
 import {
   Collapsible,
   CollapsibleContent,
@@ -154,17 +154,18 @@ function WorkUnitRow({
           <CollapsibleTrigger className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group cursor-pointer" />
         }
       >
-        <span className="min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:block-lh [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:block-auto motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
+        <span className="min-w-0 font-normal disclosure-title group-hover:underline">
           {headline}
         </span>
         <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
           <span className="hidden sm:inline-flex">
             <DiffCounters facts={item.facts} />
           </span>
-          <LocalDateTime
+          <DateTime
             className="whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
+            timeZone={WORK_LOG_TIME_ZONE}
           />
           <DisclosureChevron />
         </span>
@@ -196,14 +197,15 @@ function IssueRow({
         target={item.destination === null ? undefined : "_blank"}
         title={item.title}
       >
-        <span className="min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:block-lh [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:block-auto motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
+        <span className="min-w-0 truncate font-normal group-hover:underline">
           {item.title}
         </span>
         <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
-          <LocalDateTime
+          <DateTime
             className="whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
+            timeZone={WORK_LOG_TIME_ZONE}
           />
           <CircleDot aria-hidden="true" className="size-4" />
         </span>
@@ -250,7 +252,7 @@ function RepositoryGroup({
             </ol>
           </CollapsibleContent>
           <CollapsibleTrigger className="site-row grid min-h-11 w-full grid-cols-[minmax(0,max-content)_auto] items-start justify-start gap-x-1.5 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group/more cursor-pointer pt-0">
-            <span className="min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:block-lh [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:block-auto motion-reduce:[.site-row[aria-expanded]_&]:transition-none text-muted-foreground">
+            <span className="min-w-0 truncate font-normal text-muted-foreground">
               <span className="group-data-panel-open/more:hidden">
                 Show {countFormatter.format(hiddenItems.length)} more
               </span>
@@ -299,9 +301,6 @@ function GitHubActivityDay({
           >
             {formatDate(day.day, "weekday")}
           </time>
-          <span title={`Days are grouped in ${WORK_LOG_TIME_ZONE}`}>
-            {WORK_LOG_TIME_ZONE}
-          </span>
         </h3>
         <dl
           aria-label={`Totals for ${day.day}`}

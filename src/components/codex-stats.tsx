@@ -4,13 +4,14 @@ import { CodexActivity } from "@/components/codex-activity";
 import { InfoLabel } from "@/components/info-label";
 import { SiteSection } from "@/components/site-page";
 import { TokenStatGrid } from "@/components/token-stat-grid";
-import { siteNavigation, sitePreferences } from "@/content/site";
+import { siteNavigation } from "@/content/site";
 import { tokenPreferences } from "@/content/tokens";
 import type {
   PublicCodexMetric,
   PublicCodexRange,
   PublicCodexStats,
 } from "@/lib/codex/stats";
+import { formatDate } from "@/lib/date";
 
 const compactNumber = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
@@ -243,11 +244,6 @@ export function CodexUsageLimit({ stats }: { stats: PublicCodexStats }) {
   if (stats.limits.length === 0) {
     return null;
   }
-  const resetDate = new Intl.DateTimeFormat(sitePreferences.language, {
-    month: "short",
-    day: "numeric",
-    timeZone: tokenPreferences.timeZone,
-  });
   return (
     <SiteSection id="usage-limit" title="Usage limits">
       <div className="space-y-6">
@@ -266,7 +262,14 @@ export function CodexUsageLimit({ stats }: { stats: PublicCodexStats }) {
               />
               {limit.resetAt === null ? null : (
                 <p className="mt-2 text-base text-muted-foreground">
-                  Resets {resetDate.format(new Date(limit.resetAt * 1000))}
+                  Resets{" "}
+                  <time dateTime={new Date(limit.resetAt * 1000).toISOString()}>
+                    {formatDate(
+                      new Date(limit.resetAt * 1000),
+                      "date",
+                      tokenPreferences.timeZone
+                    )}
+                  </time>
                 </p>
               )}
             </div>

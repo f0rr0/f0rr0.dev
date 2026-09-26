@@ -1,7 +1,7 @@
 import type { StaticImageData } from "next/image";
 import Link from "next/link";
 
-import { LocalDateTime } from "@/components/local-date-time";
+import { DateTime } from "@/components/date-time";
 import MDXImage from "@/components/mdx/MDXImage";
 import {
   HoverCardGroup,
@@ -56,7 +56,7 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
                       {post.metadata.summary}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      <LocalDateTime dateTime={post.date.toISOString()} /> ·{" "}
+                      <DateTime dateTime={post.date.toISOString()} /> ·{" "}
                       {post.readingTime}
                       {post.metadata.draft === true ? " · Draft preview" : ""}
                     </p>
@@ -69,7 +69,7 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
               <span className="min-w-0 font-normal group-hover:underline">
                 {post.metadata.title}
               </span>
-              <LocalDateTime
+              <DateTime
                 className="site-row-meta min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums hidden sm:flex"
                 dateTime={post.date.toISOString()}
               />

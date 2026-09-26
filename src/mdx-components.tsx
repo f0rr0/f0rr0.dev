@@ -1,6 +1,6 @@
 import type { MDXComponents } from "mdx/types";
 
-import { LocalDateTime } from "@/components/local-date-time";
+import { DateTime } from "@/components/date-time";
 import CodeBlock from "@/components/mdx/CodeBlock";
 import MDXLink from "@/components/mdx/MDXLink";
 import Mermaid from "@/components/mdx/Mermaid";
@@ -13,7 +13,7 @@ const components: MDXComponents = {
     dateTime === undefined ? (
       <time {...props}>{children}</time>
     ) : (
-      <LocalDateTime {...props} dateTime={dateTime} />
+      <DateTime {...props} dateTime={dateTime} />
     ),
 };
 

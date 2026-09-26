@@ -77,7 +77,7 @@ function JourneyReveal({
             },
           }}
           transition={{
-            duration: reducedMotion ? 0 : inline ? 0.14 : 0.18,
+            duration: reducedMotion ? 0 : 0.15,
             delay: reducedMotion ? 0 : delay,
             ease: revealEase,
           }}
@@ -157,7 +157,7 @@ function RoleBlock({
       opacity: 1,
       transform: reducedMotion ? "none" : "translateY(0px)",
       transition: {
-        duration: reducedMotion ? 0 : 0.16,
+        duration: reducedMotion ? 0 : 0.15,
         delay: reducedMotion ? 0 : 0.16 + Math.min(index, 3) * 0.03,
         ease: revealEase,
       },
@@ -171,14 +171,14 @@ function RoleBlock({
       >
         <motion.span
           layout="position"
-          className="font-normal text-foreground max-sm:block max-sm:max-w-full max-sm:shrink-0 max-sm:overflow-x-auto max-sm:whitespace-nowrap"
+          className="min-w-0 max-w-full wrap-anywhere font-normal text-foreground"
         >
           {role.title}
         </motion.span>
         <JourneyReveal
           expanded={expanded}
           inline
-          className="relative top-[-0.5px] ml-2 inline-flex flex-wrap gap-2 align-baseline empty:hidden max-sm:ml-0 max-sm:flex-nowrap"
+          className="relative top-[-0.5px] ml-2 inline-flex flex-wrap gap-2 align-baseline empty:hidden max-sm:ml-0"
           delay={0.12}
         >
           <RoleMarkers role={role} />
@@ -186,7 +186,7 @@ function RoleBlock({
       </motion.div>
       <motion.p
         layout="position"
-        className="col-2 [.journey[data-expanded='true']_&]:col-1 sm:[.journey[data-expanded='true']_&]:col-2 sm:[.journey[data-expanded='true']_&]:row-1 sm:[.journey[data-expanded='true']_&]:text-end [.journey[data-expanded='true']_&]:whitespace-nowrap mt-1 sm:[.journey[data-expanded='false']_&]:justify-self-end sm:[.journey[data-expanded='false']_&]:text-end sm:[.journey[data-expanded='false']_&]:col-3 sm:[.journey[data-expanded='false']_&]:row-2 sm:[.journey[data-expanded='false']_&]:mt-1 relative text-sm text-muted-foreground tabular-nums"
+        className="col-2 [.journey[data-expanded='true']_&]:col-1 sm:[.journey[data-expanded='true']_&]:col-2 sm:[.journey[data-expanded='true']_&]:row-1 sm:[.journey[data-expanded='true']_&]:text-end mt-1 sm:[.journey[data-expanded='false']_&]:justify-self-end sm:[.journey[data-expanded='false']_&]:text-end sm:[.journey[data-expanded='false']_&]:col-3 sm:[.journey[data-expanded='false']_&]:row-2 sm:[.journey[data-expanded='false']_&]:mt-1 relative text-sm text-muted-foreground tabular-nums"
       >
         <JourneyReveal
           expanded={expanded}
@@ -276,7 +276,7 @@ function ExperienceItem({
     <motion.li
       ref={entryRef}
       layout="position"
-      className="relative [border-bottom:1px_solid_transparent] [transition:border-color_100ms_ease-out] grid grid-cols-[2.5rem_minmax(0,1fr)] items-start gap-x-4 py-3 [.journey[data-expanded='false']_&:not(:last-child)]:[border-bottom-color:var(--border)] [.journey[data-expanded='false']_&:not(:last-child)]:[transition:border-color_140ms_ease-out_200ms] sm:[.journey[data-expanded='false']_&]:grid-cols-[2.5rem_fit-content(45%)_minmax(0,1fr)] motion-reduce:transition-none motion-reduce:[.journey[data-expanded='false']_&:not(:last-child)]:transition-none"
+      className="relative [border-bottom:1px_solid_transparent] transition-[border-color] duration-(--motion-fast) ease-out grid grid-cols-[2.5rem_minmax(0,1fr)] items-start gap-x-4 py-3 [.journey[data-expanded='false']_&:not(:last-child)]:[border-bottom-color:var(--border)] [.journey[data-expanded='false']_&:not(:last-child)]:delay-(--motion-layout) sm:[.journey[data-expanded='false']_&]:grid-cols-[2.5rem_fit-content(45%)_minmax(0,1fr)] motion-reduce:transition-none motion-reduce:delay-0"
     >
       <motion.div
         layout="position"
@@ -320,7 +320,7 @@ function ExperienceItem({
                   })}
                 </TooltipContent>
               }
-              className="font-medium underline decoration-transparent underline-offset-[0.2em] [transition:text-decoration-color_150ms_ease-out] [:hover,_:focus-visible]:decoration-[currentColor] motion-reduce:transition-none relative block min-h-6 cursor-pointer text-start focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+              className="font-medium underline decoration-transparent underline-offset-[0.2em] transition-[text-decoration-color] duration-(--motion-fast) ease-out [:hover,_:focus-visible]:decoration-[currentColor] motion-reduce:transition-none relative block min-h-6 cursor-pointer text-start focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
               onClick={onToggle}
               aria-expanded={expanded}
               aria-label={`${company}: ${expanded ? "hide details" : "show details"}`}

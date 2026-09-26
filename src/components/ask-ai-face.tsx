@@ -95,7 +95,7 @@ export function AskAiFace() {
           }
         >
           <motion.span
-            className="flex items-center gap-1.25 [&>span]:h-2 [&>span]:w-0.75 [&>span]:rounded-full [&>span]:bg-current [&>span]:transition-[height] [&>span]:duration-180 [&>span]:ease-(--ease-settle) group-hover:[&>span]:h-1.5 [@media(hover:hover)_and_(pointer:fine)]:group-focus-visible:[&>span]:h-1.5 [@media(hover:hover)_and_(pointer:fine)]:group-data-popup-open:[&>span]:h-1.5 motion-reduce:[&>span]:transition-none"
+            className="flex items-center gap-1.25 [&>span]:h-2 [&>span]:w-0.75 [&>span]:rounded-full [&>span]:bg-current [&>span]:transition-[height] [&>span]:duration-(--motion-fast) [&>span]:ease-(--ease-settle) group-hover:[&>span]:h-1.5 [@media(hover:hover)_and_(pointer:fine)]:group-focus-visible:[&>span]:h-1.5 [@media(hover:hover)_and_(pointer:fine)]:group-data-popup-open:[&>span]:h-1.5 motion-reduce:[&>span]:transition-none"
             animate={{
               scaleY: reducedMotion
                 ? 1

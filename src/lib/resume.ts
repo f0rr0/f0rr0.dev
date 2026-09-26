@@ -211,7 +211,7 @@ const buildWritingSection = (
     .slice(0, limit)
     .map(
       (post) =>
-        `- [${post.metadata.title}](${localProfileUrl(`/writing/${post.slug}.md`)}) — ${post.date.toISOString().slice(0, 10)}. ${post.metadata.summary}`
+        `- [${post.metadata.title}](${localProfileUrl(`/writing/${post.slug}`)}) — ${post.date.toISOString().slice(0, 10)}. ${post.metadata.summary}`
     );
 
   return links.length === 0
@@ -245,7 +245,7 @@ ${resumeData.links.map((link) => `- [${link.label}](${link.href})`).join("\n")}
 
 - [PDF résumé](${localProfileUrl(resumePdfUrl)}): Downloadable résumé.
 - [${siteNavigation.work.title}](${localProfileUrl(siteNavigation.work.path)}): Recent code activity.
-- [${siteNavigation.writing.title}](${localProfileUrl(siteNavigation.writing.path)}): All published articles; each article is also available at /writing/{slug}.md.
+- [${siteNavigation.writing.title}](${localProfileUrl(siteNavigation.writing.path)}): All published articles.
 - [RSS](${localProfileUrl("/rss.xml")}): Article feed.
 `;
 

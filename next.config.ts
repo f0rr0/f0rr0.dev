@@ -51,7 +51,6 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/": blogSourceFiles,
     "/writing/[slug]": blogImageFiles,
-    "/writing/[slug]/markdown": blogSourceFiles,
     "/writing/[slug]/opengraph-image": blogImageFiles,
     "/writing/[slug]/share-image": blogImageFiles,
     "/writing/[slug]/twitter-image": blogImageFiles,
@@ -72,12 +71,6 @@ const nextConfig: NextConfig = {
       permanent: true,
     },
     { source: "/resume", destination: "/journey", permanent: true },
-  ],
-  rewrites: async () => [
-    {
-      destination: "/writing/:slug/markdown",
-      source: "/writing/:slug.md",
-    },
   ],
 };
 

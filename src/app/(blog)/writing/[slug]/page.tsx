@@ -5,7 +5,6 @@ import type { ComponentType } from "react";
 
 import { ArticleAnalytics } from "@/components/blog/article-analytics";
 import { ArticleProse } from "@/components/blog/article-prose";
-import { BlogPostActions } from "@/components/blog/blog-post-actions";
 import { JsonLd } from "@/components/json-ld";
 import MDXImage from "@/components/mdx/MDXImage";
 import { SiteMain } from "@/components/site-page";
@@ -83,7 +82,7 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
         title: metadata.title,
         prompt: buildAskAiPrompt({
           title: metadata.title,
-          sourceUrl: publicUrl(`/writing/${slug}.md`),
+          sourceUrl: publicUrl(`/writing/${slug}`),
         }),
       }}
     >
@@ -92,16 +91,10 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
         <article className="article-layout">
           <header className="article-header">
             <h1 className="article-title">{metadata.title}</h1>
-            <div
-              className="article-meta flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
-              data-slot="blog-post-rail"
-            >
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                <time dateTime={date.toISOString()}>{formatDate(date)}</time>
-                <span aria-hidden="true">·</span>
-                <span>{readingTime}</span>
-              </div>
-              <BlogPostActions markdownHref={`/writing/${slug}.md`} />
+            <div className="article-meta flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+              <time dateTime={date.toISOString()}>{formatDate(date)}</time>
+              <span aria-hidden="true">·</span>
+              <span>{readingTime}</span>
             </div>
           </header>
           <ArticleAnalytics slug={slug} />

@@ -297,7 +297,7 @@ function Breakdowns({
       <TabsList aria-label="Usage period" variant="line">
         {periods.map(([days, , label]) => (
           <TabsTrigger
-            className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-150 motion-reduce:transition-none"
+            className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none"
             key={days}
             value={days}
           >

@@ -69,13 +69,35 @@ export default defineConfig({
         "better-tailwindcss/no-concatenated-classes": "error",
         "better-tailwindcss/enforce-shorthand-classes": "error",
         "better-tailwindcss/enforce-canonical-classes": "error",
+        "better-tailwindcss/no-restricted-classes": [
+          "error",
+          {
+            restrict: [
+              {
+                pattern: "(?:^|:)transition-all$",
+                message:
+                  "Name the properties that animate; avoid animating layout accidentally.",
+              },
+              {
+                pattern:
+                  "(?:^|:)duration-(?!0$|\\(--motion-(?:fast|layout|exit)\\)$).+",
+                message:
+                  "Use duration-(--motion-fast), duration-(--motion-layout), or duration-(--motion-exit).",
+              },
+              {
+                pattern: "(?:^|:)\\[transition(?:-duration)?:",
+                message:
+                  "Use transition utilities with motion tokens, or the shared motion selectors in globals.css.",
+              },
+            ],
+          },
+        ],
         // shadcn also recognizes plain CSS selectors in the theme imports.
         "shadcn/no-unknown-classes": [
           "error",
           {
             // Structural hooks referenced by arbitrary selectors and the MDX transform.
             allow: [
-              "disclosure-panel",
               "github-code-embed",
               "journey",
               "site-nav-link",

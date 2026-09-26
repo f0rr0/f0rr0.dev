@@ -55,10 +55,7 @@ test("link classification records AI intent without the prompt and ignores ordin
     event: "ask_ai_clicked",
     properties: { provider: "perplexity" },
   });
-  expect(classifyLink("/writing/example.md?private=1", origin)).toEqual({
-    event: "markdown_opened",
-    properties: { destination_path: "/writing/example.md" },
-  });
+  expect(classifyLink("/writing/example.md?private=1", origin)).toBeNull();
   expect(
     classifyLink("https://github.com/f0rr0/repo?token=private", origin)
   ).toEqual({
