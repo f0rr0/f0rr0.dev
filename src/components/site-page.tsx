@@ -24,7 +24,7 @@ export function SiteMain({ children, className }: Readonly<SiteMainProps>) {
 export function SiteSection({
   action,
   children,
-  className = "home-section mt-12 [scroll-margin-top:2rem]",
+  className = "mt-12 scroll-mt-8",
   heading: Heading = "h2",
   description,
   href,
@@ -49,7 +49,7 @@ export function SiteSection({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <Heading
           className={cn(
-            "section-title font-serif font-normal text-foreground",
+            "font-serif font-normal text-foreground",
             Heading === "h1" ? "text-2xl" : "text-xl"
           )}
           id={`${id}-title`}

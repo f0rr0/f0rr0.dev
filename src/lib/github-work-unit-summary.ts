@@ -450,10 +450,6 @@ export const githubWorkUnitSummaryInputSchema = z
     }
   }) satisfies z.ZodType<GitHubWorkUnitSummaryInput>;
 
-export type GitHubWorkUnitSummaryOutput = z.infer<
-  typeof githubWorkUnitSummaryOutputSchema
->;
-
 export type GitHubWorkUnitSummaryOutputRejectionReason =
   | "bidi_character"
   | "control_character"

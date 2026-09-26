@@ -28,7 +28,7 @@ export function SiteHeader({
       const props = {
         "aria-current":
           item.href === currentPath ? ("page" as const) : undefined,
-        className: `site-nav-link inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-normal text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${item.href === activeHref ? "site-nav-link-active text-foreground underline" : ""}`,
+        className: `site-nav-link inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-normal text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${item.href === activeHref ? "text-foreground underline" : ""}`,
         href: item.href,
       };
       return (

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  // Articles are loaded by path at runtime; scripts are standalone entry points.
+  "entry": ["src/content/blog/**/page.mdx", "scripts/*.ts"],
+  "ignoreIssues": {
+    // Retain the upstream API of used registry components, but detect unused files.
+    "src/components/ui/**": ["exports", "types"],
+  },
+  // Loaded via createRequire(import.meta.url); ships a native Typst executable.
+  "ignoreDependencies": ["@flukxr/typst-cli"],
+  // Installed and pinned by mise, not npm.
+  "ignoreBinaries": ["typstyle"],
+  "ignoreExportsUsedInFile": true,
+}

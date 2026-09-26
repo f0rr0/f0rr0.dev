@@ -36,7 +36,7 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
     <p className="text-muted-foreground">No published writing yet.</p>
   ) : (
     <HoverCardGroup>
-      <ol className="site-list divide-y divide-border">
+      <ol className="divide-y divide-border">
         {entries.map(({ post, shareImage }) => (
           <li key={post.slug}>
             <HoverCardTrigger
@@ -44,7 +44,7 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
                 <HoverCardContent>
                   <MDXImage
                     alt=""
-                    className="aspect-[1200/630] w-full border-b object-cover"
+                    className="aspect-1200/630 w-full border-b object-cover"
                     height={168}
                     sizes="320px"
                     src={shareImage}
@@ -66,7 +66,7 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
               className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-3 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group"
               render={<Link href={`/writing/${post.slug}`} prefetch={false} />}
             >
-              <span className="site-row-title min-w-0 font-normal group-hover:underline">
+              <span className="min-w-0 font-normal group-hover:underline">
                 {post.metadata.title}
               </span>
               <LocalDateTime

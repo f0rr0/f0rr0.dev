@@ -70,7 +70,7 @@ function RepositoryIdentity({
           />
         )}
         {isPrivate && repository.avatarUrl !== null ? (
-          <span className="absolute -end-0.5 -bottom-0.5 grid size-3.5 place-items-center rounded-full bg-background ring-1 ring-background">
+          <span className="absolute -inset-e-0.5 -bottom-0.5 grid size-3.5 place-items-center rounded-full bg-background ring-1 ring-background">
             <LockKeyhole className="size-2.5" />
           </span>
         ) : null}
@@ -154,7 +154,7 @@ function WorkUnitRow({
           <CollapsibleTrigger className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group cursor-pointer" />
         }
       >
-        <span className="site-row-title min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
+        <span className="min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:block-lh [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:block-auto motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
           {headline}
         </span>
         <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
@@ -196,7 +196,7 @@ function IssueRow({
         target={item.destination === null ? undefined : "_blank"}
         title={item.title}
       >
-        <span className="site-row-title min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
+        <span className="min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:block-lh [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:block-auto motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
           {item.title}
         </span>
         <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
@@ -235,7 +235,7 @@ function RepositoryGroup({
       <h4 className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
         <RepositoryIdentity repository={group.repository} />
       </h4>
-      <ol className="site-list divide-y divide-border">
+      <ol className="divide-y divide-border">
         {visibleItems.map((item) => (
           <ActivityItem item={item} key={item.id} />
         ))}
@@ -243,14 +243,14 @@ function RepositoryGroup({
       {hiddenItems.length === 0 ? null : (
         <Collapsible>
           <CollapsibleContent>
-            <ol className="site-list divide-y divide-border border-t border-border">
+            <ol className="divide-y divide-border border-t border-border">
               {hiddenItems.map((item) => (
                 <ActivityItem item={item} key={item.id} />
               ))}
             </ol>
           </CollapsibleContent>
           <CollapsibleTrigger className="site-row grid min-h-11 w-full grid-cols-[minmax(0,max-content)_auto] items-start justify-start gap-x-1.5 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group/more cursor-pointer pt-0">
-            <span className="site-row-title min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none text-muted-foreground">
+            <span className="min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:block-lh [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:block-auto motion-reduce:[.site-row[aria-expanded]_&]:transition-none text-muted-foreground">
               <span className="group-data-panel-open/more:hidden">
                 Show {countFormatter.format(hiddenItems.length)} more
               </span>
@@ -290,10 +290,10 @@ function GitHubActivityDay({
   );
   return (
     <section aria-labelledby={`activity-day-${day.day}`}>
-      <header className="site-row min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring work-log-day-header flex flex-wrap rounded-none border-y border-border py-2">
+      <header className="site-row min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring flex flex-wrap rounded-none border-y border-border py-2">
         <h3 className="site-row-meta flex min-h-6 shrink-0 items-center gap-1 text-sm text-muted-foreground tabular-nums justify-start font-medium sm:gap-2">
           <time
-            className="work-log-date font-sans font-normal"
+            className="font-sans font-normal"
             dateTime={day.day}
             id={`activity-day-${day.day}`}
           >

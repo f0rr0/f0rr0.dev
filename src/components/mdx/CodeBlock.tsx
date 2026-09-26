@@ -50,7 +50,7 @@ function LanguageIcon({ language }: Readonly<{ language: string }>) {
       >
         <span
           aria-hidden="true"
-          className="code-block-language-icon relative w-4 h-4 flex-none [&::before]:absolute [&::before]:[inset:0] [&::before]:[background:currentColor] [&::before]:content-[''] [&::before]:[mask:var(--code-language-icon)_center_/_contain_no-repeat]"
+          className="relative size-4 flex-none [&::before]:absolute [&::before]:inset-0 [&::before]:[background:currentColor] [&::before]:content-[''] [&::before]:[mask:var(--code-language-icon)_center/contain_no-repeat]"
           style={iconStyle}
         />
       </TooltipTrigger>
@@ -84,23 +84,23 @@ export default function CodeBlock({
 
     return (
       <figure
-        className={`${codeBlockClassName} github-code-embed [&_pre[data-theme]]:max-h-128 [&_pre[data-theme]]:overflow-y-auto [&_pre[data-theme]]:[overscroll-behavior:contain] [&_[data-line-number]]:block [&_[data-line-number]]:min-w-full [&_[data-line-number]]:pr-5 [&_[data-line-number]::before]:inline-block [&_[data-line-number]::before]:w-15 [&_[data-line-number]::before]:[margin-right:0.875rem] [&_[data-line-number]::before]:[border-right:1px_solid_color-mix(in_oklab,_var(--border)_78%,_transparent)] [&_[data-line-number]::before]:pr-3 [&_[data-line-number]::before]:text-muted-foreground [&_[data-line-number]::before]:[content:attr(data-line-number)] [&_[data-line-number]::before]:tabular-nums [&_[data-line-number]::before]:text-right [&_[data-line-number]::before]:select-none  max-sm:[&_[data-line-number]]:pr-4 max-sm:[&_[data-line-number]::before]:w-14 max-sm:[&_[data-line-number]::before]:[margin-right:0.75rem] max-sm:[&_[data-line-number]::before]:[padding-right:0.65rem] print:shadow-none print:[&_pre[data-theme]]:[max-height:none] print:[&_pre[data-theme]]:overflow-visible print:[&_pre[data-theme]]:whitespace-pre-wrap print:[&_pre[data-theme]_>_code]:[width:auto] print:[&_pre[data-theme]_>_code]:wrap-anywhere`}
+        className={`${codeBlockClassName} github-code-embed [&_pre[data-theme]]:max-h-128 [&_pre[data-theme]]:overflow-y-auto [&_pre[data-theme]]:overscroll-contain **:data-line-number:block **:data-line-number:min-w-full **:data-line-number:pr-5 [&_[data-line-number]::before]:inline-block [&_[data-line-number]::before]:w-15 [&_[data-line-number]::before]:mr-3.5 [&_[data-line-number]::before]:[border-right:1px_solid_color-mix(in_oklab,var(--border)_78%,transparent)] [&_[data-line-number]::before]:pr-3 [&_[data-line-number]::before]:text-muted-foreground [&_[data-line-number]::before]:[content:attr(data-line-number)] [&_[data-line-number]::before]:tabular-nums [&_[data-line-number]::before]:text-right [&_[data-line-number]::before]:select-none max-sm:**:data-line-number:pr-4 max-sm:[&_[data-line-number]::before]:w-14 max-sm:[&_[data-line-number]::before]:mr-3 max-sm:[&_[data-line-number]::before]:pr-[0.65rem] print:shadow-none print:[&_pre[data-theme]]:max-h-none print:[&_pre[data-theme]]:overflow-visible print:[&_pre[data-theme]]:whitespace-pre-wrap print:[&_pre[data-theme]_>_code]:w-auto print:[&_pre[data-theme]_>_code]:wrap-anywhere`}
         data-language={language}
       >
         <figcaption className="github-code-embed-toolbar">
           <a
             aria-label={`View ${owner}/${repo}/${filePath}, ${lineLabel}, on GitHub`}
-            className="github-code-embed-source inline-flex h-8 min-w-0 items-center gap-2 rounded px-2 text-muted-foreground no-underline hover:underline hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:fill-current"
+            className="github-code-embed-source inline-flex h-8 min-w-0 items-center gap-2 rounded-sm px-2 text-muted-foreground no-underline hover:underline hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:fill-current"
             href={sourceHref}
             rel="noreferrer noopener"
             target="_blank"
           >
             <GitHubMark />
-            <span className="github-code-embed-source-label overflow-hidden text-ellipsis text-sm font-normal whitespace-nowrap">
+            <span className="github-code-embed-source-label truncate text-sm font-normal">
               {owner}/{repo}/{filePath}
             </span>
           </a>
-          <div className="github-code-embed-meta ms-auto flex shrink-0 items-center gap-1">
+          <div className="ms-auto flex shrink-0 items-center gap-1">
             <LanguageIcon language={language} />
             <CopyCodeButton language={languageName} />
           </div>

@@ -108,7 +108,7 @@ function Tools({
   }
   return (
     <div
-      className="mt-12 grid gap-x-12 gap-y-12 md:grid-cols-2 md:gap-y-4"
+      className="mt-12 grid gap-12 md:grid-cols-2 md:gap-y-4"
       style={
         { "--ranking-rows": tokenPreferences.rankingLimit + 1 } as CSSProperties
       }
@@ -139,7 +139,7 @@ function Tools({
                 {id === "skills" ? "uses" : "calls"}
               </span>
             }
-            className="min-w-0 scroll-mt-8 md:row-span-[var(--ranking-rows)] md:grid md:grid-rows-subgrid [&>div:first-child]:mb-4 md:[&>div:first-child]:mb-0"
+            className="min-w-0 scroll-mt-8 md:row-span-(--ranking-rows) md:grid md:grid-rows-subgrid [&>div:first-child]:mb-4 md:[&>div:first-child]:mb-0"
           >
             <Ranking
               rows={data.rows

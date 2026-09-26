@@ -3,7 +3,11 @@
 /* oxlint-disable jsx-a11y/no-noninteractive-tabindex -- Scrollable diagram source needs keyboard access. */
 
 import { Maximize2, Minimize2, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
-import type { Mermaid, MermaidConfig, RenderResult } from "mermaid";
+import type {
+  Mermaid as MermaidApi,
+  MermaidConfig,
+  RenderResult,
+} from "mermaid";
 import { useTheme } from "next-themes";
 import {
   useEffect,
@@ -63,7 +67,7 @@ const diagramTypeNames: Record<string, string> = {
   xychart: "XY chart",
 };
 
-let mermaidPromise: Promise<Mermaid> | undefined;
+let mermaidPromise: Promise<MermaidApi> | undefined;
 let elkRegistrationPromise: Promise<void> | undefined;
 let renderQueue: Promise<null> = Promise.resolve(null);
 
@@ -109,12 +113,12 @@ async function loadMermaid() {
   return await mermaidPromise;
 }
 
-async function importAndRegisterElk(mermaid: Mermaid) {
+async function importAndRegisterElk(mermaid: MermaidApi) {
   const { default: elkLayouts } = await import("@mermaid-js/layout-elk");
   mermaid.registerLayoutLoaders(elkLayouts);
 }
 
-async function registerElkLayouts(mermaid: Mermaid) {
+async function registerElkLayouts(mermaid: MermaidApi) {
   elkRegistrationPromise ??= importAndRegisterElk(mermaid);
   await elkRegistrationPromise;
 }
@@ -396,7 +400,7 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
     <figure
       aria-busy={status === "loading"}
       className={cn(
-        "mermaid-block min-w-0 overflow-hidden [&.mermaid-block:fullscreen]:flex [&.mermaid-block:fullscreen]:[width:100vw] [&.mermaid-block:fullscreen]:[height:100vh] [&.mermaid-block:fullscreen]:[margin:0] [&.mermaid-block:fullscreen]:flex-col [&.mermaid-block:fullscreen]:border-0 [&.mermaid-block:fullscreen]:rounded-none [&.mermaid-block:fullscreen]:bg-background print:break-inside-avoid print:shadow-none",
+        "mermaid-block min-w-0 overflow-hidden [&.mermaid-block:fullscreen]:flex [&.mermaid-block:fullscreen]:w-screen [&.mermaid-block:fullscreen]:h-screen [&.mermaid-block:fullscreen]:m-0 [&.mermaid-block:fullscreen]:flex-col [&.mermaid-block:fullscreen]:border-0 [&.mermaid-block:fullscreen]:rounded-none [&.mermaid-block:fullscreen]:bg-background print:break-inside-avoid print:shadow-none",
         className
       )}
       data-error={status === "error" ? errorMessage : null}
@@ -409,12 +413,12 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
     >
       <div
         aria-label={`${diagramType}. Scroll horizontally to inspect larger diagrams.`}
-        className="mermaid-viewport relative overflow-x-auto [overscroll-behavior-inline:contain] p-4 [scrollbar-color:color-mix(in_oklab,_var(--muted-foreground)_52%,_transparent)_color-mix(in_oklab,_var(--muted)_58%,_transparent)] [scrollbar-width:thin] [&:focus-visible]:[outline:2px_solid_var(--ring)] [&:focus-visible]:[outline-offset:-2px] [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-track]:[border-top:1px_solid_color-mix(in_oklab,_var(--border)_72%,_transparent)] [&::-webkit-scrollbar-track]:[background:color-mix(in_oklab,_var(--muted)_58%,_transparent)] [&::-webkit-scrollbar-thumb]:[border:0.2rem_solid_transparent] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:[background:color-mix(in_oklab,_var(--muted-foreground)_52%,_transparent)] [&::-webkit-scrollbar-thumb]:[background-clip:padding-box] [.mermaid-block:fullscreen_&]:flex [.mermaid-block:fullscreen_&]:[min-height:0] [.mermaid-block:fullscreen_&]:flex-1 [.mermaid-block:fullscreen_&]:items-center [.mermaid-block:fullscreen_&]:[padding:clamp(1rem,_4vw,_4rem)] print:[min-height:0] print:overflow-visible print:[background:transparent] print:p-3"
+        className="relative overflow-x-auto [overscroll-behavior-inline:contain] p-4 [scrollbar-color:color-mix(in_oklab,var(--muted-foreground)_52%,transparent)_color-mix(in_oklab,var(--muted)_58%,transparent)] scrollbar-thin focus-visible:[outline:2px_solid_var(--ring)] focus-visible:-outline-offset-2 [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-track]:[border-top:1px_solid_color-mix(in_oklab,var(--border)_72%,transparent)] [&::-webkit-scrollbar-track]:[background:color-mix(in_oklab,var(--muted)_58%,transparent)] [&::-webkit-scrollbar-thumb]:[border:0.2rem_solid_transparent] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:[background:color-mix(in_oklab,var(--muted-foreground)_52%,transparent)] [&::-webkit-scrollbar-thumb]:bg-clip-padding [.mermaid-block:fullscreen_&]:flex [.mermaid-block:fullscreen_&]:min-h-0 [.mermaid-block:fullscreen_&]:flex-1 [.mermaid-block:fullscreen_&]:items-center [.mermaid-block:fullscreen_&]:p-[clamp(1rem,4vw,4rem)] print:min-h-0 print:overflow-visible print:[background:transparent] print:p-3"
         tabIndex={diagram === null ? -1 : 0}
       >
         {diagram === null ? null : (
           <div
-            className="mermaid-canvas flex w-max min-w-full items-start justify-center [&_.mermaid-svg]:block [&_.mermaid-svg]:[width:var(--mermaid-render-width)] [&_.mermaid-svg]:max-w-none [&_.mermaid-svg]:h-auto [&_.mermaid-svg]:flex-none [&_.mermaid-svg]:overflow-visible [&_.mermaid-svg]:bg-transparent [.mermaid-block[data-rendering='true']_&]:[opacity:0.58] [.mermaid-block:fullscreen_&]:items-center print:w-full print:[&_.mermaid-svg]:w-full print:[&_.mermaid-svg]:[max-width:100%]"
+            className="flex w-max min-w-full items-start justify-center [&_.mermaid-svg]:block [&_.mermaid-svg]:w-(--mermaid-render-width) [&_.mermaid-svg]:max-w-none [&_.mermaid-svg]:h-auto [&_.mermaid-svg]:flex-none [&_.mermaid-svg]:overflow-visible [&_.mermaid-svg]:bg-transparent [.mermaid-block[data-rendering='true']_&]:opacity-[0.58] [.mermaid-block:fullscreen_&]:items-center print:w-full print:[&_.mermaid-svg]:w-full print:[&_.mermaid-svg]:max-w-full"
             dangerouslySetInnerHTML={{ __html: diagram.svg }}
             ref={canvasRef}
             style={diagramStyle}
@@ -423,19 +427,19 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
         {status === "loading" && diagram === null ? (
           <div
             aria-live="polite"
-            className="mermaid-placeholder flex min-h-30 items-center justify-center gap-3 text-muted-foreground font-sans text-sm"
+            className="flex min-h-30 items-center justify-center gap-3 text-muted-foreground font-sans text-sm"
             role="status"
           >
             <span
               aria-hidden="true"
-              className="mermaid-placeholder-mark motion-reduce:[animation:none] w-9 [height:1.4rem] [border:2px_solid_color-mix(in_oklab,_var(--primary)_72%,_transparent)] [border-radius:48%_54%_46%_52%] animate-mermaid-sketch-pulse [transform:rotate(-3deg)]"
+              className="motion-reduce:animate-none w-9 h-[1.4rem] [border:2px_solid_color-mix(in_oklab,var(--primary)_72%,transparent)] rounded-[48%_54%_46%_52%] animate-mermaid-sketch-pulse transform-[rotate(-3deg)]"
             />
             <span>Drawing diagram…</span>
           </div>
         ) : null}
         {status === "error" ? (
           <div
-            className="mermaid-error flex min-h-30 flex-col items-center justify-center gap-3 text-center font-sans text-sm text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground"
+            className="flex min-h-30 flex-col items-center justify-center gap-3 text-center font-sans text-sm text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground"
             role="alert"
           >
             <strong>Diagram unavailable</strong>
@@ -446,7 +450,7 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
                 tabIndex={0}
                 role="region"
                 aria-label="Diagram source"
-                className="overflow-x-auto rounded bg-background p-4 text-sm"
+                className="overflow-x-auto rounded-sm bg-background p-4 text-sm"
               >
                 <code>{chart}</code>
               </pre>
@@ -455,7 +459,7 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
         ) : null}
       </div>
       <div className="mermaid-toolbar print:hidden">
-        <span className="mermaid-diagram-type min-w-0 text-sm font-normal text-muted-foreground">
+        <span className="min-w-0 text-sm font-normal text-muted-foreground">
           {diagramType}
         </span>
         <div className="mermaid-toolbar-actions flex shrink-0 items-center gap-1">
@@ -473,7 +477,7 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
           </button>
           <button
             aria-label={`Reset diagram zoom (currently ${Math.round(zoom * 100)}%)`}
-            className="mermaid-control mermaid-zoom-reset tabular-nums min-w-16 max-sm:[&_span]:hidden"
+            className="mermaid-control tabular-nums min-w-16 max-sm:[&_span]:hidden"
             disabled={zoom === 1 || diagram === null}
             onClick={() => {
               setZoom(1);

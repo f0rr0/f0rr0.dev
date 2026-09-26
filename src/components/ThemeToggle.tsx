@@ -16,11 +16,11 @@ export default function ThemeToggle() {
     <button
       type="button"
       aria-label="Toggle color theme"
-      className="site-icon-button inline-flex size-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       onClick={handleToggle}
     >
-      <Moon aria-hidden="true" className="h-5 w-5 dark:hidden" />
-      <Sun aria-hidden="true" className="hidden h-5 w-5 dark:block" />
+      <Moon aria-hidden="true" className="size-5 dark:hidden" />
+      <Sun aria-hidden="true" className="hidden size-5 dark:block" />
     </button>
   );
 }

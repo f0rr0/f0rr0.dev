@@ -39,14 +39,14 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
       title="Open source"
     >
       <HoverCardGroup>
-        <ol className="site-list divide-y divide-border">
+        <ol className="divide-y divide-border">
           {projects.map((project) => (
             <li key={project.name}>
               <HoverCardTrigger
                 payload={
                   <HoverCardContent side="left">
                     <div className="p-4">
-                      <p className="break-words">{project.name}</p>
+                      <p className="wrap-break-word">{project.name}</p>
                       <p className="mt-2 text-muted-foreground">
                         {projectEditorial[
                           project.name as keyof typeof projectEditorial
@@ -83,7 +83,7 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
                 rel="noopener noreferrer"
                 target="_blank"
               >
-                <span className="site-row-title min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:[block-size:1lh] [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:[block-size:auto] motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
+                <span className="min-w-0 truncate font-normal [.site-row[aria-expanded]_&]:[interpolate-size:allow-keywords] [.site-row[aria-expanded='false']_&]:block-lh [.site-row[aria-expanded]_&]:[transition:block-size_240ms_var(--ease-settle)] [.site-row[aria-expanded='true']_&]:wrap-anywhere [.site-row[aria-expanded='true']_&]:whitespace-normal [.site-row[aria-expanded='true']_&]:block-auto motion-reduce:[.site-row[aria-expanded]_&]:transition-none group-hover:underline">
                   {project.name}
                 </span>
                 {project.stars === null ? null : (

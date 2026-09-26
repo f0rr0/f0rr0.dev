@@ -66,7 +66,7 @@ export function GitHubTimeline({
           <h1 className="sr-only" id="timeline-title">
             {siteNavigation.work.title}
           </h1>
-          <div className="absolute end-0 -top-11">
+          <div className="absolute inset-e-0 -top-11">
             <GitHubActivityStatus initialHead={initialPage.head} />
           </div>
           {content}
