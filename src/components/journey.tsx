@@ -164,7 +164,7 @@ function RoleBlock({
     }),
   };
   return (
-    <div className="contents [.journey[data-expanded='true']_&]:grid [.journey[data-expanded='true']_&]:grid-cols-1 sm:[.journey[data-expanded='true']_&]:grid-cols-[minmax(0,1fr)_auto] [.journey[data-expanded='true']_&]:items-baseline [.journey[data-expanded='true']_&]:gap-x-2 [.journey[data-expanded='true']_&]:gap-y-1 sm:[.journey[data-expanded='true']_&]:gap-x-4 [.journey[data-expanded='true']_&]:mt-4">
+    <div className="contents [.journey[data-expanded='true']_&]:grid [.journey[data-expanded='true']_&]:grid-cols-1 sm:[.journey[data-expanded='true']_&]:grid-cols-[minmax(0,1fr)_auto] [.journey[data-expanded='true']_&]:items-baseline [.journey[data-expanded='true']_&]:gap-x-2 [.journey[data-expanded='true']_&]:gap-y-1 md:[.journey[data-expanded='true']_&]:gap-x-4 [.journey[data-expanded='true']_&]:mt-4">
       <motion.div
         layout="position"
         className="sm:[.journey[data-expanded='true']_&]:block sm:[.journey[data-expanded='true']_&]:wrap-anywhere col-2 [.journey[data-expanded='true']_&]:col-1 mt-1 [.journey[data-expanded='true']_&]:mt-0 sm:[.journey[data-expanded='false']_&]:place-self-end sm:[.journey[data-expanded='false']_&]:text-end sm:[.journey[data-expanded='false']_&]:col-3 sm:[.journey[data-expanded='false']_&]:row-1 sm:[.journey[data-expanded='false']_&]:mt-0 relative flex min-w-0 flex-wrap items-center gap-2"
@@ -191,10 +191,11 @@ function RoleBlock({
         <JourneyReveal
           expanded={expanded}
           inline
-          className="inline-block"
+          className="inline-block sm:block"
           delay={0.22}
         >
-          {role.location} ·&nbsp;
+          {role.location}
+          <span className="sm:hidden"> ·&nbsp;</span>
         </JourneyReveal>
         <motion.span layout="position" className="inline-block">
           {role.dates}
