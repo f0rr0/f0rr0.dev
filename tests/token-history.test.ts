@@ -38,7 +38,7 @@ test("history distinguishes unreported dates from zero and excludes future dates
   expect(make(10)?.history.values).toHaveLength(365);
 });
 
-test("daily history keeps gaps and finds the peak without counting future dates", () => {
+test("missing days show zero daily usage and carry the cumulative total forward", () => {
   const history: TokenHistory = {
     partial: false,
     values: [
@@ -51,15 +51,11 @@ test("daily history keeps gaps and finds the peak without counting future dates"
   };
   const result = summarizeTokenHistory(history, "2026-09-23");
   expect(result.total).toBe(12);
-  expect(result.cumulativeRows.map((row) => row.tokens)).toEqual([
-    5,
-    null,
-    5,
-    12,
-  ]);
+  expect(result.cumulativeRows.map((row) => row.tokens)).toEqual([5, 5, 5, 12]);
   expect(result.peak).toEqual({ day: "2026-09-23", tokens: 7 });
   expect(result.rows).toHaveLength(4);
-  expect(result.rows[1].tokens).toBeNull();
+  expect(result.rows[1].tokens).toBe(0);
+  expect(history.values[1].tokens).toBeNull();
   expect(result.partial).toBe(true);
   expect(
     summarizeTokenHistory(

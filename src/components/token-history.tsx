@@ -195,9 +195,7 @@ function HistoryPlot({
       <TokenMonthAxis values={rows} />
       <p className="sr-only">
         {annotation}
-        {summary.partial
-          ? ". Partial history; gaps indicate unavailable data."
-          : ""}
+        {summary.partial ? ". Missing days are shown as zero usage." : ""}
       </p>
     </>
   );
