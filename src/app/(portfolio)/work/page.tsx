@@ -7,7 +7,7 @@ import { buildPageMetadata } from "@/lib/page-metadata";
 
 export const metadata = buildPageMetadata(pages.work);
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function WorkLogPage() {
   const initialPage = await getInitialGitHubActivity();

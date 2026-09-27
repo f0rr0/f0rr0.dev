@@ -1,4 +1,8 @@
+import { revalidateTag } from "next/cache";
+import { after } from "next/server";
+
 import { env } from "@/env";
+import { getInitialGitHubActivity } from "@/lib/github-activity-feed";
 import { runGitHubActivityWorker } from "@/lib/github-activity-worker";
 import { workerBatchSizeFrom } from "@/lib/github-activity-worker-core";
 import { GITHUB_WORKER_EXECUTION_DURATION_MS } from "@/lib/github-cron-config";
@@ -38,6 +42,12 @@ export async function POST(request: Request) {
             refLimit: 1,
           }),
     });
+    if (activity.projection?.feedRevisionChanged === true) {
+      revalidateTag("public-github-activity", "max");
+      after(async () => {
+        await getInitialGitHubActivity();
+      });
+    }
     return Response.json({
       activity,
       ok: true,

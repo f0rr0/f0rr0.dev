@@ -9,14 +9,26 @@ const check = (source: string) => {
   expect(result.exitCode).toBe(0);
 };
 
-test("only the hourly invocation publishes, without changing ingestion limits or auth", () => {
+test("only the hourly invocation publishes and warms changed activity, without changing ingestion limits or auth", () => {
   check(`
     import assert from "node:assert/strict";
     import { mock } from "bun:test";
     const calls = [];
+    const events = [];
+    const callbacks = [];
+    let changed = false;
+    let fail = false;
+    mock.module("next/cache", () => ({ revalidateTag: (...args) => events.push(args) }));
+    mock.module("next/server", () => ({ after: callback => callbacks.push(callback) }));
+    mock.module("./src/lib/github-activity-feed.ts", () => ({ getInitialGitHubActivity: async () => { events.push("warmed"); } }));
+    mock.module("./src/lib/operational-error.ts", () => ({ reportOperationalError: () => "Error" }));
     mock.module("./src/env.ts", () => ({ env: { CRON_SECRET: "hourly-publication-test-secret-32-characters" } }));
     mock.module("./src/lib/github-activity-worker.ts", () => ({
-      runGitHubActivityWorker: async options => { calls.push(options); return {}; }
+      runGitHubActivityWorker: async options => {
+        if (fail) throw new Error("Publication failed");
+        calls.push(options);
+        return { projection: options.includeProjection ? { feedRevisionChanged: changed } : null };
+      }
     }));
     const { POST } = await import("./src/app/api/cron/github-worker/route.ts");
     const request = (query, authorized = true) => POST(new Request(
@@ -37,22 +49,39 @@ test("only the hourly invocation publishes, without changing ingestion limits or
     assert.equal(calls[2].includeProjection, true);
     assert.equal(calls[2].commitLimit, 2);
     assert.equal(calls[2].refLimit, 1);
+    assert.deepEqual(events, []);
+    assert.equal(callbacks.length, 0);
+    changed = true;
+    assert.equal((await request("?publish=1")).status, 200);
+    assert.deepEqual(events, [["public-github-activity", "max"]]);
+    assert.equal(callbacks.length, 1);
+    await callbacks.shift()();
+    assert.deepEqual(events, [["public-github-activity", "max"], "warmed"]);
+    events.length = 0;
+    fail = true;
+    assert.equal((await request("?publish=1")).status, 503);
+    assert.deepEqual(events, []);
+    assert.equal(callbacks.length, 0);
   `);
 });
 
-test("Codex sync expires the public cache only after a successful save", () => {
+test("Codex sync warms the public cache after a successful change, never after a failed or unchanged sync", () => {
   check(`
     import assert from "node:assert/strict";
     import { mock } from "bun:test";
     const events = [];
+    const callbacks = [];
     let fail = false;
+    let updated = 2;
     mock.module("next/cache", () => ({ revalidateTag: (...args) => events.push(args) }));
+    mock.module("next/server", () => ({ after: callback => callbacks.push(callback) }));
+    mock.module("./src/lib/codex/public-stats.ts", () => ({ getPublicCodexStats: async () => { events.push("warmed"); } }));
     mock.module("./src/env.ts", () => ({ env: { CRON_SECRET: "codex-cache-test-secret-32-characters" } }));
     mock.module("./src/lib/operational-error.ts", () => ({ reportOperationalError: () => "Error" }));
     mock.module("./src/lib/codex/sync.ts", () => ({ syncCodexAccounts: async () => {
       if (fail) throw new Error("Sync failed");
       events.push("saved");
-      return { updated: 2 };
+      return { updated };
     } }));
     const { POST } = await import("./src/app/api/cron/codex-stats/route.ts");
     const request = (authorized = true) => POST(new Request("https://example.com/api/cron/codex-stats", {
@@ -61,11 +90,20 @@ test("Codex sync expires the public cache only after a successful save", () => {
     assert.equal((await request(false)).status, 401);
     assert.deepEqual(events, []);
     assert.equal((await request()).status, 200);
-    assert.deepEqual(events, ["saved", ["public-codex-stats", { expire: 0 }]]);
+    assert.deepEqual(events, ["saved", ["public-codex-stats", "max"]]);
+    assert.equal(callbacks.length, 1);
+    await callbacks.shift()();
+    assert.deepEqual(events, ["saved", ["public-codex-stats", "max"], "warmed"]);
+    events.length = 0;
+    updated = 0;
+    assert.equal((await request()).status, 200);
+    assert.deepEqual(events, ["saved"]);
+    assert.equal(callbacks.length, 0);
     events.length = 0;
     fail = true;
     assert.equal((await request()).status, 503);
     assert.deepEqual(events, []);
+    assert.equal(callbacks.length, 0);
   `);
 });
 

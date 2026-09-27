@@ -66,7 +66,6 @@ export function SiteSection({
             <Link
               className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
               href={href}
-              prefetch={false}
               target={external ? "_blank" : undefined}
               rel={external ? "noreferrer noopener" : undefined}
             >

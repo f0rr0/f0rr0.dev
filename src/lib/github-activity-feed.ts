@@ -16,7 +16,7 @@ const readCachedInitialGitHubActivity = unstable_cache(
       PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
     ),
   ["public-github-activity-initial-v3"],
-  { revalidate: 60 }
+  { revalidate: 60, tags: ["public-github-activity"] }
 );
 
 export const getInitialGitHubActivity = async () => {

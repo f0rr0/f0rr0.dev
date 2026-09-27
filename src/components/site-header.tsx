@@ -33,9 +33,7 @@ export function SiteHeader({
       };
       return (
         <li key={item.href}>
-          <Link {...props} prefetch={false}>
-            {item.label}
-          </Link>
+          <Link {...props}>{item.label}</Link>
         </li>
       );
     });
@@ -48,7 +46,6 @@ export function SiteHeader({
         >
           <Link
             href="/"
-            prefetch={false}
             aria-label={`${resumeData.person.name} home`}
             aria-current={currentPath === "/" ? "page" : undefined}
             className="group flex min-h-11 min-w-0 max-w-full items-center gap-3 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
