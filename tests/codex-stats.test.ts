@@ -193,7 +193,7 @@ describe("public Codex statistics", () => {
     });
     expect(stats.totals.totalThreads).toEqual({ partial: false, value: 30 });
     expect(stats.activity.daily.values).toHaveLength(364);
-    expect(stats.activity.daily.partial).toBe(false);
+    expect(stats.activity.daily.partial).toBe(true);
     expect(stats.activity.daily.values[0]?.day).toBe("2025-02-02");
     expect(
       stats.activity.daily.values.find(({ day }) => day === "2026-01-30")
@@ -213,7 +213,7 @@ describe("public Codex statistics", () => {
       tokens: 160,
     });
     expect(stats.activity.weekly.values).toHaveLength(364);
-    expect(stats.activity.weekly.partial).toBe(false);
+    expect(stats.activity.weekly.partial).toBe(true);
     expect(stats.activity.cumulative.values.at(-1)).toEqual({
       day: "2026-01-31",
       tokens: 160,
@@ -477,7 +477,8 @@ test("combined allowances preserve window durations and do not invent a shared r
 });
 
 test("snapshot saves keep profile history when upstream shortens or omits it", async () => {
-  const { mergeCodexSnapshots } = await import("../src/lib/codex/store");
+  const { partitionCodexHistory, restoreCodexHistory } =
+    await import("../src/lib/codex/daily-history");
   const base = {
     dailyUsageBuckets: [{ startDate: "2020-01-01", tokens: 10 }],
     cumulativeDailyUsageBuckets: [{ startDate: "2020-01-01", tokens: 10 }],
@@ -490,7 +491,13 @@ test("snapshot saves keep profile history when upstream shortens or omits it", a
     dailyUsageBuckets: [{ startDate: "2026-01-01", tokens: 20 }],
     cumulativeDailyUsageBuckets: null,
   };
-  const result = mergeCodexSnapshots(base, next);
+  const days = [
+    ...new Map([
+      ...partitionCodexHistory(base),
+      ...partitionCodexHistory(next),
+    ]).values(),
+  ];
+  const result = restoreCodexHistory(next, days);
   expect(result.dailyUsageBuckets).toEqual([
     ...base.dailyUsageBuckets,
     ...next.dailyUsageBuckets,
@@ -498,5 +505,5 @@ test("snapshot saves keep profile history when upstream shortens or omits it", a
   expect(result.cumulativeDailyUsageBuckets).toEqual(
     base.cumulativeDailyUsageBuckets
   );
-  expect(mergeCodexSnapshots(result, next)).toEqual(result);
+  expect(restoreCodexHistory(result, days)).toEqual(result);
 });

@@ -158,11 +158,31 @@ const mergeAnalyticsDay = (
   return value;
 };
 
+// oxlint-disable-next-line eslint/complexity -- Source-specific merges preserve omitted fields and incompatible historical units in one pass.
 export function mergeAnalyticsSnapshots(
   previous: AnalyticsSnapshot,
   incoming: AnalyticsSnapshot
 ): AnalyticsSnapshot {
   const merged = { ...previous, ...incoming };
+  const archives = new Map<
+    string,
+    NonNullable<AnalyticsSnapshot["delegation"]>
+  >();
+  for (const source of [
+    ...(previous.archivedDelegation ?? []),
+    ...(incoming.archivedDelegation ?? []),
+  ]) {
+    const combined = mergeAnalyticsSnapshots(
+      { delegation: archives.get(source.response.units) },
+      { delegation: source }
+    ).delegation;
+    if (combined) {
+      archives.set(source.response.units, combined);
+    }
+  }
+  if (archives.size) {
+    merged.archivedDelegation = [...archives.values()];
+  }
   for (const key of Object.keys(analyticsSchemas) as AnalyticsKey[]) {
     const old = previous[key];
     const next = incoming[key];
@@ -181,7 +201,7 @@ export function mergeAnalyticsSnapshots(
         ? previous.delegation
         : incoming.delegation;
       const archives = new Map(
-        (previous.archivedDelegation ?? []).map((source) => [
+        (merged.archivedDelegation ?? []).map((source) => [
           source.response.units,
           source,
         ])
@@ -193,18 +213,29 @@ export function mergeAnalyticsSnapshots(
       if (combined) {
         archives.set(archived.response.units, combined);
       }
+      const resumed = archives.get(merged.delegation.response.units);
+      if (resumed !== undefined) {
+        merged.delegation = mergeAnalyticsSnapshots(
+          { delegation: resumed },
+          { delegation: merged.delegation }
+        ).delegation;
+        archives.delete(resumed.response.units);
+      }
       merged.archivedDelegation = [...archives.values()];
       continue;
     }
     const rows = new Map(old.response.data.map((row) => [row.date, row]));
     for (const row of next.response.data) {
       const retained = rows.get(row.date);
-      const value = mergeAnalyticsDay(retained, row);
+      const value =
+        retained && next.fetchedAt < old.fetchedAt
+          ? mergeAnalyticsDay(row, retained)
+          : mergeAnalyticsDay(retained, row);
       rows.set(row.date, value);
     }
     Object.assign(merged, {
       [key]: {
-        ...next,
+        ...(old.fetchedAt > next.fetchedAt ? old : next),
         start: old.start < next.start ? old.start : next.start,
         end: old.end > next.end ? old.end : next.end,
         response: {
@@ -239,7 +270,8 @@ export async function fetchAnalytics(
   now: Date,
   previous: AnalyticsSnapshot = {},
   preferences = tokenPreferences,
-  range?: { start: string; end: string }
+  range?: { start: string; end: string },
+  recentOnly = false
 ): Promise<AnalyticsSnapshot> {
   if (
     range &&
@@ -269,77 +301,84 @@ export async function fetchAnalytics(
     skills: preferences.sections.tools,
   };
   const entries = await Promise.all(
-    (Object.keys(endpoints) as AnalyticsKey[]).map(async (key) => {
-      if (!enabled[key] && !range) {
-        return [key, previous[key]];
-      }
-      const retained = previous[key];
-      const refreshStart =
-        retained?.historyDays === historyDays
-          ? [utcOffset(end, -29), utcOffset(retained.end, 1)].toSorted()[0]
-          : historyStart;
-      const start =
-        range?.start ??
-        (refreshStart < historyStart ? historyStart : refreshStart);
-      const params = new URLSearchParams({
-        start_date: start,
-        end_date: end,
-        group_by: "day",
-      });
-      if (key !== "delegation") {
-        params.set("workspace_user", "true");
-      }
-      if (key === "plugins") {
-        params.set("top_plugin_limit", "100");
-      }
-      if (key === "skills") {
-        params.set("top_skill_limit", "100");
-      }
-      try {
-        const result = await fetcher(
-          `https://chatgpt.com/backend-api/wham${endpoints[key]}?${params}`,
-          {
-            headers,
-            signal: AbortSignal.timeout(10_000),
-          }
-        );
-        if (!result.ok) {
-          throw new Error("Analytics unavailable");
+    (Object.keys(endpoints) as AnalyticsKey[]).map(
+      // oxlint-disable-next-line eslint/complexity -- Each optional source retains its own response, failure and coverage boundary.
+      async (key) => {
+        if (!enabled[key] && !range) {
+          return [key, previous[key]];
         }
-        const response = analyticsSchemas[key].parse(await result.json());
-        const unitsChanged =
-          "units" in response &&
-          retained !== undefined &&
-          "units" in retained.response &&
-          response.units !== retained.response.units;
-        return [
-          key,
-          {
-            historyDays:
-              range || (unitsChanged && start > historyStart)
-                ? undefined
-                : historyDays,
-            fetchedAt: now.toISOString(),
-            start,
-            end,
-            response: {
-              ...response,
-              data: response.data
-                .filter((row) => row.date >= start && row.date <= end)
-                .toSorted((a, b) => a.date.localeCompare(b.date)),
-            },
-          },
-        ];
-      } catch {
-        if (range) {
-          throw new Error(
-            `Codex ${key} backfill failed for ${start} through ${end}.`
+        const retained = previous[key];
+        const refreshStart =
+          retained?.historyDays === historyDays
+            ? [utcOffset(end, -29), utcOffset(retained.end, 1)].toSorted()[0]
+            : historyStart;
+        const start =
+          range?.start ??
+          (recentOnly
+            ? utcOffset(end, -1)
+            : refreshStart < historyStart
+              ? historyStart
+              : refreshStart);
+        const params = new URLSearchParams({
+          start_date: start,
+          end_date: end,
+          group_by: "day",
+        });
+        if (key !== "delegation") {
+          params.set("workspace_user", "true");
+        }
+        if (key === "plugins") {
+          params.set("top_plugin_limit", "100");
+        }
+        if (key === "skills") {
+          params.set("top_skill_limit", "100");
+        }
+        try {
+          const result = await fetcher(
+            `https://chatgpt.com/backend-api/wham${endpoints[key]}?${params}`,
+            {
+              headers,
+              signal: AbortSignal.timeout(10_000),
+            }
           );
+          if (!result.ok) {
+            throw new Error("Analytics unavailable");
+          }
+          const response = analyticsSchemas[key].parse(await result.json());
+          const unitsChanged =
+            "units" in response &&
+            retained !== undefined &&
+            "units" in retained.response &&
+            response.units !== retained.response.units;
+          return [
+            key,
+            {
+              historyDays:
+                range || (unitsChanged && start > historyStart)
+                  ? undefined
+                  : historyDays,
+              fetchedAt: now.toISOString(),
+              start,
+              end,
+              response: {
+                ...response,
+                data: response.data
+                  .filter((row) => row.date >= start && row.date <= end)
+                  .toSorted((a, b) => a.date.localeCompare(b.date)),
+              },
+            },
+          ];
+        } catch {
+          if (range) {
+            throw new Error(
+              `Codex ${key} backfill failed for ${start} through ${end}.`
+            );
+          }
+          // Keep the original coverage and timestamp when an optional source fails.
+          return [key, previous[key]];
         }
-        // Keep the original coverage and timestamp when an optional source fails.
-        return [key, previous[key]];
       }
-    })
+    )
   );
   return mergeAnalyticsSnapshots(previous, Object.fromEntries(entries));
 }
@@ -439,7 +478,16 @@ export function buildTokenDetails(
       accounts: accounts.length,
       partial:
         values.length !== accounts.length ||
-        values.some((source) => source.start > start || source.end < end),
+        values.some(
+          (source) =>
+            source.start > start ||
+            source.end < end ||
+            new Set(
+              source.response.data
+                .filter((row) => inRange(row.date))
+                .map((row) => row.date)
+            ).size < days
+        ),
       fetchedAt: values.map((source) => source.fetchedAt).toSorted()[0] ?? null,
       latestDay: dates.at(-1) ?? null,
       firstDay: dates[0] ?? null,

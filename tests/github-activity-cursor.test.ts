@@ -20,11 +20,10 @@ const signed = (value: unknown) => {
 };
 
 describe("GitHub activity cursor", () => {
-  test("round-trips a whole-day cursor bound to one ordering revision", () => {
+  test("round-trips a stable whole-day cursor", () => {
     const cursor = {
       beforeDay: "2026-08-28",
-      orderingRevision: "42",
-      version: 2 as const,
+      version: 3 as const,
     };
 
     expect(
@@ -37,7 +36,7 @@ describe("GitHub activity cursor", () => {
 
   test("rejects tampering and signatures from another capability", () => {
     const encoded = encodeGitHubActivityCursor(
-      { beforeDay: "2026-08-28", orderingRevision: "42", version: 2 },
+      { beforeDay: "2026-08-28", version: 3 },
       secret
     );
     const [payload, signature] = encoded.split(".");

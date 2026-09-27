@@ -31,11 +31,9 @@ export function GitHubTimelinePager({
   preview: boolean;
   now: string;
 }>) {
-  const { orderingRevision } = initialPage;
   const { feedRevision, markLatestAvailable } = useGitHubActivityLive();
   const [cursor, setCursor] = useState<string | null>(initialPage.nextCursor);
   const [error, setError] = useState(false);
-  const [generationChanged, setGenerationChanged] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [pages, setPages] = useState<readonly PublicGitHubActivityPage[]>([]);
   const [status, setStatus] = useState("");
@@ -52,22 +50,12 @@ export function GitHubTimelinePager({
         const response = await fetch(
           `/api/github/activity?cursor=${encodeURIComponent(requestedCursor)}`
         );
-        if (response.status === 409) {
-          setGenerationChanged(true);
-          markLatestAvailable();
-          return;
-        }
         if (!response.ok) {
           throw new Error("The activity page could not be loaded.");
         }
         const page = (await response.json()) as unknown;
         if (!validPage(page)) {
           throw new Error("The activity page was invalid.");
-        }
-        if (page.orderingRevision !== orderingRevision) {
-          setGenerationChanged(true);
-          markLatestAvailable();
-          return;
         }
         if (page.head.feedRevision !== feedRevision) {
           markLatestAvailable();
@@ -94,7 +82,7 @@ export function GitHubTimelinePager({
           now={now}
         />
       </div>
-      {preview || cursor === null || generationChanged ? null : (
+      {preview || cursor === null ? null : (
         <div className="flex flex-col items-start gap-3">
           <button
             aria-controls="github-activity-paginated-days"
@@ -112,11 +100,6 @@ export function GitHubTimelinePager({
           ) : null}
         </div>
       )}
-      {generationChanged ? (
-        <p className="text-sm text-muted-foreground">
-          Newer work is available above.
-        </p>
-      ) : null}
       <p aria-live="polite" className="sr-only" role="status">
         {status}
       </p>

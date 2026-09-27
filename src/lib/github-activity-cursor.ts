@@ -3,13 +3,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "@/env";
 
 const CURSOR_MAX_LENGTH = 512;
-const CURSOR_VERSION = 2;
+const CURSOR_VERSION = 3;
 const UTC_DAY = /^\d{4}-\d{2}-\d{2}$/u;
-const REVISION = /^(?:0|[1-9]\d*)$/u;
 
 export interface GitHubActivityCursor {
   beforeDay: string;
-  orderingRevision: string;
   version: typeof CURSOR_VERSION;
 }
 
@@ -29,9 +27,7 @@ const validCursor = (value: unknown): value is GitHubActivityCursor => {
   return (
     candidate.version === CURSOR_VERSION &&
     validUtcDay(candidate.beforeDay) &&
-    typeof candidate.orderingRevision === "string" &&
-    REVISION.test(candidate.orderingRevision) &&
-    Object.keys(candidate).length === 3
+    Object.keys(candidate).length === 2
   );
 };
 

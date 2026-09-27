@@ -260,7 +260,10 @@ export const upsertGitHubRepositories = async (
     false
   );
   if (projectionInputChanged) {
-    await requestGitHubWorkUnitProjection(transaction);
+    await requestGitHubWorkUnitProjection(
+      transaction,
+      repositories.map((repository) => repository.id)
+    );
   }
 };
 

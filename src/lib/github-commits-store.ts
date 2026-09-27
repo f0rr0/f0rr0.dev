@@ -1,17 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import {
-  and,
-  asc,
-  eq,
-  inArray,
-  isNull,
-  lt,
-  lte,
-  ne,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import {
@@ -21,7 +10,6 @@ import {
   githubPublicFeedHead,
   githubPullRequests,
   githubPullRequestSignals,
-  githubPushObservationCommits,
   githubPushObservations,
   githubRepositories,
   githubRepositoryRefs,
@@ -215,6 +203,7 @@ const persistIssue = async (
     return false;
   }
 
+  await requestGitHubWorkUnitProjection(transaction, [issue.repository.id]);
   if (issue.repository.visibility !== null) {
     const [head] = await transaction
       .update(githubPublicFeedHead)
@@ -381,6 +370,12 @@ const insertPushObservations = async (
 
   const repositories = new Map<string, GitHubRepository>();
   for (const { push } of inputs) {
+    if (
+      new Set(push.commitShas).size !== push.commitShas.length ||
+      push.commitShas.some((sha) => !/^[a-f0-9]{40}$/.test(sha))
+    ) {
+      throw new GitHubPushObservationEvidenceConflictError();
+    }
     if (!repositories.has(push.repository.id)) {
       repositories.set(push.repository.id, push.repository);
     }
@@ -402,6 +397,7 @@ const insertPushObservations = async (
           afterSha: input.push.head,
           beforeSha: input.push.before,
           completedAt: complete ? input.observedAt : null,
+          knownShas: [...input.push.commitShas],
           expectedCommitCount: input.push.size,
           observedAt: input.observedAt,
           providerCreatedAt: input.providerCreatedAt,
@@ -423,29 +419,13 @@ const insertPushObservations = async (
   const inputsBySource = new Map(
     inputs.map((input) => [pushSourceIdentityKey(input), input])
   );
-  const commitRows = inserted.flatMap(({ id, source, sourceId }) => {
-    const input = inputsBySource.get(
-      pushSourceIdentityKey({ source, sourceId })
-    );
+  let knownCommitCount = 0;
+  for (const source of inserted) {
+    const input = inputsBySource.get(pushSourceIdentityKey(source));
     if (input === undefined) {
       throw new Error("A persisted GitHub push observation lost its source.");
     }
-    return input.push.commitShas.map((sha, position) => ({
-      observationId: id,
-      position,
-      repositoryId: input.push.repository.id,
-      sha,
-    }));
-  });
-  // Persist the first event's evidence before validating repeats in this batch.
-  for (
-    let offset = 0;
-    offset < commitRows.length;
-    offset += PUSH_COMMIT_INSERT_BATCH
-  ) {
-    await transaction
-      .insert(githubPushObservationCommits)
-      .values(commitRows.slice(offset, offset + PUSH_COMMIT_INSERT_BATCH));
+    knownCommitCount += input.push.commitShas.length;
   }
   const insertedSources = new Set(inserted.map(pushSourceIdentityKey));
   const duplicateInputs = inputs.filter(
@@ -458,6 +438,7 @@ const insertPushObservations = async (
       .select({
         afterSha: githubPushObservations.afterSha,
         beforeSha: githubPushObservations.beforeSha,
+        knownShas: githubPushObservations.knownShas,
         expectedCommitCount: githubPushObservations.expectedCommitCount,
         id: githubPushObservations.id,
         providerCreatedAt: githubPushObservations.providerCreatedAt,
@@ -485,40 +466,6 @@ const insertPushObservations = async (
         )
       )
       .for("update");
-    const conflictIds = conflicts.map(({ id }) => id);
-    const storedCommitRows =
-      conflictIds.length === 0
-        ? []
-        : await transaction
-            .select({
-              observationId: githubPushObservationCommits.observationId,
-              position: githubPushObservationCommits.position,
-              repositoryId: githubPushObservationCommits.repositoryId,
-              sha: githubPushObservationCommits.sha,
-            })
-            .from(githubPushObservationCommits)
-            .where(
-              inArray(githubPushObservationCommits.observationId, conflictIds)
-            )
-            .orderBy(
-              asc(githubPushObservationCommits.observationId),
-              asc(githubPushObservationCommits.position)
-            );
-    const commitsByObservation = new Map<string, string[]>();
-    const conflictsById = new Map(
-      conflicts.map((conflict) => [conflict.id, conflict])
-    );
-    for (const row of storedCommitRows) {
-      const commits = commitsByObservation.get(row.observationId) ?? [];
-      if (
-        row.position !== commits.length ||
-        conflictsById.get(row.observationId)?.repositoryId !== row.repositoryId
-      ) {
-        throw new GitHubPushObservationEvidenceConflictError();
-      }
-      commits.push(row.sha);
-      commitsByObservation.set(row.observationId, commits);
-    }
     const byPush = new Map(
       conflicts.map((conflict) => [
         pushObservationIdentityKey(conflict),
@@ -549,7 +496,7 @@ const insertPushObservations = async (
       const exact =
         input.push.size !== null &&
         input.push.commitShas.length === input.push.size;
-      const storedCommits = commitsByObservation.get(conflict.id) ?? [];
+      const storedCommits = conflict.knownShas;
       if (
         (input.push.size !== null &&
           conflict.expectedCommitCount !== null &&
@@ -576,6 +523,7 @@ const insertPushObservations = async (
           attemptCount: 0,
           completedAt: complete ? input.observedAt : null,
           errorCode: null,
+          knownShas: [...input.push.commitShas],
           expectedCommitCount: input.push.size,
           leaseToken: null,
           leaseUntil: null,
@@ -584,28 +532,15 @@ const insertPushObservations = async (
           state: complete ? "complete" : "pending",
         })
         .where(eq(githubPushObservations.id, conflict.id));
-      await transaction
-        .delete(githubPushObservationCommits)
-        .where(eq(githubPushObservationCommits.observationId, conflict.id));
-      if (input.push.commitShas.length > 0) {
-        await transaction.insert(githubPushObservationCommits).values(
-          input.push.commitShas.map((sha, position) => ({
-            observationId: conflict.id,
-            position,
-            repositoryId: input.push.repository.id,
-            sha,
-          }))
-        );
-      }
       conflict.expectedCommitCount = input.push.size;
-      commitsByObservation.set(conflict.id, [...input.push.commitShas]);
+      conflict.knownShas = [...input.push.commitShas];
       promoted += 1;
       promotedCommitCount += input.push.commitShas.length;
     }
   }
   return {
     duplicates: inputs.length - inserted.length - promoted,
-    knownCommits: commitRows.length + promotedCommitCount,
+    knownCommits: knownCommitCount + promotedCommitCount,
     pushes: inserted.length + promoted,
   };
 };
@@ -1099,7 +1034,7 @@ export const persistGitHubRepositoryRefPage = async (input: {
         incomingProjectionInputChanged ||
         deactivated.some((ref) => ref.projectionRelevant));
     if (headProjectionInputChanged) {
-      await requestGitHubWorkUnitProjection(transaction);
+      await requestGitHubWorkUnitProjection(transaction, [input.repository.id]);
     }
     return {
       knownCommits: persisted.knownCommits,
@@ -1325,7 +1260,7 @@ const signalKnownPullRequestReconciliation = async (
       )
     );
   if (promoteToProvisionalClosed) {
-    await requestGitHubWorkUnitProjection(transaction);
+    await requestGitHubWorkUnitProjection(transaction, [known.repositoryId]);
   }
   return true;
 };
@@ -1517,7 +1452,7 @@ export const persistGitHubWebhookHeadSignal = async (
         });
     }
     await markWebhookDeliveryAccepted(transaction, delivery, true);
-    await requestGitHubWorkUnitProjection(transaction);
+    await requestGitHubWorkUnitProjection(transaction, [delivery.repositoryId]);
     return {
       duplicate: false,
       ignored: false,

@@ -1,12 +1,12 @@
-import { and, desc, eq, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import {
+  githubActivitySnapshots,
   githubIssues,
   githubPublicFeedHead,
   githubPullRequests,
   githubRepositories,
-  githubWorkUnitAcceptedSummaries,
   githubWorkUnitSummaryAttempts,
   githubWorkUnits,
 } from "@/db/schema";
@@ -42,13 +42,6 @@ type GitHubActivityDatabase = Parameters<
 >[0];
 
 type GitHubActivityReadDatabase = Pick<GitHubActivityDatabase, "select">;
-
-export class GitHubActivityOrderingChangedError extends Error {
-  constructor() {
-    super("The GitHub activity ordering changed.");
-    this.name = "GitHubActivityOrderingChangedError";
-  }
-}
 
 interface PublicGitHubActivityHeadRead {
   etag: string;
@@ -222,94 +215,46 @@ const readAvailableDays = async (
   cursor: GitHubActivityCursor | null,
   pageSize: number
 ): Promise<AvailableDays> => {
-  const beforeWorkUnit =
-    cursor === null
-      ? undefined
-      : lt(githubWorkUnits.activityDay, cursor.beforeDay);
-  const beforeIssue =
-    cursor === null
-      ? undefined
-      : lt(
-          githubIssues.createdAt,
-          new Date(`${cursor.beforeDay}T00:00:00.000Z`)
-        );
-  const queryLimit = pageSize + 1;
-  const [workDays, issueDays] = await Promise.all([
-    database
-      .selectDistinct({ day: githubWorkUnits.activityDay })
-      .from(githubWorkUnits)
-      .innerJoin(
-        githubRepositories,
-        eq(githubWorkUnits.repositoryId, githubRepositories.id)
+  const rows = await database
+    .selectDistinct({ day: githubActivitySnapshots.day })
+    .from(githubActivitySnapshots)
+    .innerJoin(
+      githubRepositories,
+      eq(githubActivitySnapshots.repositoryId, githubRepositories.id)
+    )
+    .where(
+      and(
+        cursor ? lt(githubActivitySnapshots.day, cursor.beforeDay) : undefined,
+        inArray(githubRepositories.visibility, [
+          "public",
+          "private",
+          "internal",
+        ])
       )
-      .where(
-        and(
-          beforeWorkUnit,
-          inArray(githubWorkUnits.visibility, ["public", "private"]),
-          inArray(githubRepositories.visibility, [
-            "public",
-            "private",
-            "internal",
-          ])
-        )
-      )
-      .orderBy(desc(githubWorkUnits.activityDay))
-      .limit(queryLimit),
-    database
-      .selectDistinct({ day: issueDay })
-      .from(githubIssues)
-      .innerJoin(
-        githubRepositories,
-        eq(githubIssues.repositoryId, githubRepositories.id)
-      )
-      .where(
-        and(
-          beforeIssue,
-          inArray(
-            githubIssues.authorUserId,
-            Object.values(TRACKED_GITHUB_USER_IDS)
-          ),
-          inArray(githubRepositories.visibility, [
-            "public",
-            "private",
-            "internal",
-          ])
-        )
-      )
-      .orderBy(desc(issueDay))
-      .limit(queryLimit),
-  ]);
-
-  const allDays = new Set([...workDays, ...issueDays].map(({ day }) => day));
-  const orderedDays = [...allDays].toSorted((left, right) =>
-    right.localeCompare(left)
-  );
-  const selectedDays = orderedDays.slice(0, pageSize);
+    )
+    .orderBy(desc(githubActivitySnapshots.day))
+    .limit(pageSize + 1);
   return {
-    hasNextPage: orderedDays.length > pageSize,
-    selectedDays,
+    hasNextPage: rows.length > pageSize,
+    selectedDays: rows.slice(0, pageSize).map((row) => row.day),
   };
 };
 
-const readPublicRows = async (
+// oxlint-disable-next-line eslint/complexity -- Keep validation and exact-summary selection in the shared legacy-to-snapshot mapper.
+export const readCurrentPublicGitHubRows = async (
   database: GitHubActivityDatabase,
-  selectedDays: readonly string[],
-  summariesAreRunning: boolean
+  options: { repositoryIds?: readonly string[]; exactSummary?: boolean } = {}
 ): Promise<{
   issues: readonly PublicGitHubIssueRow[];
   workUnits: readonly PublicGitHubWorkUnitRow[];
 }> => {
-  if (selectedDays.length === 0) {
-    return { issues: [], workUnits: [] };
-  }
-  const maximumRows = selectedDays.length * MAXIMUM_PUBLIC_ROWS_PER_DAY;
+  const maximumRows = 1000 * MAXIMUM_PUBLIC_ROWS_PER_DAY;
   const [unitRows, issueRows] = await Promise.all([
     database
       .select({
         activityAt: githubWorkUnits.activityAt,
         activityDay: githubWorkUnits.activityDay,
         additions: githubWorkUnits.additions,
-        attributionMode: githubWorkUnits.attributionMode,
         deletions: githubWorkUnits.deletions,
         fileCount: githubWorkUnits.fileCount,
         firstActivityAt: githubWorkUnits.firstActivityAt,
@@ -322,13 +267,9 @@ const readPublicRows = async (
         memberCount: githubWorkUnits.memberCount,
         newestCommitRepositoryId: githubWorkUnits.newestCommitRepositoryId,
         newestCommitSha: githubWorkUnits.newestCommitSha,
-        outcomeDigest: githubWorkUnits.outcomeDigest,
         ownerAvatarUrl: githubRepositories.ownerAvatarUrl,
         pullRequestNumber: githubPullRequests.number,
         repositoryId: githubRepositories.id,
-        summaryEvaluatedDigest: githubWorkUnits.summaryEvaluatedDigest,
-        summaryEvaluationDigest: githubWorkUnits.summaryEvaluationDigest,
-        summaryInputDigest: githubWorkUnits.summaryInputDigest,
         visibility: githubRepositories.visibility,
       })
       .from(githubWorkUnits)
@@ -345,7 +286,9 @@ const readPublicRows = async (
       )
       .where(
         and(
-          inArray(githubWorkUnits.activityDay, selectedDays),
+          options.repositoryIds
+            ? inArray(githubWorkUnits.repositoryId, [...options.repositoryIds])
+            : undefined,
           inArray(githubWorkUnits.visibility, ["public", "private"]),
           inArray(githubRepositories.visibility, [
             "public",
@@ -375,7 +318,9 @@ const readPublicRows = async (
       )
       .where(
         and(
-          inArray(issueDay, selectedDays),
+          options.repositoryIds
+            ? inArray(githubIssues.repositoryId, [...options.repositoryIds])
+            : undefined,
           inArray(
             githubIssues.authorUserId,
             Object.values(TRACKED_GITHUB_USER_IDS)
@@ -406,9 +351,9 @@ const readPublicRows = async (
   }
 
   const unitIds = unitRows.map(({ id }) => id);
-  const [currentSummaryRows, fallbackSummaryRows, durableSummaryRows] =
+  const [currentSummaryRows, fallbackSummaryRows] =
     unitIds.length === 0
-      ? [[], [], []]
+      ? [[], []]
       : await Promise.all([
           database
             .select({
@@ -452,52 +397,21 @@ const readPublicRows = async (
               desc(githubWorkUnitSummaryAttempts.revision)
             ),
           database
-            .selectDistinctOn([githubWorkUnitSummaryAttempts.workUnitId], {
+            .selectDistinctOn([githubWorkUnits.id], {
               outcome: githubWorkUnitSummaryAttempts.outcome,
-              workUnitId: githubWorkUnitSummaryAttempts.workUnitId,
+              workUnitId: githubWorkUnits.id,
             })
             .from(githubWorkUnitSummaryAttempts)
             .innerJoin(
               githubWorkUnits,
               and(
                 eq(
-                  githubWorkUnitSummaryAttempts.workUnitId,
-                  githubWorkUnits.id
-                ),
-                eq(
                   githubWorkUnitSummaryAttempts.attributionMode,
-                  githubWorkUnits.attributionMode
-                )
-              )
-            )
-            .where(
-              and(
-                inArray(githubWorkUnitSummaryAttempts.workUnitId, unitIds),
-                eq(githubWorkUnitSummaryAttempts.state, "accepted"),
-                isNotNull(githubWorkUnitSummaryAttempts.acceptedAt),
-                isNotNull(githubWorkUnitSummaryAttempts.outcome)
-              )
-            )
-            .orderBy(
-              githubWorkUnitSummaryAttempts.workUnitId,
-              desc(githubWorkUnitSummaryAttempts.revision)
-            ),
-          database
-            .selectDistinctOn([githubWorkUnits.id], {
-              outcome: githubWorkUnitAcceptedSummaries.outcome,
-              workUnitId: githubWorkUnits.id,
-            })
-            .from(githubWorkUnitAcceptedSummaries)
-            .innerJoin(
-              githubWorkUnits,
-              and(
-                eq(
-                  githubWorkUnitAcceptedSummaries.attributionMode,
                   githubWorkUnits.attributionMode
                 ),
                 or(
                   eq(
-                    githubWorkUnitAcceptedSummaries.identityKey,
+                    githubWorkUnitSummaryAttempts.identityKey,
                     githubWorkUnits.identityKey
                   ),
                   and(
@@ -506,33 +420,42 @@ const readPublicRows = async (
                       "branch_owned_composite"
                     ),
                     eq(
-                      githubWorkUnitAcceptedSummaries.repositoryId,
+                      githubWorkUnitSummaryAttempts.repositoryId,
                       githubWorkUnits.repositoryId
                     ),
                     eq(
-                      githubWorkUnitAcceptedSummaries.outcomeDigest,
+                      githubWorkUnitSummaryAttempts.outcomeDigest,
                       githubWorkUnits.outcomeDigest
                     )
                   )
                 )
               )
             )
-            .where(inArray(githubWorkUnits.id, unitIds))
+            .where(
+              and(
+                inArray(githubWorkUnits.id, unitIds),
+                eq(githubWorkUnitSummaryAttempts.state, "accepted"),
+                options.exactSummary === true
+                  ? eq(
+                      githubWorkUnitSummaryAttempts.outcomeDigest,
+                      githubWorkUnits.outcomeDigest
+                    )
+                  : undefined
+              )
+            )
             .orderBy(
               githubWorkUnits.id,
-              sql`CASE WHEN ${githubWorkUnitAcceptedSummaries.identityKey} = ${githubWorkUnits.identityKey} THEN 0 ELSE 1 END`,
-              desc(githubWorkUnitAcceptedSummaries.acceptedAt)
+              sql`CASE WHEN ${githubWorkUnitSummaryAttempts.workUnitId} = ${githubWorkUnits.id} THEN 0 WHEN ${githubWorkUnitSummaryAttempts.identityKey} = ${githubWorkUnits.identityKey} THEN 1 ELSE 2 END`,
+              sql`CASE WHEN ${githubWorkUnitSummaryAttempts.workUnitId} = ${githubWorkUnits.id} THEN ${githubWorkUnitSummaryAttempts.revision} ELSE 0 END DESC`,
+              desc(githubWorkUnitSummaryAttempts.acceptedAt)
             ),
         ]);
   const currentSummaries = new Map<
     string,
     Readonly<{ headline: string; summary: string | null }>
   >();
-  const summarizingUnits = new Set<string>();
   for (const summary of currentSummaryRows) {
-    if (ACTIVE_SUMMARY_STATES.has(summary.state)) {
-      summarizingUnits.add(summary.workUnitId);
-    } else if (summary.outcome !== null) {
+    if (!ACTIVE_SUMMARY_STATES.has(summary.state) && summary.outcome !== null) {
       const decoded = decodeGitHubWorkUnitSummary(summary.outcome);
       if (decoded !== null) {
         currentSummaries.set(summary.workUnitId, decoded);
@@ -551,15 +474,6 @@ const readPublicRows = async (
       }
     }
   }
-  for (const summary of durableSummaryRows) {
-    if (!fallbackSummaries.has(summary.workUnitId)) {
-      const decoded = decodeGitHubWorkUnitSummary(summary.outcome);
-      if (decoded !== null) {
-        fallbackSummaries.set(summary.workUnitId, decoded);
-      }
-    }
-  }
-
   const workUnits = unitRows.map((row): PublicGitHubWorkUnitRow => {
     const repository = checkedPublicRepository({
       fullName: row.fullName,
@@ -616,11 +530,7 @@ const readPublicRows = async (
       headline: summary?.headline ?? null,
       kind,
       repository: repository.projection,
-      summarizing:
-        summariesAreRunning &&
-        (summarizingUnits.has(row.id) ||
-          (row.summaryEvaluationDigest !== null &&
-            row.summaryEvaluationDigest !== row.summaryEvaluatedDigest)),
+      summarizing: false,
       summary: summary?.summary ?? null,
     };
   });
@@ -658,19 +568,59 @@ const readPublicGitHubActivityPageInTransaction = async (
   pageSize: number
 ): Promise<PublicGitHubActivityPage> => {
   const { head, orderingRevision } = await readPublicHead(database);
-  if (cursor !== null && cursor.orderingRevision !== orderingRevision) {
-    throw new GitHubActivityOrderingChangedError();
-  }
+
   const { hasNextPage, selectedDays } = await readAvailableDays(
     database,
     cursor,
     pageSize
   );
-  const { issues, workUnits } = await readPublicRows(
-    database,
-    selectedDays,
-    head.summarizing
-  );
+  const maximumRows = selectedDays.length * MAXIMUM_PUBLIC_ROWS_PER_DAY;
+  const saved =
+    selectedDays.length === 0
+      ? []
+      : await database
+          .select({
+            payload: githubActivitySnapshots.payload,
+            visibility: githubRepositories.visibility,
+          })
+          .from(githubActivitySnapshots)
+          .innerJoin(
+            githubRepositories,
+            eq(githubActivitySnapshots.repositoryId, githubRepositories.id)
+          )
+          .where(
+            and(
+              inArray(githubActivitySnapshots.day, selectedDays),
+              inArray(githubRepositories.visibility, [
+                "public",
+                "private",
+                "internal",
+              ])
+            )
+          )
+          .limit(maximumRows + 1);
+  if (saved.length > maximumRows) {
+    throw new Error("Saved GitHub activity exceeds the public page bound.");
+  }
+  const workUnits: PublicGitHubWorkUnitRow[] = [];
+  const issues: PublicGitHubIssueRow[] = [];
+  const repositories = new Map<string, PublicGitHubActivityRepository>();
+  for (const { payload, visibility } of saved) {
+    const row = structuredClone(payload);
+    if (visibility !== "public") {
+      row.destination = null;
+      row.repository = { ...row.repository, label: "Private", url: null };
+    }
+    const key = `${row.day}:${row.repository.key}`;
+    row.repository = repositories.get(key) ?? row.repository;
+    repositories.set(key, row.repository);
+    if ("facts" in row) {
+      row.summarizing = false;
+      workUnits.push(row);
+    } else {
+      issues.push(row);
+    }
+  }
   const days = buildPublicGitHubActivityDays({
     days: selectedDays,
     issues,
@@ -684,8 +634,7 @@ const readPublicGitHubActivityPageInTransaction = async (
       hasNextPage && lastDay !== undefined
         ? encodeGitHubActivityCursor({
             beforeDay: lastDay,
-            orderingRevision,
-            version: 2,
+            version: 3,
           })
         : null,
     orderingRevision,

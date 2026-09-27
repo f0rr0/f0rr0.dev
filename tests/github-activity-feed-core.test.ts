@@ -4,7 +4,6 @@ import type { PublicGitHubWorkUnitRow } from "../src/lib/github-activity-feed-co
 import {
   buildPublicGitHubActivityDays,
   getVisibleGitHubActivityDays,
-  localizeGitHubActivityDays,
 } from "../src/lib/github-activity-feed-core.ts";
 import type {
   PublicGitHubActivityDay,
@@ -149,27 +148,22 @@ describe("public GitHub activity day projection", () => {
     ).toThrow();
   });
 
-  test("regroups UTC pages by the viewer's day without losing or duplicating work", () => {
+  test("preserves saved days even when timestamps cross a timezone boundary", () => {
     const repo = repository("42");
     const days = buildPublicGitHubActivityDays({
       days: ["2026-09-06", "2026-09-05"],
       issues: [],
       workUnits: [
-        work("later", "2026-09-06T01:00:00.000Z", repo),
+        {
+          ...work("later", "2026-09-05T23:00:00.000Z", repo),
+          day: "2026-09-06",
+        },
         work("earlier", "2026-09-05T23:00:00.000Z", repo),
       ],
     });
-    const west = localizeGitHubActivityDays(days, "America/Los_Angeles");
-    const east = localizeGitHubActivityDays(days, "Asia/Kolkata");
-    expect(west.map(({ day }) => day)).toEqual(["2026-09-05"]);
-    expect(east.map(({ day }) => day)).toEqual(["2026-09-06"]);
-    expect(west[0].repositories[0].items.map(({ id }) => id)).toEqual([
-      "later",
-      "earlier",
-    ]);
-    expect(east[0].repositories[0].items).toEqual(
-      west[0].repositories[0].items
-    );
     expect(days.map(({ day }) => day)).toEqual(["2026-09-06", "2026-09-05"]);
+    expect(
+      days.map(({ repositories }) => repositories[0].items.map(({ id }) => id))
+    ).toEqual([["later"], ["earlier"]]);
   });
 });

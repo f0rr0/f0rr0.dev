@@ -93,9 +93,11 @@ test("public reads retain successful snapshots on outage and recover without cac
     }));
     mock.module("./src/db/client.ts", () => ({
       isDatabaseConfigured: () => true,
-      getDatabase: () => ({ select: () => ({ from: () => ({ where: () => ({ orderBy: async () => {
-        await read(); return [];
-      } }) }) }) }),
+      getDatabase: () => ({ select: () => {
+        const query = { from: () => query, where: () => query, orderBy: () => query,
+          then: (resolve, reject) => read().then(() => []).then(resolve, reject) };
+        return query;
+      } }),
     }));
     mock.module("./src/lib/codex/stats.ts", () => ({ buildPublicCodexStats: () => ({ version }) }));
     const { getInitialGitHubActivity } = await import("./src/lib/github-activity-feed.ts");
@@ -127,8 +129,8 @@ test("public reads retain successful snapshots on outage and recover without cac
     const errors = [];
     console.error = (...args) => errors.push(args);
     assert.deepEqual(await request(), [{ version: 1 }, { version: 1 }]);
-    assert.equal(errors.length, 2);
-    assert.equal(entries.size, 2);
+    assert.equal(errors.length, 3);
+    assert.equal(entries.size, 3);
     unavailable = false;
     version = 2;
     assert.deepEqual(await request(), [{ version: 1 }, { version: 1 }]);

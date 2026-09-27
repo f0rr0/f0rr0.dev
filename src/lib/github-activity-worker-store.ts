@@ -22,8 +22,6 @@ import {
   githubPullRequestMemberships,
   githubPullRequests,
   githubPullRequestSignals,
-  githubPullRequestVersions,
-  githubPushObservationCommits,
   githubPushObservations,
   githubRepositories,
 } from "@/db/schema";
@@ -164,12 +162,9 @@ export const githubCommitInWorkerScope = (
           OR EXISTS (
             SELECT 1
             FROM ${githubPullRequestMemberships}
-            INNER JOIN ${githubPullRequestVersions}
-              ON ${githubPullRequestVersions.id} = ${githubPullRequestMemberships.versionId}
             INNER JOIN ${githubPullRequests}
-              ON ${githubPullRequests.nodeId} = ${githubPullRequestVersions.pullRequestNodeId}
-            WHERE ${githubPullRequestVersions.isCurrent} = true
-              AND ${githubPullRequestVersions.membershipComplete} = true
+              ON ${githubPullRequests.snapshotId} = ${githubPullRequestMemberships.versionId}
+            WHERE ${githubPullRequests.membershipComplete} = true
               AND ${githubPullRequests.repositoryId} = ${scope.repositoryId}
               AND ${githubPullRequestMemberships.commitRepositoryId} = ${githubCommits.repositoryId}
               AND ${githubPullRequestMemberships.commitSha} = ${githubCommits.sha}
@@ -233,11 +228,8 @@ export const githubPullRequestInWorkerScope = (
               OR EXISTS (
                 SELECT 1
                 FROM ${githubPullRequestMemberships}
-                INNER JOIN ${githubPullRequestVersions}
-                  ON ${githubPullRequestVersions.id} = ${githubPullRequestMemberships.versionId}
-                WHERE ${githubPullRequestVersions.pullRequestNodeId} = ${githubPullRequests.nodeId}
-                  AND ${githubPullRequestVersions.isCurrent} = true
-                  AND ${githubPullRequestVersions.membershipComplete} = true
+                WHERE ${githubPullRequestMemberships.versionId} = ${githubPullRequests.snapshotId}
+                  AND ${githubPullRequests.membershipComplete} = true
                   AND ${githubPullRequestMemberships.commitRepositoryId} = ${scope.repositoryId}
               )
             )`
@@ -341,18 +333,13 @@ export const claimGitHubPushObservations = async (
             )
           )
         )
-        .returning({ id: githubPushObservations.id });
+        .returning({
+          id: githubPushObservations.id,
+          knownShas: githubPushObservations.knownShas,
+        });
       if (updated === undefined) {
         continue;
       }
-      const known = await transaction
-        .select({
-          position: githubPushObservationCommits.position,
-          sha: githubPushObservationCommits.sha,
-        })
-        .from(githubPushObservationCommits)
-        .where(eq(githubPushObservationCommits.observationId, candidate.id))
-        .orderBy(asc(githubPushObservationCommits.position));
       claimed.push({
         account: candidate.account,
         afterSha: candidate.afterSha,
@@ -362,7 +349,7 @@ export const claimGitHubPushObservations = async (
         historySinceAt: candidate.historySinceAt,
         historyUntilAt: candidate.historyUntilAt,
         id: candidate.id,
-        knownShas: known.map(({ sha }) => sha),
+        knownShas: updated.knownShas,
         leaseToken,
         observedAt: candidate.observedAt,
         priorAttemptCount: candidate.attemptCount,
@@ -410,19 +397,6 @@ export const completeGitHubPushObservation = async (
       return { insertedCommits: 0, stale: true };
     }
 
-    await transaction
-      .delete(githubPushObservationCommits)
-      .where(eq(githubPushObservationCommits.observationId, observation.id));
-    if (source.commitShas.length > 0) {
-      await transaction.insert(githubPushObservationCommits).values(
-        source.commitShas.map((sha, position) => ({
-          observationId: observation.id,
-          position,
-          repositoryId: observation.repositoryId,
-          sha,
-        }))
-      );
-    }
     const inserted =
       source.commits.length === 0
         ? []
@@ -440,6 +414,7 @@ export const completeGitHubPushObservation = async (
     await transaction
       .update(githubPushObservations)
       .set({
+        knownShas: [...source.commitShas],
         completedAt: now,
         errorCode: null,
         leaseToken: null,
@@ -570,6 +545,11 @@ export const claimGitHubCommitsForEnrichment = async (
             and(
               eq(githubCommits.enrichmentState, "processing"),
               lte(githubCommits.enrichmentLeaseUntil, now)
+            ),
+            and(
+              eq(githubCommits.enrichmentState, "complete"),
+              isNotNull(githubCommits.fileFactsPrunedAt),
+              sql`github_commit_evidence_needed(${githubCommits.repositoryId}, ${githubCommits.sha})`
             )
           )
         )
@@ -649,6 +629,7 @@ export const completeGitHubCommitEnrichment = async (
         enrichmentLeaseUntil: null,
         enrichmentState: "complete",
         fileFacts,
+        fileFactsPrunedAt: null,
         fileFactsComplete: !source.commit.providerFileCapReached,
         message: source.commit.message,
         parentShas: source.commit.parents,
@@ -665,7 +646,7 @@ export const completeGitHubCommitEnrichment = async (
     if (updated === undefined) {
       return false;
     }
-    await requestGitHubWorkUnitProjection(transaction);
+    await requestGitHubWorkUnitProjection(transaction, [commit.repositoryId]);
     return true;
   });
 };
@@ -1168,7 +1149,7 @@ export const completeGitHubPullRequestDiscovery = async (
     if (completed === undefined) {
       return false;
     }
-    await requestGitHubWorkUnitProjection(transaction);
+    await requestGitHubWorkUnitProjection(transaction, [commit.repositoryId]);
     return true;
   });
 
@@ -1197,7 +1178,7 @@ export const claimDueGitHubPullRequests = async (
         attemptCount: githubPullRequests.reconcileAttempts,
         createdAt: githubPullRequests.createdAt,
         lastReconciledAt: githubPullRequests.lastReconciledAt,
-        membershipComplete: githubPullRequestVersions.membershipComplete,
+        membershipComplete: githubPullRequests.membershipComplete,
         nextReconcileAt: githubPullRequests.nextReconcileAt,
         reconcileError: githubPullRequests.reconcileError,
         nodeId: githubPullRequests.nodeId,
@@ -1205,22 +1186,12 @@ export const claimDueGitHubPullRequests = async (
         repository: githubRepositories.fullName,
         repositoryId: githubPullRequests.repositoryId,
         state: githubPullRequests.state,
-        versionObservedAt: githubPullRequestVersions.observedAt,
+        versionObservedAt: githubPullRequests.snapshotObservedAt,
       })
       .from(githubPullRequests)
       .innerJoin(
         githubRepositories,
         eq(githubRepositories.id, githubPullRequests.repositoryId)
-      )
-      .leftJoin(
-        githubPullRequestVersions,
-        and(
-          eq(
-            githubPullRequestVersions.pullRequestNodeId,
-            githubPullRequests.nodeId
-          ),
-          eq(githubPullRequestVersions.isCurrent, true)
-        )
       )
       .where(
         and(
@@ -1293,21 +1264,19 @@ export const persistGitHubPullRequestMembership = async (
   await getDatabase().transaction(async (transaction) => {
     const [version] = await transaction
       .select({
-        baseRepositoryId: githubPullRequestVersions.baseRepositoryId,
-        baseSha: githubPullRequestVersions.baseSha,
-        commitCount: githubPullRequestVersions.commitCount,
-        headSha: githubPullRequestVersions.headSha,
-        headRepositoryId: githubPullRequestVersions.headRepositoryId,
-        id: githubPullRequestVersions.id,
-        isCurrent: githubPullRequestVersions.isCurrent,
-        pullRequestNodeId: githubPullRequestVersions.pullRequestNodeId,
+        baseRepositoryId: githubPullRequests.baseRepositoryId,
+        baseSha: githubPullRequests.baseSha,
+        commitCount: githubPullRequests.commitCount,
+        headSha: githubPullRequests.headSha,
+        headRepositoryId: githubPullRequests.headRepositoryId,
+        id: githubPullRequests.snapshotId,
+        pullRequestNodeId: githubPullRequests.nodeId,
       })
-      .from(githubPullRequestVersions)
-      .where(eq(githubPullRequestVersions.id, stored.versionId))
+      .from(githubPullRequests)
+      .where(eq(githubPullRequests.snapshotId, stored.versionId))
       .for("update");
     if (
       version === undefined ||
-      !version.isCurrent ||
       version.pullRequestNodeId !== stored.pullRequestNodeId ||
       version.baseRepositoryId !== stored.baseRepositoryId ||
       version.baseSha !== stored.baseSha ||
@@ -1325,17 +1294,19 @@ export const persistGitHubPullRequestMembership = async (
       (version.commitCount === 0 || commitShas.at(-1) === version.headSha);
     if (!completeMembershipIsValid) {
       const [invalidated] = await transaction
-        .update(githubPullRequestVersions)
+        .update(githubPullRequests)
         .set({ membershipComplete: false })
         .where(
           and(
-            eq(githubPullRequestVersions.id, stored.versionId),
-            eq(githubPullRequestVersions.membershipComplete, true)
+            eq(githubPullRequests.snapshotId, stored.versionId),
+            eq(githubPullRequests.membershipComplete, true)
           )
         )
-        .returning({ id: githubPullRequestVersions.id });
+        .returning({ id: githubPullRequests.snapshotId });
       if (invalidated !== undefined) {
-        await requestGitHubWorkUnitProjection(transaction);
+        await requestGitHubWorkUnitProjection(transaction, [
+          stored.baseRepositoryId,
+        ]);
       }
       return false;
     }
@@ -1354,10 +1325,12 @@ export const persistGitHubPullRequestMembership = async (
       );
     }
     await transaction
-      .update(githubPullRequestVersions)
+      .update(githubPullRequests)
       .set({ membershipComplete: true })
-      .where(eq(githubPullRequestVersions.id, stored.versionId));
-    await requestGitHubWorkUnitProjection(transaction);
+      .where(eq(githubPullRequests.snapshotId, stored.versionId));
+    await requestGitHubWorkUnitProjection(transaction, [
+      stored.baseRepositoryId,
+    ]);
     return true;
   });
 
@@ -1377,17 +1350,15 @@ export const persistGitHubPullRequestDiff = async (
   return await getDatabase().transaction(async (transaction) => {
     const [version] = await transaction
       .select({
-        baseSha: githubPullRequestVersions.baseSha,
-        headSha: githubPullRequestVersions.headSha,
-        isCurrent: githubPullRequestVersions.isCurrent,
-        pullRequestNodeId: githubPullRequestVersions.pullRequestNodeId,
+        baseSha: githubPullRequests.baseSha,
+        headSha: githubPullRequests.headSha,
+        pullRequestNodeId: githubPullRequests.nodeId,
       })
-      .from(githubPullRequestVersions)
-      .where(eq(githubPullRequestVersions.id, stored.versionId))
+      .from(githubPullRequests)
+      .where(eq(githubPullRequests.snapshotId, stored.versionId))
       .for("update");
     if (
       version === undefined ||
-      !version.isCurrent ||
       version.pullRequestNodeId !== stored.pullRequestNodeId ||
       version.baseSha !== expectedBaseSha ||
       version.headSha !== expectedHeadSha
@@ -1395,21 +1366,22 @@ export const persistGitHubPullRequestDiff = async (
       return false;
     }
     const [updated] = await transaction
-      .update(githubPullRequestVersions)
+      .update(githubPullRequests)
       .set({ fileFacts, fileFactsComplete: true })
       .where(
         and(
-          eq(githubPullRequestVersions.id, stored.versionId),
-          eq(githubPullRequestVersions.baseSha, expectedBaseSha),
-          eq(githubPullRequestVersions.headSha, expectedHeadSha),
-          eq(githubPullRequestVersions.isCurrent, true)
+          eq(githubPullRequests.snapshotId, stored.versionId),
+          eq(githubPullRequests.baseSha, expectedBaseSha),
+          eq(githubPullRequests.headSha, expectedHeadSha)
         )
       )
-      .returning({ id: githubPullRequestVersions.id });
+      .returning({ id: githubPullRequests.snapshotId });
     if (updated === undefined) {
       return false;
     }
-    await requestGitHubWorkUnitProjection(transaction);
+    await requestGitHubWorkUnitProjection(transaction, [
+      stored.baseRepositoryId,
+    ]);
     return true;
   });
 };

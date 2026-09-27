@@ -156,7 +156,7 @@ test("missing token fields preserve turns and models without inventing zero usag
   const mixed = buildTokenDetails([response, fixture()], 7, now);
   expect(mixed.activity?.turns).toBe(8);
   expect(mixed.models?.rows).toEqual([{ label: "example-model", value: 8 }]);
-  expect(mixed.models?.status.partial).toBe(false);
+  expect(mixed.models?.status.partial).toBe(true);
   expect(mixed.activity?.tokens).toBe(210);
   expect(mixed.activity?.cacheHit).toBe(90);
   expect(mixed.activity?.status.partial).toBe(true);
@@ -531,15 +531,15 @@ test("delegation combines raw usage for matching plans before calculating shares
   ).toHaveLength(1);
 });
 
-test("accounts starting on different dates do not imply missing usage", () => {
+test("accounts with absent daily reports retain a partial coverage indicator", () => {
   const first = fixture();
   const later = fixture();
   first.activity.response.data[0].date = "2026-08-25";
   later.activity.response.data[0].date = "2026-09-23";
   const details = buildTokenDetails([first, later], 30, now);
-  expect(details.activity?.status.partial).toBe(false);
+  expect(details.activity?.status.partial).toBe(true);
   expect(details.activity?.tokens).toBe(210);
-  expect(details.models?.status.partial).toBe(false);
+  expect(details.models?.status.partial).toBe(true);
 });
 
 test("backfill preserves old days and missing fields, replaces corrections without double counting", async () => {

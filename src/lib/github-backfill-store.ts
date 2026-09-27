@@ -5,7 +5,6 @@ import {
   githubAccountCheckpoints,
   githubCommits,
   githubPullRequests,
-  githubPullRequestVersions,
   githubPullRequestSignals,
   githubPushObservations,
   githubRepositories,
@@ -164,16 +163,6 @@ export const readGitHubFactualWorkerBacklog = async (input: {
           githubRepositories,
           eq(githubRepositories.id, githubPullRequests.repositoryId)
         )
-        .leftJoin(
-          githubPullRequestVersions,
-          and(
-            eq(
-              githubPullRequestVersions.pullRequestNodeId,
-              githubPullRequests.nodeId
-            ),
-            eq(githubPullRequestVersions.isCurrent, true)
-          )
-        )
         .where(
           and(
             inArray(githubPullRequests.account, accounts),
@@ -189,17 +178,17 @@ export const readGitHubFactualWorkerBacklog = async (input: {
             ),
             or(
               isNotNull(githubPullRequests.reconcileError),
-              isNull(githubPullRequestVersions.id),
-              eq(githubPullRequestVersions.membershipComplete, false),
+              isNull(githubPullRequests.snapshotId),
+              eq(githubPullRequests.membershipComplete, false),
               and(
                 isNotNull(githubPullRequests.changedFiles),
-                eq(githubPullRequestVersions.fileFactsComplete, false)
+                eq(githubPullRequests.fileFactsComplete, false)
               ),
               and(
                 eq(githubPullRequests.state, "merged"),
                 or(
                   isNull(githubPullRequests.mergeShaVerifiedAt),
-                  eq(githubPullRequestVersions.mergeSnapshot, false)
+                  eq(githubPullRequests.mergeSnapshot, false)
                 )
               )
             )

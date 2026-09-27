@@ -229,7 +229,10 @@ const publishGitHubRepositoryInventory = async (
           )
         );
     }
-    await requestGitHubWorkUnitProjection(transaction);
+    await requestGitHubWorkUnitProjection(
+      transaction,
+      currentRepositories.map(({ id }) => id)
+    );
   });
 };
 

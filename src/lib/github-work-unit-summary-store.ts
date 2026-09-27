@@ -17,14 +17,15 @@ import {
 import { getDatabase } from "@/db/client";
 import {
   githubIssues,
+  githubActivitySnapshots,
   githubPublicFeedHead,
   githubRepositories,
-  githubWorkUnitAcceptedSummaries,
   githubWorkUnitSummaryAttempts,
   githubWorkUnitSummaryDailyUsage,
   githubWorkUnits,
 } from "@/db/schema";
 import { env } from "@/env";
+import { fillSavedGitHubSummaries } from "@/lib/github-activity-snapshots";
 import { PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE } from "@/lib/github-activity-store";
 import { TRACKED_GITHUB_USER_IDS } from "@/lib/github-commits-core";
 import { GITHUB_SUMMARY_REQUEST_BUDGET } from "@/lib/github-cron-config";
@@ -210,7 +211,11 @@ const reconcileInactiveSummaryInputs = async (
         and w.outcome_digest = attempt.outcome_digest
         and w.summary_input_digest = attempt.summary_input_digest
         and w.attribution_mode = attempt.attribution_mode
-    ))
+    )) and not exists (
+      select 1 from ${githubActivitySnapshots} s where s.work_unit_id = attempt.work_unit_id
+        and s.outcome_digest = attempt.outcome_digest and s.summary_input_digest = attempt.summary_input_digest
+        and s.attribution_mode = attempt.attribution_mode and s.payload->>'headline' is null
+    )
   `;
   await transaction.execute(sql`
     delete from ${githubWorkUnitSummaryAttempts} as attempt
@@ -259,8 +264,8 @@ const reuseAcceptedSummaries = async (
       a.work_unit_id, a.revision, s.outcome, s.accepted_at, to_char(w.activity_day, 'YYYY-MM-DD') as activity_day
     from ${githubWorkUnitSummaryAttempts} a
     join ${githubWorkUnits} w on w.id = a.work_unit_id
-    join ${githubWorkUnitAcceptedSummaries} s
-      on s.repository_id = w.repository_id
+    join ${githubWorkUnitSummaryAttempts} s
+      on s.state = 'accepted' and s.repository_id = w.repository_id
       and (s.identity_key = w.identity_key or w.attribution_mode = 'branch_owned_composite')
       and s.attribution_mode = a.attribution_mode
       and s.outcome_digest = a.outcome_digest and s.recipe = a.recipe
@@ -294,6 +299,48 @@ const reuseAcceptedSummaries = async (
   return new Set(reusable.map((row) => row.activity_day));
 };
 
+const savedAttemptExists = sql<boolean>`exists (
+  select 1 from ${githubActivitySnapshots} s
+  where s.work_unit_id = ${githubWorkUnitSummaryAttempts.workUnitId}
+    and s.outcome_digest = ${githubWorkUnitSummaryAttempts.outcomeDigest}
+    and s.summary_input_digest = ${githubWorkUnitSummaryAttempts.summaryInputDigest}
+    and s.attribution_mode = ${githubWorkUnitSummaryAttempts.attributionMode}
+    and s.payload->>'headline' is null
+)`;
+
+const savedUnitForAttempt = async (
+  transaction: SummaryTransaction,
+  workUnitId: string,
+  attempt: NonNullable<Awaited<ReturnType<typeof lockedAttempt>>>
+) => {
+  const [saved] = await transaction
+    .select({ activityDay: githubActivitySnapshots.day })
+    .from(githubActivitySnapshots)
+    .where(
+      and(
+        eq(githubActivitySnapshots.workUnitId, workUnitId),
+        eq(githubActivitySnapshots.outcomeDigest, attempt.outcomeDigest),
+        eq(
+          githubActivitySnapshots.summaryInputDigest,
+          attempt.summaryInputDigest
+        ),
+        eq(githubActivitySnapshots.attributionMode, attempt.attributionMode),
+        sql`${githubActivitySnapshots.payload}->>'headline' is null`
+      )
+    )
+    .limit(1);
+  return saved === undefined
+    ? null
+    : {
+        ...saved,
+        attributionMode: attempt.attributionMode,
+        outcomeDigest: attempt.outcomeDigest,
+        summaryInputDigest: attempt.summaryInputDigest,
+        summaryEvaluatedDigest: "saved",
+        summaryEvaluationDigest: "saved",
+      };
+};
+
 const claimSelection = {
   debounceUntil: githubWorkUnitSummaryAttempts.debounceUntil,
   requestPayload: githubWorkUnitSummaryAttempts.requestPayload,
@@ -320,7 +367,7 @@ async function selectClaimCandidate(
   const [candidate] = await transaction
     .select(claimSelection)
     .from(githubWorkUnitSummaryAttempts)
-    .innerJoin(
+    .leftJoin(
       githubWorkUnits,
       eq(githubWorkUnitSummaryAttempts.workUnitId, githubWorkUnits.id)
     )
@@ -341,28 +388,33 @@ async function selectClaimCandidate(
           githubWorkUnitSummaryAttempts.recipe,
           GITHUB_WORK_UNIT_SUMMARY_RECIPE
         ),
-        eq(
-          githubWorkUnits.summaryEvaluationDigest,
-          githubWorkUnits.summaryEvaluatedDigest
-        ),
-        eq(
-          githubWorkUnits.outcomeDigest,
-          githubWorkUnitSummaryAttempts.outcomeDigest
-        ),
-        eq(
-          githubWorkUnits.summaryInputDigest,
-          githubWorkUnitSummaryAttempts.summaryInputDigest
-        ),
-        eq(
-          githubWorkUnits.attributionMode,
-          githubWorkUnitSummaryAttempts.attributionMode
+        or(
+          savedAttemptExists,
+          and(
+            eq(
+              githubWorkUnits.summaryEvaluationDigest,
+              githubWorkUnits.summaryEvaluatedDigest
+            ),
+            eq(
+              githubWorkUnits.outcomeDigest,
+              githubWorkUnitSummaryAttempts.outcomeDigest
+            ),
+            eq(
+              githubWorkUnits.summaryInputDigest,
+              githubWorkUnitSummaryAttempts.summaryInputDigest
+            ),
+            eq(
+              githubWorkUnits.attributionMode,
+              githubWorkUnitSummaryAttempts.attributionMode
+            )
+          )
         )
       )
     )
     .orderBy(
       sql`exists (
-        select 1 from ${githubWorkUnitAcceptedSummaries} s
-        where s.identity_key = ${githubWorkUnits.identityKey}
+        select 1 from ${githubWorkUnitSummaryAttempts} s
+        where s.state = 'accepted' and s.identity_key = ${githubWorkUnits.identityKey}
           and s.repository_id = ${githubWorkUnits.repositoryId}
           and s.attribution_mode = ${githubWorkUnits.attributionMode}
       )`,
@@ -518,16 +570,27 @@ const tryClaimCandidate = async (
   usage: SummaryUsage
 ): Promise<GitHubWorkUnitSummaryClaim | null> => {
   // The projection store locks units before attempts. Keep the same order.
-  const unit = await lockedUnit(transaction, candidate.workUnitId);
-  if (unit === null) {
-    return null;
-  }
+  let unit: Awaited<ReturnType<typeof lockedUnit>> | null = await lockedUnit(
+    transaction,
+    candidate.workUnitId
+  );
   const attempt = await lockedAttempt(
     transaction,
     candidate.workUnitId,
     candidate.revision
   );
   if (
+    attempt !== null &&
+    (unit === null || !currentUnitMatchesAttempt(unit, attempt))
+  ) {
+    unit = await savedUnitForAttempt(
+      transaction,
+      candidate.workUnitId,
+      attempt
+    );
+  }
+  if (
+    unit === null ||
     attempt === null ||
     !candidateRemainsClaimable(attempt, unit, candidate, now)
   ) {
@@ -821,6 +884,7 @@ export const claimGitHubWorkUnitSummary = async (
     await acquireSummaryStateLocks(transaction);
     await recoverExpiredClaims(transaction, now);
     const reused = await reuseAcceptedSummaries(transaction, now);
+    const filled = await fillSavedGitHubSummaries(transaction);
     const usage = await readSummaryUsage(transaction, now);
     let claim: GitHubWorkUnitSummaryClaim | null = null;
     if (hasRequestCapacity(usage)) {
@@ -840,7 +904,7 @@ export const claimGitHubWorkUnitSummary = async (
       transaction,
       now,
       initialPageDays,
-      [...reused].some((day) => initialPageDays.has(day))
+      filled || [...reused].some((day) => initialPageDays.has(day))
         ? { feedRevisionChanged: true, initialPageContentChanged: true }
         : undefined
     );
@@ -910,21 +974,9 @@ export const completeGitHubWorkUnitSummary = async (
       await settleHead();
       return { accepted: false };
     }
-    await transaction
-      .insert(githubWorkUnitAcceptedSummaries)
-      .values({
-        acceptedAt: now,
-        attributionMode: attempt.attributionMode,
-        identityKey: attempt.identityKey,
-        outcome: result.outcome,
-        outcomeDigest: attempt.outcomeDigest,
-        recipe: attempt.recipe,
-        repositoryId: attempt.repositoryId,
-        summaryInputDigest: attempt.summaryInputDigest,
-      })
-      .onConflictDoNothing();
+    const filled = await fillSavedGitHubSummaries(transaction);
     await settleHead(
-      initialPageChanged
+      initialPageChanged || filled
         ? {
             feedRevisionChanged: true,
             initialPageContentChanged: true,
@@ -972,7 +1024,9 @@ export const deferGitHubWorkUnitSummary = async (
       return "terminal";
     }
     const remainsCurrent =
-      unit !== null && currentUnitMatchesAttempt(unit, attempt);
+      (unit !== null && currentUnitMatchesAttempt(unit, attempt)) ||
+      (await savedUnitForAttempt(transaction, claim.workUnitId, attempt)) !==
+        null;
     const [deferred] = await transaction
       .update(githubWorkUnitSummaryAttempts)
       .set({
@@ -1032,12 +1086,13 @@ export const reconcileGitHubWorkUnitSummaryStatus = async (
     await acquireSummaryStateLocks(transaction);
     await recoverExpiredClaims(transaction, now);
     const reused = await reuseAcceptedSummaries(transaction, now);
+    const filled = await fillSavedGitHubSummaries(transaction);
     const initialPageDays = await readInitialPageDays(transaction);
     return await revisePublicSummaryHead(
       transaction,
       now,
       initialPageDays,
-      [...reused].some((day) => initialPageDays.has(day))
+      filled || [...reused].some((day) => initialPageDays.has(day))
         ? { feedRevisionChanged: true, initialPageContentChanged: true }
         : undefined
     );

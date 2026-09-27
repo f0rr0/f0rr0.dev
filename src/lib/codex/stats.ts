@@ -508,7 +508,15 @@ export const buildPublicCodexStats = (
   const dailyPartial =
     records.some(({ snapshot }) => snapshot.dailyUsageBuckets === null) ||
     missingAccountCount > 0;
-  const weeklyPartial = dailyPartial;
+  const knownDays = records.map(
+    ({ snapshot }) =>
+      new Set(snapshot.dailyUsageBuckets?.map((row) => row.startDate) ?? [])
+  );
+  const missingDays = (days: number) =>
+    Array.from({ length: days }, (_, index) =>
+      utcDayOffset(today, -index)
+    ).some((day) => knownDays.some((known) => !known.has(day)));
+  const weeklyPartial = dailyPartial || missingDays(365);
   const cumulativePartial =
     records.some(
       ({ snapshot }) => snapshot.cumulativeDailyUsageBuckets === null
@@ -545,7 +553,14 @@ export const buildPublicCodexStats = (
     for (let offset = 1 - days; offset <= 0; offset += 1) {
       value += combinedDaily.get(utcDayOffset(today, offset)) ?? 0;
     }
-    return { partial: dailyPartial, value };
+    return {
+      partial: dailyPartial || missingDays(days),
+      value: Array.from({ length: days }, (_, index) =>
+        utcDayOffset(today, -index)
+      ).some((day) => combinedDaily.has(day))
+        ? value
+        : null,
+    };
   };
 
   let busiest: [string, number] | undefined;
@@ -621,7 +636,7 @@ export const buildPublicCodexStats = (
     },
     activity: {
       cumulative: { partial: cumulativePartial, values: cumulativeUsage },
-      daily: { partial: dailyPartial, values: dailyUsage },
+      daily: { partial: dailyPartial || missingDays(365), values: dailyUsage },
       weekly: { partial: weeklyPartial, values: weeklyUsage },
     },
     busiestDay:
