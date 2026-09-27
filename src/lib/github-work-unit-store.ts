@@ -2213,7 +2213,6 @@ export const refreshGitHubWorkUnitProjection = async (
   );
   const publication = await publishGitHubActivitySnapshots(
     scopes.map(({ id }) => id),
-    false,
     [
       ...new Set([
         ...snapshot.excludedChanges
