@@ -7,11 +7,17 @@ import {
   utcOffset,
 } from "@/lib/codex/analytics";
 import type { AnalyticsSnapshot } from "@/lib/codex/analytics";
+import { mutableCodexStart } from "@/lib/codex/daily-history";
 import {
   createCodexAccountSnapshot,
   validateCodexAuthJson,
 } from "@/lib/codex/stats";
-import { readCodexAccounts, saveCodexAccount } from "@/lib/codex/store";
+import {
+  claimCodexAccount,
+  readCodexAccountIds,
+  releaseCodexAccount,
+  saveCodexAccount,
+} from "@/lib/codex/store";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const PLUGIN_SEARCH_URL = "https://chatgpt.com/backend-api/ps/plugins/search";
@@ -179,6 +185,16 @@ export const fetchCodexAccountSnapshot = async (
     responses.profile.json(),
   ]);
   const snapshot = createCodexAccountSnapshot(profile, usage);
+  if (previousAnalytics !== undefined) {
+    const start = mutableCodexStart(now);
+    snapshot.dailyUsageBuckets =
+      snapshot.dailyUsageBuckets?.filter((row) => row.startDate >= start) ??
+      null;
+    snapshot.cumulativeDailyUsageBuckets =
+      snapshot.cumulativeDailyUsageBuckets?.filter(
+        (row) => row.startDate >= start
+      ) ?? null;
+  }
   const analytics = await fetchAnalytics(
     {
       Authorization: `Bearer ${auth.tokens.access_token}`,
@@ -188,7 +204,10 @@ export const fetchCodexAccountSnapshot = async (
     },
     fetcher,
     now,
-    previousAnalytics
+    previousAnalytics,
+    tokenPreferences,
+    undefined,
+    previousAnalytics !== undefined
   );
   const names = [
     ...new Set([
@@ -224,30 +243,26 @@ export const fetchCodexAccountSnapshot = async (
   };
 };
 
-const readUniqueCodexAccounts = async () => {
-  const accounts = await readCodexAccounts();
-  const identities = accounts.map(
-    (account) => validateCodexAuthJson(account.authJson).tokens.account_id
-  );
-  if (new Set(identities).size !== identities.length) {
-    throw new Error(
-      "Register each Codex account only once to avoid double-counting."
-    );
-  }
-  return accounts;
-};
-
 export const syncCodexAccounts = async () => {
-  const accounts = await readUniqueCodexAccounts();
+  const accounts = await readCodexAccountIds();
   const results = await Promise.allSettled(
-    accounts.map(async (account) => {
-      const result = await fetchCodexAccountSnapshot(
-        account.authJson,
-        fetch,
-        new Date(),
-        account.snapshot?.analytics
-      );
-      await saveCodexAccount(account, result.authJson, result.snapshot);
+    accounts.map(async ({ id }) => {
+      const account = await claimCodexAccount(id);
+      if (!account) {
+        return false;
+      }
+      try {
+        const result = await fetchCodexAccountSnapshot(
+          account.authJson,
+          fetch,
+          new Date(),
+          account.snapshot?.analytics
+        );
+        await saveCodexAccount(account, result.authJson, result.snapshot);
+        return true;
+      } finally {
+        await releaseCodexAccount(account);
+      }
     })
   );
   const failed = results.find(
@@ -256,7 +271,11 @@ export const syncCodexAccounts = async () => {
   if (failed !== undefined) {
     throw failed.reason;
   }
-  return { updated: accounts.length };
+  return {
+    updated: results.filter(
+      (result) => result.status === "fulfilled" && result.value
+    ).length,
+  };
 };
 
 export const backfillCodexAccounts = async (
@@ -268,12 +287,18 @@ export const backfillCodexAccounts = async (
   if (!z.iso.date().safeParse(since).success || since > end) {
     throw new Error("Provide a valid backfill start date on or before today.");
   }
-  const accounts = await readUniqueCodexAccounts();
+  const accounts = await readCodexAccountIds();
   if (!accounts.length) {
     throw new Error("No enabled Codex accounts are configured.");
   }
   let failures = 0;
-  for (const account of accounts) {
+  for (const { id } of accounts) {
+    const account = await claimCodexAccount(id);
+    if (!account) {
+      failures += 1;
+      report(`${id}: sync already running; retry later.`);
+      continue;
+    }
     try {
       // Refresh credentials through the normal sync path, and persist rotations first.
       const result = await fetchCodexAccountSnapshot(
@@ -329,6 +354,8 @@ export const backfillCodexAccounts = async (
       report(
         `${account.id}: ${error instanceof Error ? error.message : "Backfill failed"}`
       );
+    } finally {
+      await releaseCodexAccount(account);
     }
   }
   if (failures) {

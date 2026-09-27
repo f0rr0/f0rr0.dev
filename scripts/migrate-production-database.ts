@@ -82,6 +82,7 @@ const runDrizzleMigrations = async (databaseUrl: string) => {
   const migrationProcess = spawn(process.execPath, ["run", "db:migrate"], {
     env: {
       ...process.env,
+      DATABASE_URL: databaseUrl,
       DATABASE_URL_UNPOOLED: databaseUrl,
     },
     stdio: "inherit",

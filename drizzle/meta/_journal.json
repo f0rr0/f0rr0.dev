@@ -162,6 +162,13 @@
       "when": 1788907570264,
       "tag": "0022_portable_github_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790534206181,
+      "tag": "0023_daily_history",
+      "breakpoints": true
     }
   ]
 }

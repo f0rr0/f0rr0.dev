@@ -1,14 +1,15 @@
 import { and, asc, eq, exists, inArray, isNotNull, or, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 import { getDatabase } from "@/db/client";
 import {
+  githubActivitySnapshots,
   githubCommitPullRequestAssociations,
   githubCommits,
   githubIssues,
   githubPublicFeedHead,
   githubPullRequestMemberships,
   githubPullRequests,
-  githubPullRequestVersions,
   githubRefGenerations,
   githubRefMemberships,
   githubRepositories,
@@ -17,6 +18,7 @@ import {
   githubWorkUnitSummaryAttempts,
   githubWorkUnits,
 } from "@/db/schema";
+import { publishGitHubActivitySnapshots } from "@/lib/github-activity-snapshots";
 import { PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE } from "@/lib/github-activity-store";
 import type {
   GitHubFileChangeStat,
@@ -367,11 +369,17 @@ const currentWorkUnitSelection = {
 
 const readCurrentUnits = async (
   transaction: GitHubWorkUnitTransaction,
-  lock: boolean
+  lock: boolean,
+  repositoryIds?: readonly string[]
 ): Promise<readonly CurrentWorkUnitRow[]> => {
   const query = transaction
     .select(currentWorkUnitSelection)
     .from(githubWorkUnits)
+    .where(
+      repositoryIds === undefined
+        ? undefined
+        : inArray(githubWorkUnits.repositoryId, [...repositoryIds])
+    )
     .orderBy(asc(githubWorkUnits.identityKey));
   return lock ? await query.for("update") : await query;
 };
@@ -651,13 +659,17 @@ const hydrateSelectedSummaryEvidence = async (
       ? []
       : await transaction
           .select({
-            fileFacts: githubPullRequestVersions.fileFacts,
-            id: githubPullRequestVersions.id,
+            fileFacts: githubPullRequests.fileFacts,
+            id: githubPullRequests.snapshotId,
           })
-          .from(githubPullRequestVersions)
-          .where(inArray(githubPullRequestVersions.id, versionIds));
+          .from(githubPullRequests)
+          .where(inArray(githubPullRequests.snapshotId, versionIds));
   const rawPullRequestFactsByVersionId = new Map(
-    versionRows.map((row) => [row.id, checkedFileFacts(row.fileFacts)])
+    versionRows.flatMap((row) =>
+      row.id === null
+        ? []
+        : [[row.id, checkedFileFacts(row.fileFacts)] as const]
+    )
   );
 
   return {
@@ -711,6 +723,7 @@ const hydrateSelectedSummaryEvidence = async (
 };
 
 interface ProjectionSnapshotOptions {
+  repositoryIds?: readonly string[];
   lockCurrentUnits: boolean;
   summaryEvaluationLimit: number;
 }
@@ -718,9 +731,21 @@ interface ProjectionSnapshotOptions {
 // oxlint-disable-next-line eslint/complexity -- This is one linear mapping of a transactionally consistent evidence snapshot; splitting ownership decisions across loaders would duplicate the production contract used by the verifier.
 const loadProjectionSnapshot = async (
   transaction: GitHubWorkUnitTransaction,
-  { lockCurrentUnits, summaryEvaluationLimit }: ProjectionSnapshotOptions
+  {
+    lockCurrentUnits,
+    summaryEvaluationLimit,
+    repositoryIds,
+  }: ProjectionSnapshotOptions
 ): Promise<LoadedProjectionSnapshot> => {
-  const currentUnits = await readCurrentUnits(transaction, lockCurrentUnits);
+  const currentUnits = await readCurrentUnits(
+    transaction,
+    lockCurrentUnits,
+    repositoryIds
+  );
+  const scope = (column: AnyPgColumn) =>
+    repositoryIds === undefined
+      ? undefined
+      : inArray(column, [...repositoryIds]);
   const repositoryRows = await transaction
     .select({
       defaultBranch: githubRepositories.defaultBranch,
@@ -734,6 +759,7 @@ const loadProjectionSnapshot = async (
       visibility: githubRepositories.visibility,
     })
     .from(githubRepositories)
+    .where(scope(githubRepositories.id))
     .orderBy(asc(githubRepositories.id));
   const desiredHeadRows = await transaction
     .select({
@@ -746,6 +772,7 @@ const loadProjectionSnapshot = async (
     .from(githubRepositoryRefs)
     .where(
       and(
+        scope(githubRepositoryRefs.repositoryId),
         eq(githubRepositoryRefs.kind, "head"),
         eq(githubRepositoryRefs.projectionRelevant, true)
       )
@@ -772,6 +799,7 @@ const loadProjectionSnapshot = async (
           githubRefGenerations.repositoryId
         ),
         eq(githubRepositoryRefs.refName, githubRefGenerations.refName),
+        scope(githubRepositoryRefs.repositoryId),
         eq(githubRepositoryRefs.kind, "head"),
         eq(githubRepositoryRefs.projectionRelevant, true)
       )
@@ -809,6 +837,7 @@ const loadProjectionSnapshot = async (
           githubRefMemberships.repositoryId
         ),
         eq(githubRepositoryRefs.refName, githubRefMemberships.refName),
+        scope(githubRepositoryRefs.repositoryId),
         eq(githubRepositoryRefs.kind, "head"),
         eq(githubRepositoryRefs.projectionRelevant, true)
       )
@@ -849,7 +878,12 @@ const loadProjectionSnapshot = async (
       verifiedMergeLanding: exists(verifiedMergeLanding).mapWith(Boolean),
     })
     .from(githubCommits)
-    .where(inArray(githubCommits.authorUserId, [...trackedAuthorUserIds]))
+    .where(
+      and(
+        scope(githubCommits.repositoryId),
+        inArray(githubCommits.authorUserId, [...trackedAuthorUserIds])
+      )
+    )
     .orderBy(asc(githubCommits.repositoryId), asc(githubCommits.sha));
   const associationRows = await transaction
     .select({
@@ -868,7 +902,12 @@ const loadProjectionSnapshot = async (
         eq(githubCommits.sha, githubCommitPullRequestAssociations.commitSha)
       )
     )
-    .where(inArray(githubCommits.authorUserId, [...trackedAuthorUserIds]))
+    .where(
+      and(
+        scope(githubCommits.repositoryId),
+        inArray(githubCommits.authorUserId, [...trackedAuthorUserIds])
+      )
+    )
     .orderBy(
       asc(githubCommitPullRequestAssociations.commitRepositoryId),
       asc(githubCommitPullRequestAssociations.commitSha),
@@ -935,32 +974,23 @@ const loadProjectionSnapshot = async (
   const pullRequestRows = await transaction
     .select({
       authorUserId: githubPullRequests.authorUserId,
-      baseRepositoryId: githubPullRequestVersions.baseRepositoryId,
-      baseSha: githubPullRequestVersions.baseSha,
-      commitCount: githubPullRequestVersions.commitCount,
+      baseRepositoryId: githubPullRequests.baseRepositoryId,
+      baseSha: githubPullRequests.baseSha,
+      commitCount: githubPullRequests.commitCount,
       createdAt: githubPullRequests.createdAt,
-      fileFactsComplete: githubPullRequestVersions.fileFactsComplete,
-      fileFactsDigest: githubPullRequestVersions.fileFactsDigest,
-      headSha: githubPullRequestVersions.headSha,
-      mergeSnapshot: githubPullRequestVersions.mergeSnapshot,
-      membershipComplete: githubPullRequestVersions.membershipComplete,
+      fileFactsComplete: githubPullRequests.fileFactsComplete,
+      fileFactsDigest: githubPullRequests.fileFactsDigest,
+      headSha: githubPullRequests.headSha,
+      mergeSnapshot: githubPullRequests.mergeSnapshot,
+      membershipComplete: githubPullRequests.membershipComplete,
       nodeId: githubPullRequests.nodeId,
-      observedAt: githubPullRequestVersions.observedAt,
+      observedAt: githubPullRequests.snapshotObservedAt,
       repositoryId: githubPullRequests.repositoryId,
       state: githubPullRequests.state,
-      versionId: githubPullRequestVersions.id,
+      versionId: githubPullRequests.snapshotId,
     })
     .from(githubPullRequests)
-    .innerJoin(
-      githubPullRequestVersions,
-      and(
-        eq(
-          githubPullRequestVersions.pullRequestNodeId,
-          githubPullRequests.nodeId
-        ),
-        eq(githubPullRequestVersions.isCurrent, true)
-      )
-    )
+    .where(scope(githubPullRequests.repositoryId))
     .orderBy(asc(githubPullRequests.nodeId));
   const pullRequestMembershipRows = await transaction
     .select({
@@ -971,15 +1001,10 @@ const loadProjectionSnapshot = async (
     })
     .from(githubPullRequestMemberships)
     .innerJoin(
-      githubPullRequestVersions,
-      and(
-        eq(
-          githubPullRequestVersions.id,
-          githubPullRequestMemberships.versionId
-        ),
-        eq(githubPullRequestVersions.isCurrent, true)
-      )
+      githubPullRequests,
+      eq(githubPullRequests.snapshotId, githubPullRequestMemberships.versionId)
     )
+    .where(scope(githubPullRequests.repositoryId))
     .orderBy(
       asc(githubPullRequestMemberships.versionId),
       asc(githubPullRequestMemberships.position)
@@ -995,6 +1020,14 @@ const loadProjectionSnapshot = async (
   }
   const pullRequests: GitHubPullRequestProjectionEvidence[] = [];
   for (const row of pullRequestRows) {
+    if (
+      row.versionId === null ||
+      row.observedAt === null ||
+      row.baseSha === null ||
+      row.headSha === null
+    ) {
+      continue;
+    }
     if (
       row.state !== "closed" &&
       row.state !== "merged" &&
@@ -1036,14 +1069,20 @@ const loadProjectionSnapshot = async (
     });
   }
   const pullRequestSummaryEvidenceByNodeId = new Map(
-    pullRequestRows.map((row) => [
-      row.nodeId,
-      {
-        fileFactsComplete: row.fileFactsComplete,
-        fileFactsDigest: checkedDigest(row.fileFactsDigest),
-        versionId: row.versionId,
-      },
-    ])
+    pullRequestRows.flatMap((row) =>
+      row.versionId === null
+        ? []
+        : [
+            [
+              row.nodeId,
+              {
+                fileFactsComplete: row.fileFactsComplete,
+                fileFactsDigest: checkedDigest(row.fileFactsDigest),
+                versionId: row.versionId,
+              },
+            ] as const,
+          ]
+    )
   );
   const desiredByRef = new Map(
     desiredHeadRows.map((row) => [
@@ -1141,6 +1180,9 @@ const loadProjectionSnapshot = async (
     GitHubWorkUnitSummaryEvaluationEvidence
   >();
   const summaryEvaluationDigests = new Map<string, string>();
+  const currentByIdentity = new Map(
+    currentUnits.map((unit) => [unit.identityKey, unit])
+  );
   for (const unit of compactUnits) {
     const repository = repositoryContexts.get(unit.repositoryId);
     if (repository === undefined) {
@@ -1160,9 +1202,6 @@ const loadProjectionSnapshot = async (
       summaryEvaluationDigestFrom(unit, evidence, repository)
     );
   }
-  const currentByIdentity = new Map(
-    currentUnits.map((unit) => [unit.identityKey, unit])
-  );
   const pendingSummaryEvaluations = compactUnits
     .filter((unit) => {
       const digest = summaryEvaluationDigests.get(unit.identityKey);
@@ -1174,9 +1213,9 @@ const loadProjectionSnapshot = async (
     })
     .toSorted(
       (left, right) =>
-        Date.parse(right.activityAt) - Date.parse(left.activityAt) ||
         Date.parse(right.contentObservedAt) -
           Date.parse(left.contentObservedAt) ||
+        Date.parse(right.activityAt) - Date.parse(left.activityAt) ||
         bytewiseCompare(left.identityKey, right.identityKey)
     );
   const selectedSummaryEvaluations = pendingSummaryEvaluations.slice(
@@ -1243,24 +1282,52 @@ const loadProjectionSnapshot = async (
   };
 };
 
+// Ownership can cross forks. Publication and its verifier must load the same
+// connected repositories or a missing PR can incorrectly turn into branch work.
+const readProjectionScopes = async (
+  transaction: GitHubWorkUnitTransaction,
+  repositoryIds?: readonly string[]
+) =>
+  await transaction.execute<{ id: string; token: string | null }>(sql`
+  with recursive edges(a, b) as (
+    select repository_id, commit_repository_id from github_ref_memberships where repository_id <> commit_repository_id
+    union select p.repository_id, m.commit_repository_id from github_pull_request_memberships m
+      join github_pull_requests p on p.snapshot_id = m.version_id where p.repository_id <> m.commit_repository_id
+    union select p.repository_id, a.commit_repository_id from github_commit_pull_request_associations a
+      join github_pull_requests p on p.node_id = a.pull_request_node_id where p.repository_id <> a.commit_repository_id
+    union select w.repository_id, m.logical_repository_id from github_work_unit_memberships m
+      join github_work_units w on w.id = m.work_unit_id where w.repository_id <> m.logical_repository_id
+  ), connected(id) as (
+    select id from github_repositories where ${repositoryIds === undefined ? sql`projection_request_token is not null` : inArray(githubRepositories.id, [...repositoryIds])}
+    union select case when e.a = c.id then e.b else e.a end from connected c join edges e on e.a = c.id or e.b = c.id
+  ) select r.id, r.projection_request_token as token from github_repositories r join connected c on c.id = r.id
+`);
+
 /** Uses the same durable-evidence mapping and projector as publication. */
-export const readGitHubWorkUnitProjectionEvidence =
-  async (): Promise<GitHubWorkUnitProjectionSnapshot> =>
-    await getDatabase().transaction(
-      async (transaction) => {
-        const snapshot = await loadProjectionSnapshot(transaction, {
-          lockCurrentUnits: false,
-          summaryEvaluationLimit: 0,
-        });
-        return {
-          excludedChanges: snapshot.excludedChanges,
-          exclusionReasonCounts: snapshot.exclusionReasonCounts,
-          input: snapshot.input,
-          units: snapshot.units,
-        };
-      },
-      { accessMode: "read only", isolationLevel: "repeatable read" }
-    );
+export const readGitHubWorkUnitProjectionEvidence = async (
+  repositoryIds?: readonly string[]
+): Promise<GitHubWorkUnitProjectionSnapshot> =>
+  await getDatabase().transaction(
+    async (transaction) => {
+      const snapshot = await loadProjectionSnapshot(transaction, {
+        repositoryIds:
+          repositoryIds === undefined
+            ? undefined
+            : (await readProjectionScopes(transaction, repositoryIds)).map(
+                ({ id }) => id
+              ),
+        lockCurrentUnits: false,
+        summaryEvaluationLimit: 0,
+      });
+      return {
+        excludedChanges: snapshot.excludedChanges,
+        exclusionReasonCounts: snapshot.exclusionReasonCounts,
+        input: snapshot.input,
+        units: snapshot.units,
+      };
+    },
+    { accessMode: "read only", isolationLevel: "repeatable read" }
+  );
 
 const materialProjectionChanged = (
   current: CurrentWorkUnitRow,
@@ -1602,7 +1669,10 @@ const swapProjection = async (
           githubWorkUnitSummaryAttempts.workUnitId,
           deleted.map((unit) => unit.id)
         ),
-        eq(githubWorkUnitSummaryAttempts.startedRequests, 0)
+        eq(githubWorkUnitSummaryAttempts.startedRequests, 0),
+        sql`${githubWorkUnitSummaryAttempts.state} <> 'accepted'`,
+        sql`not exists (select 1 from ${githubActivitySnapshots} s where s.work_unit_id = ${githubWorkUnitSummaryAttempts.workUnitId}
+          and s.summary_input_digest = ${githubWorkUnitSummaryAttempts.summaryInputDigest} and s.payload->>'headline' is null)`
       )
     );
     await transaction.delete(githubWorkUnits).where(
@@ -2038,6 +2108,32 @@ const setSummaryInputs = async (
         }
         continue;
       }
+      const [frozen] = await transaction
+        .select({ day: githubActivitySnapshots.day })
+        .from(githubActivitySnapshots)
+        .where(
+          and(
+            eq(
+              githubActivitySnapshots.identityKey,
+              item.unit.projected.identityKey
+            ),
+            eq(
+              githubActivitySnapshots.outcomeDigest,
+              eligibleBuild.outcomeDigest
+            ),
+            eq(
+              githubActivitySnapshots.attributionMode,
+              current.attributionMode
+            ),
+            sql`${githubActivitySnapshots.day} < (clock_timestamp() at time zone 'Asia/Kolkata')::date`
+          )
+        )
+        .limit(1);
+      // A new prompt must not buy another evaluation of already frozen work.
+      // Existing pinned attempts above may still finish their original input.
+      if (frozen !== undefined) {
+        continue;
+      }
       const revision = (maximumRevisionByUnit.get(current.id) ?? 0) + 1;
       await transaction.insert(githubWorkUnitSummaryAttempts).values({
         identityKey: item.unit.projected.identityKey,
@@ -2075,14 +2171,14 @@ const setSummaryInputs = async (
 };
 
 /**
- * Recomputes the complete current corpus after a caller has durably changed
+ * Recomputes affected repositories after a caller has durably changed
  * evidence. It is deliberately not a polling API.
  */
 export const refreshGitHubWorkUnitProjection = async (
   now = new Date()
 ): Promise<GitHubWorkUnitProjectionRefreshResult> => {
   checkedNow(now);
-  const { projectionRequestToken, snapshot, swap } =
+  const { projectionRequestToken, snapshot, swap, scopes } =
     await getDatabase().transaction(
       async (transaction) => {
         await acquireGitHubWorkUnitProjectionLock(transaction);
@@ -2095,12 +2191,15 @@ export const refreshGitHubWorkUnitProjection = async (
         if (head === undefined) {
           throw new Error("The GitHub public feed head is unavailable.");
         }
+        const scopes = await readProjectionScopes(transaction);
         const snapshot = await loadProjectionSnapshot(transaction, {
+          repositoryIds: scopes.map(({ id }) => id),
           lockCurrentUnits: true,
           summaryEvaluationLimit: SUMMARY_EVALUATION_LIMIT,
         });
         return {
           projectionRequestToken: head.projectionRequestToken,
+          scopes,
           snapshot,
           swap: await swapProjection(transaction, snapshot, now),
         };
@@ -2112,12 +2211,52 @@ export const refreshGitHubWorkUnitProjection = async (
     swap.summaryCandidates,
     now
   );
+  const publication = await publishGitHubActivitySnapshots(
+    scopes.map(({ id }) => id),
+    false,
+    [
+      ...new Set([
+        ...snapshot.excludedChanges
+          .filter(
+            (change) =>
+              change.reason !== "merged_pr_landing" &&
+              change.reason !== "no_current_owner"
+          )
+          .map((change) => change.repositoryId),
+        ...snapshot.input.changes
+          .filter(
+            (change) =>
+              !change.enrichmentComplete || !change.pullRequestCoverageComplete
+          )
+          .map((change) => change.repositoryId),
+      ]),
+    ]
+  );
   const summaryEvaluationsPending =
     snapshot.summaryEvaluationsPending +
     swap.summaryCandidates.length -
     summaries.settled;
+  if (summaryEvaluationsPending === 0) {
+    for (const scope of scopes) {
+      if (scope.token === null) {
+        continue;
+      }
+      await getDatabase()
+        .update(githubRepositories)
+        .set({ projectionRequestToken: null })
+        .where(
+          and(
+            eq(githubRepositories.id, scope.id),
+            eq(githubRepositories.projectionRequestToken, scope.token)
+          )
+        );
+    }
+  }
   if (summaryEvaluationsPending > 0 && projectionRequestToken === null) {
-    await requestGitHubWorkUnitProjection(getDatabase());
+    await requestGitHubWorkUnitProjection(
+      getDatabase(),
+      scopes.map(({ id }) => id)
+    );
   } else if (
     summaryEvaluationsPending === 0 &&
     projectionRequestToken !== null
@@ -2129,7 +2268,9 @@ export const refreshGitHubWorkUnitProjection = async (
     deletedUnits: swap.deletedUnits,
     exclusionReasonCounts: snapshot.exclusionReasonCounts,
     feedRevisionChanged:
-      swap.feedRevisionChanged || summaries.publicationChanged,
+      swap.feedRevisionChanged ||
+      summaries.publicationChanged ||
+      publication.changed,
     insertedUnits: swap.insertedUnits,
     orderingRevisionChanged: swap.orderingRevisionChanged,
     summaryAttemptsQueued: summaries.queued,

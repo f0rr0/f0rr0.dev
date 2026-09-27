@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import {
@@ -40,9 +40,19 @@ export const acquireGitHubWorkUnitProjectionLock = async (
 };
 
 export const requestGitHubWorkUnitProjection = async (
-  executor: Database | DatabaseTransaction
+  executor: Database | DatabaseTransaction,
+  repositoryIds?: readonly string[]
 ) => {
   const token = randomUUID();
+  // An omitted scope explicitly requests a full rebuild (policy changes/verifier).
+  await executor
+    .update(githubRepositories)
+    .set({ projectionRequestToken: token })
+    .where(
+      repositoryIds === undefined
+        ? undefined
+        : inArray(githubRepositories.id, [...repositoryIds])
+    );
   const [requested] = await executor
     .update(githubPublicFeedHead)
     .set({ projectionRequestToken: token })
@@ -67,7 +77,7 @@ export const ensureGitHubWorkUnitProjectionRequest = async () =>
     if (head === undefined) {
       throw new Error("The GitHub public feed head is unavailable.");
     }
-    if (head.token !== null || head.policyDigest === PIPELINE_POLICY_DIGEST) {
+    if (head.policyDigest === PIPELINE_POLICY_DIGEST) {
       return head.token;
     }
     return await requestGitHubWorkUnitProjection(transaction);
@@ -132,6 +142,6 @@ export const requestGitHubProjectionAfterRefRepair = async (
   // Ref intake already invalidates stale ownership. Intermediate repairs cannot
   // publish branch work; the final repair requests one rebuild for the repository.
   if (repository?.complete) {
-    await requestGitHubWorkUnitProjection(transaction);
+    await requestGitHubWorkUnitProjection(transaction, [repositoryId]);
   }
 };

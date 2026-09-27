@@ -19,6 +19,10 @@ import {
 } from "drizzle-orm/pg-core";
 
 import type {
+  PublicGitHubIssueRow,
+  PublicGitHubWorkUnitRow,
+} from "@/lib/github-activity-feed-core";
+import type {
   GitHubLanguageFact,
   GitHubWorkUnitFileFact,
 } from "@/lib/github-change-evidence";
@@ -52,6 +56,7 @@ export const githubRepositories = pgTable(
     }),
     htmlUrl: text("html_url"),
     id: varchar("id", { length: 32 }).primaryKey(),
+    projectionRequestToken: uuid("projection_request_token"),
     lastObservedAt: timestamp("last_observed_at", {
       mode: "date",
       withTimezone: true,
@@ -98,7 +103,37 @@ export const githubRepositories = pgTable(
   ]
 ).enableRLS();
 
-export { codexAccounts } from "@/db/codex-schema";
+export { codexAccounts, codexUsageDays } from "@/db/codex-schema";
+
+// Independent of mutable work units/ref generations so rebases cannot erase history.
+export const githubActivitySnapshots = pgTable(
+  "github_activity_snapshots",
+  {
+    day: date("day").notNull(),
+    identityKey: varchar("identity_key", { length: 180 }).notNull(),
+    repositoryId: varchar("repository_id", { length: 32 }).notNull(),
+    payload: jsonb("payload")
+      .$type<PublicGitHubWorkUnitRow | PublicGitHubIssueRow>()
+      .notNull(),
+    workUnitId: uuid("work_unit_id"),
+    workUnitRevision: integer("work_unit_revision"),
+    attributionMode: varchar("attribution_mode", { length: 32 }),
+    factsDigest: varchar("facts_digest", { length: 64 }),
+    outcomeDigest: varchar("outcome_digest", { length: 64 }),
+    summaryInputDigest: varchar("summary_input_digest", { length: 64 }),
+    recordedAt: timestamp("recorded_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.day, table.identityKey] }),
+    index("github_activity_snapshots_latest_idx").on(
+      table.identityKey,
+      table.day.desc()
+    ),
+    index("github_activity_snapshots_repository_idx").on(table.repositoryId),
+  ]
+).enableRLS();
 
 export const githubCommits = pgTable(
   "github_commits",
@@ -136,9 +171,11 @@ export const githubCommits = pgTable(
     fileFacts: jsonb("file_facts").$type<readonly GitHubWorkUnitFileFact[]>(),
     fileFactsDigest: varchar("file_facts_digest", {
       length: 64,
-    }).generatedAlwaysAs(
-      sql`CASE WHEN "file_facts" IS NULL THEN NULL ELSE encode(sha256(jsonb_send("file_facts")), 'hex') END`
-    ),
+    }),
+    fileFactsPrunedAt: timestamp("file_facts_pruned_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
     fileFactsComplete: boolean("file_facts_complete").default(false).notNull(),
     firstObservedAt: timestamp("first_observed_at", {
       mode: "date",
@@ -488,6 +525,10 @@ export const githubPushObservations = pgTable(
       withTimezone: true,
     }),
     errorCode: varchar("error_code", { length: 80 }),
+    knownShas: text("known_shas")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
     expectedCommitCount: integer("expected_commit_count"),
     historySinceAt: timestamp("history_since_at", {
       mode: "date",
@@ -575,39 +616,6 @@ export const githubPushObservations = pgTable(
   ]
 ).enableRLS();
 
-export const githubPushObservationCommits = pgTable(
-  "github_push_observation_commits",
-  {
-    observationId: uuid("observation_id").notNull(),
-    position: integer("position").notNull(),
-    repositoryId: varchar("repository_id", { length: 32 }).notNull(),
-    sha: varchar("sha", { length: 40 }).notNull(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.observationId, table.repositoryId, table.sha],
-      name: "gh_push_observation_commits_pk",
-    }),
-    uniqueIndex("github_push_observation_commits_position_unique").on(
-      table.observationId,
-      table.position
-    ),
-    foreignKey({
-      columns: [table.observationId],
-      foreignColumns: [githubPushObservations.id],
-      name: "gh_push_observation_commits_observation_fk",
-    }).onDelete("cascade"),
-    check(
-      "github_push_observation_commits_sha_shape",
-      sql`${table.sha} ~ '^[a-f0-9]{40}$'`
-    ),
-    check(
-      "github_push_observation_commits_nonnegative_position",
-      sql`${table.position} >= 0`
-    ),
-  ]
-).enableRLS();
-
 export const githubPullRequests = pgTable(
   "github_pull_requests",
   {
@@ -631,6 +639,20 @@ export const githubPullRequests = pgTable(
       withTimezone: true,
     }).notNull(),
     deletions: integer("deletions"),
+    fileFacts: jsonb("file_facts").$type<readonly GitHubWorkUnitFileFact[]>(),
+    fileFactsDigest: varchar("file_facts_digest", {
+      length: 64,
+    }).generatedAlwaysAs(
+      sql`CASE WHEN "file_facts" IS NULL THEN NULL ELSE encode(sha256(jsonb_send("file_facts")), 'hex') END`
+    ),
+    fileFactsComplete: boolean("file_facts_complete").default(false).notNull(),
+    membershipComplete: boolean("membership_complete").default(false).notNull(),
+    mergeSnapshot: boolean("merge_snapshot").default(false).notNull(),
+    snapshotId: uuid("snapshot_id"),
+    snapshotObservedAt: timestamp("snapshot_observed_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
     draft: boolean("draft").default(false).notNull(),
     firstObservedAt: timestamp("first_observed_at", {
       mode: "date",
@@ -679,6 +701,19 @@ export const githubPullRequests = pgTable(
     url: text("url").notNull(),
   },
   (table) => [
+    uniqueIndex("github_pull_requests_snapshot_unique").on(table.snapshotId),
+    check(
+      "github_pull_requests_file_facts_array",
+      sql`${table.fileFacts} IS NULL OR jsonb_typeof(${table.fileFacts}) = 'array'`
+    ),
+    check(
+      "github_pull_requests_file_facts_complete",
+      sql`NOT ${table.fileFactsComplete} OR ${table.fileFacts} IS NOT NULL`
+    ),
+    check(
+      "github_pull_requests_snapshot",
+      sql`(${table.snapshotId} IS NULL) = (${table.snapshotObservedAt} IS NULL) AND (${table.snapshotId} IS NULL OR (${table.baseSha} IS NOT NULL AND ${table.headSha} IS NOT NULL))`
+    ),
     uniqueIndex("github_pull_requests_repository_number_unique").on(
       table.repositoryId,
       table.number
@@ -801,73 +836,6 @@ export const githubPullRequestSignals = pgTable(
   ]
 ).enableRLS();
 
-export const githubPullRequestVersions = pgTable(
-  "github_pull_request_versions",
-  {
-    baseRefName: text("base_ref_name"),
-    baseRepositoryId: varchar("base_repository_id", { length: 32 }),
-    baseSha: varchar("base_sha", { length: 40 }).notNull(),
-    commitCount: integer("commit_count"),
-    fileFacts: jsonb("file_facts").$type<readonly GitHubWorkUnitFileFact[]>(),
-    fileFactsDigest: varchar("file_facts_digest", {
-      length: 64,
-    }).generatedAlwaysAs(
-      sql`CASE WHEN "file_facts" IS NULL THEN NULL ELSE encode(sha256(jsonb_send("file_facts")), 'hex') END`
-    ),
-    fileFactsComplete: boolean("file_facts_complete").default(false).notNull(),
-    headRefName: text("head_ref_name"),
-    headRepositoryId: varchar("head_repository_id", { length: 32 }),
-    headSha: varchar("head_sha", { length: 40 }).notNull(),
-    id: uuid("id").defaultRandom().primaryKey(),
-    isCurrent: boolean("is_current").default(true).notNull(),
-    membershipComplete: boolean("membership_complete").default(false).notNull(),
-    mergeSnapshot: boolean("merge_snapshot").default(false).notNull(),
-    observedAt: timestamp("observed_at", {
-      mode: "date",
-      withTimezone: true,
-    })
-      .defaultNow()
-      .notNull(),
-    providerUpdatedAt: timestamp("provider_updated_at", {
-      mode: "date",
-      withTimezone: true,
-    }).notNull(),
-    pullRequestNodeId: varchar("pull_request_node_id", {
-      length: 128,
-    }).notNull(),
-  },
-  (table) => [
-    uniqueIndex("github_pull_request_versions_head_unique").on(
-      table.pullRequestNodeId,
-      table.headSha
-    ),
-    uniqueIndex("github_pull_request_versions_current_unique")
-      .on(table.pullRequestNodeId)
-      .where(sql`${table.isCurrent}`),
-    foreignKey({
-      columns: [table.pullRequestNodeId],
-      foreignColumns: [githubPullRequests.nodeId],
-      name: "gh_pr_versions_pull_request_fk",
-    }).onDelete("cascade"),
-    check(
-      "github_pull_request_versions_sha_shapes",
-      sql`${table.baseSha} ~ '^[a-f0-9]{40}$' AND ${table.headSha} ~ '^[a-f0-9]{40}$'`
-    ),
-    check(
-      "github_pull_request_versions_nonnegative_count",
-      sql`${table.commitCount} IS NULL OR ${table.commitCount} >= 0`
-    ),
-    check(
-      "github_pull_request_versions_file_facts_array",
-      sql`${table.fileFacts} IS NULL OR jsonb_typeof(${table.fileFacts}) = 'array'`
-    ),
-    check(
-      "github_pull_request_versions_file_facts_complete",
-      sql`NOT ${table.fileFactsComplete} OR ${table.fileFacts} IS NOT NULL`
-    ),
-  ]
-).enableRLS();
-
 export const githubPullRequestMemberships = pgTable(
   "github_pull_request_memberships",
   {
@@ -894,7 +862,7 @@ export const githubPullRequestMemberships = pgTable(
     ),
     foreignKey({
       columns: [table.versionId],
-      foreignColumns: [githubPullRequestVersions.id],
+      foreignColumns: [githubPullRequests.snapshotId],
       name: "gh_pr_memberships_version_fk",
     }).onDelete("cascade"),
     check(
@@ -1403,6 +1371,15 @@ export const githubWorkUnitSummaryAttempts = pgTable(
       table.debounceUntil,
       table.createdAt
     ),
+    index("gh_work_unit_summary_accepted_outcome_idx")
+      .on(
+        table.repositoryId,
+        table.outcomeDigest,
+        table.attributionMode,
+        table.recipe,
+        table.acceptedAt
+      )
+      .where(sql`${table.state} = 'accepted'`),
     // Paid attempts outlive the current projection, including branch deletion.
     index("gh_work_unit_summary_attempts_identity_idx").on(table.identityKey),
     check(
@@ -1452,52 +1429,6 @@ export const githubWorkUnitSummaryAttempts = pgTable(
   ]
 ).enableRLS();
 
-export const githubWorkUnitAcceptedSummaries = pgTable(
-  "github_work_unit_accepted_summaries",
-  {
-    acceptedAt: timestamp("accepted_at", {
-      mode: "date",
-      withTimezone: true,
-    }).notNull(),
-    attributionMode: varchar("attribution_mode", { length: 32 }).notNull(),
-    identityKey: varchar("identity_key", { length: 180 }).notNull(),
-    outcome: text("outcome").notNull(),
-    outcomeDigest: varchar("outcome_digest", { length: 64 }).notNull(),
-    recipe: varchar("recipe", { length: 100 }).notNull(),
-    repositoryId: varchar("repository_id", { length: 32 }).notNull(),
-    summaryInputDigest: varchar("summary_input_digest", {
-      length: 64,
-    }).notNull(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.identityKey, table.summaryInputDigest, table.recipe],
-      name: "gh_work_unit_accepted_summaries_pk",
-    }),
-    index("gh_work_unit_accepted_summaries_identity_idx").on(
-      table.identityKey,
-      table.attributionMode,
-      table.recipe,
-      table.acceptedAt
-    ),
-    index("gh_work_unit_accepted_summaries_outcome_idx").on(
-      table.repositoryId,
-      table.outcomeDigest,
-      table.attributionMode,
-      table.recipe,
-      table.acceptedAt
-    ),
-    check(
-      "gh_work_unit_accepted_summaries_digests",
-      sql`${table.outcomeDigest} ~ '^[a-f0-9]{64}$' AND ${table.summaryInputDigest} ~ '^[a-f0-9]{64}$'`
-    ),
-    check(
-      "gh_work_unit_accepted_summaries_attribution",
-      sql`${table.attributionMode} IN ('tracked_authored_pr', 'foreign_pr_contribution', 'canonical_owned_composite', 'branch_owned_composite')`
-    ),
-  ]
-).enableRLS();
-
 export const githubWorkUnitSummaryDailyUsage = pgTable(
   "github_work_unit_summary_daily_usage",
   {
@@ -1509,6 +1440,10 @@ export const githubWorkUnitSummaryDailyUsage = pgTable(
 export const githubPublicFeedHead = pgTable(
   "github_public_feed_head",
   {
+    historyInitializedAt: timestamp("history_initialized_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
     feedRevision: bigint("feed_revision", { mode: "number" })
       .default(0)
       .notNull(),

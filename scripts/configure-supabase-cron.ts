@@ -273,6 +273,13 @@ export const configureSupabaseCron = async (
         }
         jobs.push({ name: job.name, jobId: scheduled.jobId });
       }
+      const [cleanup] = await transaction<{ jobId: number }[]>`
+        select cron.schedule('activity-history-retention', '23 3 * * *', 'select public.cleanup_activity_history()') as "jobId"
+      `;
+      if (cleanup === undefined) {
+        throw new Error("Supabase did not schedule activity retention.");
+      }
+      jobs.push({ name: "activity-history-retention", jobId: cleanup.jobId });
       return jobs;
     });
 

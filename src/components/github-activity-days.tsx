@@ -17,10 +17,7 @@ import {
   TooltipTrigger,
 } from "@/components/site-tooltip";
 import { dateKey, formatDate, WORK_LOG_TIME_ZONE } from "@/lib/date";
-import {
-  getVisibleGitHubActivityDays,
-  localizeGitHubActivityDays,
-} from "@/lib/github-activity-feed-core";
+import { getVisibleGitHubActivityDays } from "@/lib/github-activity-feed-core";
 import type {
   PublicGitHubActivityDay,
   PublicGitHubActivityItem,
@@ -176,6 +173,17 @@ function WorkUnitRow({
             <p className="wrap-anywhere">{item.summary}</p>
           )}
           <WorkUnitFacts facts={item.facts} />
+          {item.destination === null ? null : (
+            <a
+              className="site-text-link inline-flex min-h-11 items-center text-sm"
+              href={item.destination.url}
+              aria-label={item.destination.label}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View on GitHub ↗
+            </a>
+          )}
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -278,18 +286,6 @@ function GitHubActivityDay({
   const workUnits = day.repositories
     .flatMap(({ items }) => items)
     .filter((item) => item.kind !== "issue-opened");
-  const commitCount = workUnits.reduce(
-    (total, item) => total + item.facts.ownedCommitCount,
-    0
-  );
-  const additions = workUnits.reduce(
-    (total, item) => total + item.facts.additions,
-    0
-  );
-  const deletions = workUnits.reduce(
-    (total, item) => total + item.facts.deletions,
-    0
-  );
   return (
     <section aria-labelledby={`activity-day-${day.day}`}>
       <header className="site-row min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring flex flex-wrap rounded-none border-y border-border py-2">
@@ -303,22 +299,16 @@ function GitHubActivityDay({
           </time>
         </h3>
         <dl
-          aria-label={`Totals for ${day.day}`}
+          aria-label={`Updates for ${day.day}`}
           className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums ms-auto whitespace-nowrap"
         >
           <div>
-            <dt className="sr-only">Commits across repositories</dt>
+            <dt className="sr-only">Updates across repositories</dt>
             <dd>
-              {countFormatter.format(commitCount)}{" "}
-              {commitCount === 1 ? "commit" : "commits"} across{" "}
+              {countFormatter.format(workUnits.length)}{" "}
+              {workUnits.length === 1 ? "update" : "updates"} across{" "}
               {countFormatter.format(repositoryCount)}{" "}
               {repositoryCount === 1 ? "repo" : "repos"}
-            </dd>
-          </div>
-          <div className="hidden sm:block">
-            <dt className="sr-only">Authored line churn</dt>
-            <dd>
-              <DiffCounters facts={{ additions, deletions }} />
             </dd>
           </div>
         </dl>
@@ -347,9 +337,8 @@ export function GitHubActivityDays({
   preview?: boolean;
   now: string;
 }>) {
-  const localDays = localizeGitHubActivityDays(days, WORK_LOG_TIME_ZONE);
   const today = dateKey(now, WORK_LOG_TIME_ZONE);
-  const activeDays = getVisibleGitHubActivityDays(localDays, today);
+  const activeDays = getVisibleGitHubActivityDays(days, today);
   const visibleDays = preview ? activeDays.slice(0, 1) : activeDays;
   return (
     <TooltipGroup>

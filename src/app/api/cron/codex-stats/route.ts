@@ -14,7 +14,9 @@ export async function POST(request: Request) {
 
   try {
     const result = await syncCodexAccounts();
-    revalidateTag("public-codex-stats", { expire: 0 });
+    if (result.updated > 0) {
+      revalidateTag("public-codex-stats", { expire: 0 });
+    }
     return Response.json({ ok: true, result });
   } catch (error) {
     const errorName = reportOperationalError("codex_stats", error);

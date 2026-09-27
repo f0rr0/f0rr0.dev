@@ -18,14 +18,14 @@
     "format:typ": "typstyle -i career",
     "format:typ:check": "typstyle --check career",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "drizzle-kit migrate && bun scripts/migrate-daily-history.ts",
     "db:studio": "drizzle-kit studio",
     "codex:backfill": "bun scripts/backfill-codex.ts",
     "codex:account": "bun scripts/configure-codex-account.ts",
     "github:sync": "bun scripts/sync-github-commits.ts",
     "github:verify": "bun scripts/verify-github-work-units.ts",
     "supabase:cron": "bun scripts/configure-supabase-cron.ts",
-    "lint:unused": "knip"
+    "lint:unused": "knip && knip --production"
   },
   "dependencies": {
     "@ai-sdk/openai": "4.0.41",

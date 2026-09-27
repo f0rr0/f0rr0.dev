@@ -10,13 +10,10 @@ import {
   githubPullRequestMemberships,
   githubPullRequests,
   githubPullRequestSignals,
-  githubPullRequestVersions,
-  githubPushObservationCommits,
   githubPushObservations,
   githubRepositories,
   githubRepositoryRefs,
   githubWebhookDeliveries,
-  githubWorkUnitAcceptedSummaries,
   githubWorkUnitMemberships,
   githubWorkUnitSummaryAttempts,
   githubWorkUnitSummaryDailyUsage,
@@ -87,13 +84,7 @@ describe("GitHub activity persistence schema", () => {
       "github_repository_refs_active_idx"
     );
 
-    const observationCommitForeignKeys = config(
-      githubPushObservationCommits
-    ).foreignKeys.map((item) => item.getName());
-    expect(observationCommitForeignKeys).toHaveLength(1);
-    expect(observationCommitForeignKeys[0]).toBe(
-      "gh_push_observation_commits_observation_fk"
-    );
+    expect(githubPushObservations.knownShas.notNull).toBe(true);
   });
 
   test("deduplicates webhook deliveries", () => {
@@ -109,7 +100,7 @@ describe("GitHub activity persistence schema", () => {
     );
   });
 
-  test("stores mutable PR state separately from immutable discovery snapshots", () => {
+  test("stores current PR state and its evidence together", () => {
     expect(indexNames(githubPullRequests)).toContain(
       "github_pull_requests_reconciliation_idx"
     );
@@ -121,22 +112,10 @@ describe("GitHub activity persistence schema", () => {
     );
   });
 
-  test("versions PR membership without requiring every member to be hydrated", () => {
-    expect(githubPullRequestVersions.isCurrent.default).toBe(true);
-    expect(indexNames(githubPullRequestVersions)).toEqual(
-      expect.arrayContaining([
-        "github_pull_request_versions_head_unique",
-        "github_pull_request_versions_current_unique",
-      ])
+  test("identifies current PR membership without requiring every member to be hydrated", () => {
+    expect(indexNames(githubPullRequests)).toContain(
+      "github_pull_requests_snapshot_unique"
     );
-    const headVersionIndex = config(githubPullRequestVersions).indexes.find(
-      (item) => item.config.name === "github_pull_request_versions_head_unique"
-    );
-    expect(
-      headVersionIndex?.config.columns.map((column) =>
-        "name" in column ? column.name : undefined
-      )
-    ).toEqual(["pull_request_node_id", "head_sha"]);
     expect(indexNames(githubPullRequestMemberships)).toContain(
       "github_pull_request_memberships_commit_lookup_idx"
     );
@@ -156,7 +135,7 @@ describe("GitHub activity persistence schema", () => {
         "gh_work_unit_summary_lease",
       ])
     );
-    expect(config(githubWorkUnitAcceptedSummaries).foreignKeys).toHaveLength(0);
+    expect(config(githubWorkUnitSummaryAttempts).foreignKeys).toHaveLength(0);
     expect(githubWorkUnitSummaryDailyUsage.day.primary).toBe(true);
     expect(githubWorkUnitSummaryDailyUsage.startedRequests.default).toBe(0);
     expect(checkNames(githubWorkUnitSummaryDailyUsage)).not.toContain(
@@ -178,14 +157,11 @@ describe("GitHub activity persistence schema", () => {
       githubRepositoryRefs,
       githubWebhookDeliveries,
       githubPushObservations,
-      githubPushObservationCommits,
       githubPullRequests,
       githubPullRequestSignals,
-      githubPullRequestVersions,
       githubPullRequestMemberships,
       githubIssues,
       githubWorkUnits,
-      githubWorkUnitAcceptedSummaries,
       githubWorkUnitSummaryAttempts,
       githubWorkUnitSummaryDailyUsage,
       githubPublicFeedHead,

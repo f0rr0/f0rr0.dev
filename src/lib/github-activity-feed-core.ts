@@ -1,4 +1,3 @@
-import { dateKey } from "@/lib/date";
 import type {
   PublicGitHubActivityDay,
   PublicGitHubActivityDestination,
@@ -65,12 +64,8 @@ const isUtcDay = (value: string) =>
 
 const assertValidRow = (row: PublicRepositoryActivityRow & { day: string }) => {
   const timestamp = Date.parse(row.activityAt);
-  if (
-    !Number.isFinite(timestamp) ||
-    !isUtcDay(row.day) ||
-    new Date(timestamp).toISOString().slice(0, 10) !== row.day
-  ) {
-    throw new Error("A public activity row has an invalid UTC placement.");
+  if (!Number.isFinite(timestamp) || !isUtcDay(row.day)) {
+    throw new Error("A public activity row has an invalid date or timestamp.");
   }
 };
 
@@ -109,15 +104,14 @@ const addRepositoryItem = (
 };
 
 export const buildPublicGitHubActivityDays = (
-  input: BuildPublicGitHubActivityDaysInput,
-  timeZone = "UTC"
+  input: BuildPublicGitHubActivityDaysInput
 ): readonly PublicGitHubActivityDay[] => {
   const requestedDays = new Set(input.days);
   if (
     requestedDays.size !== input.days.length ||
     input.days.some((day) => !isUtcDay(day))
   ) {
-    throw new Error("Public activity days must be unique valid UTC dates.");
+    throw new Error("Public activity days must be unique valid dates.");
   }
   const rowsByDay = new Map<
     string,
@@ -126,9 +120,9 @@ export const buildPublicGitHubActivityDays = (
   for (const row of [...input.workUnits, ...input.issues]) {
     assertValidRow(row);
     if (!requestedDays.has(row.day)) {
-      throw new Error("An activity item belongs to an unrequested UTC day.");
+      throw new Error("An activity item belongs to an unrequested day.");
     }
-    const day = dateKey(row.activityAt, timeZone);
+    const { day } = row;
     const target = rowsByDay.get(day) ?? { issues: [], workUnits: [] };
     if ("facts" in row) {
       target.workUnits.push(row);
@@ -176,28 +170,4 @@ export const buildPublicGitHubActivityDays = (
         .map(({ items, repository }) => ({ items, repository }));
       return repositories.length === 0 ? [] : [{ day, repositories }];
     });
-};
-
-export const localizeGitHubActivityDays = (
-  days: readonly PublicGitHubActivityDay[],
-  timeZone: string
-) => {
-  const workUnits: PublicGitHubWorkUnitRow[] = [];
-  const issues: PublicGitHubIssueRow[] = [];
-  for (const day of days) {
-    for (const group of day.repositories) {
-      for (const item of group.items) {
-        const row = { ...item, day: day.day, repository: group.repository };
-        if (row.kind === "issue-opened") {
-          issues.push(row);
-        } else {
-          workUnits.push(row);
-        }
-      }
-    }
-  }
-  return buildPublicGitHubActivityDays(
-    { days: days.map(({ day }) => day), issues, workUnits },
-    timeZone
-  );
 };

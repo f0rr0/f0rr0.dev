@@ -1,11 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 
 import type { getDatabase } from "@/db/client";
-import {
-  githubPullRequestMemberships,
-  githubPullRequests,
-  githubPullRequestVersions,
-} from "@/db/schema";
+import { githubPullRequestMemberships, githubPullRequests } from "@/db/schema";
 import { githubPullRequestSnapshotDisposition } from "@/lib/github-activity-worker-core";
 import type {
   GitHubPullRequest,
@@ -74,6 +72,7 @@ export const persistPullRequestSnapshotInTransaction = async (
   const [existing] = await transaction
     .select({
       additions: githubPullRequests.additions,
+      baseRepositoryId: githubPullRequests.baseRepositoryId,
       baseSha: githubPullRequests.baseSha,
       changedFiles: githubPullRequests.changedFiles,
       commitCount: githubPullRequests.commitCount,
@@ -85,6 +84,14 @@ export const persistPullRequestSnapshotInTransaction = async (
       providerUpdatedAt: githubPullRequests.providerUpdatedAt,
       repositoryId: githubPullRequests.repositoryId,
       state: githubPullRequests.state,
+      snapshotId: githubPullRequests.snapshotId,
+      fileFactsComplete: githubPullRequests.fileFactsComplete,
+      fileFactCount: sql<number>`coalesce(jsonb_array_length(${githubPullRequests.fileFacts}), 0)::integer`,
+      membershipComplete: githubPullRequests.membershipComplete,
+      membershipCount: sql<number>`(select count(*)::integer from ${githubPullRequestMemberships} where ${githubPullRequestMemberships.versionId} = ${githubPullRequests.snapshotId})`,
+      membershipHeadSha: sql<
+        string | null
+      >`(select ${githubPullRequestMemberships.commitSha} from ${githubPullRequestMemberships} where ${githubPullRequestMemberships.versionId} = ${githubPullRequests.snapshotId} order by ${githubPullRequestMemberships.position} desc limit 1)`,
     })
     .from(githubPullRequests)
     .where(eq(githubPullRequests.nodeId, pullRequest.nodeId))
@@ -153,6 +160,7 @@ export const persistPullRequestSnapshotInTransaction = async (
     existing !== undefined &&
     (existing.headSha !== pullRequest.headSha ||
       existing.baseSha !== pullRequest.baseSha ||
+      existing.baseRepositoryId !== pullRequest.baseRepository.id ||
       (pullRequest.headRepository !== null &&
         existing.headRepositoryId !== pullRequest.headRepository.id) ||
       existing.repositoryId !== pullRequest.repository.id ||
@@ -207,6 +215,19 @@ export const persistPullRequestSnapshotInTransaction = async (
     headRepositoryId:
       pullRequest.headRepository?.id ?? existing?.headRepositoryId,
   };
+
+  if (
+    disposition === "equal_observed" &&
+    existing !== undefined &&
+    (existing.headSha !== pullRequest.headSha ||
+      existing.baseSha !== pullRequest.baseSha)
+  ) {
+    await transaction
+      .update(githubPullRequests)
+      .set({ nextReconcileAt: now })
+      .where(eq(githubPullRequests.nodeId, pullRequest.nodeId));
+    return null;
+  }
 
   if (existing === undefined) {
     await transaction.insert(githubPullRequests).values({
@@ -275,172 +296,71 @@ export const persistPullRequestSnapshotInTransaction = async (
           )
         )
       );
-    if (existing.headSha !== pullRequest.headSha) {
-      if (terminalPromotion) {
-        await requestGitHubWorkUnitProjection(transaction);
-      }
-      return null;
-    }
   }
 
-  const [version] = await transaction
-    .select({
-      baseSha: githubPullRequestVersions.baseSha,
-      commitCount: githubPullRequestVersions.commitCount,
-      fileFactCount: sql<number>`coalesce(jsonb_array_length(${githubPullRequestVersions.fileFacts}), 0)::integer`,
-      fileFactsComplete: githubPullRequestVersions.fileFactsComplete,
-      headRepositoryId: githubPullRequestVersions.headRepositoryId,
-      id: githubPullRequestVersions.id,
-      isCurrent: githubPullRequestVersions.isCurrent,
-      membershipComplete: githubPullRequestVersions.membershipComplete,
-      membershipCount: sql<number>`(
-        SELECT count(*)::integer
-        FROM ${githubPullRequestMemberships}
-        WHERE ${githubPullRequestMemberships.versionId} = ${githubPullRequestVersions.id}
-      )`,
-      membershipHeadSha: sql<string | null>`(
-        SELECT ${githubPullRequestMemberships.commitSha}
-        FROM ${githubPullRequestMemberships}
-        WHERE ${githubPullRequestMemberships.versionId} = ${githubPullRequestVersions.id}
-        ORDER BY ${githubPullRequestMemberships.position} DESC
-        LIMIT 1
-      )`,
-      providerUpdatedAt: githubPullRequestVersions.providerUpdatedAt,
-    })
-    .from(githubPullRequestVersions)
-    .where(
-      and(
-        eq(githubPullRequestVersions.pullRequestNodeId, pullRequest.nodeId),
-        eq(githubPullRequestVersions.headSha, pullRequest.headSha)
-      )
-    )
-    .limit(1);
-  let versionId = version?.id;
-  if (version === undefined) {
-    await transaction
-      .update(githubPullRequestVersions)
-      .set({ isCurrent: false })
-      .where(
-        and(
-          eq(githubPullRequestVersions.pullRequestNodeId, pullRequest.nodeId),
-          eq(githubPullRequestVersions.isCurrent, true)
-        )
-      );
-    const [inserted] = await transaction
-      .insert(githubPullRequestVersions)
-      .values({
-        baseRefName: pullRequest.baseRef,
-        baseRepositoryId: pullRequest.baseRepository.id,
-        baseSha: pullRequest.baseSha,
-        commitCount: pullRequest.commitCount,
-        headRefName: pullRequest.headRef,
-        headRepositoryId:
-          pullRequest.headRepository?.id ?? existing?.headRepositoryId,
-        headSha: pullRequest.headSha,
-        isCurrent: true,
-        mergeSnapshot: state === "merged",
-        observedAt: now,
-        providerUpdatedAt,
-        pullRequestNodeId: pullRequest.nodeId,
-      })
-      .returning({ id: githubPullRequestVersions.id });
-    if (inserted === undefined) {
-      throw new Error("The GitHub pull request version could not be stored.");
-    }
-    versionId = inserted.id;
-  } else if (providerUpdatedAt >= version.providerUpdatedAt) {
-    if (!version.isCurrent) {
-      await transaction
-        .update(githubPullRequestVersions)
-        .set({ isCurrent: false })
-        .where(
-          and(
-            eq(githubPullRequestVersions.pullRequestNodeId, pullRequest.nodeId),
-            eq(githubPullRequestVersions.isCurrent, true)
-          )
-        );
-    }
-    const versionUpdate =
-      disposition === "equal_observed"
-        ? {
-            commitCount: pullRequest.commitCount ?? version.commitCount,
-            isCurrent: true,
-            ...(terminalPromotion ? { mergeSnapshot: state === "merged" } : {}),
-          }
-        : {
-            baseRefName: pullRequest.baseRef,
-            baseRepositoryId: pullRequest.baseRepository.id,
-            baseSha: pullRequest.baseSha,
-            commitCount: pullRequest.commitCount ?? version.commitCount,
-            headRefName: pullRequest.headRef,
-            headRepositoryId:
-              pullRequest.headRepository?.id ?? version.headRepositoryId,
-            isCurrent: true,
-            mergeSnapshot: state === "merged",
-            ...(providerUpdatedAt > version.providerUpdatedAt ||
-            projectionEvidenceChanged
-              ? { observedAt: now }
-              : {}),
-            providerUpdatedAt,
-          };
-    await transaction
-      .update(githubPullRequestVersions)
-      .set(versionUpdate)
-      .where(eq(githubPullRequestVersions.id, version.id));
-  }
-  if (versionId === undefined) {
-    throw new Error("The GitHub pull request version is unavailable.");
-  }
-
-  const expectedMembershipCount =
-    pullRequest.commitCount ?? version?.commitCount ?? null;
+  const expectedMembershipCount = mutableUpdate.commitCount ?? null;
+  const expectedChangedFiles = mutableUpdate.changedFiles ?? null;
   const commitRepositoryId =
-    pullRequest.headRepository?.id ??
-    existing?.headRepositoryId ??
-    pullRequest.repository.id;
-  const storedMembershipCompleteFlag = version?.membershipComplete ?? false;
-  const storedMembershipComplete =
-    storedMembershipCompleteFlag &&
-    expectedMembershipCount !== null &&
-    version.membershipCount === expectedMembershipCount &&
-    version.baseSha === pullRequest.baseSha &&
-    (version.headRepositoryId ?? pullRequest.repository.id) ===
-      commitRepositoryId &&
-    (expectedMembershipCount === 0
-      ? version.membershipHeadSha === null
-      : version.membershipHeadSha === pullRequest.headSha);
-  const storedMembershipInvalid =
-    storedMembershipCompleteFlag && !storedMembershipComplete;
-  if (storedMembershipInvalid) {
-    await transaction
-      .update(githubPullRequestVersions)
-      .set({ membershipComplete: false })
-      .where(eq(githubPullRequestVersions.id, versionId));
+    mutableUpdate.headRepositoryId ?? pullRequest.repository.id;
+  // A fresh token fences workers even for A -> B -> A and base-only changes.
+  const evidenceChanged =
+    existing === undefined ||
+    existing.snapshotId === null ||
+    existing.headSha !== pullRequest.headSha ||
+    existing.baseSha !== pullRequest.baseSha ||
+    existing.baseRepositoryId !== pullRequest.baseRepository.id ||
+    (existing.headRepositoryId ?? existing.repositoryId) !==
+      commitRepositoryId ||
+    existing.commitCount !== expectedMembershipCount ||
+    existing.changedFiles !== expectedChangedFiles;
+  const versionId = evidenceChanged ? randomUUID() : existing.snapshotId;
+  if (versionId === null || versionId === undefined) {
+    throw new Error("Missing PR snapshot identity.");
   }
-  const membershipRefreshRequired =
-    version === undefined ||
-    storedMembershipInvalid ||
-    (options.refreshMembership === true && !storedMembershipComplete);
-  const expectedChangedFiles =
-    pullRequest.changedFiles ?? existing?.changedFiles ?? null;
+  const storedMembershipComplete =
+    !evidenceChanged &&
+    existing.membershipComplete &&
+    expectedMembershipCount !== null &&
+    existing.membershipCount === expectedMembershipCount &&
+    (expectedMembershipCount === 0
+      ? existing.membershipHeadSha === null
+      : existing.membershipHeadSha === pullRequest.headSha);
   const storedDiffComplete =
-    version !== undefined &&
-    version.fileFactsComplete &&
+    !evidenceChanged &&
+    existing.fileFactsComplete &&
     expectedChangedFiles !== null &&
-    version.fileFactCount === expectedChangedFiles &&
-    version.baseSha === pullRequest.baseSha;
+    existing.fileFactCount === expectedChangedFiles;
+  const membershipRefreshRequired =
+    evidenceChanged ||
+    (existing?.membershipComplete && !storedMembershipComplete) ||
+    (options.refreshMembership === true && !storedMembershipComplete);
   const diffRefreshRequired =
     expectedChangedFiles !== null && !storedDiffComplete;
   if (
-    version !== undefined &&
-    version.fileFactsComplete &&
-    !storedDiffComplete
+    evidenceChanged &&
+    existing?.snapshotId !== undefined &&
+    existing.snapshotId !== null
   ) {
     await transaction
-      .update(githubPullRequestVersions)
-      .set({ fileFactsComplete: false })
-      .where(eq(githubPullRequestVersions.id, versionId));
+      .delete(githubPullRequestMemberships)
+      .where(eq(githubPullRequestMemberships.versionId, existing.snapshotId));
   }
+  await transaction
+    .update(githubPullRequests)
+    .set({
+      snapshotId: versionId,
+      ...(evidenceChanged ||
+      existing === undefined ||
+      providerUpdatedAt > existing.providerUpdatedAt ||
+      projectionEvidenceChanged
+        ? { snapshotObservedAt: now }
+        : {}),
+      ...(evidenceChanged ? { fileFacts: null } : {}),
+      fileFactsComplete: storedDiffComplete,
+      membershipComplete: storedMembershipComplete,
+      mergeSnapshot: state === "merged",
+    })
+    .where(eq(githubPullRequests.nodeId, pullRequest.nodeId));
   if (membershipRefreshRequired && existing !== undefined) {
     await transaction
       .update(githubPullRequests)
@@ -461,12 +381,13 @@ export const persistPullRequestSnapshotInTransaction = async (
 
   const projectionInputChanged =
     persistedEvidenceChanged ||
-    version === undefined ||
-    !version.isCurrent ||
-    storedMembershipInvalid ||
-    (version.fileFactsComplete && !storedDiffComplete);
+    evidenceChanged ||
+    (existing?.membershipComplete && !storedMembershipComplete) ||
+    (existing?.fileFactsComplete && !storedDiffComplete);
   if (projectionInputChanged) {
-    await requestGitHubWorkUnitProjection(transaction);
+    await requestGitHubWorkUnitProjection(transaction, [
+      pullRequest.baseRepository.id,
+    ]);
   }
 
   return {
