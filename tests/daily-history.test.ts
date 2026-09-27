@@ -151,6 +151,17 @@ test("work snapshots compare the latest outcome; rebases and first digest acquis
   expect(githubSnapshotChanged(saved(null), saved("A"))).toBe(false);
   expect(githubSnapshotChanged(saved("A"), saved(null, 240))).toBe(false);
   expect(githubSnapshotChanged(saved(null), saved(null, 240))).toBe(true);
+  const fromDatabase = saved(null);
+  if (!("facts" in fromDatabase.payload)) {
+    throw new Error("Expected a work card");
+  }
+  // jsonb reorders object keys when a saved card is read back from PostgreSQL.
+  fromDatabase.payload.facts = Object.fromEntries(
+    Object.entries(fromDatabase.payload.facts).toReversed()
+  ) as typeof fromDatabase.payload.facts;
+  expect(githubSnapshotChanged(fromDatabase, saved(null))).toBe(false);
+  expect(githubSnapshotChanged(fromDatabase, saved("A"))).toBe(false);
+  expect(githubSnapshotChanged(fromDatabase, saved(null, 240))).toBe(true);
   expect(
     githubSnapshotChanged(saved("A"), {
       ...saved("A"),

@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
@@ -47,8 +49,7 @@ export const githubSnapshotChanged = (previous: Saved, next: Saved) => {
   return (
     "facts" in previous.payload &&
     "facts" in next.payload &&
-    JSON.stringify(previous.payload.facts) !==
-      JSON.stringify(next.payload.facts)
+    !isDeepStrictEqual(previous.payload.facts, next.payload.facts)
   );
 };
 
