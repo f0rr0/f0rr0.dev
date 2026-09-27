@@ -83,7 +83,7 @@ function TooltipContent({
         }}
       >
         <TooltipPrimitive.Popup
-          className="w-80 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover text-sm text-popover-foreground shadow-site-floating h-(--popup-height,auto) site-popup block overflow-hidden"
+          className="w-80 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover text-sm text-popover-foreground shadow-md h-(--popup-height,auto) site-popup block overflow-hidden"
           data-slot="tooltip-content"
           {...props}
         >

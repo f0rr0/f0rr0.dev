@@ -5,8 +5,6 @@
   --radius-heatmap: 0.2rem;
   --font-serif: var(--font-instrument-serif);
   --font-mono: var(--font-geist-mono);
-  --shadow-site-soft: var(--shadow-soft);
-  --shadow-site-floating: var(--shadow-floating);
   --color-brand-hover: var(--brand-hover);
   --color-control: var(--control);
   --color-control-border-hover: var(--control-border-hover);
@@ -34,6 +32,10 @@
 
   .dark {
     color-scheme: dark;
+  }
+
+  html {
+    @apply bg-background;
   }
 
   body {
@@ -74,8 +76,6 @@ html:root {
   --control: rgb(255 255 255 / 60%);
   --control-border-hover: #a3a3a3;
   --control-background-hover: #ededed;
-  --shadow-soft: 0 1px 2px rgb(41 37 36 / 8%);
-  --shadow-floating: 0 18px 40px -24px rgb(41 37 36 / 32%);
   --chart-1: #262626;
   --chart-2: #525252;
   --chart-3: #737373;
@@ -105,8 +105,6 @@ html.dark {
   --control: rgb(255 255 255 / 5%);
   --control-border-hover: #737373;
   --control-background-hover: #292929;
-  --shadow-soft: 0 1px 2px rgb(0 0 0 / 35%);
-  --shadow-floating: 0 18px 40px -24px rgb(0 0 0 / 70%);
   --chart-1: #e5e5e5;
   --chart-2: #d4d4d4;
   --chart-3: #a3a3a3;

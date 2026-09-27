@@ -84,7 +84,7 @@ function HoverCardContent({
       >
         <HoverCardPrimitive.Popup
           className={cn(
-            "w-80 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover text-sm text-popover-foreground shadow-site-floating h-(--popup-height,auto) site-popup overflow-hidden outline-none",
+            "w-80 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover text-sm text-popover-foreground shadow-md h-(--popup-height,auto) site-popup overflow-hidden outline-none",
             className
           )}
           data-slot="hover-card-content"

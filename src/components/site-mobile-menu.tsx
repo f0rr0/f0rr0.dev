@@ -23,7 +23,7 @@ export function SiteMobileMenu({
         >
           <Popover.Popup
             aria-label="Navigation menu"
-            className="overflow-hidden rounded-lg bg-popover p-0 text-popover-foreground shadow-site-floating ring-1 ring-border outline-none site-popup w-48"
+            className="overflow-hidden rounded-lg bg-popover p-0 text-popover-foreground shadow-md ring-1 ring-border outline-none site-popup w-48"
           >
             <ul className="[&_.site-nav-link]:flex [&_.site-nav-link]:rounded-none [&_.site-nav-link]:focus-visible:-outline-offset-2 [&_.site-nav-link]:hover:bg-accent">
               {children}

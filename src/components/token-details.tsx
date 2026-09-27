@@ -309,7 +309,12 @@ function Breakdowns({
       <span className="text-sm text-muted-foreground">{periods[0][2]}</span>
     );
   return (
-    <Tabs defaultValue={periods.at(-1)?.[0]} className="mt-12">
+    <Tabs
+      defaultValue={
+        periods.find(([days]) => days === 30)?.[0] ?? periods.at(-1)?.[0]
+      }
+      className="mt-12"
+    >
       {periods.map(([days, periodDetails]) => (
         <TabsContent key={days} value={days} className="text-base">
           <BreakdownContent
@@ -338,7 +343,7 @@ export function TokenUsageDetails({
   return (
     <>
       <h1 className="sr-only">{tokenPreferences.title}</h1>
-      <p>
+      <p className="text-pretty">
         {tokenPreferences.introduction} This is a record of usage, not a measure
         of productivity.{" "}
         {tokenPreferences.workLink ? (

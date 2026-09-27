@@ -117,7 +117,7 @@ export default async function Home() {
     <SiteShell currentPath={pages.home.path}>
       <SiteMain>
         <h1 className="sr-only">{resumeData.person.name}</h1>
-        <p>{homeIntroduction}</p>
+        <p className="text-pretty">{homeIntroduction}</p>
 
         <SiteSection
           href={pages.writing.path}
