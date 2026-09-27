@@ -12,8 +12,9 @@ export function AskAiFace() {
   const y = useSpring(0, spring);
 
   useEffect(() => {
-    const trigger = face.current?.parentElement;
+    let idleTimer = 0;
     const rest = () => {
+      clearTimeout(idleTimer);
       x.set(0);
       y.set(0);
     };
@@ -24,20 +25,25 @@ export function AskAiFace() {
       const rect = face.current.getBoundingClientRect();
       x.set(Math.tanh((event.clientX - rect.x - rect.width / 2) / 400) * 6);
       y.set(Math.tanh((event.clientY - rect.y - rect.height / 2) / 300) * 5);
+      clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(rest, 2500);
     };
     if (
       reducedMotion ||
-      !trigger ||
       matchMedia("(hover: none), (pointer: coarse)").matches
     ) {
       rest();
       return rest;
     }
-    trigger.addEventListener("pointermove", follow, { passive: true });
-    trigger.addEventListener("pointerleave", rest);
+    window.addEventListener("pointermove", follow, { passive: true });
+    window.addEventListener("blur", rest);
+    document.addEventListener("pointerleave", rest);
+    document.addEventListener("visibilitychange", rest);
     return () => {
-      trigger.removeEventListener("pointermove", follow);
-      trigger.removeEventListener("pointerleave", rest);
+      window.removeEventListener("pointermove", follow);
+      window.removeEventListener("blur", rest);
+      document.removeEventListener("pointerleave", rest);
+      document.removeEventListener("visibilitychange", rest);
       rest();
     };
   }, [reducedMotion, x, y]);
