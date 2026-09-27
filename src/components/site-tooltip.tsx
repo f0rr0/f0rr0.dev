@@ -11,7 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 
 function TooltipProvider({
-  delay = 250,
+  delay = 500,
   ...props
 }: TooltipPrimitive.Provider.Props) {
   return (

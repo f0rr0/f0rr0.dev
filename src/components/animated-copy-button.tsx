@@ -49,7 +49,10 @@ export function AnimatedCopyButton({
   return (
     <>
       <Button
-        className={cn("font-normal", className)}
+        className={cn(
+          "font-normal transition-transform duration-(--motion-exit) ease-out active:scale-[0.98] motion-reduce:transition-none",
+          className
+        )}
         variant="ghost"
         onClick={() => {
           void copy();

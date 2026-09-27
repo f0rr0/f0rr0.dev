@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { activityThresholds } from "../src/components/codex-activity.tsx";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+import {
+  activityThresholds,
+  CodexActivity,
+} from "../src/components/codex-activity.tsx";
 import type { CodexAccountSnapshot } from "../src/lib/codex/stats";
 import {
   buildPublicCodexStats,
@@ -92,6 +98,26 @@ describe("public Codex statistics", () => {
     ).toEqual([2_000_000, 4_000_000, 6_000_000]);
     expect(activityThresholds([0, 0])).toEqual([0, 0, 0]);
     expect(activityThresholds([10, 10, 10])).toEqual([10, 10, 10]);
+  });
+
+  test("keeps zero-activity calendar cells out of the tab order", () => {
+    const series = {
+      partial: false,
+      values: [
+        { day: "2026-01-01", tokens: 0 },
+        { day: "2026-01-02", tokens: 1000 },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      createElement(CodexActivity, {
+        cumulative: series,
+        daily: series,
+        weekly: series,
+      })
+    );
+
+    expect(html).not.toContain(": 0 tokens");
+    expect(html).toContain("1,000 tokens");
   });
 
   test("whitelists upstream data and combines accounts", () => {

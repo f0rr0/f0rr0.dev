@@ -54,7 +54,7 @@ function HoverCardTrigger(props: HoverCardPrimitive.Trigger.Props) {
   const warm = use(WarmPreview);
   return (
     <UpstreamHoverCardTrigger
-      delay={warm ? 0 : 250}
+      delay={warm ? 0 : 500}
       closeDelay={100}
       {...props}
     />

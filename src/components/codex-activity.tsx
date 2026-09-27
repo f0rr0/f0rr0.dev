@@ -69,6 +69,10 @@ const ActivityHeatmap = ({
                     ? "bg-primary/70"
                     : "bg-primary";
           const dayLabel = formatDate(mode === "weekly" ? weekStart(day) : day);
+          const className = `aspect-square min-w-0 rounded-heatmap ${color}`;
+          if (tokens === 0) {
+            return <span aria-hidden="true" className={className} key={day} />;
+          }
           return (
             <TooltipTrigger
               key={day}
@@ -78,8 +82,7 @@ const ActivityHeatmap = ({
                 </TooltipContent>
               }
               aria-label={`${dayLabel}: ${number.format(tokens)} tokens`}
-              className={`aspect-square min-w-0 rounded-heatmap outline-none motion-safe:transition-transform motion-safe:hover:scale-125 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring ${color}`}
-              tabIndex={tokens === 0 ? -1 : 0}
+              className={`${className} outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring`}
               type="button"
             />
           );
@@ -129,7 +132,7 @@ export function CodexActivity({
             <TabsList aria-label="Token activity interval" variant="line">
               {views.map(([mode, label]) => (
                 <TabsTrigger
-                  className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none"
+                  className="font-normal text-muted-foreground transition-none after:transition-none data-active:font-medium"
                   key={mode}
                   value={mode}
                 >
