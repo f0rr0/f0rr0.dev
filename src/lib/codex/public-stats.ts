@@ -1,6 +1,7 @@
 import "server-only";
 import { and, gte, lt } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
+import { cache } from "react";
 
 import { tokenPreferences } from "@/content/tokens";
 import { getDatabase, isDatabaseConfigured } from "@/db/client";
@@ -84,7 +85,7 @@ const readPublicViews = unstable_cache(
   { revalidate: 900, tags: ["public-codex-stats"] }
 );
 
-const getViews = async () => {
+const getViews = cache(async () => {
   if (!tokenPreferences.enabled || !isDatabaseConfigured()) {
     return null;
   }
@@ -97,7 +98,7 @@ const getViews = async () => {
     reportOperationalError("public_codex_stats", error);
     return null;
   }
-};
+});
 
 export const getPublicCodexStats = async () =>
   (await getViews())?.stats ?? null;

@@ -14,6 +14,15 @@ export class DatabaseConfigurationError extends Error {
 let client: ReturnType<typeof postgres> | null = null;
 let database: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
+export const databaseConnectionUrl = (value: string) => {
+  const url = new URL(value);
+  // Postgres.js pipelines concurrent queries; Supavisor transaction mode can hang them.
+  if (url.hostname.endsWith(".pooler.supabase.com") && url.port === "6543") {
+    url.port = "5432";
+  }
+  return url.toString();
+};
+
 const readDatabaseUrl = () => {
   const value = env.DATABASE_URL?.trim();
   return value === undefined || value.length === 0 ? null : value;
@@ -31,7 +40,7 @@ export const getDatabase = () => {
     throw new DatabaseConfigurationError();
   }
 
-  client = postgres(databaseUrl, {
+  client = postgres(databaseConnectionUrl(databaseUrl), {
     // Keep repeated outages from adding up to 20 seconds before each reconnect.
     backoff: () => 1,
     connect_timeout: 10,

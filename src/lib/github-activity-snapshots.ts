@@ -115,7 +115,6 @@ export const fillSavedGitHubSummaries = async (transaction: Transaction) => {
 
 export const publishGitHubActivitySnapshots = async (
   repositoryIds?: readonly string[],
-  bootstrap = false,
   preserveTodayRepositories: readonly string[] = []
 ) =>
   // oxlint-disable-next-line eslint/complexity -- One locked publication transaction keeps bootstrap, immutable history and today-only replacement atomic.
@@ -125,18 +124,12 @@ export const publishGitHubActivitySnapshots = async (
       .select({ initialized: githubPublicFeedHead.historyInitializedAt })
       .from(githubPublicFeedHead)
       .where(eq(githubPublicFeedHead.id, true));
-    if (bootstrap && head?.initialized) {
-      return { changed: false, workUnits: 0, issues: 0 };
-    }
-    if (!bootstrap && !head?.initialized) {
-      throw new Error(
-        "Daily GitHub history must be initialized before publication."
-      );
-    }
+    const bootstrap = !head?.initialized;
+    const publicationRepositoryIds = bootstrap ? undefined : repositoryIds;
     const now = new Date();
     const today = dateKey(now, WORK_LOG_TIME_ZONE);
-    const scope = repositoryIds
-      ? inArray(githubWorkUnits.repositoryId, [...repositoryIds])
+    const scope = publicationRepositoryIds
+      ? inArray(githubWorkUnits.repositoryId, [...publicationRepositoryIds])
       : undefined;
     const units = await transaction
       .select({
@@ -156,8 +149,10 @@ export const publishGitHubActivitySnapshots = async (
       .selectDistinctOn([githubActivitySnapshots.identityKey])
       .from(githubActivitySnapshots)
       .where(
-        repositoryIds
-          ? inArray(githubActivitySnapshots.repositoryId, [...repositoryIds])
+        publicationRepositoryIds
+          ? inArray(githubActivitySnapshots.repositoryId, [
+              ...publicationRepositoryIds,
+            ])
           : undefined
       )
       .orderBy(
@@ -166,7 +161,7 @@ export const publishGitHubActivitySnapshots = async (
       );
     const previous = new Map(latest.map((row) => [row.identityKey, row]));
     const rows = await readCurrentPublicGitHubRows(transaction, {
-      repositoryIds,
+      repositoryIds: publicationRepositoryIds,
       exactSummary: !bootstrap,
     });
     let changed = false;
