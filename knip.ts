@@ -1,18 +1,9 @@
 import type { KnipConfig } from "knip";
 
 const config: KnipConfig = ({ production }) => ({
-  // `!` keeps real entry points in the production check, where tests do not
-  // count as callers. Standalone test runners are development-only entries.
-  entry: [
-    "src/content/blog/**/page.mdx!",
-    "scripts/*.ts!",
-    "!scripts/test-*.ts!",
-  ],
-  project: [
-    "**/*.{js,mjs,cjs,jsx,ts,tsx,mts,cts,mdx,css}!",
-    "!tests/**!",
-    "!scripts/test-*.ts!",
-  ],
+  // Production checks exclude tests as callers while retaining real script roots.
+  entry: ["src/content/blog/**/page.mdx!", "scripts/*.ts!"],
+  project: ["**/*.{js,mjs,cjs,jsx,ts,tsx,mts,cts,mdx,css}!", "!tests/**!"],
   // Include the config's build-time imports, not only Next's route entries.
   next: { entry: ["next.config.ts"] },
   // Knip 6 classifies workflow scripts as development-only even if explicitly

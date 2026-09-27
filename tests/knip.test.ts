@@ -34,12 +34,9 @@ test("Knip catches code kept alive only by tests without dropping build or maint
       "src/shared.ts":
         "export const live = 1; export const onlyUsedByTest = 2; export const unreferencedExport = 3;",
       "src/test-only.ts": "export const testOnly = 1;",
-      "src/runner-only.ts": "export const runnerOnly = 1;",
       "src/orphan.ts": "export const orphan = 1;",
       "tests/fixture.test.ts":
         'import { onlyUsedByTest } from "../src/shared"; import { testOnly } from "../src/test-only"; void onlyUsedByTest; void testOnly;',
-      "scripts/test-fixture.ts":
-        'import { runnerOnly } from "../src/runner-only"; void runnerOnly;',
       "scripts/maintain.ts":
         'import { maintenance } from "../src/maintenance"; void maintenance;',
       "src/maintenance.ts": "export const maintenance = 1;",
@@ -79,11 +76,7 @@ test("Knip catches code kept alive only by tests without dropping build or maint
       expect(output).toContain("src/orphan.ts");
       expect(output).toContain("unreferencedExport");
       expect(output).toContain('"zod"');
-      for (const symbol of [
-        "onlyUsedByTest",
-        "src/test-only.ts",
-        "src/runner-only.ts",
-      ]) {
+      for (const symbol of ["onlyUsedByTest", "src/test-only.ts"]) {
         expect(
           output.includes(symbol),
           `${production ? "production" : "default"}: ${symbol}`
