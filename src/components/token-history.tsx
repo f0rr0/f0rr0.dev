@@ -222,13 +222,13 @@ export function TokenHistoryChart({
         action={
           <TabsList aria-label="Token history view" variant="line">
             <TabsTrigger
-              className="font-normal text-muted-foreground transition-none after:transition-none data-active:font-medium"
+              className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none"
               value="daily"
             >
               Daily
             </TabsTrigger>
             <TabsTrigger
-              className="font-normal text-muted-foreground transition-none after:transition-none data-active:font-medium"
+              className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none"
               value="cumulative"
             >
               Cumulative

@@ -29,9 +29,9 @@ export function AskAiWidget({
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
         aria-label="Ask an AI"
-        className="group z-40 inline-flex min-h-11 items-center gap-2 rounded-full bg-muted py-2 pr-2 pl-3 text-sm font-normal text-popover-foreground shadow-site-floating ring-1 ring-border dark:ring-0 transition-transform duration-(--motion-exit) ease-out hover:bg-accent active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring motion-reduce:transition-none min-[92rem]:fixed min-[92rem]:inset-e-6 min-[92rem]:bottom-6 print:hidden"
+        className="group z-40 inline-flex min-h-11 items-center gap-2 rounded-full bg-muted py-2 pr-2 pl-3 text-sm font-normal text-popover-foreground shadow-sm ring-1 ring-border dark:ring-0 transition-colors duration-(--motion-fast) hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring motion-reduce:transition-none min-[92rem]:fixed min-[92rem]:inset-e-6 min-[92rem]:bottom-6 print:hidden"
         openOnHover
-        delay={500}
+        delay={250}
         closeDelay={300}
       >
         <span>Ask an AI</span>
@@ -45,7 +45,7 @@ export function AskAiWidget({
           collisionPadding={16}
           className="z-50 print:hidden"
         >
-          <Popover.Popup className="w-80 max-w-[calc(100vw-2rem)] max-h-[min(70dvh,var(--available-height))] overflow-y-auto overscroll-contain rounded-2xl bg-popover px-4 pt-3 pb-4 text-popover-foreground shadow-site-floating ring-1 ring-border dark:ring-0 outline-none site-popup">
+          <Popover.Popup className="w-80 max-w-[calc(100vw-2rem)] max-h-[min(70dvh,var(--available-height))] overflow-y-auto overscroll-contain rounded-2xl bg-popover px-4 pt-3 pb-4 text-popover-foreground shadow-md ring-1 ring-border dark:ring-0 outline-none site-popup">
             <div className="flex items-start justify-between gap-3">
               <Popover.Title className="text-sm font-medium">
                 Ask an AI
@@ -55,7 +55,7 @@ export function AskAiWidget({
                 render={
                   <Button
                     variant="ghost"
-                    className="-mt-1 -mr-1 size-8 rounded-full transition-transform duration-(--motion-exit) ease-out active:scale-[0.97] motion-reduce:transition-none"
+                    className="-mt-1 -mr-1 size-8 rounded-full"
                   />
                 }
               >
@@ -98,7 +98,7 @@ export function AskAiWidget({
                 <li key={action.label}>
                   <a
                     aria-label={`Ask ${action.label} about ${subject} (opens in a new tab)`}
-                    className="flex h-20 flex-col items-center justify-center gap-2 rounded-lg bg-muted px-2 text-sm font-normal transition-transform duration-(--motion-exit) ease-out hover:bg-accent active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none"
+                    className="flex h-20 flex-col items-center justify-center gap-2 rounded-lg bg-muted px-2 text-sm font-normal transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                     data-analytics-placement="ai-widget"
                     href={action.href}
                     onClick={() => {

@@ -11,7 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 
 function TooltipProvider({
-  delay = 500,
+  delay = 250,
   ...props
 }: TooltipPrimitive.Provider.Props) {
   return (
@@ -83,7 +83,7 @@ function TooltipContent({
         }}
       >
         <TooltipPrimitive.Popup
-          className="w-80 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover text-sm text-popover-foreground shadow-site-floating h-(--popup-height,auto) site-popup block overflow-hidden"
+          className="w-80 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover text-sm text-popover-foreground shadow-md h-(--popup-height,auto) site-popup block overflow-hidden"
           data-slot="tooltip-content"
           {...props}
         >
