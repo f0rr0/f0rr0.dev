@@ -1285,7 +1285,8 @@ const readProjectionScopes = async (
   transaction: GitHubWorkUnitTransaction,
   repositoryIds?: readonly string[]
 ) =>
-  await transaction.execute<{ id: string; token: string | null }>(sql`
+  (
+    await transaction.execute<{ id: string; token: string | null }>(sql`
   with recursive edges(a, b) as (
     select repository_id, commit_repository_id from github_ref_memberships where repository_id <> commit_repository_id
     union select p.repository_id, m.commit_repository_id from github_pull_request_memberships m
@@ -1298,7 +1299,8 @@ const readProjectionScopes = async (
     select id from github_repositories where ${repositoryIds === undefined ? sql`projection_request_token is not null` : inArray(githubRepositories.id, [...repositoryIds])}
     union select case when e.a = c.id then e.b else e.a end from connected c join edges e on e.a = c.id or e.b = c.id
   ) select r.id, r.projection_request_token as token from github_repositories r join connected c on c.id = r.id
-`);
+`)
+  ).rows;
 
 /** Uses the same durable-evidence mapping and projector as publication. */
 export const readGitHubWorkUnitProjectionEvidence = async (

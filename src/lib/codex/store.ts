@@ -38,7 +38,9 @@ export const claimCodexAccount = async (
 ): Promise<StoredCodexAccount | null> => {
   const syncToken = randomUUID();
   return await getDatabase().transaction(async (transaction) => {
-    const [row] = await transaction.execute<{
+    const {
+      rows: [row],
+    } = await transaction.execute<{
       id: string;
       snapshot: CodexAccountSnapshot | null;
       authJson: string;
@@ -142,7 +144,7 @@ export const saveCodexAccount = async (
         from vault.secrets as secret
         where secret.name = ${codexAuthSecretName(account.id)}
       `);
-      if (updated.length !== 1) {
+      if (updated.rows.length !== 1) {
         throw new Error(`Codex auth secret is missing for ${account.id}.`);
       }
     }

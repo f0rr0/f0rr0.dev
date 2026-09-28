@@ -1,5 +1,6 @@
 import postgres from "postgres";
 
+import { administrationDatabaseUrl } from "../src/db/connection";
 import { env } from "../src/env";
 import { githubTokensFrom } from "../src/lib/github-accounts";
 import {
@@ -56,12 +57,7 @@ const requiredEnvironmentValue = (
 
 export const supabaseCronDatabaseUrlFrom = (
   environment: SupabaseCronEnvironment
-) => {
-  const unpooledDatabaseUrl = environment.DATABASE_URL_UNPOOLED?.trim();
-  return unpooledDatabaseUrl === undefined || unpooledDatabaseUrl.length === 0
-    ? requiredEnvironmentValue("DATABASE_URL", environment.DATABASE_URL)
-    : unpooledDatabaseUrl;
-};
+) => administrationDatabaseUrl(environment);
 
 export const supabaseCronUrlsFrom = (configuredSiteUrl: string) => {
   const siteUrl = new URL(configuredSiteUrl);

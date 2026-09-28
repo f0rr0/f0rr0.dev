@@ -253,7 +253,7 @@ const reuseAcceptedSummaries = async (
   transaction: SummaryTransaction,
   now: Date
 ) => {
-  const rows = await transaction.execute<{
+  const { rows } = await transaction.execute<{
     work_unit_id: string;
     revision: number;
     outcome: string;

@@ -1,9 +1,13 @@
-import { spawn } from "node:child_process";
-import { once } from "node:events";
+import { fileURLToPath } from "node:url";
 
-import postgres from "postgres";
+import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { Client } from "pg";
 
+import { administrationDatabaseUrl } from "../src/db/connection";
 import { env } from "../src/env";
+import { reportOperationalError } from "../src/lib/operational-error";
 
 // Keep the historical lock key so overlapping old/new deployments still coordinate.
 const MIGRATION_LOCK_NAME = "f0rr0.dev:drizzle-migrations";
@@ -19,11 +23,6 @@ export class ProductionMigrationConfigurationError extends Error {
     this.name = "ProductionMigrationConfigurationError";
   }
 }
-
-const configuredValue = (value: string | undefined) => {
-  const trimmed = value?.trim();
-  return trimmed === undefined || trimmed.length === 0 ? null : trimmed;
-};
 
 export const shouldApplyProductionMigrations = (environment: Environment) => {
   if (environment.VERCEL !== "1") {
@@ -43,60 +42,31 @@ export const shouldApplyProductionMigrations = (environment: Environment) => {
   return true;
 };
 
-export const productionMigrationDatabaseUrl = (environment: Environment) => {
-  const configured =
-    configuredValue(environment.DATABASE_URL_UNPOOLED) ??
-    configuredValue(environment.DATABASE_URL);
-  if (configured === null) {
-    throw new ProductionMigrationConfigurationError(
-      "A production database URL is not configured in Vercel."
-    );
-  }
+export const productionMigrationDatabaseUrl = (environment: Environment) =>
+  administrationDatabaseUrl(environment);
 
-  let url: URL;
-  try {
-    url = new URL(configured);
-  } catch {
-    throw new ProductionMigrationConfigurationError(
-      "The production database URL is invalid."
-    );
-  }
-  if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
-    throw new ProductionMigrationConfigurationError(
-      "The production database URL must use PostgreSQL."
-    );
-  }
-
-  if (url.port === "6543") {
-    if (!url.hostname.endsWith(".pooler.supabase.com")) {
-      throw new ProductionMigrationConfigurationError(
-        "A transaction-pooler database URL cannot run migrations."
-      );
-    }
-    url.port = "5432";
-  }
-  return url.toString();
-};
-
-const runDrizzleMigrations = async (databaseUrl: string) => {
-  const migrationProcess = spawn(process.execPath, ["run", "db:migrate"], {
-    env: {
-      ...process.env,
-      DATABASE_URL: databaseUrl,
-      DATABASE_URL_UNPOOLED: databaseUrl,
-    },
-    stdio: "inherit",
+const migrateDatabase = async (databaseUrl: string) => {
+  // The lock and every migration use this same session. Closing it releases the lock.
+  const client = new Client({
+    connectionString: databaseUrl,
+    application_name: "f0rr0.dev:migrations",
+    connectionTimeoutMillis: 10_000,
   });
-  const [code, signal] = (await once(migrationProcess, "exit")) as [
-    number | null,
-    NodeJS.Signals | null,
-  ];
-  if (signal !== null) {
-    throw new Error(`Database migration received signal ${signal}.`);
-  }
-  const exitCode = code ?? 1;
-  if (exitCode !== 0) {
-    throw new Error(`Database migration exited with code ${String(exitCode)}.`);
+  client.on("error", (error) => {
+    reportOperationalError("database-migration", error);
+  });
+  try {
+    await client.connect();
+    const database = drizzle(client);
+    await database.execute(sql`set lock_timeout = '60s'`);
+    await database.execute(
+      sql`select pg_advisory_lock(hashtextextended(${MIGRATION_LOCK_NAME}, 0))`
+    );
+    await migrate(database, {
+      migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
+    });
+  } finally {
+    await client.end();
   }
 };
 
@@ -108,30 +78,12 @@ export const applyProductionMigrations = async (
     return;
   }
 
-  const databaseUrl = productionMigrationDatabaseUrl(environment);
-  const lockConnection = postgres(databaseUrl, {
-    connect_timeout: 10,
-    max: 1,
-    prepare: false,
-  });
-  let locked = false;
-  try {
-    process.stdout.write("Applying production database migrations.\n");
-    await lockConnection`
-      select pg_advisory_lock(hashtextextended(${MIGRATION_LOCK_NAME}, 0))
-    `;
-    locked = true;
-    await runDrizzleMigrations(databaseUrl);
-  } finally {
-    if (locked) {
-      await lockConnection`
-        select pg_advisory_unlock(hashtextextended(${MIGRATION_LOCK_NAME}, 0))
-      `;
-    }
-    await lockConnection.end({ timeout: 5 });
-  }
+  process.stdout.write("Applying production database migrations.\n");
+  await migrateDatabase(productionMigrationDatabaseUrl(environment));
 };
 
 if (import.meta.main) {
-  await applyProductionMigrations();
+  await (process.argv.includes("--local")
+    ? migrateDatabase(administrationDatabaseUrl(env))
+    : applyProductionMigrations());
 }
