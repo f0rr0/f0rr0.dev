@@ -1,6 +1,8 @@
 import { revalidateTag } from "next/cache";
+import { after } from "next/server";
 
 import { env } from "@/env";
+import { getPublicCodexStats } from "@/lib/codex/public-stats";
 import { syncCodexAccounts } from "@/lib/codex/sync";
 import { reportOperationalError } from "@/lib/operational-error";
 import { hasBearerSecret } from "@/lib/request-auth";
@@ -15,7 +17,10 @@ export async function POST(request: Request) {
   try {
     const result = await syncCodexAccounts();
     if (result.updated > 0) {
-      revalidateTag("public-codex-stats", { expire: 0 });
+      revalidateTag("public-codex-stats", "max");
+      after(async () => {
+        await getPublicCodexStats();
+      });
     }
     return Response.json({ ok: true, result });
   } catch (error) {

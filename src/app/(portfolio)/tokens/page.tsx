@@ -13,7 +13,7 @@ import { buildPageMetadata } from "@/lib/page-metadata";
 
 export const metadata = buildPageMetadata(pages.tokens);
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function TokensPage() {
   if (!tokenPreferences.enabled) {

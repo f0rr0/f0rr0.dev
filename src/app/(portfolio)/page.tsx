@@ -25,7 +25,7 @@ import { buildPageMetadata } from "@/lib/page-metadata";
 
 export const metadata = buildPageMetadata(pages.home);
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
   const projects = github.projects
