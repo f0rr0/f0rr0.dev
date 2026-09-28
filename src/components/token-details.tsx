@@ -349,7 +349,6 @@ export function TokenUsageDetails({
         {tokenPreferences.workLink ? (
           <Link
             href={tokenPreferences.workLink.href}
-            prefetch={false}
             className="underline underline-offset-4 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
           >
             {tokenPreferences.workLink.label}
