@@ -19,8 +19,6 @@ import { digestGitHubWorkUnitOutcome } from "../src/lib/github-work-unit-summary
 
 const trackedIds = new Set(["100"]);
 const sha = (character: string) => character.repeat(40);
-const baseSha = sha("a");
-const headSha = sha("b");
 
 const file = (
   filename: string,
@@ -104,7 +102,6 @@ const ref = (
   branchLineageId: "11111111-1111-4111-8111-111111111111",
   complete: true,
   contentObservedAt: "2026-08-30T12:11:00.000Z",
-  headSha,
   memberLogicalKeys,
   refName,
   repositoryId: "1",
@@ -118,10 +115,8 @@ const pullRequest = (
 ): GitHubPullRequestProjectionEvidence => ({
   authorUserId: "100",
   baseRepositoryId: "1",
-  baseSha,
   contentObservedAt: "2026-08-30T12:12:00.000Z",
   createdAt: "2026-08-29T12:00:00.000Z",
-  headSha,
   memberLogicalKeys,
   membershipComplete: true,
   netOutcome: null,
@@ -146,6 +141,47 @@ const logicalKeyFrom = (item: GitHubLogicalChange) =>
   githubLogicalChangeKey(item.logicalRepositoryId, item.logicalSha);
 
 describe("deterministic GitHub work ownership", () => {
+  test("moving heads and closing a PR do not revise unchanged work", () => {
+    const work = change("c");
+    const key = logicalKeyFrom(work);
+    const foreign = change("d", { authorUserId: "200" });
+    for (const name of ["refs/heads/main", "refs/heads/topic"]) {
+      const beforeRef = { ...ref(name, [key]), headSha: sha("a") };
+      const afterRef = {
+        ...beforeRef,
+        headSha: sha("d"),
+        memberLogicalKeys: [key, logicalKeyFrom(foreign)],
+        contentObservedAt: "2026-08-31T12:00:00.000Z",
+      };
+      const [before] = projection({ changes: [work], refs: [beforeRef] });
+      const [after] = projection({
+        changes: [work, foreign],
+        refs: [afterRef],
+      });
+      expect(after.factsDigest).toBe(before.factsDigest);
+      expect(after.activityAt).toBe(before.activityAt);
+    }
+    const [open] = projection({
+      changes: [work],
+      pullRequests: [pullRequest("PR_stable", [key])],
+    });
+    const [merged] = projection({
+      changes: [work],
+      pullRequests: [
+        pullRequest("PR_stable", [key], {
+          state: "merged",
+          snapshotKind: "final",
+        }),
+      ],
+    });
+    expect(merged.factsDigest).toBe(open.factsDigest);
+    const [changed] = projection({
+      changes: [{ ...work, additions: work.additions + 1 }],
+      pullRequests: [pullRequest("PR_stable", [key])],
+    });
+    expect(changed.factsDigest).not.toBe(open.factsDigest);
+  });
+
   test("excludes merges, zero diffs, and foreign-authored commits before grouping direct work", () => {
     const first = change("c", {
       fileFacts: [file("src/shared.ts", 2, 1)],
