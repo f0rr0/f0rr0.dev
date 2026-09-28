@@ -173,9 +173,7 @@ export const publishGitHubActivitySnapshots = async (
       if (isIssue && old) {
         continue;
       }
-      const day = bootstrap
-        ? dateKey(row.activityAt, WORK_LOG_TIME_ZONE)
-        : today;
+      const day = dateKey(row.activityAt, WORK_LOG_TIME_ZONE);
       if (day > today) {
         continue;
       }
@@ -193,7 +191,6 @@ export const publishGitHubActivitySnapshots = async (
           ...row,
           day,
           id: `${day}:${row.id}`,
-          activityAt: bootstrap ? row.activityAt : now.toISOString(),
         },
         recordedAt: now,
       };
