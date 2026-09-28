@@ -117,9 +117,8 @@ The detailed breakdowns use internal Codex endpoints. History means available
 records within `historyDays`, not complete lifetime coverage. Changing the window
 triggers a fresh backfill. Requests fetch up to 100 named tools/skills; upstream may
 group additional entries. These sources may lag behind profile totals. Failed
-requests retain previous data; empty sections are hidden. Provider daily totals keep
-their reported dates. Timestamps use the site's IST timezone; daily aggregates are
-not relabeled as an IST “today” total.
+requests retain previous data; empty sections are hidden. Display timestamps in IST
+and keep provider dates for daily totals.
 
 Token and invocation counts sum across accounts. Cache hit rate is weighted by
 input tokens from rows with all components reported; missing components are not

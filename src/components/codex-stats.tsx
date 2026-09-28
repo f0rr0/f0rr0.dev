@@ -104,8 +104,9 @@ const LimitBar = ({
 
 export function CodexTotals({ stats }: { stats: PublicCodexStats }) {
   return (
-    <TokenStatGrid className="md:grid-cols-3">
+    <TokenStatGrid>
       <Metric label="Lifetime tokens" metric={stats.totals.lifetimeTokens} />
+      <Metric label="Today" metric={stats.totals.todayTokens} />
       <Metric label="Last 7 days" metric={stats.totals.last7Days} />
       <Metric label="Last 30 days" metric={stats.totals.last30Days} />
     </TokenStatGrid>

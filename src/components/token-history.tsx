@@ -121,9 +121,6 @@ function HistoryPlot({
                       ? "Usage unavailable"
                       : `${number.format(row.tokens)} ${mode === "cumulative" && summary.partial ? "recorded " : ""}tokens`}
                   </p>
-                  {row.day === reportingDay ? (
-                    <p className="text-muted-foreground">Still updating</p>
-                  ) : null}
                 </div>
               ) : null;
             }}

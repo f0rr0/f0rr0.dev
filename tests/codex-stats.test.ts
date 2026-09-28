@@ -91,7 +91,7 @@ const requireStats = <T>(stats: T | null): T => {
 };
 
 describe("public Codex statistics", () => {
-  test("provider dates survive IST midnight without claiming an IST today total", () => {
+  test("daily totals use provider dates and reset timestamps display in IST", () => {
     const snapshot = createCodexAccountSnapshot(
       profile(120, [{ start_date: "2026-09-28", tokens: 120 }]),
       {
@@ -104,12 +104,12 @@ describe("public Codex statistics", () => {
         },
       }
     );
-    for (const instant of [
-      "2026-09-28T18:29:59Z",
-      "2026-09-28T18:30:00Z",
-      "2026-09-28T23:59:59Z",
-      "2026-09-29T00:00:00Z",
-    ]) {
+    for (const [instant, expectedToday] of [
+      ["2026-09-28T18:29:59Z", 120],
+      ["2026-09-28T18:30:00Z", 120],
+      ["2026-09-28T23:59:59Z", 120],
+      ["2026-09-29T00:00:00Z", 0],
+    ] as const) {
       const stats = requireStats(
         buildPublicCodexStats([{ snapshot }], new Date(instant))
       );
@@ -120,9 +120,10 @@ describe("public Codex statistics", () => {
         tokens: 120,
       });
       expect(stats.totals.last7Days.value).toBe(120);
+      expect(stats.totals.todayTokens.value).toBe(expectedToday);
       const html = renderToStaticMarkup(createElement(CodexTotals, { stats }));
       expect(html).toContain("Last 7 days");
-      expect(html).not.toContain("Today");
+      expect(html).toContain(">Today</dt>");
       expect(html).not.toContain("UTC");
       const limits = renderToStaticMarkup(
         createElement(CodexUsageLimit, { stats })
