@@ -249,7 +249,7 @@ export const publishGitHubActivitySnapshots = async (
         and not exists (select 1 from ${githubWorkUnits} w where w.identity_key = s.identity_key)
       returning s.day
     `);
-      changed ||= removed.length > 0;
+      changed ||= removed.rows.length > 0;
     }
     const filled = await fillSavedGitHubSummaries(transaction);
     if (changed || filled) {

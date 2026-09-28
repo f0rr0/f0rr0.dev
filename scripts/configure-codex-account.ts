@@ -5,6 +5,8 @@ import postgres from "postgres";
 
 import { validateCodexAuthJson } from "@/lib/codex/stats";
 
+import { administrationDatabaseUrl } from "../src/db/connection";
+
 const [id, codexHome] = process.argv.slice(2);
 if (id === undefined || !/^[a-z0-9][a-z0-9_-]{0,63}$/u.test(id)) {
   throw new Error("Usage: bun run codex:account <id> <codex-home>");
@@ -13,18 +15,18 @@ if (codexHome === undefined) {
   throw new Error("A dedicated Codex home is required.");
 }
 
-const databaseUrl = [
-  process.env.DATABASE_URL_UNPOOLED?.trim(),
-  process.env.DATABASE_URL?.trim(),
-].find((value): value is string => value !== undefined && value.length > 0);
-if (databaseUrl === undefined || databaseUrl.length === 0) {
-  throw new Error("DATABASE_URL_UNPOOLED or DATABASE_URL is required.");
-}
+const databaseUrl = administrationDatabaseUrl({
+  DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
+});
 
 const authJson = await readFile(path.resolve(codexHome, "auth.json"), "utf-8");
 const providerAccountId = validateCodexAuthJson(authJson).tokens.account_id;
 const secretName = `codex_auth_${id}`;
-const sql = postgres(databaseUrl, { max: 1, prepare: false });
+const sql = postgres(databaseUrl, {
+  connect_timeout: 10,
+  max: 1,
+  prepare: false,
+});
 
 try {
   await sql`create schema if not exists vault`;

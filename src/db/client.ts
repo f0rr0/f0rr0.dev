@@ -1,8 +1,11 @@
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import { attachDatabasePool } from "@vercel/functions";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 
+import { runtimeDatabaseUrl } from "@/db/connection";
 import * as schema from "@/db/schema";
 import { env } from "@/env";
+import { reportOperationalError } from "@/lib/operational-error";
 
 export class DatabaseConfigurationError extends Error {
   constructor() {
@@ -11,16 +14,9 @@ export class DatabaseConfigurationError extends Error {
   }
 }
 
-let client: ReturnType<typeof postgres> | null = null;
-let database: ReturnType<typeof drizzle<typeof schema>> | null = null;
-
-export const databaseConnectionUrl = (value: string) => {
-  const url = new URL(value);
-  // Postgres.js pipelines concurrent queries; Supavisor transaction mode can hang them.
-  if (url.hostname.endsWith(".pooler.supabase.com") && url.port === "6543") {
-    url.port = "5432";
-  }
-  return url.toString();
+// Keep one pool per process, including across development module reloads.
+const state = globalThis as typeof globalThis & {
+  portfolioDatabase?: ReturnType<typeof drizzle<typeof schema, Pool>>;
 };
 
 const readDatabaseUrl = () => {
@@ -31,8 +27,8 @@ const readDatabaseUrl = () => {
 export const isDatabaseConfigured = () => readDatabaseUrl() !== null;
 
 export const getDatabase = () => {
-  if (database !== null) {
-    return database;
+  if (state.portfolioDatabase !== undefined) {
+    return state.portfolioDatabase;
   }
 
   const databaseUrl = readDatabaseUrl();
@@ -40,23 +36,23 @@ export const getDatabase = () => {
     throw new DatabaseConfigurationError();
   }
 
-  client = postgres(databaseConnectionUrl(databaseUrl), {
-    // Keep repeated outages from adding up to 20 seconds before each reconnect.
-    backoff: () => 1,
-    connect_timeout: 10,
-    idle_timeout: 20,
+  const client = new Pool({
+    connectionString: runtimeDatabaseUrl(databaseUrl),
+    application_name: "f0rr0.dev:app",
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 5000,
     max: 1,
-    prepare: false,
   });
-  database = drizzle({ client, schema });
-  return database;
+  client.on("error", (error) => {
+    reportOperationalError("database-pool", error);
+  });
+  attachDatabasePool(client);
+  state.portfolioDatabase = drizzle({ client, schema });
+  return state.portfolioDatabase;
 };
 
 export const closeDatabase = async () => {
-  const activeClient = client;
-  client = null;
-  database = null;
-  if (activeClient !== null) {
-    await activeClient.end({ timeout: 5 });
-  }
+  const database = state.portfolioDatabase;
+  delete state.portfolioDatabase;
+  await database?.$client.end();
 };

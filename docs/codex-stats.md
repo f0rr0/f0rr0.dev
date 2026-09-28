@@ -8,9 +8,9 @@ Supabase cron calls a protected Vercel route every 15 minutes.
 Use a Supabase database with Vault, `pg_cron`, and `pg_net` support. Configure
 these in `.env.local` for local administration and in Vercel for the deployment:
 
-- `DATABASE_URL`: runtime database connection.
-- `DATABASE_URL_UNPOOLED`: direct or session-pooler connection for migrations,
-  account registration, and cron setup when runtime uses a transaction pooler.
+- `DATABASE_URL`: runtime transaction-pooler connection (port `6543`).
+- `DATABASE_URL_UNPOOLED`: required direct or session-pooler connection (port
+  `5432`) for migrations, account registration, and cron setup.
 - `CRON_SECRET`: a random secret of at least 32 characters, shared by the route
   and scheduled requests.
 - `VERCEL_PROJECT_PRODUCTION_URL`: production hostname, supplied by Vercel when

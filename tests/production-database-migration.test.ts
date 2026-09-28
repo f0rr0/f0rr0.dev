@@ -7,7 +7,6 @@ import {
   supabaseCronUrlsFrom,
 } from "../scripts/configure-supabase-cron.ts";
 import {
-  ProductionMigrationConfigurationError,
   productionMigrationDatabaseUrl,
   shouldApplyProductionMigrations,
 } from "../scripts/migrate-production-database.ts";
@@ -78,23 +77,19 @@ describe("production migration database URL", () => {
     ).toBe("postgresql://primary:secret@db.example:5432/postgres");
   });
 
-  test("turns a synced Supabase transaction URL into its session URL", () => {
-    expect(
-      productionMigrationDatabaseUrl({
-        DATABASE_URL:
-          "postgresql://postgres.project:p%40ss@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require",
-      })
-    ).toBe(
-      "postgresql://postgres.project:p%40ss@aws-0-region.pooler.supabase.com:5432/postgres?sslmode=require"
-    );
-  });
-
-  test("rejects an unknown transaction pooler", () => {
+  test("requires a separate administration URL instead of rewriting the runtime pooler", () => {
     expect(() =>
       productionMigrationDatabaseUrl({
-        DATABASE_URL: "postgresql://user:secret@database.example:6543/db",
+        DATABASE_URL:
+          "postgresql://postgres.project:secret@aws-0-region.pooler.supabase.com:6543/postgres",
       })
-    ).toThrow(ProductionMigrationConfigurationError);
+    ).toThrow("DATABASE_URL_UNPOOLED is not configured");
+    expect(() =>
+      productionMigrationDatabaseUrl({
+        DATABASE_URL_UNPOOLED:
+          "postgresql://postgres.project:secret@aws-0-region.pooler.supabase.com:6543/postgres",
+      })
+    ).toThrow("direct connection or session pooler");
   });
 });
 
