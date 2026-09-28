@@ -173,6 +173,10 @@ export const githubCommits = pgTable(
       .default("pending")
       .notNull(),
     fileFacts: jsonb("file_facts").$type<readonly GitHubWorkUnitFileFact[]>(),
+    // Ownership needs only these small facts; patches are loaded for summaries.
+    fileStats: jsonb("file_stats").generatedAlwaysAs(
+      sql`github_commit_file_stats(file_facts)`
+    ),
     fileFactsDigest: varchar("file_facts_digest", {
       length: 64,
     }),
