@@ -3,7 +3,6 @@ import { X509Certificate } from "node:crypto";
 
 import { Client } from "pg";
 
-import { supabaseCronDatabaseUrlFrom } from "../scripts/configure-supabase-cron";
 import {
   administrationDatabaseUrl,
   postgresConnectionOptions,
@@ -63,20 +62,22 @@ test("runtime preserves the supplied transaction URL and rejects Supabase sessio
 });
 
 test("all administration requires an explicit session-capable URL without rewriting credentials or ports", () => {
-  for (const read of [administrationDatabaseUrl, supabaseCronDatabaseUrlFrom]) {
-    expect(read({ DATABASE_URL_UNPOOLED: session })).toBe(session);
-    expect(() => read({ DATABASE_URL_UNPOOLED: transaction })).toThrow(
-      "direct connection or session pooler"
-    );
-    for (const value of [
-      undefined,
-      "",
-      "   ",
-      "not-a-url",
-      "https://secret@example.com",
-    ]) {
-      expect(() => read({ DATABASE_URL_UNPOOLED: value })).toThrow();
-    }
+  expect(administrationDatabaseUrl({ DATABASE_URL_UNPOOLED: session })).toBe(
+    session
+  );
+  expect(() =>
+    administrationDatabaseUrl({ DATABASE_URL_UNPOOLED: transaction })
+  ).toThrow("direct connection or session pooler");
+  for (const value of [
+    undefined,
+    "",
+    "   ",
+    "not-a-url",
+    "https://secret@example.com",
+  ]) {
+    expect(() =>
+      administrationDatabaseUrl({ DATABASE_URL_UNPOOLED: value })
+    ).toThrow();
   }
   expect(() => runtimeDatabaseUrl("https://secret@example.com")).toThrow(
     "must use PostgreSQL"

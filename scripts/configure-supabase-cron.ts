@@ -38,7 +38,6 @@ type SupabaseCronEnvironment = Pick<
   | "CRON_SECRET"
   | "GITHUB_TOKENS"
   | "OPENAI_API_KEY"
-  | "DATABASE_URL"
   | "DATABASE_URL_UNPOOLED"
   | "VERCEL"
   | "VERCEL_ENV"
@@ -55,10 +54,6 @@ const requiredEnvironmentValue = (
   }
   return value;
 };
-
-export const supabaseCronDatabaseUrlFrom = (
-  environment: SupabaseCronEnvironment
-) => administrationDatabaseUrl(environment);
 
 export const supabaseCronUrlsFrom = (configuredSiteUrl: string) => {
   const siteUrl = new URL(configuredSiteUrl);
@@ -182,7 +177,7 @@ export const supabaseCronJobsFrom = (
 export const configureSupabaseCron = async (
   environment: SupabaseCronEnvironment = env
 ) => {
-  const databaseUrl = supabaseCronDatabaseUrlFrom(environment);
+  const databaseUrl = administrationDatabaseUrl(environment);
   const cronSecret = requiredEnvironmentValue(
     "CRON_SECRET",
     environment.CRON_SECRET
@@ -235,39 +230,24 @@ export const configureSupabaseCron = async (
         ],
       ]
     );
-    const jobs: { name: string; jobId: number }[] = [];
-    for (const job of configuredJobs.filter((value) => value.enabled)) {
+    const enabledJobs = configuredJobs.filter((job) => job.enabled);
+    for (const job of enabledJobs) {
       await upsertVaultSecret(client, { name: job.urlName, value: job.url });
-      const {
-        rows: [scheduled],
-      } = await client.query<{ jobId: number }>(
-        'select cron.schedule($1, $2, $3) as "jobId"',
-        [job.name, job.schedule, cronHttpPostCommand(job.urlName, job.timeout)]
-      );
-      if (scheduled === undefined) {
-        throw new Error("Supabase did not return the scheduled cron job.");
-      }
-      jobs.push({ name: job.name, jobId: scheduled.jobId });
+      await client.query("select cron.schedule($1, $2, $3)", [
+        job.name,
+        job.schedule,
+        cronHttpPostCommand(job.urlName, job.timeout),
+      ]);
     }
-    const {
-      rows: [cleanup],
-    } = await client.query<{ jobId: number }>(
-      'select cron.schedule($1, $2, $3) as "jobId"',
-      [
-        "activity-history-retention",
-        "23 3 * * *",
-        "select public.cleanup_activity_history()",
-      ]
-    );
-    if (cleanup === undefined) {
-      throw new Error("Supabase did not schedule activity retention.");
-    }
-    jobs.push({ name: "activity-history-retention", jobId: cleanup.jobId });
+    await client.query("select cron.schedule($1, $2, $3)", [
+      "activity-history-retention",
+      "23 3 * * *",
+      "select public.cleanup_activity_history()",
+    ]);
     await client.query("commit");
     process.stdout.write(
-      `Configured ${String(jobs.length)} Supabase cron jobs.\n`
+      `Configured ${String(enabledJobs.length + 1)} Supabase cron jobs.\n`
     );
-    return jobs;
   } catch (error) {
     await client.query("rollback").catch(() => {
       // Preserve the original failure if the connection cannot roll back.

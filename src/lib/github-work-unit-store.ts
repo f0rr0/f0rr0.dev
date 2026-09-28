@@ -206,9 +206,6 @@ const checkedNow = (now: Date) => {
 const logicalKeyFrom = (repositoryId: string, sha: string) =>
   githubLogicalChangeKey(repositoryId, sha);
 
-const refKeyFrom = (repositoryId: string, refName: string) =>
-  `${repositoryId}\0${refName}`;
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -750,26 +747,6 @@ const loadProjectionSnapshot = async (
     .from(githubRepositories)
     .where(scope(githubRepositories.id))
     .orderBy(asc(githubRepositories.id));
-  const desiredHeadRows = await transaction
-    .select({
-      active: githubRepositoryRefs.active,
-      branchLineageId: githubRepositoryRefs.branchLineageId,
-      headSha: githubRepositoryRefs.headSha,
-      refName: githubRepositoryRefs.refName,
-      repositoryId: githubRepositoryRefs.repositoryId,
-    })
-    .from(githubRepositoryRefs)
-    .where(
-      and(
-        scope(githubRepositoryRefs.repositoryId),
-        eq(githubRepositoryRefs.kind, "head"),
-        eq(githubRepositoryRefs.projectionRelevant, true)
-      )
-    )
-    .orderBy(
-      asc(githubRepositoryRefs.repositoryId),
-      asc(githubRepositoryRefs.refName)
-    );
   const generationRows = await transaction
     .select({
       branchLineageId: githubRefGenerations.branchLineageId,
@@ -791,7 +768,13 @@ const loadProjectionSnapshot = async (
           githubRefGenerations.repositoryId
         ),
         eq(githubRepositoryRefs.refName, githubRefGenerations.refName),
+        eq(githubRepositoryRefs.headSha, githubRefGenerations.headSha),
+        eq(
+          githubRepositoryRefs.branchLineageId,
+          githubRefGenerations.branchLineageId
+        ),
         scope(githubRepositoryRefs.repositoryId),
+        eq(githubRepositoryRefs.active, true),
         eq(githubRepositoryRefs.kind, "head"),
         eq(githubRepositoryRefs.projectionRelevant, true)
       )
@@ -1074,36 +1057,16 @@ const loadProjectionSnapshot = async (
           ]
     )
   );
-  const desiredByRef = new Map(
-    desiredHeadRows.map((row) => [
-      refKeyFrom(row.repositoryId, row.refName),
-      row,
-    ])
-  );
-  const refs = generationRows.flatMap((generation) => {
-    const key = refKeyFrom(generation.repositoryId, generation.refName);
-    const desired = desiredByRef.get(key);
-    if (
-      desired?.active !== true ||
-      desired.branchLineageId === null ||
-      desired.headSha !== generation.headSha ||
-      desired.branchLineageId !== generation.branchLineageId
-    ) {
-      return [];
-    }
-    return [
-      {
-        branchLineageId: generation.branchLineageId,
-        complete: true,
-        contentObservedAt: generation.completedAt.toISOString(),
-        memberLogicalKeys: generation.members.map(([repositoryId, sha]) =>
-          logicalKeyFrom(repositoryId, sha)
-        ),
-        refName: generation.refName,
-        repositoryId: generation.repositoryId,
-      },
-    ];
-  });
+  const refs = generationRows.map((generation) => ({
+    branchLineageId: generation.branchLineageId,
+    complete: true,
+    contentObservedAt: generation.completedAt.toISOString(),
+    memberLogicalKeys: generation.members.map(([repositoryId, sha]) =>
+      logicalKeyFrom(repositoryId, sha)
+    ),
+    refName: generation.refName,
+    repositoryId: generation.repositoryId,
+  }));
   const repositories: GitHubRepositoryProjectionEvidence[] = repositoryRows.map(
     (repository) => ({
       defaultBranch: repository.defaultBranch,
