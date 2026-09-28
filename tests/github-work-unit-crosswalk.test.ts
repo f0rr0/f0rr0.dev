@@ -92,6 +92,12 @@ const pullRequest = ({
   netOutcome: null,
   netOutcomeOwnedCompletely: false,
   nodeId,
+  display: {
+    title: "Example work",
+    status: "open",
+    statusChangedAt: "2026-08-29T12:00:00.000Z",
+    diff: null,
+  },
   snapshotKind: "current",
   state: "open",
 });
@@ -141,6 +147,7 @@ const unit = ({
   newestCommitRepositoryId: repositoryId,
   newestCommitSha: members.at(-1)?.split("/")[1] ?? sha("0"),
   outcomeDigest: null,
+  pullRequest: null,
   pullRequestNodeId: kind === "pull_request" ? identityKey.slice(3) : null,
   repositoryId,
   visibility: repositoryId === "3" ? "private" : "public",

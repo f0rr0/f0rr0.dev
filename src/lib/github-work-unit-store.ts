@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import { and, asc, eq, exists, inArray, isNotNull, or, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
@@ -19,7 +21,10 @@ import {
   githubWorkUnits,
 } from "@/db/schema";
 import { publishGitHubActivitySnapshots } from "@/lib/github-activity-snapshots";
-import { PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE } from "@/lib/github-activity-store";
+import {
+  githubIssueActivityDay,
+  PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE,
+} from "@/lib/github-activity-store";
 import type {
   GitHubFileChangeStat,
   GitHubLanguageFact,
@@ -28,6 +33,7 @@ import type {
 import { TRACKED_GITHUB_USER_IDS } from "@/lib/github-commits-core";
 import {
   chooseEffectivePullRequest,
+  hasPendingGitHubPullRequest,
   githubLogicalChangeKey,
   githubWorkUnitSummaryDiffEvidenceFrom,
   indexGitHubWorkUnitOwnershipEvidence,
@@ -133,6 +139,7 @@ interface CurrentWorkUnitRow {
   membershipDigest: string;
   newestCommitSha: string;
   outcomeDigest: string | null;
+  pullRequest: GitHubProjectedWorkUnit["pullRequest"];
   pullRequestNodeId: string | null;
   repositoryId: string;
   revision: number;
@@ -358,6 +365,7 @@ const currentWorkUnitSelection = {
   membershipDigest: githubWorkUnits.membershipDigest,
   newestCommitSha: githubWorkUnits.newestCommitSha,
   outcomeDigest: githubWorkUnits.outcomeDigest,
+  pullRequest: githubWorkUnits.pullRequest,
   pullRequestNodeId: githubWorkUnits.pullRequestNodeId,
   repositoryId: githubWorkUnits.repositoryId,
   revision: githubWorkUnits.revision,
@@ -383,8 +391,6 @@ const readCurrentUnits = async (
     .orderBy(asc(githubWorkUnits.identityKey));
   return lock ? await query.for("update") : await query;
 };
-
-const issueDayFrom = (createdAt: Date) => createdAt.toISOString().slice(0, 10);
 
 const sortedUniqueDays = (days: readonly string[]) =>
   [...new Set(days)].toSorted((left, right) => bytewiseCompare(right, left));
@@ -471,6 +477,8 @@ const excludedChangesFrom = (
       reason = "merged_pr_landing";
     } else if (repository === undefined || repository.visibility === null) {
       reason = "repository_visibility_unknown";
+    } else if (hasPendingGitHubPullRequest(change, ownership)) {
+      reason = "pull_request_coverage_incomplete";
     } else if (effectivePullRequest !== null) {
       throw new Error(
         `Effective pull-request member was not projected: ${logicalKey}`
@@ -976,6 +984,13 @@ const loadProjectionSnapshot = async (
       authorUserId: githubPullRequests.authorUserId,
       baseRepositoryId: githubPullRequests.baseRepositoryId,
       baseSha: githubPullRequests.baseSha,
+      additions: githubPullRequests.additions,
+      deletions: githubPullRequests.deletions,
+      changedFiles: githubPullRequests.changedFiles,
+      draft: githubPullRequests.draft,
+      title: githubPullRequests.title,
+      statusChangedAt: githubPullRequests.statusChangedAt,
+      terminalAt: githubPullRequests.terminalAt,
       commitCount: githubPullRequests.commitCount,
       createdAt: githubPullRequests.createdAt,
       fileFactsComplete: githubPullRequests.fileFactsComplete,
@@ -1062,6 +1077,26 @@ const loadProjectionSnapshot = async (
         memberLogicalKeys.length > 0 &&
         memberLogicalKeys.every((key) => eligibleChanges.has(key)),
       nodeId: row.nodeId,
+      display: {
+        title: row.title,
+        status: row.state === "open" && row.draft ? "draft" : row.state,
+        statusChangedAt: (
+          row.statusChangedAt ??
+          row.terminalAt ??
+          row.createdAt
+        ).toISOString(),
+        diff:
+          row.fileFactsComplete &&
+          row.additions !== null &&
+          row.deletions !== null &&
+          row.changedFiles !== null
+            ? {
+                additions: row.additions,
+                deletions: row.deletions,
+                files: row.changedFiles,
+              }
+            : null,
+      },
       snapshotKind: row.state === "open" ? "current" : "final",
       state: row.state,
     });
@@ -1243,9 +1278,8 @@ const loadProjectionSnapshot = async (
       : projectGitHubWorkUnits(input, ownership, { outcomeDigests });
   const excludedChanges = excludedChangesFrom(input, units, ownership);
   const issueRows = await transaction
-    .select({
-      createdAt: githubIssues.createdAt,
-      visibility: githubRepositories.visibility,
+    .selectDistinct({
+      day: githubIssueActivityDay,
     })
     .from(githubIssues)
     .innerJoin(
@@ -1262,7 +1296,7 @@ const loadProjectionSnapshot = async (
         ])
       )
     );
-  const issueDays = issueRows.map((issue) => issueDayFrom(issue.createdAt));
+  const issueDays = issueRows.map((issue) => issue.day);
   return {
     currentUnits,
     input,
@@ -1422,6 +1456,7 @@ const publicPayloadChanged = (
   current.memberCount !== projected.facts.memberCount ||
   current.newestCommitSha !== projected.newestCommitSha ||
   current.outcomeDigest !== projected.outcomeDigest ||
+  !isDeepStrictEqual(current.pullRequest, projected.pullRequest) ||
   current.pullRequestNodeId !== projected.pullRequestNodeId ||
   current.repositoryId !== projected.repositoryId ||
   current.visibility !== projected.visibility;
@@ -1453,6 +1488,7 @@ const projectedValues = (
   newestCommitRepositoryId: projected.newestCommitRepositoryId,
   newestCommitSha: projected.newestCommitSha,
   outcomeDigest: projected.outcomeDigest,
+  pullRequest: projected.pullRequest,
   pullRequestNodeId: projected.pullRequestNodeId,
   repositoryId: projected.repositoryId,
   revision,

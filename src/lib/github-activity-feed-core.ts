@@ -5,6 +5,8 @@ import type {
   PublicGitHubActivityRepository,
   PublicGitHubWorkUnitFacts,
   PublicGitHubWorkUnitKind,
+  GitHubPullRequestDisplay,
+  GitHubIssueStatus,
 } from "@/lib/github-activity-types";
 
 interface PublicRepositoryActivityRow {
@@ -18,6 +20,7 @@ export interface PublicGitHubWorkUnitRow extends PublicRepositoryActivityRow {
   destination: PublicGitHubActivityDestination | null;
   facts: PublicGitHubWorkUnitFacts;
   headline: string | null;
+  pullRequest?: GitHubPullRequestDisplay | null;
   kind: PublicGitHubWorkUnitKind;
   summarizing: boolean;
   summary: string | null;
@@ -27,6 +30,7 @@ export interface PublicGitHubIssueRow extends PublicRepositoryActivityRow {
   day: string;
   destination: PublicGitHubActivityDestination | null;
   title: string;
+  status?: GitHubIssueStatus;
 }
 
 export interface BuildPublicGitHubActivityDaysInput {
@@ -142,6 +146,7 @@ export const buildPublicGitHubActivityDays = (
           destination: row.destination,
           facts: row.facts,
           headline: row.headline,
+          pullRequest: row.pullRequest,
           id: row.id,
           kind: row.kind,
           summarizing: row.summarizing,
@@ -153,8 +158,9 @@ export const buildPublicGitHubActivityDays = (
           activityAt: row.activityAt,
           destination: row.destination,
           id: row.id,
-          kind: "issue-opened",
+          kind: "issue",
           title: row.title,
+          status: row.status,
         });
       }
       const repositories = [...groups.values()]

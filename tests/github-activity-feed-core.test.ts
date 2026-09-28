@@ -55,7 +55,7 @@ describe("public GitHub activity day projection", () => {
           repository: repository("42"),
           items: [
             {
-              kind: "issue-opened",
+              kind: "issue",
               activityAt: "2026-09-04T12:00:00.000Z",
               id: "issue",
               title: "Investigate",

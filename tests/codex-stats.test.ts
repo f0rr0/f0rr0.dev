@@ -7,6 +7,7 @@ import {
   activityThresholds,
   CodexActivity,
 } from "../src/components/codex-activity.tsx";
+import { CodexTotals, CodexUsageLimit } from "../src/components/codex-stats";
 import type { CodexAccountSnapshot } from "../src/lib/codex/stats";
 import {
   buildPublicCodexStats,
@@ -90,6 +91,48 @@ const requireStats = <T>(stats: T | null): T => {
 };
 
 describe("public Codex statistics", () => {
+  test("daily totals use provider dates and reset timestamps display in IST", () => {
+    const snapshot = createCodexAccountSnapshot(
+      profile(120, [{ start_date: "2026-09-28", tokens: 120 }]),
+      {
+        rate_limit: {
+          primary_window: {
+            used_percent: 25,
+            limit_window_seconds: 18_000,
+            reset_at: Date.parse("2026-09-28T18:30:00Z") / 1000,
+          },
+        },
+      }
+    );
+    for (const [instant, expectedToday] of [
+      ["2026-09-28T18:29:59Z", 120],
+      ["2026-09-28T18:30:00Z", 120],
+      ["2026-09-28T23:59:59Z", 120],
+      ["2026-09-29T00:00:00Z", 0],
+    ] as const) {
+      const stats = requireStats(
+        buildPublicCodexStats([{ snapshot }], new Date(instant))
+      );
+      expect(
+        stats.history.values.find(({ day }) => day === "2026-09-28")
+      ).toEqual({
+        day: "2026-09-28",
+        tokens: 120,
+      });
+      expect(stats.totals.last7Days.value).toBe(120);
+      expect(stats.totals.todayTokens.value).toBe(expectedToday);
+      const html = renderToStaticMarkup(createElement(CodexTotals, { stats }));
+      expect(html).toContain("Last 7 days");
+      expect(html).toContain(">Today</dt>");
+      expect(html).not.toContain("UTC");
+      const limits = renderToStaticMarkup(
+        createElement(CodexUsageLimit, { stats })
+      );
+      expect(limits).toContain("Sep 29, 2026");
+      expect(limits).not.toContain("UTC");
+    }
+  });
+
   test("calendar bands follow nonzero usage quartiles as counts grow", () => {
     const counts = [0, 0, 1, 2, 3, 4, 5, 6, 7, 1000];
     expect(activityThresholds(counts)).toEqual([2, 4, 6]);
@@ -185,7 +228,6 @@ describe("public Codex statistics", () => {
       partial: false,
       value: 160,
     });
-    expect(stats.totals.todayTokens.value).toBe(120);
     expect(stats.reportingDay).toBe("2026-01-30");
     expect(stats.totals.totalSkillsUsed).toEqual({
       partial: false,
@@ -296,8 +338,8 @@ describe("public Codex statistics", () => {
           ],
           new Date("2026-01-30T12:00:00Z")
         )
-      ).totals.todayTokens.value
-    ).toBe(0);
+      ).history.values.at(-1)
+    ).toEqual({ day: "2026-01-30", tokens: 0 });
 
     expect(() => {
       validateCodexAuthJson('{"OPENAI_API_KEY":"secret"}');

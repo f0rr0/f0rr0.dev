@@ -15,7 +15,7 @@ const readCachedInitialGitHubActivity = unstable_cache(
       null,
       PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
     ),
-  ["public-github-activity-initial-v3"],
+  ["public-github-activity-initial-v4"],
   { revalidate: 60, tags: ["public-github-activity"] }
 );
 

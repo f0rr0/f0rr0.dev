@@ -23,6 +23,11 @@ test("publication keeps source dates through delayed syncs, metadata revisions a
       work("canonical:1:2026-08-04", "2026-08-04T09:05:36Z"),
       work("late", "2026-09-28T18:29:59Z"),
       work("changed-pr", "2026-09-28T18:30:00Z", 240),
+      ...["legacy-merge", "status-hydration"].map(id => ({
+        ...work(id, "2026-09-28T18:00:00Z"),
+        pullRequest: { status: "merged", statusChangedAt: id === "legacy-merge"
+          ? "2026-09-28T18:00:00Z" : "2026-09-01T12:00:00Z" },
+      })),
       work("future", "2026-09-29T18:30:00Z"),
     ];
     const units = rows.map(row => ({
@@ -34,7 +39,9 @@ test("publication keeps source dates through delayed syncs, metadata revisions a
     }, {
       identityKey: "changed-pr", day: "2026-09-28",
       payload: work("changed-pr", "2026-09-28T12:00:00Z"),
-    }];
+    }, ...["legacy-merge", "status-hydration"].map(id => ({
+      identityKey: id, day: "2026-09-27", payload: work(id, "2026-09-27T12:00:00Z"),
+    }))];
     const issue = { id: "late-issue", activityAt: "2026-09-28T18:29:59Z", repository: { key: "1" } };
     const writes = [];
     const query = result => {
@@ -48,11 +55,18 @@ test("publication keeps source dates through delayed syncs, metadata revisions a
       select: () => ({ from: table => query(table === githubPublicFeedHead
         ? [{ initialized: new Date("2026-09-27") }] : table === githubWorkUnits ? units : []) }),
       selectDistinctOn: () => ({ from: () => query(previous) }),
+      execute: async sql => {
+        const cleanup = new PgDialect().sqlToQuery(sql);
+        assert.ok(cleanup.sql.includes("s.day between $1::date and $2::date"));
+        assert.deepEqual(cleanup.params, ["2026-09-28", "2026-09-29", '["1"]', '["2"]']);
+        return { rows: [] };
+      },
       insert: table => ({ values: value => ({ onConflictDoUpdate: options => ({ returning: async () => {
         assert.equal(table, githubActivitySnapshots);
         const condition = new PgDialect().sqlToQuery(options.setWhere);
-        assert.deepEqual(condition.params, ["2026-09-29"]);
-        assert.equal(condition.sql, '"github_activity_snapshots"."day" = $1');
+        assert.deepEqual(condition.params, ["2026-09-28", value.payload.activityAt]);
+        assert.ok(condition.sql.includes('"github_activity_snapshots"."day" >= $1'));
+        assert.ok(condition.sql.includes("::timestamptz <= $2::timestamptz"));
         writes.push(value);
         return [];
       } }) }) }),
@@ -61,18 +75,18 @@ test("publication keeps source dates through delayed syncs, metadata revisions a
     mock.module("./src/lib/github-work-unit-projection-state.ts", () => ({ acquireGitHubWorkUnitProjectionLock: async () => {} }));
     mock.module("./src/lib/github-activity-store.ts", () => ({ readCurrentPublicGitHubRows: async () => ({ workUnits: rows, issues: [issue] }) }));
     const { publishGitHubActivitySnapshots } = await import("./src/lib/github-activity-snapshots.ts");
-    await publishGitHubActivitySnapshots();
+    await publishGitHubActivitySnapshots(["1"], ["2"]);
     assert.deepEqual(writes.map(row => [row.identityKey, row.day, row.payload.activityAt]), [
-      ["canonical:1:2026-08-04", "2026-08-04", "2026-08-04T09:05:36Z"],
       ["late", "2026-09-28", "2026-09-28T18:29:59Z"],
       ["changed-pr", "2026-09-29", "2026-09-28T18:30:00Z"],
+      ["legacy-merge", "2026-09-28", "2026-09-28T18:00:00Z"],
       ["late-issue", "2026-09-28", "2026-09-28T18:29:59Z"],
     ]);
-    assert.equal(writes[2].payload.facts.additions, 240);
+    assert.equal(writes[1].payload.facts.additions, 240);
   `);
 });
 
-test("only the hourly invocation publishes and warms changed activity, without changing ingestion limits or auth", () => {
+test("every worker publishes and warms changed activity without changing ingestion limits or auth", () => {
   check(`
     import assert from "node:assert/strict";
     import { mock } from "bun:test";
@@ -99,14 +113,14 @@ test("only the hourly invocation publishes and warms changed activity, without c
       { method: "POST", headers: authorized ? { authorization: "Bearer hourly-publication-test-secret-32-characters" } : {} }
     ));
     assert.equal((await request("?publish=1", false)).status, 401);
-    for (const query of ["?publish=0", "?publish=yes", "?publish=", "?batch=0&publish=1"]) {
+    for (const query of ["?batch=0", "?batch=no", "?batch="]) {
       assert.equal((await request(query)).status, 400);
     }
     assert.equal(calls.length, 0);
     assert.equal((await request("")).status, 200);
     assert.equal((await request("?publish=1")).status, 200);
     assert.equal((await request("?publish=1&batch=2")).status, 200);
-    assert.equal(calls[0].includeProjection, false);
+    assert.equal(calls[0].includeProjection, true);
     assert.equal(calls[1].includeProjection, true);
     assert.deepEqual({ ...calls[0], includeProjection: true }, calls[1]);
     assert.equal(calls[2].includeProjection, true);
@@ -116,10 +130,10 @@ test("only the hourly invocation publishes and warms changed activity, without c
     assert.equal(callbacks.length, 0);
     changed = true;
     assert.equal((await request("?publish=1")).status, 200);
-    assert.deepEqual(events, [["public-github-activity", "max"]]);
+    assert.deepEqual(events, [["public-github-activity", { expire: 0 }]]);
     assert.equal(callbacks.length, 1);
     await callbacks.shift()();
-    assert.deepEqual(events, [["public-github-activity", "max"], "warmed"]);
+    assert.deepEqual(events, [["public-github-activity", { expire: 0 }], "warmed"]);
     events.length = 0;
     fail = true;
     assert.equal((await request("?publish=1")).status, 503);
@@ -206,7 +220,16 @@ test("public reads retain successful snapshots on outage and recover without cac
     const entries = new Map();
     let stale = false;
     const incrementalCache = {
-      generateSimpleCacheKey: async key => key,
+      generateSimpleCacheKey: async key => {
+        if (key.includes("public-github-activity-initial-")) {
+          // A persistent cache from the previous deployment must never reach the new UI.
+          entries.set(key.replace(/initial-v[0-9]+/, "initial-v3"), {
+            kind: "FETCH", revalidate: 60,
+            data: { headers: {}, status: 200, url: "", body: '{"version":"old-issue-format"}' },
+          });
+        }
+        return key;
+      },
       get: async key => entries.has(key) ? { value: entries.get(key), isStale: stale } : null,
       set: async (key, value) => { entries.set(key, value); },
     };
@@ -219,7 +242,7 @@ test("public reads retain successful snapshots on outage and recover without cac
       return result;
     };
     assert.deepEqual(await request(), [null, null]);
-    assert.equal(entries.size, 0);
+    assert.equal(entries.size, 1);
     unavailable = false;
     assert.deepEqual(await request(), [{ version: 1 }, { version: 1 }]);
     const afterFill = reads;
@@ -231,7 +254,7 @@ test("public reads retain successful snapshots on outage and recover without cac
     console.error = (...args) => errors.push(args);
     assert.deepEqual(await request(), [{ version: 1 }, { version: 1 }]);
     assert.equal(errors.length, 3);
-    assert.equal(entries.size, 3);
+    assert.equal(entries.size, 4);
     unavailable = false;
     version = 2;
     assert.deepEqual(await request(), [{ version: 1 }, { version: 1 }]);

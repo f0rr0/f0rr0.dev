@@ -1,6 +1,12 @@
 "use client";
 
-import { CircleDot, FolderGit2, LockKeyhole } from "lucide-react";
+import {
+  CircleDot,
+  CircleCheck,
+  CircleSlash,
+  FolderGit2,
+  LockKeyhole,
+} from "lucide-react";
 import Image from "next/image";
 
 import { DateTime } from "@/components/date-time";
@@ -16,7 +22,8 @@ import {
   TooltipGroup,
   TooltipTrigger,
 } from "@/components/site-tooltip";
-import { dateKey, formatDate, WORK_LOG_TIME_ZONE } from "@/lib/date";
+import { sitePreferences } from "@/content/site";
+import { dateKey, formatDate } from "@/lib/date";
 import { getVisibleGitHubActivityDays } from "@/lib/github-activity-feed-core";
 import type {
   PublicGitHubActivityDay,
@@ -24,15 +31,29 @@ import type {
   PublicGitHubActivityRepository,
   PublicGitHubActivityRepositoryGroup,
   PublicGitHubWorkUnitActivity,
-  PublicGitHubWorkUnitFacts,
+  GitHubPullRequestDisplay,
 } from "@/lib/github-activity-types";
+import { githubIconPaths } from "@/lib/github-icons";
 
 const countFormatter = new Intl.NumberFormat("en-US");
 const workUnitLabels = {
-  branch: "Active branch work",
-  "canonical-day": "Direct canonical-branch work",
+  branch: "Branch work",
+  "canonical-day": "Repository updates",
   "pull-request": "Pull request",
 } as const;
+
+const statusColor = (status: string) => {
+  if (status === "merged" || status === "completed") {
+    return "text-[light-dark(oklch(0.5_0.18_300),oklch(0.76_0.13_300))]";
+  }
+  if (status === "open") {
+    return "text-[light-dark(oklch(0.48_0.12_155),oklch(0.75_0.13_155))]";
+  }
+  if (status === "closed") {
+    return "text-[light-dark(oklch(0.52_0.16_25),oklch(0.76_0.13_25))]";
+  }
+  return "text-muted-foreground";
+};
 
 function RepositoryIdentity({
   repository,
@@ -85,7 +106,7 @@ function RepositoryIdentity({
 function DiffCounters({
   facts,
 }: Readonly<{
-  facts: Pick<PublicGitHubWorkUnitFacts, "additions" | "deletions">;
+  facts: NonNullable<GitHubPullRequestDisplay["diff"]>;
 }>) {
   return (
     <span className="inline-flex items-center gap-2 text-sm text-muted-foreground tabular-nums">
@@ -102,17 +123,21 @@ function DiffCounters({
 }
 
 function WorkUnitFacts({
-  facts,
-}: Readonly<{ facts: PublicGitHubWorkUnitFacts }>) {
+  item,
+}: Readonly<{ item: PublicGitHubWorkUnitActivity }>) {
+  const { facts } = item;
   const commits = `${countFormatter.format(facts.ownedCommitCount)} ${facts.ownedCommitCount === 1 ? "commit" : "commits"}`;
   const files = `${countFormatter.format(facts.uniqueFileCount)} ${facts.uniqueFileCount === 1 ? "file" : "files"}`;
   return (
     <div className="site-row-meta flex min-h-6 shrink-0 items-center gap-2 text-sm text-muted-foreground tabular-nums flex-wrap justify-start">
       <span>
+        {item.pullRequest?.diff ? "PR total · " : ""}
         {commits} · {files}
       </span>
       <span className="inline-flex sm:hidden">
-        <DiffCounters facts={facts} />
+        {item.pullRequest?.diff ? (
+          <DiffCounters facts={item.pullRequest.diff} />
+        ) : null}
       </span>
       {facts.languages?.map((language) => (
         <LanguageIcon key={language} language={language} />
@@ -124,7 +149,8 @@ function WorkUnitFacts({
 function WorkUnitRow({
   item,
 }: Readonly<{ item: PublicGitHubWorkUnitActivity }>) {
-  const headline = item.headline ?? workUnitLabels[item.kind];
+  const headline =
+    item.headline ?? item.pullRequest?.title ?? workUnitLabels[item.kind];
   return (
     <Collapsible
       analytics={{ section: "work", item_kind: item.kind }}
@@ -144,7 +170,7 @@ function WorkUnitRow({
             {item.summary === null ? null : (
               <p className="text-muted-foreground">{item.summary}</p>
             )}
-            <WorkUnitFacts facts={item.facts} />
+            <WorkUnitFacts item={item} />
           </TooltipContent>
         }
         render={
@@ -156,13 +182,33 @@ function WorkUnitRow({
         </span>
         <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
           <span className="hidden sm:inline-flex">
-            <DiffCounters facts={item.facts} />
+            {item.pullRequest?.diff ? (
+              <DiffCounters facts={item.pullRequest.diff} />
+            ) : null}
           </span>
+          {item.kind === "pull-request" && item.pullRequest ? (
+            <span
+              title={`Pull request ${item.pullRequest.status}`}
+              className={statusColor(item.pullRequest.status)}
+            >
+              <svg
+                aria-hidden="true"
+                className="size-4"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+              >
+                <path d={githubIconPaths[item.pullRequest.status]} />
+              </svg>
+              <span className="sr-only">
+                Pull request {item.pullRequest.status}
+              </span>
+            </span>
+          ) : null}
           <DateTime
             className="whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
-            timeZone={WORK_LOG_TIME_ZONE}
+            timeZone={sitePreferences.timeZone}
           />
           <DisclosureChevron />
         </span>
@@ -172,7 +218,7 @@ function WorkUnitRow({
           {item.summary === null ? null : (
             <p className="wrap-anywhere">{item.summary}</p>
           )}
-          <WorkUnitFacts facts={item.facts} />
+          <WorkUnitFacts item={item} />
           {item.destination === null ? null : (
             <a
               className="site-text-link inline-flex min-h-11 items-center text-sm"
@@ -181,7 +227,9 @@ function WorkUnitRow({
               target="_blank"
               rel="noopener noreferrer"
             >
-              View on GitHub ↗
+              {item.kind === "pull-request"
+                ? "View pull request ↗"
+                : "View latest commit ↗"}
             </a>
           )}
         </div>
@@ -193,9 +241,20 @@ function WorkUnitRow({
 function IssueRow({
   item,
 }: Readonly<{
-  item: Extract<PublicGitHubActivityItem, { kind: "issue-opened" }>;
+  item: Extract<PublicGitHubActivityItem, { kind: "issue" }>;
 }>) {
   const Row = item.destination === null ? "div" : "a";
+  const status = item.status ?? "open";
+  const Icon =
+    status === "open"
+      ? CircleDot
+      : status === "completed"
+        ? CircleCheck
+        : CircleSlash;
+  const label =
+    status === "not-planned"
+      ? "Issue closed as not planned"
+      : `Issue ${status}`;
   return (
     <li>
       <Row
@@ -209,13 +268,16 @@ function IssueRow({
           {item.title}
         </span>
         <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
+          <span title={label} className={statusColor(status)}>
+            <Icon aria-hidden="true" className="size-4" />
+            <span className="sr-only">{label}</span>
+          </span>
           <DateTime
             className="whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
-            timeZone={WORK_LOG_TIME_ZONE}
+            timeZone={sitePreferences.timeZone}
           />
-          <CircleDot aria-hidden="true" className="size-4" />
         </span>
       </Row>
     </li>
@@ -223,7 +285,7 @@ function IssueRow({
 }
 
 function ActivityItem({ item }: Readonly<{ item: PublicGitHubActivityItem }>) {
-  return item.kind === "issue-opened" ? (
+  return item.kind === "issue" ? (
     <IssueRow item={item} />
   ) : (
     <WorkUnitRow item={item} />
@@ -283,9 +345,7 @@ function GitHubActivityDay({
   itemLimit,
 }: Readonly<{ day: PublicGitHubActivityDay; itemLimit?: number }>) {
   const repositoryCount = day.repositories.length;
-  const workUnits = day.repositories
-    .flatMap(({ items }) => items)
-    .filter((item) => item.kind !== "issue-opened");
+  const workUnits = day.repositories.flatMap(({ items }) => items);
   return (
     <section aria-labelledby={`activity-day-${day.day}`}>
       <header className="site-row min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring flex flex-wrap rounded-none border-y border-border py-2">
@@ -337,7 +397,7 @@ export function GitHubActivityDays({
   preview?: boolean;
   now: string;
 }>) {
-  const today = dateKey(now, WORK_LOG_TIME_ZONE);
+  const today = dateKey(now);
   const activeDays = getVisibleGitHubActivityDays(days, today);
   const visibleDays = preview ? activeDays.slice(0, 1) : activeDays;
   return (

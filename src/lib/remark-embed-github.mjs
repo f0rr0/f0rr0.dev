@@ -3,6 +3,7 @@ import { Buffer } from "node:buffer";
 import remarkEmbedderModule from "@remark-embedder/core";
 import { codeToHtml } from "shiki";
 
+import { sitePreferences } from "../content/site.ts";
 import { env } from "../env.ts";
 import { githubIconPaths } from "./github-icons.ts";
 
@@ -69,10 +70,10 @@ const languageByExtension = {
   zsh: "bash",
 };
 
-const dateFormatter = new Intl.DateTimeFormat("en", {
+const dateFormatter = new Intl.DateTimeFormat(sitePreferences.language, {
   day: "numeric",
   month: "short",
-  timeZone: "UTC",
+  timeZone: sitePreferences.timeZone,
   year: "numeric",
 });
 

@@ -499,6 +499,7 @@ export const buildPublicCodexStats = (
     return null;
   }
 
+  // Daily totals follow Codex's reporting dates.
   const today = now.toISOString().slice(0, 10);
   const missingAccountCount = Math.max(
     0,

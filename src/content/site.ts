@@ -4,7 +4,7 @@ export const sitePreferences = {
   description:
     "I build software, from the interfaces people use to the systems that power them. These days, that includes AI. I write about what I learn along the way.",
   language: "en-US",
-  workLogTimeZone: "Asia/Kolkata",
+  timeZone: "Asia/Kolkata",
 };
 
 // Public authors to include in the work log. Credentials never select authors.

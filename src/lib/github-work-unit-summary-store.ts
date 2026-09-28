@@ -26,7 +26,10 @@ import {
 } from "@/db/schema";
 import { env } from "@/env";
 import { fillSavedGitHubSummaries } from "@/lib/github-activity-snapshots";
-import { PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE } from "@/lib/github-activity-store";
+import {
+  githubIssueActivityDay,
+  PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE,
+} from "@/lib/github-activity-store";
 import { TRACKED_GITHUB_USER_IDS } from "@/lib/github-commits-core";
 import { GITHUB_SUMMARY_REQUEST_BUDGET } from "@/lib/github-cron-config";
 import { acquireGitHubWorkUnitProjectionLock } from "@/lib/github-work-unit-projection-state";
@@ -688,7 +691,6 @@ async function readInitialPageDays(transaction: SummaryTransaction) {
     inArray(githubWorkUnits.visibility, ["public", "private"]),
     inArray(githubRepositories.visibility, ["public", "private", "internal"])
   );
-  const issueDay = sql<string>`to_char(${githubIssues.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
   const [workDays, issueDays] = await Promise.all([
     transaction
       .selectDistinct({ day: githubWorkUnits.activityDay })
@@ -701,7 +703,7 @@ async function readInitialPageDays(transaction: SummaryTransaction) {
       .orderBy(desc(githubWorkUnits.activityDay))
       .limit(PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE),
     transaction
-      .selectDistinct({ day: issueDay })
+      .selectDistinct({ day: githubIssueActivityDay.as("day") })
       .from(githubIssues)
       .innerJoin(
         githubRepositories,
@@ -720,7 +722,7 @@ async function readInitialPageDays(transaction: SummaryTransaction) {
           ])
         )
       )
-      .orderBy(desc(issueDay))
+      .orderBy(({ day }) => desc(day))
       .limit(PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE),
   ]);
   return new Set(

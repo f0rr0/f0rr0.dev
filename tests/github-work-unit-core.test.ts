@@ -122,6 +122,12 @@ const pullRequest = (
   netOutcome: null,
   netOutcomeOwnedCompletely: true,
   nodeId,
+  display: {
+    title: "Example work",
+    status: overrides.state ?? "open",
+    statusChangedAt: "2026-08-29T12:00:00.000Z",
+    diff: null,
+  },
   snapshotKind: "current",
   state: "open",
   ...overrides,
@@ -141,7 +147,7 @@ const logicalKeyFrom = (item: GitHubLogicalChange) =>
   githubLogicalChangeKey(item.logicalRepositoryId, item.logicalSha);
 
 describe("deterministic GitHub work ownership", () => {
-  test("moving heads and closing a PR do not revise unchanged work", () => {
+  test("moving heads do not revise work; PR status changes do", () => {
     const work = change("c");
     const key = logicalKeyFrom(work);
     const foreign = change("d", { authorUserId: "200" });
@@ -174,7 +180,8 @@ describe("deterministic GitHub work ownership", () => {
         }),
       ],
     });
-    expect(merged.factsDigest).toBe(open.factsDigest);
+    expect(merged.factsDigest).not.toBe(open.factsDigest);
+    expect(merged.pullRequest?.status).toBe("merged");
     const [changed] = projection({
       changes: [{ ...work, additions: work.additions + 1 }],
       pullRequests: [pullRequest("PR_stable", [key])],
@@ -744,4 +751,119 @@ describe("deterministic GitHub work ownership", () => {
       ])
     ).toThrow("cycle");
   });
+});
+
+test("PR display uses one combined diff, preserves private access, and withholds totals for contributions", () => {
+  const first = change("a", { fileFacts: [file("src/file.ts", 100, 0)] });
+  const second = change("b", { fileFacts: [file("src/file.ts", 0, 80)] });
+  const pr = pullRequest("PR_net", [first, second].map(logicalKeyFrom), {
+    display: {
+      title: "Add search",
+      status: "open",
+      statusChangedAt: "2026-08-29T12:00:00.000Z",
+      diff: { additions: 20, deletions: 0, files: 1 },
+    },
+  });
+  const input = {
+    changes: [first, second],
+    pullRequests: [pr],
+    repositories: [repository("1", { visibility: "private" })],
+  };
+  const [own] = projection(input);
+  expect(own.pullRequest?.diff).toEqual({
+    additions: 20,
+    deletions: 0,
+    files: 1,
+  });
+  expect(own.visibility).toBe("private");
+  for (const override of [
+    { authorUserId: "200" },
+    { netOutcomeOwnedCompletely: false },
+  ]) {
+    const [contribution] = projection({
+      ...input,
+      pullRequests: [{ ...pr, ...override }],
+    });
+    expect(contribution.pullRequest?.diff).toBeNull();
+  }
+});
+
+test("a merge, close, reopen, and ready-for-review change the activity day without changing the code outcome", () => {
+  const work = change("a");
+  const pr = pullRequest("PR_status", [logicalKeyFrom(work)], {
+    netOutcome: {
+      complete: true,
+      providerFileCapReached: false,
+      files: work.fileFacts,
+    },
+  });
+  const [open] = projection({ changes: [work], pullRequests: [pr] });
+  for (const status of ["merged", "closed", "open", "draft"] as const) {
+    const [updated] = projection({
+      changes: [work],
+      pullRequests: [
+        {
+          ...pr,
+          state: status === "draft" ? "open" : status,
+          snapshotKind:
+            status === "merged" || status === "closed" ? "final" : "current",
+          display: {
+            ...pr.display,
+            status,
+            statusChangedAt: "2026-08-30T19:00:00.000Z",
+          },
+        },
+      ],
+    });
+    expect(updated.activityDay).toBe("2026-08-31");
+    expect(updated.activityAt).toBe("2026-08-30T19:00:00.000Z");
+    expect(updated.outcomeDigest).toBe(open.outcomeDigest);
+    expect(updated.activityAnchorAt).toBe(open.activityAnchorAt);
+  }
+});
+
+test("direct work groups on IST midnight, including across UTC midnight", () => {
+  for (const [times, days] of [
+    [
+      ["2026-09-28T18:29:59Z", "2026-09-28T18:30:00Z"],
+      ["2026-09-28", "2026-09-29"],
+    ],
+    [["2026-09-28T20:00:00Z", "2026-09-29T02:00:00Z"], ["2026-09-29"]],
+  ]) {
+    const changes = times.map((logicalActivityAt, index) =>
+      change(index ? "b" : "a", { logicalActivityAt })
+    );
+    const units = projection({
+      changes,
+      refs: [ref("refs/heads/main", changes.map(logicalKeyFrom))],
+    });
+    expect(units.map((unit) => unit.activityDay).toSorted()).toEqual(days);
+    expect(units.reduce((count, unit) => count + unit.members.length, 0)).toBe(
+      2
+    );
+  }
+});
+
+test("a PR refresh cannot temporarily relabel its commits as direct work", () => {
+  const work = change("a", { associatedPullRequestNodeIds: ["PR_pending"] });
+  const pr = pullRequest("PR_pending", [], { membershipComplete: false });
+  const input = {
+    changes: [work],
+    pullRequests: [pr],
+    refs: [ref("refs/heads/main", [logicalKeyFrom(work)])],
+  };
+  expect(projection(input)).toEqual([]);
+  expect(
+    projection({
+      ...input,
+      pullRequests: [pr, pullRequest("PR_other", [logicalKeyFrom(work)])],
+    })
+  ).toEqual([]);
+  // Complete evidence that the commit was removed permits ordinary ownership again.
+  expect(
+    projection({
+      ...input,
+      pullRequests: [{ ...pr, membershipComplete: true }],
+    })[0].kind
+  ).toBe("canonical_day");
 });

@@ -13,7 +13,10 @@ import {
   buildPublicCodexStats,
 } from "../src/lib/codex/stats";
 import { buildPublicGitHubActivityDays } from "../src/lib/github-activity-feed-core";
-import { githubSnapshotChanged } from "../src/lib/github-activity-snapshots";
+import {
+  githubSnapshotChanged,
+  mutableGitHubDay,
+} from "../src/lib/github-activity-snapshots";
 
 test("daily storage round-trips explicit zeros, gaps, source units and archived units", () => {
   const snapshot = createCodexAccountSnapshot({ stats: {} }, {});
@@ -82,7 +85,10 @@ test("daily storage round-trips explicit zeros, gaps, source units and archived 
     [{ snapshot: restored }],
     new Date("2026-09-27T12:00:00Z")
   );
-  expect(stats?.totals.todayTokens).toEqual({ value: 0, partial: false });
+  expect(stats?.history.values.at(-1)).toEqual({
+    day: "2026-09-27",
+    tokens: 0,
+  });
   expect(stats?.totals.last7Days).toEqual({ value: 200, partial: true });
 });
 
@@ -195,4 +201,68 @@ test("saved display days keep both sides of IST midnight in their own page", () 
     ["2026-09-28", 1],
     ["2026-09-27", 1],
   ]);
+});
+
+test("work keeps today and yesterday open across IST midnight and year boundaries", () => {
+  expect(mutableGitHubDay(new Date("2026-09-28T18:29:59Z"))).toBe("2026-09-27");
+  expect(mutableGitHubDay(new Date("2026-09-28T18:30:00Z"))).toBe("2026-09-28");
+  expect(mutableGitHubDay(new Date("2026-09-29T18:29:59Z"))).toBe("2026-09-28");
+  expect(mutableGitHubDay(new Date("2026-09-29T18:30:00Z"))).toBe("2026-09-29");
+  expect(mutableGitHubDay(new Date("2026-12-31T18:30:00Z"))).toBe("2026-12-31");
+});
+
+test("status transitions publish without a new code digest; title edits and status hydration do not repost", () => {
+  const before = saved("same-code");
+  const after = saved("same-code");
+  if (!("facts" in before.payload) || !("facts" in after.payload)) {
+    throw new Error("Expected work");
+  }
+  before.payload.pullRequest = {
+    title: "Search",
+    status: "open",
+    statusChangedAt: "2026-09-26T12:00:00Z",
+    diff: null,
+  };
+  after.payload.pullRequest = {
+    ...before.payload.pullRequest,
+    status: "merged",
+  };
+  expect(githubSnapshotChanged(before, after)).toBe(true);
+  after.payload.pullRequest = {
+    ...before.payload.pullRequest,
+    title: "Search and filters",
+  };
+  expect(githubSnapshotChanged(before, after)).toBe(false);
+  expect(githubSnapshotChanged(saved("same-code"), after)).toBe(false);
+  // A real new merge must publish even when the saved card predates PR status.
+  after.payload.pullRequest = {
+    ...before.payload.pullRequest,
+    status: "merged",
+    statusChangedAt: "2026-09-28T12:00:00Z",
+  };
+  expect(githubSnapshotChanged(saved("same-code"), after)).toBe(true);
+  const issue = {
+    ...before,
+    payload: {
+      day: before.day,
+      id: "issue:1",
+      activityAt: "2026-09-28T10:00:00Z",
+      repository: before.payload.repository,
+      destination: null,
+      title: "Search",
+      status: "open" as const,
+    },
+  };
+  expect(
+    githubSnapshotChanged(issue, {
+      ...issue,
+      payload: { ...issue.payload, status: "completed" },
+    })
+  ).toBe(true);
+  expect(
+    githubSnapshotChanged(issue, {
+      ...issue,
+      payload: { ...issue.payload, title: "New title" },
+    })
+  ).toBe(false);
 });

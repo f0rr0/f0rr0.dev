@@ -45,14 +45,14 @@ function historyAxis(
 
 function HistoryPlot({
   history,
-  today,
+  reportingDay,
   mode,
 }: {
   history: TokenHistory;
-  today: string;
+  reportingDay: string;
   mode: "daily" | "cumulative";
 }) {
-  const summary = summarizeTokenHistory(history, today);
+  const summary = summarizeTokenHistory(history, reportingDay);
   const rows = mode === "cumulative" ? summary.cumulativeRows : summary.rows;
   const { peak } = summary;
   const peakLabel =
@@ -121,9 +121,6 @@ function HistoryPlot({
                       ? "Usage unavailable"
                       : `${number.format(row.tokens)} ${mode === "cumulative" && summary.partial ? "recorded " : ""}tokens`}
                   </p>
-                  {row.day === today ? (
-                    <p className="text-muted-foreground">Today is incomplete</p>
-                  ) : null}
                 </div>
               ) : null;
             }}
@@ -203,12 +200,16 @@ function HistoryPlot({
 
 export function TokenHistoryChart({
   history,
-  today,
+  reportingDay,
 }: {
   history: TokenHistory;
-  today: string;
+  reportingDay: string;
 }) {
-  if (!history.values.some((row) => row.day <= today && row.tokens !== null)) {
+  if (
+    !history.values.some(
+      (row) => row.day <= reportingDay && row.tokens !== null
+    )
+  ) {
     return null;
   }
   return (
@@ -236,7 +237,11 @@ export function TokenHistoryChart({
       >
         {(["cumulative", "daily"] as const).map((mode) => (
           <TabsContent key={mode} value={mode}>
-            <HistoryPlot history={history} today={today} mode={mode} />
+            <HistoryPlot
+              history={history}
+              reportingDay={reportingDay}
+              mode={mode}
+            />
           </TabsContent>
         ))}
       </SiteSection>

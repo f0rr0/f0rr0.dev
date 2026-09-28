@@ -81,7 +81,7 @@ const readPublicViews = unstable_cache(
       ),
     };
   },
-  ["public-codex-views-v1", JSON.stringify(tokenPreferences)],
+  ["public-codex-views-v2", JSON.stringify(tokenPreferences)],
   { revalidate: 900, tags: ["public-codex-stats"] }
 );
 
