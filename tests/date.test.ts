@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
 
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+import { DateTime } from "../src/components/date-time";
 import { dateKey, formatDate } from "../src/lib/date.ts";
 
 test("date formatting handles UTC, local midnight, and daylight saving transitions", () => {
@@ -33,4 +37,20 @@ test("the site uses IST at midnight and year boundaries for every timestamp", ()
     "Jan 1, 2027, 12:00 AM"
   );
   expect(formatDate(new Date("2026-12-31T18:30:00Z"), "time")).toBe("12:00 AM");
+});
+
+test("timestamps have a stable server fallback and calendar dates stay date-only", () => {
+  const timestamp = renderToStaticMarkup(
+    createElement(DateTime, {
+      dateTime: "2026-12-31T18:30:00Z",
+      format: "dateTime",
+    })
+  );
+  expect(timestamp).toContain("Jan 1, 2027, 12:00 AM");
+  const calendar = renderToStaticMarkup(
+    createElement(DateTime, { dateTime: "2026-12-31" })
+  );
+  expect(calendar).toBe(
+    '<time dateTime="2026-12-31" title="Dec 31, 2026">Dec 31, 2026</time>'
+  );
 });
