@@ -3,8 +3,11 @@ export interface TokenHistory {
   values: { day: string; tokens: number | null }[];
 }
 
-export function summarizeTokenHistory(history: TokenHistory, today: string) {
-  const reported = history.values.filter((row) => row.day <= today);
+export function summarizeTokenHistory(
+  history: TokenHistory,
+  reportingDay: string
+) {
+  const reported = history.values.filter((row) => row.day <= reportingDay);
   const rows = reported.map((row) => ({ ...row, tokens: row.tokens ?? 0 }));
   let total = 0;
   const cumulativeRows: TokenHistory["values"] = [];

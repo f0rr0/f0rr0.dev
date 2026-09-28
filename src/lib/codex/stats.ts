@@ -175,7 +175,6 @@ export interface PublicCodexStats {
     longestRunningTurnSec: PublicCodexMetric;
     totalSkillsUsed: PublicCodexMetric;
     totalThreads: PublicCodexMetric;
-    todayTokens: PublicCodexMetric;
   };
 }
 
@@ -499,6 +498,7 @@ export const buildPublicCodexStats = (
     return null;
   }
 
+  // Codex supplies whole-day buckets, not timestamps we can regroup into IST.
   const today = now.toISOString().slice(0, 10);
   const missingAccountCount = Math.max(
     0,
@@ -705,10 +705,6 @@ export const buildPublicCodexStats = (
         ],
         sum
       ),
-      todayTokens: {
-        partial: dailyPartial,
-        value: hasKnownDaily ? (combinedDaily.get(today) ?? 0) : null,
-      },
     },
   };
 };

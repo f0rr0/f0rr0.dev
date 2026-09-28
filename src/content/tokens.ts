@@ -1,4 +1,4 @@
-import { siteNavigation, sitePreferences } from "@/content/site";
+import { siteNavigation } from "@/content/site";
 
 // Public presentation only. Account credentials stay in the existing server store.
 export interface TokenPreferences {
@@ -14,7 +14,6 @@ export interface TokenPreferences {
     delegation: boolean;
     limits: boolean;
   };
-  timeZone: string;
   historyDays: number;
   rankingLimit: number;
   accountLabels: Readonly<Record<string, string>>;
@@ -36,7 +35,6 @@ export const tokenPreferences: TokenPreferences = {
     delegation: true,
     limits: true,
   },
-  timeZone: sitePreferences.workLogTimeZone,
   historyDays: 365,
   rankingLimit: 5,
   accountLabels: {},

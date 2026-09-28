@@ -9,7 +9,7 @@ import {
   githubWorkUnits,
   githubWorkUnitSummaryAttempts,
 } from "@/db/schema";
-import { dateKey, WORK_LOG_TIME_ZONE } from "@/lib/date";
+import { dateKey } from "@/lib/date";
 import { readCurrentPublicGitHubRows } from "@/lib/github-activity-store";
 import { acquireGitHubWorkUnitProjectionLock } from "@/lib/github-work-unit-projection-state";
 import { decodeGitHubWorkUnitSummary } from "@/lib/github-work-unit-summary";
@@ -74,7 +74,7 @@ export const githubSnapshotChanged = (previous: Saved, next: Saved) => {
 
 // One hour for delayed ingestion. Only source activity from that day may fill it.
 export const mutableGitHubDay = (now: Date) =>
-  dateKey(new Date(now.getTime() - 60 * 60 * 1000), WORK_LOG_TIME_ZONE);
+  dateKey(new Date(now.getTime() - 60 * 60 * 1000));
 
 export const fillSavedGitHubSummaries = async (transaction: Transaction) => {
   // The queue owns the exact immutable input. Fill empty prose once, never use
@@ -151,7 +151,7 @@ export const publishGitHubActivitySnapshots = async (
     const bootstrap = !head?.initialized;
     const publicationRepositoryIds = bootstrap ? undefined : repositoryIds;
     const now = new Date();
-    const today = dateKey(now, WORK_LOG_TIME_ZONE);
+    const today = dateKey(now);
     const mutableStart = mutableGitHubDay(now);
     const scope = publicationRepositoryIds
       ? inArray(githubWorkUnits.repositoryId, [...publicationRepositoryIds])
@@ -194,7 +194,7 @@ export const publishGitHubActivitySnapshots = async (
     for (const row of [...rows.workUnits, ...rows.issues]) {
       const old = previous.get(row.id);
       const unit = byIdentity.get(row.id);
-      const day = dateKey(row.activityAt, WORK_LOG_TIME_ZONE);
+      const day = dateKey(row.activityAt);
       if (day > today || (!bootstrap && day < mutableStart)) {
         continue;
       }

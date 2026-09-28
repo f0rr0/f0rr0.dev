@@ -19,7 +19,10 @@ import {
   githubWorkUnits,
 } from "@/db/schema";
 import { publishGitHubActivitySnapshots } from "@/lib/github-activity-snapshots";
-import { PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE } from "@/lib/github-activity-store";
+import {
+  githubIssueActivityDay,
+  PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE,
+} from "@/lib/github-activity-store";
 import type {
   GitHubFileChangeStat,
   GitHubLanguageFact,
@@ -386,8 +389,6 @@ const readCurrentUnits = async (
     .orderBy(asc(githubWorkUnits.identityKey));
   return lock ? await query.for("update") : await query;
 };
-
-const issueDayFrom = (createdAt: Date) => createdAt.toISOString().slice(0, 10);
 
 const sortedUniqueDays = (days: readonly string[]) =>
   [...new Set(days)].toSorted((left, right) => bytewiseCompare(right, left));
@@ -1275,9 +1276,8 @@ const loadProjectionSnapshot = async (
       : projectGitHubWorkUnits(input, ownership, { outcomeDigests });
   const excludedChanges = excludedChangesFrom(input, units, ownership);
   const issueRows = await transaction
-    .select({
-      createdAt: githubIssues.createdAt,
-      visibility: githubRepositories.visibility,
+    .selectDistinct({
+      day: githubIssueActivityDay,
     })
     .from(githubIssues)
     .innerJoin(
@@ -1294,7 +1294,7 @@ const loadProjectionSnapshot = async (
         ])
       )
     );
-  const issueDays = issueRows.map((issue) => issueDayFrom(issue.createdAt));
+  const issueDays = issueRows.map((issue) => issue.day);
   return {
     currentUnits,
     input,

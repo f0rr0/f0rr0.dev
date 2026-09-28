@@ -104,9 +104,8 @@ const LimitBar = ({
 
 export function CodexTotals({ stats }: { stats: PublicCodexStats }) {
   return (
-    <TokenStatGrid>
+    <TokenStatGrid className="md:grid-cols-3">
       <Metric label="Lifetime tokens" metric={stats.totals.lifetimeTokens} />
-      <Metric label="Today (UTC)" metric={stats.totals.todayTokens} />
       <Metric label="Last 7 days" metric={stats.totals.last7Days} />
       <Metric label="Last 30 days" metric={stats.totals.last30Days} />
     </TokenStatGrid>
@@ -264,11 +263,7 @@ export function CodexUsageLimit({ stats }: { stats: PublicCodexStats }) {
                 <p className="mt-2 text-base text-muted-foreground">
                   Resets{" "}
                   <time dateTime={new Date(limit.resetAt * 1000).toISOString()}>
-                    {formatDate(
-                      new Date(limit.resetAt * 1000),
-                      "date",
-                      tokenPreferences.timeZone
-                    )}
+                    {formatDate(new Date(limit.resetAt * 1000), "date")}
                   </time>
                 </p>
               )}

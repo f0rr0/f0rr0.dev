@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { dateKey, WORK_LOG_TIME_ZONE } from "@/lib/date";
+import { dateKey } from "@/lib/date";
 import type { GitHubPullRequestDisplay } from "@/lib/github-activity-types";
 import { aggregateGitHubLanguages } from "@/lib/github-change-evidence";
 import type {
@@ -659,7 +659,7 @@ const chooseOwnerFor = (
   );
   if (canonicalRef !== undefined) {
     return {
-      activityDay: dateKey(change.logicalActivityAt, WORK_LOG_TIME_ZONE),
+      activityDay: dateKey(change.logicalActivityAt),
       kind: "canonical_day",
       ref: canonicalRef,
       repository,
@@ -802,7 +802,7 @@ const projectedUnitFrom = (
           owner.pullRequest.statusChangedAt,
         ])
       : activityAnchorAt;
-  const activityDay = dateKey(activityAt, WORK_LOG_TIME_ZONE);
+  const activityDay = dateKey(activityAt);
   const factsDigest = digestJson({
     activityAnchorAt,
     activityDay,

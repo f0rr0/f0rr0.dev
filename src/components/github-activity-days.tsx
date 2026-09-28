@@ -22,7 +22,7 @@ import {
   TooltipGroup,
   TooltipTrigger,
 } from "@/components/site-tooltip";
-import { dateKey, formatDate, WORK_LOG_TIME_ZONE } from "@/lib/date";
+import { dateKey, formatDate } from "@/lib/date";
 import { getVisibleGitHubActivityDays } from "@/lib/github-activity-feed-core";
 import type {
   PublicGitHubActivityDay,
@@ -210,7 +210,6 @@ function WorkUnitRow({
             className="whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
-            timeZone={WORK_LOG_TIME_ZONE}
           />
           <DisclosureChevron />
         </span>
@@ -278,7 +277,6 @@ function IssueRow({
             className="whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
-            timeZone={WORK_LOG_TIME_ZONE}
           />
         </span>
       </Row>
@@ -399,7 +397,7 @@ export function GitHubActivityDays({
   preview?: boolean;
   now: string;
 }>) {
-  const today = dateKey(now, WORK_LOG_TIME_ZONE);
+  const today = dateKey(now);
   const activeDays = getVisibleGitHubActivityDays(days, today);
   const visibleDays = preview ? activeDays.slice(0, 1) : activeDays;
   return (

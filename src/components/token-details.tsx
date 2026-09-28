@@ -373,7 +373,7 @@ export function TokenUsageDetails({
               </section>
               <TokenHistoryChart
                 history={stats.history}
-                today={stats.reportingDay}
+                reportingDay={stats.reportingDay}
               />
             </>
           ) : null}

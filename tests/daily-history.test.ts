@@ -85,7 +85,10 @@ test("daily storage round-trips explicit zeros, gaps, source units and archived 
     [{ snapshot: restored }],
     new Date("2026-09-27T12:00:00Z")
   );
-  expect(stats?.totals.todayTokens).toEqual({ value: 0, partial: false });
+  expect(stats?.history.values.at(-1)).toEqual({
+    day: "2026-09-27",
+    tokens: 0,
+  });
   expect(stats?.totals.last7Days).toEqual({ value: 200, partial: true });
 });
 

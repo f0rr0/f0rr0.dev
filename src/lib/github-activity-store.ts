@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 
+import { sitePreferences } from "@/content/site";
 import { getDatabase } from "@/db/client";
 import {
   githubActivitySnapshots,
@@ -10,7 +11,7 @@ import {
   githubWorkUnitSummaryAttempts,
   githubWorkUnits,
 } from "@/db/schema";
-import { dateKey, WORK_LOG_TIME_ZONE } from "@/lib/date";
+import { dateKey } from "@/lib/date";
 import { encodeGitHubActivityCursor } from "@/lib/github-activity-cursor";
 import type { GitHubActivityCursor } from "@/lib/github-activity-cursor";
 import { buildPublicGitHubActivityDays } from "@/lib/github-activity-feed-core";
@@ -208,7 +209,7 @@ const issueActivityAt =
   sql<Date>`coalesce(${githubIssues.activityAt}, ${githubIssues.createdAt})`.mapWith(
     githubIssues.createdAt
   );
-const issueDay = sql<string>`to_char(${issueActivityAt} AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD')`;
+export const githubIssueActivityDay = sql<string>`to_char(${issueActivityAt} AT TIME ZONE ${sitePreferences.timeZone}, 'YYYY-MM-DD')`;
 
 interface AvailableDays {
   hasNextPage: boolean;
@@ -316,7 +317,7 @@ export const readCurrentPublicGitHubRows = async (
       .select({
         activityAt: issueActivityAt,
         status: githubIssues.status,
-        day: issueDay,
+        day: githubIssueActivityDay,
         fullName: githubRepositories.fullName,
         nodeId: githubIssues.nodeId,
         number: githubIssues.number,
@@ -334,7 +335,7 @@ export const readCurrentPublicGitHubRows = async (
         and(
           options.sinceDay === undefined
             ? undefined
-            : gte(issueDay, options.sinceDay),
+            : gte(githubIssueActivityDay, options.sinceDay),
           options.repositoryIds
             ? inArray(githubIssues.repositoryId, [...options.repositoryIds])
             : undefined,
@@ -527,8 +528,8 @@ export const readCurrentPublicGitHubRows = async (
         url: `${repository.baseUrl}/commit/${row.newestCommitSha}`,
       };
     }
-    const firstDay = dateKey(row.firstActivityAt, WORK_LOG_TIME_ZONE);
-    const lastDay = dateKey(row.lastActivityAt, WORK_LOG_TIME_ZONE);
+    const firstDay = dateKey(row.firstActivityAt);
+    const lastDay = dateKey(row.lastActivityAt);
     const summary =
       currentSummaries.get(row.id) ?? fallbackSummaries.get(row.id);
     return {

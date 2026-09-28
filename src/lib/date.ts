@@ -1,6 +1,6 @@
 import { sitePreferences } from "@/content/site";
 
-export const WORK_LOG_TIME_ZONE = sitePreferences.workLogTimeZone;
+const calendarDate = /^\d{4}-\d{2}-\d{2}$/u;
 
 export const dateFormats = {
   date: { dateStyle: "medium" },
@@ -13,13 +13,6 @@ export const dateFormats = {
   day: { dateStyle: "full" },
   month: { month: "short" },
   time: { hour: "numeric", minute: "2-digit", hour12: true },
-  clock: {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-    timeZoneName: "short",
-  },
   dateTime: { dateStyle: "medium", timeStyle: "short", hour12: true },
 } satisfies Record<string, Intl.DateTimeFormatOptions>;
 
@@ -28,22 +21,29 @@ const dateFormatters = new Map<string, Intl.DateTimeFormat>();
 export const formatDate = (
   value: Date | string,
   format: keyof typeof dateFormats = "date",
-  timeZone = "UTC"
+  timeZone = sitePreferences.timeZone
 ) => {
-  const key = `${format}:${timeZone}`;
+  // A provider's calendar date has no clock to convert.
+  const zone =
+    typeof value === "string" && calendarDate.test(value) ? "UTC" : timeZone;
+  const key = `${format}:${zone}`;
   const formatter =
     dateFormatters.get(key) ??
     new Intl.DateTimeFormat(sitePreferences.language, {
       ...dateFormats[format],
-      timeZone,
+      timeZone: zone,
     });
   dateFormatters.set(key, formatter);
   return formatter.format(new Date(value));
 };
 
-export const dateKey = (value: Date | string, timeZone = "UTC") =>
+export const dateKey = (
+  value: Date | string,
+  timeZone = sitePreferences.timeZone
+) =>
   new Intl.DateTimeFormat("en-CA", {
-    timeZone,
+    timeZone:
+      typeof value === "string" && calendarDate.test(value) ? "UTC" : timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

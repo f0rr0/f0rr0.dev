@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { GitHubActivityDays } from "../src/components/github-activity-days";
-import { dateKey, WORK_LOG_TIME_ZONE } from "../src/lib/date";
+import { dateKey } from "../src/lib/date";
 import { buildPublicGitHubActivityDays } from "../src/lib/github-activity-feed-core";
 
 test("the initial homepage HTML includes saved IST work across UTC midnight without adding PR totals", () => {
@@ -17,7 +17,7 @@ test("the initial homepage HTML includes saved IST work across UTC midnight with
     ].map(([id, activityAt, count, additions, deletions]) => ({
       id: String(id),
       activityAt: String(activityAt),
-      day: dateKey(String(activityAt), WORK_LOG_TIME_ZONE),
+      day: dateKey(String(activityAt)),
       destination:
         id === "site"
           ? {
