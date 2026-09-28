@@ -5,7 +5,10 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Client } from "pg";
 
-import { administrationDatabaseUrl } from "../src/db/connection";
+import {
+  administrationDatabaseUrl,
+  postgresConnectionOptions,
+} from "../src/db/connection";
 import { env } from "../src/env";
 import { reportOperationalError } from "../src/lib/operational-error";
 
@@ -48,7 +51,7 @@ export const productionMigrationDatabaseUrl = (environment: Environment) =>
 const migrateDatabase = async (databaseUrl: string) => {
   // The lock and every migration use this same session. Closing it releases the lock.
   const client = new Client({
-    connectionString: databaseUrl,
+    ...postgresConnectionOptions(databaseUrl),
     application_name: "f0rr0.dev:migrations",
     connectionTimeoutMillis: 10_000,
   });

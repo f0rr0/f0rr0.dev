@@ -1,3 +1,9 @@
+import { supabaseCa } from "./supabase-ca";
+
+const isSupabaseHost = (hostname: string) =>
+  hostname.endsWith(".pooler.supabase.com") ||
+  hostname.endsWith(".supabase.co");
+
 const parseDatabaseUrl = (value: string | undefined, name: string) => {
   if (value === undefined || value.trim().length === 0) {
     throw new Error(`${name} is not configured.`);
@@ -16,11 +22,7 @@ const parseDatabaseUrl = (value: string | undefined, name: string) => {
 
 export const runtimeDatabaseUrl = (value: string) => {
   const url = parseDatabaseUrl(value, "DATABASE_URL");
-  if (
-    (url.hostname.endsWith(".pooler.supabase.com") ||
-      url.hostname.endsWith(".supabase.co")) &&
-    url.port !== "6543"
-  ) {
+  if (isSupabaseHost(url.hostname) && url.port !== "6543") {
     throw new Error(
       "DATABASE_URL must use the Supabase transaction pooler (port 6543). Copy its URL from the Connect panel."
     );
@@ -39,4 +41,22 @@ export const administrationDatabaseUrl = (environment: {
     );
   }
   return value;
+};
+
+export const postgresConnectionOptions = (connectionString: string) => {
+  const url = parseDatabaseUrl(connectionString, "Database URL");
+  if (
+    !isSupabaseHost(url.hostname) ||
+    ["ssl", "sslrootcert", "sslcert", "sslkey", "sslnegotiation"].some((key) =>
+      url.searchParams.has(key)
+    )
+  ) {
+    return { connectionString };
+  }
+  // pg lets URL SSL parameters replace the entire ssl object, including its CA.
+  url.searchParams.delete("sslmode");
+  return {
+    connectionString: url.toString(),
+    ssl: { ca: supabaseCa, rejectUnauthorized: true },
+  };
 };

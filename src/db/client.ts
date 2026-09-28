@@ -2,7 +2,7 @@ import { attachDatabasePool } from "@vercel/functions";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
-import { runtimeDatabaseUrl } from "@/db/connection";
+import { postgresConnectionOptions, runtimeDatabaseUrl } from "@/db/connection";
 import * as schema from "@/db/schema";
 import { env } from "@/env";
 import { reportOperationalError } from "@/lib/operational-error";
@@ -37,7 +37,7 @@ export const getDatabase = () => {
   }
 
   const client = new Pool({
-    connectionString: runtimeDatabaseUrl(databaseUrl),
+    ...postgresConnectionOptions(runtimeDatabaseUrl(databaseUrl)),
     application_name: "f0rr0.dev:app",
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 5000,
