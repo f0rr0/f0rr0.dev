@@ -85,6 +85,7 @@ test("work uses accessible status icons, PR totals and useful title fallbacks; i
       pullRequest: {
         title: "Add filtering",
         status: status as "open" | "draft" | "merged" | "closed",
+        statusChangedAt: "2026-09-28T12:00:00Z",
         diff: { additions: 20, deletions: 0, files: 1 },
       },
     })),

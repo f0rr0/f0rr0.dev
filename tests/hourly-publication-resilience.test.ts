@@ -23,6 +23,11 @@ test("publication keeps source dates through delayed syncs, metadata revisions a
       work("canonical:1:2026-08-04", "2026-08-04T09:05:36Z"),
       work("late", "2026-09-28T18:29:59Z"),
       work("changed-pr", "2026-09-28T18:30:00Z", 240),
+      ...["legacy-merge", "status-hydration"].map(id => ({
+        ...work(id, "2026-09-28T18:00:00Z"),
+        pullRequest: { status: "merged", statusChangedAt: id === "legacy-merge"
+          ? "2026-09-28T18:00:00Z" : "2026-09-01T12:00:00Z" },
+      })),
       work("future", "2026-09-29T18:30:00Z"),
     ];
     const units = rows.map(row => ({
@@ -34,7 +39,9 @@ test("publication keeps source dates through delayed syncs, metadata revisions a
     }, {
       identityKey: "changed-pr", day: "2026-09-28",
       payload: work("changed-pr", "2026-09-28T12:00:00Z"),
-    }];
+    }, ...["legacy-merge", "status-hydration"].map(id => ({
+      identityKey: id, day: "2026-09-27", payload: work(id, "2026-09-27T12:00:00Z"),
+    }))];
     const issue = { id: "late-issue", activityAt: "2026-09-28T18:29:59Z", repository: { key: "1" } };
     const writes = [];
     const query = result => {
@@ -48,6 +55,12 @@ test("publication keeps source dates through delayed syncs, metadata revisions a
       select: () => ({ from: table => query(table === githubPublicFeedHead
         ? [{ initialized: new Date("2026-09-27") }] : table === githubWorkUnits ? units : []) }),
       selectDistinctOn: () => ({ from: () => query(previous) }),
+      execute: async sql => {
+        const cleanup = new PgDialect().sqlToQuery(sql);
+        assert.ok(cleanup.sql.includes("s.day between $1::date and $2::date"));
+        assert.deepEqual(cleanup.params, ["2026-09-28", "2026-09-29", '["1"]', '["2"]']);
+        return { rows: [] };
+      },
       insert: table => ({ values: value => ({ onConflictDoUpdate: options => ({ returning: async () => {
         assert.equal(table, githubActivitySnapshots);
         const condition = new PgDialect().sqlToQuery(options.setWhere);
@@ -62,10 +75,11 @@ test("publication keeps source dates through delayed syncs, metadata revisions a
     mock.module("./src/lib/github-work-unit-projection-state.ts", () => ({ acquireGitHubWorkUnitProjectionLock: async () => {} }));
     mock.module("./src/lib/github-activity-store.ts", () => ({ readCurrentPublicGitHubRows: async () => ({ workUnits: rows, issues: [issue] }) }));
     const { publishGitHubActivitySnapshots } = await import("./src/lib/github-activity-snapshots.ts");
-    await publishGitHubActivitySnapshots();
+    await publishGitHubActivitySnapshots(["1"], ["2"]);
     assert.deepEqual(writes.map(row => [row.identityKey, row.day, row.payload.activityAt]), [
       ["late", "2026-09-28", "2026-09-28T18:29:59Z"],
       ["changed-pr", "2026-09-29", "2026-09-28T18:30:00Z"],
+      ["legacy-merge", "2026-09-28", "2026-09-28T18:00:00Z"],
       ["late-issue", "2026-09-28", "2026-09-28T18:29:59Z"],
     ]);
     assert.equal(writes[1].payload.facts.additions, 240);
@@ -206,7 +220,16 @@ test("public reads retain successful snapshots on outage and recover without cac
     const entries = new Map();
     let stale = false;
     const incrementalCache = {
-      generateSimpleCacheKey: async key => key,
+      generateSimpleCacheKey: async key => {
+        if (key.includes("public-github-activity-initial-")) {
+          // A persistent cache from the previous deployment must never reach the new UI.
+          entries.set(key.replace(/initial-v[0-9]+/, "initial-v3"), {
+            kind: "FETCH", revalidate: 60,
+            data: { headers: {}, status: 200, url: "", body: '{"version":"old-issue-format"}' },
+          });
+        }
+        return key;
+      },
       get: async key => entries.has(key) ? { value: entries.get(key), isStale: stale } : null,
       set: async (key, value) => { entries.set(key, value); },
     };
@@ -219,7 +242,7 @@ test("public reads retain successful snapshots on outage and recover without cac
       return result;
     };
     assert.deepEqual(await request(), [null, null]);
-    assert.equal(entries.size, 0);
+    assert.equal(entries.size, 1);
     unavailable = false;
     assert.deepEqual(await request(), [{ version: 1 }, { version: 1 }]);
     const afterFill = reads;
@@ -231,7 +254,7 @@ test("public reads retain successful snapshots on outage and recover without cac
     console.error = (...args) => errors.push(args);
     assert.deepEqual(await request(), [{ version: 1 }, { version: 1 }]);
     assert.equal(errors.length, 3);
-    assert.equal(entries.size, 3);
+    assert.equal(entries.size, 4);
     unavailable = false;
     version = 2;
     assert.deepEqual(await request(), [{ version: 1 }, { version: 1 }]);

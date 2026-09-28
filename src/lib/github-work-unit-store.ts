@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import { and, asc, eq, exists, inArray, isNotNull, or, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
@@ -1078,6 +1080,11 @@ const loadProjectionSnapshot = async (
       display: {
         title: row.title,
         status: row.state === "open" && row.draft ? "draft" : row.state,
+        statusChangedAt: (
+          row.statusChangedAt ??
+          row.terminalAt ??
+          row.createdAt
+        ).toISOString(),
         diff:
           row.fileFactsComplete &&
           row.additions !== null &&
@@ -1090,11 +1097,6 @@ const loadProjectionSnapshot = async (
               }
             : null,
       },
-      statusChangedAt: (
-        row.statusChangedAt ??
-        row.terminalAt ??
-        row.createdAt
-      ).toISOString(),
       snapshotKind: row.state === "open" ? "current" : "final",
       state: row.state,
     });
@@ -1454,8 +1456,7 @@ const publicPayloadChanged = (
   current.memberCount !== projected.facts.memberCount ||
   current.newestCommitSha !== projected.newestCommitSha ||
   current.outcomeDigest !== projected.outcomeDigest ||
-  JSON.stringify(current.pullRequest) !==
-    JSON.stringify(projected.pullRequest) ||
+  !isDeepStrictEqual(current.pullRequest, projected.pullRequest) ||
   current.pullRequestNodeId !== projected.pullRequestNodeId ||
   current.repositoryId !== projected.repositoryId ||
   current.visibility !== projected.visibility;

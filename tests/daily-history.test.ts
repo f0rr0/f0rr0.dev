@@ -203,11 +203,12 @@ test("saved display days keep both sides of IST midnight in their own page", () 
   ]);
 });
 
-test("work freezes one hour after IST midnight", () => {
-  expect(mutableGitHubDay(new Date("2026-09-28T18:29:59Z"))).toBe("2026-09-28");
+test("work keeps today and yesterday open across IST midnight and year boundaries", () => {
+  expect(mutableGitHubDay(new Date("2026-09-28T18:29:59Z"))).toBe("2026-09-27");
   expect(mutableGitHubDay(new Date("2026-09-28T18:30:00Z"))).toBe("2026-09-28");
-  expect(mutableGitHubDay(new Date("2026-09-28T19:29:59Z"))).toBe("2026-09-28");
-  expect(mutableGitHubDay(new Date("2026-09-28T19:30:00Z"))).toBe("2026-09-29");
+  expect(mutableGitHubDay(new Date("2026-09-29T18:29:59Z"))).toBe("2026-09-28");
+  expect(mutableGitHubDay(new Date("2026-09-29T18:30:00Z"))).toBe("2026-09-29");
+  expect(mutableGitHubDay(new Date("2026-12-31T18:30:00Z"))).toBe("2026-12-31");
 });
 
 test("status transitions publish without a new code digest; title edits and status hydration do not repost", () => {
@@ -216,7 +217,12 @@ test("status transitions publish without a new code digest; title edits and stat
   if (!("facts" in before.payload) || !("facts" in after.payload)) {
     throw new Error("Expected work");
   }
-  before.payload.pullRequest = { title: "Search", status: "open", diff: null };
+  before.payload.pullRequest = {
+    title: "Search",
+    status: "open",
+    statusChangedAt: "2026-09-26T12:00:00Z",
+    diff: null,
+  };
   after.payload.pullRequest = {
     ...before.payload.pullRequest,
     status: "merged",
@@ -228,6 +234,13 @@ test("status transitions publish without a new code digest; title edits and stat
   };
   expect(githubSnapshotChanged(before, after)).toBe(false);
   expect(githubSnapshotChanged(saved("same-code"), after)).toBe(false);
+  // A real new merge must publish even when the saved card predates PR status.
+  after.payload.pullRequest = {
+    ...before.payload.pullRequest,
+    status: "merged",
+    statusChangedAt: "2026-09-28T12:00:00Z",
+  };
+  expect(githubSnapshotChanged(saved("same-code"), after)).toBe(true);
   const issue = {
     ...before,
     payload: {

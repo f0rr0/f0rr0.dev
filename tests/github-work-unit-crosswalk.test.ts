@@ -92,8 +92,12 @@ const pullRequest = ({
   netOutcome: null,
   netOutcomeOwnedCompletely: false,
   nodeId,
-  display: { title: "Example work", status: "open", diff: null },
-  statusChangedAt: "2026-08-29T12:00:00.000Z",
+  display: {
+    title: "Example work",
+    status: "open",
+    statusChangedAt: "2026-08-29T12:00:00.000Z",
+    diff: null,
+  },
   snapshotKind: "current",
   state: "open",
 });

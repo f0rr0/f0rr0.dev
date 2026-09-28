@@ -30,12 +30,14 @@ export const githubSnapshotChanged = (previous: Saved, next: Saved) => {
     "facts" in previous.payload
       ? previous.payload.pullRequest?.status
       : undefined;
-  const nextStatus =
-    "facts" in next.payload ? next.payload.pullRequest?.status : undefined;
+  const nextPullRequest =
+    "facts" in next.payload ? next.payload.pullRequest : undefined;
   if (
-    previousStatus !== undefined &&
-    nextStatus !== undefined &&
-    previousStatus !== nextStatus
+    nextPullRequest &&
+    previousStatus !== nextPullRequest.status &&
+    (previousStatus !== undefined ||
+      Date.parse(nextPullRequest.statusChangedAt) >
+        Date.parse(previous.payload.activityAt))
   ) {
     return true;
   }
@@ -72,9 +74,9 @@ export const githubSnapshotChanged = (previous: Saved, next: Saved) => {
   );
 };
 
-// One hour for delayed ingestion. Only source activity from that day may fill it.
+// Today and yesterday can change; older source activity stays frozen.
 export const mutableGitHubDay = (now: Date) =>
-  dateKey(new Date(now.getTime() - 60 * 60 * 1000));
+  dateKey(new Date(now.getTime() - 24 * 60 * 60 * 1000));
 
 export const fillSavedGitHubSummaries = async (transaction: Transaction) => {
   // The queue owns the exact immutable input. Fill empty prose once, never use
@@ -139,9 +141,9 @@ export const fillSavedGitHubSummaries = async (transaction: Transaction) => {
 
 export const publishGitHubActivitySnapshots = async (
   repositoryIds?: readonly string[],
-  preserveTodayRepositories: readonly string[] = []
+  preserveRepositories: readonly string[] = []
 ) =>
-  // oxlint-disable-next-line eslint/complexity -- One locked publication transaction keeps bootstrap, immutable history and today-only replacement atomic.
+  // oxlint-disable-next-line eslint/complexity -- One locked publication transaction keeps bootstrap, immutable history and mutable-day replacement atomic.
   await getDatabase().transaction(async (transaction) => {
     await acquireGitHubWorkUnitProjectionLock(transaction);
     const [head] = await transaction
@@ -281,9 +283,9 @@ export const publishGitHubActivitySnapshots = async (
     }
     if (!bootstrap && repositoryIds !== undefined && repositoryIds.length > 0) {
       const removed = await transaction.execute(sql`
-      delete from ${githubActivitySnapshots} s where s.day = ${today}::date and s.work_unit_id is not null
+      delete from ${githubActivitySnapshots} s where s.day between ${mutableStart}::date and ${today}::date and s.work_unit_id is not null
         and s.repository_id in (select jsonb_array_elements_text(${JSON.stringify(repositoryIds)}::jsonb))
-        and not (s.repository_id in (select jsonb_array_elements_text(${JSON.stringify(preserveTodayRepositories)}::jsonb)))
+        and not (s.repository_id in (select jsonb_array_elements_text(${JSON.stringify(preserveRepositories)}::jsonb)))
         and not exists (select 1 from ${githubWorkUnits} w where w.identity_key = s.identity_key)
       returning s.day
     `);

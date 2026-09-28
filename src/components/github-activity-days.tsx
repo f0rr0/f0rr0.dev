@@ -31,7 +31,7 @@ import type {
   PublicGitHubActivityRepository,
   PublicGitHubActivityRepositoryGroup,
   PublicGitHubWorkUnitActivity,
-  PublicGitHubWorkUnitFacts,
+  GitHubPullRequestDisplay,
 } from "@/lib/github-activity-types";
 import { githubIconPaths } from "@/lib/github-icons";
 
@@ -106,11 +106,8 @@ function RepositoryIdentity({
 function DiffCounters({
   facts,
 }: Readonly<{
-  facts: Pick<PublicGitHubWorkUnitFacts, "additions" | "deletions">;
+  facts: NonNullable<GitHubPullRequestDisplay["diff"]>;
 }>) {
-  if (facts.additions === null || facts.deletions === null) {
-    return null;
-  }
   return (
     <span className="inline-flex items-center gap-2 text-sm text-muted-foreground tabular-nums">
       <span className="text-[light-dark(oklch(0.48_0.12_155),oklch(0.75_0.13_155))]">

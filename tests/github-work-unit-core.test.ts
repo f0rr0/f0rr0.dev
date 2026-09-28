@@ -125,9 +125,9 @@ const pullRequest = (
   display: {
     title: "Example work",
     status: overrides.state ?? "open",
+    statusChangedAt: "2026-08-29T12:00:00.000Z",
     diff: null,
   },
-  statusChangedAt: "2026-08-29T12:00:00.000Z",
   snapshotKind: "current",
   state: "open",
   ...overrides,
@@ -760,6 +760,7 @@ test("PR display uses one combined diff, preserves private access, and withholds
     display: {
       title: "Add search",
       status: "open",
+      statusChangedAt: "2026-08-29T12:00:00.000Z",
       diff: { additions: 20, deletions: 0, files: 1 },
     },
   });
@@ -806,8 +807,11 @@ test("a merge, close, reopen, and ready-for-review change the activity day witho
           state: status === "draft" ? "open" : status,
           snapshotKind:
             status === "merged" || status === "closed" ? "final" : "current",
-          display: { ...pr.display, status },
-          statusChangedAt: "2026-08-30T19:00:00.000Z",
+          display: {
+            ...pr.display,
+            status,
+            statusChangedAt: "2026-08-30T19:00:00.000Z",
+          },
         },
       ],
     });

@@ -32,6 +32,7 @@ export interface PublicGitHubWorkUnitFacts {
 export interface GitHubPullRequestDisplay {
   title: string;
   status: "open" | "draft" | "merged" | "closed";
+  statusChangedAt: string;
   // Null for a contribution to someone else's PR or incomplete evidence.
   diff: { additions: number; deletions: number; files: number } | null;
 }

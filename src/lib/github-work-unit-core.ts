@@ -72,7 +72,6 @@ export interface GitHubPullRequestProjectionEvidence {
   netOutcomeOwnedCompletely: boolean;
   nodeId: string;
   display: GitHubPullRequestDisplay;
-  statusChangedAt: string;
   snapshotKind: "current" | "final";
   state: "closed" | "merged" | "open";
 }
@@ -799,7 +798,7 @@ const projectedUnitFrom = (
       ? maxInstant([
           activityAnchorAt,
           owner.pullRequest.createdAt,
-          owner.pullRequest.statusChangedAt,
+          owner.pullRequest.display.statusChangedAt,
         ])
       : activityAnchorAt;
   const activityDay = dateKey(activityAt);
