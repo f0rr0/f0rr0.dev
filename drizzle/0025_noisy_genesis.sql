@@ -1,5 +1,8 @@
 SELECT pg_advisory_xact_lock(hashtext('github-work-unit-projection-v1'));
 --> statement-breakpoint
+-- Repair remains valid after the duplicate day closes. Drizzle runs this atomically.
+ALTER TABLE github_activity_snapshots DISABLE TRIGGER protect_github_activity_history;
+--> statement-breakpoint
 -- A metadata-only revision reposted old canonical work on the publication day.
 -- Keep its original snapshot and remove only a later copy with identical facts.
 WITH removed AS (
@@ -22,3 +25,5 @@ UPDATE github_public_feed_head SET
   head_content_revision = head_content_revision + 1,
   last_published_at = clock_timestamp()
 WHERE id = true AND EXISTS (SELECT 1 FROM removed);
+--> statement-breakpoint
+ALTER TABLE github_activity_snapshots ENABLE TRIGGER protect_github_activity_history;
