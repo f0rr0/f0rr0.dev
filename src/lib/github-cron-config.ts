@@ -5,7 +5,7 @@ export const GITHUB_EVENTS_CRON_JOB = {
 
 export const GITHUB_WORKER_CRON_JOB = {
   name: "github-activity-worker-every-five-minutes",
-  // The first worker run also publishes; the remaining runs only ingest.
+  // All workers publish dirty repositories after ingestion.
   schedule: "7-57/5 * * * *",
 } as const;
 

@@ -59,3 +59,64 @@ test("the initial homepage HTML includes saved IST work across UTC midnight with
   expect(html).toContain("5:08 AM");
   expect(html).not.toContain("yesterday");
 });
+
+test("work uses accessible status icons, PR totals and useful title fallbacks; issues count as updates", () => {
+  const repository = { key: "1", label: "Private", url: null, avatarUrl: null };
+  const days = buildPublicGitHubActivityDays({
+    days: ["2026-09-28"],
+    workUnits: ["open", "draft", "merged", "closed"].map((status) => ({
+      activityAt: "2026-09-28T12:00:00Z",
+      day: "2026-09-28",
+      destination: null,
+      id: status,
+      kind: "pull-request" as const,
+      headline: null,
+      summary: null,
+      summarizing: false,
+      repository,
+      facts: {
+        additions: 100,
+        deletions: 80,
+        ownedCommitCount: 2,
+        uniqueFileCount: 1,
+        languages: null,
+        dateRange: null,
+      },
+      pullRequest: {
+        title: "Add filtering",
+        status: status as "open" | "draft" | "merged" | "closed",
+        diff: { additions: 20, deletions: 0, files: 1 },
+      },
+    })),
+    issues: ["open", "completed", "not-planned", "closed"].map((status) => ({
+      activityAt: "2026-09-28T12:00:00Z",
+      day: "2026-09-28",
+      destination: null,
+      id: `issue-${status}`,
+      title: "Improve filtering",
+      repository,
+      status: status as "open" | "completed" | "not-planned" | "closed",
+    })),
+  });
+  const html = renderToStaticMarkup(
+    <GitHubActivityDays days={days} now="2026-09-28T12:00:00Z" />
+  );
+  for (const label of [
+    "Pull request open",
+    "Pull request draft",
+    "Pull request merged",
+    "Pull request closed",
+    "Issue open",
+    "Issue completed",
+    "Issue closed as not planned",
+    "Issue closed",
+    "Add filtering",
+    "PR total",
+    "8 updates across 1 repo",
+  ]) {
+    expect(html).toContain(label);
+  }
+  expect(html).not.toContain("+100");
+  expect(html).not.toContain("−80");
+  expect(html).not.toContain("Direct canonical");
+});

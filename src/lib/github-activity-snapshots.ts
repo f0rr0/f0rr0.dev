@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import {
@@ -19,7 +19,26 @@ type Transaction = Parameters<
   Parameters<ReturnType<typeof getDatabase>["transaction"]>[0]
 >[0];
 
+// oxlint-disable-next-line eslint/complexity -- Compare status and code independently so metadata cannot masquerade as another day of work.
 export const githubSnapshotChanged = (previous: Saved, next: Saved) => {
+  if (!("facts" in previous.payload) && !("facts" in next.payload)) {
+    return (
+      (previous.payload.status ?? "open") !== (next.payload.status ?? "open")
+    );
+  }
+  const previousStatus =
+    "facts" in previous.payload
+      ? previous.payload.pullRequest?.status
+      : undefined;
+  const nextStatus =
+    "facts" in next.payload ? next.payload.pullRequest?.status : undefined;
+  if (
+    previousStatus !== undefined &&
+    nextStatus !== undefined &&
+    previousStatus !== nextStatus
+  ) {
+    return true;
+  }
   if (previous.attributionMode !== next.attributionMode) {
     return true;
   }
@@ -52,6 +71,10 @@ export const githubSnapshotChanged = (previous: Saved, next: Saved) => {
     !isDeepStrictEqual(previous.payload.facts, next.payload.facts)
   );
 };
+
+// One hour for delayed ingestion. Only source activity from that day may fill it.
+export const mutableGitHubDay = (now: Date) =>
+  dateKey(new Date(now.getTime() - 60 * 60 * 1000), WORK_LOG_TIME_ZONE);
 
 export const fillSavedGitHubSummaries = async (transaction: Transaction) => {
   // The queue owns the exact immutable input. Fill empty prose once, never use
@@ -129,6 +152,7 @@ export const publishGitHubActivitySnapshots = async (
     const publicationRepositoryIds = bootstrap ? undefined : repositoryIds;
     const now = new Date();
     const today = dateKey(now, WORK_LOG_TIME_ZONE);
+    const mutableStart = mutableGitHubDay(now);
     const scope = publicationRepositoryIds
       ? inArray(githubWorkUnits.repositoryId, [...publicationRepositoryIds])
       : undefined;
@@ -144,37 +168,34 @@ export const publishGitHubActivitySnapshots = async (
         attributionMode: githubWorkUnits.attributionMode,
       })
       .from(githubWorkUnits)
-      .where(scope);
+      .where(
+        and(
+          scope,
+          bootstrap ? undefined : gte(githubWorkUnits.activityDay, mutableStart)
+        )
+      );
     const byIdentity = new Map(units.map((unit) => [unit.identityKey, unit]));
+    const rows = await readCurrentPublicGitHubRows(transaction, {
+      repositoryIds: publicationRepositoryIds,
+      exactSummary: !bootstrap,
+      sinceDay: bootstrap ? undefined : mutableStart,
+    });
+    const identities = [...rows.workUnits, ...rows.issues].map((row) => row.id);
     const latest = await transaction
       .selectDistinctOn([githubActivitySnapshots.identityKey])
       .from(githubActivitySnapshots)
-      .where(
-        publicationRepositoryIds
-          ? inArray(githubActivitySnapshots.repositoryId, [
-              ...publicationRepositoryIds,
-            ])
-          : undefined
-      )
+      .where(inArray(githubActivitySnapshots.identityKey, identities))
       .orderBy(
         githubActivitySnapshots.identityKey,
         desc(githubActivitySnapshots.day)
       );
     const previous = new Map(latest.map((row) => [row.identityKey, row]));
-    const rows = await readCurrentPublicGitHubRows(transaction, {
-      repositoryIds: publicationRepositoryIds,
-      exactSummary: !bootstrap,
-    });
     let changed = false;
     for (const row of [...rows.workUnits, ...rows.issues]) {
       const old = previous.get(row.id);
       const unit = byIdentity.get(row.id);
-      const isIssue = !("facts" in row);
-      if (isIssue && old) {
-        continue;
-      }
       const day = dateKey(row.activityAt, WORK_LOG_TIME_ZONE);
-      if (day > today) {
+      if (day > today || (!bootstrap && day < mutableStart)) {
         continue;
       }
       const next: Saved = {
@@ -194,7 +215,21 @@ export const publishGitHubActivitySnapshots = async (
         },
         recordedAt: now,
       };
-      if (old && !githubSnapshotChanged(old, next)) {
+      if (
+        typeof old?.outcomeDigest === "string" &&
+        typeof next.outcomeDigest !== "string"
+      ) {
+        continue;
+      }
+      if (
+        old &&
+        !githubSnapshotChanged(old, next) &&
+        !(
+          old.day === day &&
+          day >= mutableStart &&
+          !isDeepStrictEqual(old.payload, next.payload)
+        )
+      ) {
         // Seed/advance the comparison digest without changing historical display.
         // Bind late prose only to the exact revision originally saved.
         const metadata = {
@@ -236,7 +271,10 @@ export const publishGitHubActivitySnapshots = async (
                 githubActivitySnapshots.identityKey,
               ],
               set: next,
-              setWhere: eq(githubActivitySnapshots.day, today),
+              setWhere: and(
+                gte(githubActivitySnapshots.day, mutableStart),
+                sql`(${githubActivitySnapshots.payload}->>'activityAt')::timestamptz <= ${row.activityAt}::timestamptz`
+              ),
             })
             .returning({ day: githubActivitySnapshots.day });
       changed ||= written.length > 0;

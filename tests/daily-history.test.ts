@@ -13,7 +13,10 @@ import {
   buildPublicCodexStats,
 } from "../src/lib/codex/stats";
 import { buildPublicGitHubActivityDays } from "../src/lib/github-activity-feed-core";
-import { githubSnapshotChanged } from "../src/lib/github-activity-snapshots";
+import {
+  githubSnapshotChanged,
+  mutableGitHubDay,
+} from "../src/lib/github-activity-snapshots";
 
 test("daily storage round-trips explicit zeros, gaps, source units and archived units", () => {
   const snapshot = createCodexAccountSnapshot({ stats: {} }, {});
@@ -195,4 +198,55 @@ test("saved display days keep both sides of IST midnight in their own page", () 
     ["2026-09-28", 1],
     ["2026-09-27", 1],
   ]);
+});
+
+test("work freezes one hour after IST midnight", () => {
+  expect(mutableGitHubDay(new Date("2026-09-28T18:29:59Z"))).toBe("2026-09-28");
+  expect(mutableGitHubDay(new Date("2026-09-28T18:30:00Z"))).toBe("2026-09-28");
+  expect(mutableGitHubDay(new Date("2026-09-28T19:29:59Z"))).toBe("2026-09-28");
+  expect(mutableGitHubDay(new Date("2026-09-28T19:30:00Z"))).toBe("2026-09-29");
+});
+
+test("status transitions publish without a new code digest; title edits and status hydration do not repost", () => {
+  const before = saved("same-code");
+  const after = saved("same-code");
+  if (!("facts" in before.payload) || !("facts" in after.payload)) {
+    throw new Error("Expected work");
+  }
+  before.payload.pullRequest = { title: "Search", status: "open", diff: null };
+  after.payload.pullRequest = {
+    ...before.payload.pullRequest,
+    status: "merged",
+  };
+  expect(githubSnapshotChanged(before, after)).toBe(true);
+  after.payload.pullRequest = {
+    ...before.payload.pullRequest,
+    title: "Search and filters",
+  };
+  expect(githubSnapshotChanged(before, after)).toBe(false);
+  expect(githubSnapshotChanged(saved("same-code"), after)).toBe(false);
+  const issue = {
+    ...before,
+    payload: {
+      day: before.day,
+      id: "issue:1",
+      activityAt: "2026-09-28T10:00:00Z",
+      repository: before.payload.repository,
+      destination: null,
+      title: "Search",
+      status: "open" as const,
+    },
+  };
+  expect(
+    githubSnapshotChanged(issue, {
+      ...issue,
+      payload: { ...issue.payload, status: "completed" },
+    })
+  ).toBe(true);
+  expect(
+    githubSnapshotChanged(issue, {
+      ...issue,
+      payload: { ...issue.payload, title: "New title" },
+    })
+  ).toBe(false);
 });

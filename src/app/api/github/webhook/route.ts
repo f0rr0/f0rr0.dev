@@ -140,7 +140,11 @@ const persistSupportedWebhook = async (
   } else {
     const issue = issueFromWebhook(payload);
     if (issue !== null) {
-      return await persistGitHubWebhookIssue(deliveryId, issue);
+      return await persistGitHubWebhookIssue(
+        deliveryId,
+        issue,
+        issueActionFromWebhook(payload) ?? "opened"
+      );
     }
     if (!intentionallyIgnoredIssue(payload)) {
       throw new InvalidGitHubWebhookPayloadError();

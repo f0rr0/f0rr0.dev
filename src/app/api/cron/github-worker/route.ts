@@ -21,15 +21,14 @@ export async function POST(request: Request) {
     return Response.json({ ok: false }, { status: 401 });
   }
   const params = new URL(request.url).searchParams;
-  const publish = params.get("publish");
   const batchSize = workerBatchSizeFrom(params.get("batch"));
-  if (batchSize === null || (publish !== null && publish !== "1")) {
+  if (batchSize === null) {
     return Response.json({ ok: false }, { status: 400 });
   }
 
   try {
     const activity = await runGitHubActivityWorker({
-      includeProjection: publish === "1",
+      includeProjection: true,
       maximumDurationMs: GITHUB_WORKER_EXECUTION_DURATION_MS,
       ...(batchSize === undefined
         ? {}
@@ -43,7 +42,7 @@ export async function POST(request: Request) {
           }),
     });
     if (activity.projection?.feedRevisionChanged === true) {
-      revalidateTag("public-github-activity", "max");
+      revalidateTag("public-github-activity", { expire: 0 });
       after(async () => {
         await getInitialGitHubActivity();
       });

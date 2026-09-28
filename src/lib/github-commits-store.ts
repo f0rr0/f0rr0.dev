@@ -190,6 +190,9 @@ const persistIssue = async (
       authorLogin: issue.authorLogin,
       authorUserId: issue.authorUserId,
       createdAt: new Date(issue.createdAt),
+      providerUpdatedAt: new Date(issue.providerUpdatedAt),
+      activityAt: new Date(issue.activityAt),
+      status: issue.status,
       firstObservedAt: observedAt,
       nodeId: issue.nodeId,
       number: issue.number,
@@ -197,7 +200,16 @@ const persistIssue = async (
       titleSnapshot: issue.title,
       urlSnapshot: issue.url,
     })
-    .onConflictDoNothing({ target: githubIssues.nodeId })
+    .onConflictDoUpdate({
+      target: githubIssues.nodeId,
+      set: {
+        titleSnapshot: issue.title,
+        providerUpdatedAt: new Date(issue.providerUpdatedAt),
+        status: issue.status,
+        activityAt: sql`case when ${githubIssues.status} <> ${issue.status} then ${issue.closedAt ?? issue.providerUpdatedAt}::timestamptz else coalesce(${githubIssues.activityAt}, ${githubIssues.createdAt}) end`,
+      },
+      setWhere: sql`${githubIssues.providerUpdatedAt} is null or ${githubIssues.providerUpdatedAt} < ${issue.providerUpdatedAt}::timestamptz`,
+    })
     .returning({ nodeId: githubIssues.nodeId });
   if (insertedIssue === undefined) {
     return false;
@@ -1466,12 +1478,13 @@ export const persistGitHubWebhookHeadSignal = async (
 
 export const persistGitHubWebhookIssue = async (
   deliveryId: string,
-  issue: GitHubIssue
+  issue: GitHubIssue,
+  action: string
 ): Promise<GitHubWebhookIntakeResult> =>
   await getDatabase().transaction(async (transaction) => {
     const delivery = {
       account: issue.account,
-      action: "opened",
+      action,
       deliveryId,
       event: "issues",
       repositoryId: issue.repository.id,

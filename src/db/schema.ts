@@ -23,6 +23,10 @@ import type {
   PublicGitHubWorkUnitRow,
 } from "@/lib/github-activity-feed-core";
 import type {
+  GitHubPullRequestDisplay,
+  GitHubIssueStatus,
+} from "@/lib/github-activity-types";
+import type {
   GitHubLanguageFact,
   GitHubWorkUnitFileFact,
 } from "@/lib/github-change-evidence";
@@ -653,6 +657,10 @@ export const githubPullRequests = pgTable(
       mode: "date",
       withTimezone: true,
     }),
+    statusChangedAt: timestamp("status_changed_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
     draft: boolean("draft").default(false).notNull(),
     firstObservedAt: timestamp("first_observed_at", {
       mode: "date",
@@ -922,6 +930,15 @@ export const githubIssues = pgTable(
     account: varchar("account", { length: 39 }).notNull(),
     authorLogin: varchar("author_login", { length: 39 }),
     authorUserId: varchar("author_user_id", { length: 32 }).notNull(),
+    status: varchar("status", { length: 16 })
+      .$type<GitHubIssueStatus>()
+      .default("open")
+      .notNull(),
+    activityAt: timestamp("activity_at", { mode: "date", withTimezone: true }),
+    providerUpdatedAt: timestamp("provider_updated_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", {
       mode: "date",
       withTimezone: true,
@@ -949,6 +966,10 @@ export const githubIssues = pgTable(
     check(
       "github_issues_tracked_account",
       sql`${table.account} ~ ${githubLoginPattern}`
+    ),
+    check(
+      "github_issues_status",
+      sql`${table.status} IN ('open', 'closed', 'completed', 'not-planned')`
     ),
     check("github_issues_positive_number", sql`${table.number} > 0`),
   ]
@@ -1169,6 +1190,7 @@ export const githubWorkUnits = pgTable(
     }).notNull(),
     newestCommitSha: varchar("newest_commit_sha", { length: 40 }).notNull(),
     outcomeDigest: varchar("outcome_digest", { length: 64 }),
+    pullRequest: jsonb("pull_request").$type<GitHubPullRequestDisplay>(),
     pullRequestNodeId: varchar("pull_request_node_id", { length: 128 }),
     repositoryId: varchar("repository_id", { length: 32 }).notNull(),
     revision: integer("revision").default(1).notNull(),
@@ -1243,7 +1265,7 @@ export const githubWorkUnits = pgTable(
     ),
     check(
       "gh_work_units_activity_order",
-      sql`${table.firstActivityAt} <= ${table.lastActivityAt} AND ${table.activityDay} = (${table.activityAt} AT TIME ZONE 'UTC')::date`
+      sql`${table.firstActivityAt} <= ${table.lastActivityAt} AND ${table.activityDay} = (${table.activityAt} AT TIME ZONE 'Asia/Kolkata')::date`
     ),
     check(
       "gh_work_units_digest_shapes",

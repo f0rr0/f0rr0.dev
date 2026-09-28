@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 
 import { getDatabase } from "@/db/client";
 import {
@@ -10,6 +10,7 @@ import {
   githubWorkUnitSummaryAttempts,
   githubWorkUnits,
 } from "@/db/schema";
+import { dateKey, WORK_LOG_TIME_ZONE } from "@/lib/date";
 import { encodeGitHubActivityCursor } from "@/lib/github-activity-cursor";
 import type { GitHubActivityCursor } from "@/lib/github-activity-cursor";
 import { buildPublicGitHubActivityDays } from "@/lib/github-activity-feed-core";
@@ -203,7 +204,11 @@ const publicWorkUnitKind = (value: string): PublicGitHubWorkUnitKind => {
   throw new Error("A public GitHub work-unit kind is invalid.");
 };
 
-const issueDay = sql<string>`to_char(${githubIssues.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
+const issueActivityAt =
+  sql<Date>`coalesce(${githubIssues.activityAt}, ${githubIssues.createdAt})`.mapWith(
+    githubIssues.createdAt
+  );
+const issueDay = sql<string>`to_char(${issueActivityAt} AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD')`;
 
 interface AvailableDays {
   hasNextPage: boolean;
@@ -243,7 +248,11 @@ const readAvailableDays = async (
 // oxlint-disable-next-line eslint/complexity -- Keep validation and exact-summary selection in the shared legacy-to-snapshot mapper.
 export const readCurrentPublicGitHubRows = async (
   database: GitHubActivityDatabase,
-  options: { repositoryIds?: readonly string[]; exactSummary?: boolean } = {}
+  options: {
+    repositoryIds?: readonly string[];
+    exactSummary?: boolean;
+    sinceDay?: string;
+  } = {}
 ): Promise<{
   issues: readonly PublicGitHubIssueRow[];
   workUnits: readonly PublicGitHubWorkUnitRow[];
@@ -268,6 +277,7 @@ export const readCurrentPublicGitHubRows = async (
         newestCommitRepositoryId: githubWorkUnits.newestCommitRepositoryId,
         newestCommitSha: githubWorkUnits.newestCommitSha,
         ownerAvatarUrl: githubRepositories.ownerAvatarUrl,
+        pullRequest: githubWorkUnits.pullRequest,
         pullRequestNumber: githubPullRequests.number,
         repositoryId: githubRepositories.id,
         visibility: githubRepositories.visibility,
@@ -286,6 +296,9 @@ export const readCurrentPublicGitHubRows = async (
       )
       .where(
         and(
+          options.sinceDay === undefined
+            ? undefined
+            : gte(githubWorkUnits.activityDay, options.sinceDay),
           options.repositoryIds
             ? inArray(githubWorkUnits.repositoryId, [...options.repositoryIds])
             : undefined,
@@ -301,7 +314,8 @@ export const readCurrentPublicGitHubRows = async (
       .limit(maximumRows + 1),
     database
       .select({
-        activityAt: githubIssues.createdAt,
+        activityAt: issueActivityAt,
+        status: githubIssues.status,
         day: issueDay,
         fullName: githubRepositories.fullName,
         nodeId: githubIssues.nodeId,
@@ -318,6 +332,9 @@ export const readCurrentPublicGitHubRows = async (
       )
       .where(
         and(
+          options.sinceDay === undefined
+            ? undefined
+            : gte(issueDay, options.sinceDay),
           options.repositoryIds
             ? inArray(githubIssues.repositoryId, [...options.repositoryIds])
             : undefined,
@@ -332,7 +349,7 @@ export const readCurrentPublicGitHubRows = async (
           ])
         )
       )
-      .orderBy(desc(githubIssues.createdAt), githubIssues.nodeId)
+      .orderBy(desc(issueActivityAt), githubIssues.nodeId)
       .limit(maximumRows + 1),
   ]);
   if (unitRows.length > maximumRows || issueRows.length > maximumRows) {
@@ -474,6 +491,7 @@ export const readCurrentPublicGitHubRows = async (
       }
     }
   }
+  // oxlint-disable-next-line eslint/complexity -- Keep destination validation and the saved public shape together.
   const workUnits = unitRows.map((row): PublicGitHubWorkUnitRow => {
     const repository = checkedPublicRepository({
       fullName: row.fullName,
@@ -509,8 +527,8 @@ export const readCurrentPublicGitHubRows = async (
         url: `${repository.baseUrl}/commit/${row.newestCommitSha}`,
       };
     }
-    const firstDay = row.firstActivityAt.toISOString().slice(0, 10);
-    const lastDay = row.lastActivityAt.toISOString().slice(0, 10);
+    const firstDay = dateKey(row.firstActivityAt, WORK_LOG_TIME_ZONE);
+    const lastDay = dateKey(row.lastActivityAt, WORK_LOG_TIME_ZONE);
     const summary =
       currentSummaries.get(row.id) ?? fallbackSummaries.get(row.id);
     return {
@@ -518,16 +536,20 @@ export const readCurrentPublicGitHubRows = async (
       day: row.activityDay,
       destination,
       facts: {
-        additions: row.additions,
+        additions: row.pullRequest?.diff?.additions ?? null,
         dateRange:
           firstDay === lastDay ? null : { end: lastDay, start: firstDay },
-        deletions: row.deletions,
-        languages: row.languages?.map(({ label }) => label) ?? null,
+        deletions: row.pullRequest?.diff?.deletions ?? null,
+        languages:
+          kind === "pull-request"
+            ? null
+            : (row.languages?.map(({ label }) => label) ?? null),
         ownedCommitCount: row.memberCount,
-        uniqueFileCount: row.fileCount,
+        uniqueFileCount: row.pullRequest?.diff?.files ?? row.fileCount,
       },
       id: row.identityKey,
       headline: summary?.headline ?? null,
+      pullRequest: row.pullRequest,
       kind,
       repository: repository.projection,
       summarizing: false,
@@ -557,6 +579,7 @@ export const readCurrentPublicGitHubRows = async (
       id: `issue:${row.nodeId}`,
       repository: repository.projection,
       title: row.title,
+      status: row.status,
     };
   });
   return { issues, workUnits };

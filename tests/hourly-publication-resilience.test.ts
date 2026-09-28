@@ -51,8 +51,9 @@ test("publication keeps source dates through delayed syncs, metadata revisions a
       insert: table => ({ values: value => ({ onConflictDoUpdate: options => ({ returning: async () => {
         assert.equal(table, githubActivitySnapshots);
         const condition = new PgDialect().sqlToQuery(options.setWhere);
-        assert.deepEqual(condition.params, ["2026-09-29"]);
-        assert.equal(condition.sql, '"github_activity_snapshots"."day" = $1');
+        assert.deepEqual(condition.params, ["2026-09-28", value.payload.activityAt]);
+        assert.ok(condition.sql.includes('"github_activity_snapshots"."day" >= $1'));
+        assert.ok(condition.sql.includes("::timestamptz <= $2::timestamptz"));
         writes.push(value);
         return [];
       } }) }) }),
@@ -63,16 +64,15 @@ test("publication keeps source dates through delayed syncs, metadata revisions a
     const { publishGitHubActivitySnapshots } = await import("./src/lib/github-activity-snapshots.ts");
     await publishGitHubActivitySnapshots();
     assert.deepEqual(writes.map(row => [row.identityKey, row.day, row.payload.activityAt]), [
-      ["canonical:1:2026-08-04", "2026-08-04", "2026-08-04T09:05:36Z"],
       ["late", "2026-09-28", "2026-09-28T18:29:59Z"],
       ["changed-pr", "2026-09-29", "2026-09-28T18:30:00Z"],
       ["late-issue", "2026-09-28", "2026-09-28T18:29:59Z"],
     ]);
-    assert.equal(writes[2].payload.facts.additions, 240);
+    assert.equal(writes[1].payload.facts.additions, 240);
   `);
 });
 
-test("only the hourly invocation publishes and warms changed activity, without changing ingestion limits or auth", () => {
+test("every worker publishes and warms changed activity without changing ingestion limits or auth", () => {
   check(`
     import assert from "node:assert/strict";
     import { mock } from "bun:test";
@@ -99,14 +99,14 @@ test("only the hourly invocation publishes and warms changed activity, without c
       { method: "POST", headers: authorized ? { authorization: "Bearer hourly-publication-test-secret-32-characters" } : {} }
     ));
     assert.equal((await request("?publish=1", false)).status, 401);
-    for (const query of ["?publish=0", "?publish=yes", "?publish=", "?batch=0&publish=1"]) {
+    for (const query of ["?batch=0", "?batch=no", "?batch="]) {
       assert.equal((await request(query)).status, 400);
     }
     assert.equal(calls.length, 0);
     assert.equal((await request("")).status, 200);
     assert.equal((await request("?publish=1")).status, 200);
     assert.equal((await request("?publish=1&batch=2")).status, 200);
-    assert.equal(calls[0].includeProjection, false);
+    assert.equal(calls[0].includeProjection, true);
     assert.equal(calls[1].includeProjection, true);
     assert.deepEqual({ ...calls[0], includeProjection: true }, calls[1]);
     assert.equal(calls[2].includeProjection, true);
@@ -116,10 +116,10 @@ test("only the hourly invocation publishes and warms changed activity, without c
     assert.equal(callbacks.length, 0);
     changed = true;
     assert.equal((await request("?publish=1")).status, 200);
-    assert.deepEqual(events, [["public-github-activity", "max"]]);
+    assert.deepEqual(events, [["public-github-activity", { expire: 0 }]]);
     assert.equal(callbacks.length, 1);
     await callbacks.shift()();
-    assert.deepEqual(events, [["public-github-activity", "max"], "warmed"]);
+    assert.deepEqual(events, [["public-github-activity", { expire: 0 }], "warmed"]);
     events.length = 0;
     fail = true;
     assert.equal((await request("?publish=1")).status, 503);

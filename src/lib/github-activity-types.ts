@@ -21,13 +21,22 @@ export interface PublicGitHubActivityDateRange {
 }
 
 export interface PublicGitHubWorkUnitFacts {
-  additions: number;
+  additions: number | null;
   dateRange: PublicGitHubActivityDateRange | null;
-  deletions: number;
+  deletions: number | null;
   languages: readonly string[] | null;
   ownedCommitCount: number;
   uniqueFileCount: number;
 }
+
+export interface GitHubPullRequestDisplay {
+  title: string;
+  status: "open" | "draft" | "merged" | "closed";
+  // Null for a contribution to someone else's PR or incomplete evidence.
+  diff: { additions: number; deletions: number; files: number } | null;
+}
+
+export type GitHubIssueStatus = "open" | "completed" | "not-planned" | "closed";
 
 export interface PublicGitHubWorkUnitActivity {
   activityAt: string;
@@ -36,20 +45,22 @@ export interface PublicGitHubWorkUnitActivity {
   id: string;
   kind: PublicGitHubWorkUnitKind;
   headline: string | null;
+  pullRequest?: GitHubPullRequestDisplay | null;
   summarizing: boolean;
   summary: string | null;
 }
 
-export interface PublicGitHubIssueOpenedActivity {
+export interface PublicGitHubIssueActivity {
   activityAt: string;
   destination: PublicGitHubActivityDestination | null;
   id: string;
-  kind: "issue-opened";
+  kind: "issue";
   title: string;
+  status?: GitHubIssueStatus;
 }
 
 export type PublicGitHubActivityItem =
-  | PublicGitHubIssueOpenedActivity
+  | PublicGitHubIssueActivity
   | PublicGitHubWorkUnitActivity;
 
 export interface PublicGitHubActivityRepositoryGroup {

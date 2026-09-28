@@ -77,6 +77,9 @@ export const persistPullRequestSnapshotInTransaction = async (
       changedFiles: githubPullRequests.changedFiles,
       commitCount: githubPullRequests.commitCount,
       deletions: githubPullRequests.deletions,
+      draft: githubPullRequests.draft,
+      title: githubPullRequests.title,
+      statusChangedAt: githubPullRequests.statusChangedAt,
       headRepositoryId: githubPullRequests.headRepositoryId,
       headSha: githubPullRequests.headSha,
       mergeSha: githubPullRequests.mergeSha,
@@ -156,6 +159,15 @@ export const persistPullRequestSnapshotInTransaction = async (
         ? now
         : (existing?.mergeShaVerifiedAt ?? null)
       : null;
+  const statusChanged =
+    existing !== undefined &&
+    (existing.state !== state ||
+      (state === "open" && existing.draft !== pullRequest.draft));
+  const statusChangedAt =
+    terminalAt ??
+    (statusChanged
+      ? providerUpdatedAt
+      : (existing?.statusChangedAt ?? new Date(pullRequest.createdAt)));
   const projectionEvidenceChanged =
     existing !== undefined &&
     (existing.headSha !== pullRequest.headSha ||
@@ -164,7 +176,9 @@ export const persistPullRequestSnapshotInTransaction = async (
       (pullRequest.headRepository !== null &&
         existing.headRepositoryId !== pullRequest.headRepository.id) ||
       existing.repositoryId !== pullRequest.repository.id ||
-      existing.state !== state);
+      existing.state !== state ||
+      existing.draft !== pullRequest.draft ||
+      existing.title !== pullRequest.title);
   const mergeLandingChanged =
     existing !== undefined &&
     (existing.mergeSha !== mergeSha ||
@@ -203,6 +217,7 @@ export const persistPullRequestSnapshotInTransaction = async (
     providerUpdatedAt,
     state,
     terminalAt,
+    statusChangedAt,
     title: pullRequest.title,
     url: pullRequest.url,
   } as const;
@@ -271,6 +286,7 @@ export const persistPullRequestSnapshotInTransaction = async (
               mergeShaVerifiedAt,
               state,
               terminalAt,
+              statusChangedAt,
             }
           : {}),
         ...retryLifecycleUpdate,
@@ -312,7 +328,9 @@ export const persistPullRequestSnapshotInTransaction = async (
     (existing.headRepositoryId ?? existing.repositoryId) !==
       commitRepositoryId ||
     existing.commitCount !== expectedMembershipCount ||
-    existing.changedFiles !== expectedChangedFiles;
+    existing.changedFiles !== expectedChangedFiles ||
+    existing.additions !== mutableUpdate.additions ||
+    existing.deletions !== mutableUpdate.deletions;
   const versionId = evidenceChanged ? randomUUID() : existing.snapshotId;
   if (versionId === null || versionId === undefined) {
     throw new Error("Missing PR snapshot identity.");

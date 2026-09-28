@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { dateKey, WORK_LOG_TIME_ZONE } from "@/lib/date";
+import type { GitHubPullRequestDisplay } from "@/lib/github-activity-types";
 import { aggregateGitHubLanguages } from "@/lib/github-change-evidence";
 import type {
   GitHubFileChangeStat,
@@ -69,6 +71,8 @@ export interface GitHubPullRequestProjectionEvidence {
   netOutcome: GitHubNormalizedOutcomeEvidence | null;
   netOutcomeOwnedCompletely: boolean;
   nodeId: string;
+  display: GitHubPullRequestDisplay;
+  statusChangedAt: string;
   snapshotKind: "current" | "final";
   state: "closed" | "merged" | "open";
 }
@@ -102,6 +106,7 @@ interface GitHubWorkUnitProjectionOptions {
 }
 
 export interface GitHubWorkUnitOwnershipIndex {
+  pendingPullRequestNodeIds: ReadonlySet<string>;
   pullRequestsByLogicalKey: ReadonlyMap<
     string,
     readonly GitHubPullRequestProjectionEvidence[]
@@ -143,6 +148,7 @@ export interface GitHubProjectedWorkUnit {
   newestCommitRepositoryId: string;
   newestCommitSha: string;
   outcomeDigest: string | null;
+  pullRequest: GitHubPullRequestDisplay | null;
   pullRequestNodeId: string | null;
   repositoryId: string;
   visibility: "private" | "public";
@@ -183,9 +189,6 @@ const normalizedInstant = (value: string): string => {
   }
   return instant.toISOString();
 };
-
-const utcDayFrom = (value: string): string =>
-  normalizedInstant(value).slice(0, 10);
 
 const digestJson = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value), "utf-8").digest("hex");
@@ -589,11 +592,29 @@ export const indexGitHubWorkUnitOwnershipEvidence = (
   }
 
   return {
+    pendingPullRequestNodeIds: new Set(
+      input.pullRequests
+        .filter((pr) => !pr.membershipComplete)
+        .map((pr) => pr.nodeId)
+    ),
     pullRequestsByLogicalKey,
     refsByLogicalKey,
     repositoriesById,
   };
 };
+
+export const hasPendingGitHubPullRequest = (
+  change: GitHubLogicalChange,
+  ownership: GitHubWorkUnitOwnershipIndex
+) =>
+  [
+    ...change.associatedPullRequestNodeIds,
+    ...(
+      ownership.pullRequestsByLogicalKey.get(
+        githubLogicalChangeKey(change.logicalRepositoryId, change.logicalSha)
+      ) ?? []
+    ).map((pr) => pr.nodeId),
+  ].some((id) => ownership.pendingPullRequestNodeIds.has(id));
 
 const chooseOwnerFor = (
   change: GitHubLogicalChange,
@@ -604,6 +625,10 @@ const chooseOwnerFor = (
     change.logicalRepositoryId,
     change.logicalSha
   );
+  // Wait for known PRs before assigning these commits to another owner.
+  if (hasPendingGitHubPullRequest(change, ownership)) {
+    return null;
+  }
   const pullRequest = chooseEffectivePullRequest(
     ownership.pullRequestsByLogicalKey.get(logicalKey) ?? [],
     trackedAuthorUserIds
@@ -634,7 +659,7 @@ const chooseOwnerFor = (
   );
   if (canonicalRef !== undefined) {
     return {
-      activityDay: utcDayFrom(change.logicalActivityAt),
+      activityDay: dateKey(change.logicalActivityAt, WORK_LOG_TIME_ZONE),
       kind: "canonical_day",
       ref: canonicalRef,
       repository,
@@ -758,7 +783,26 @@ const projectedUnitFrom = (
       ? owner.pullRequest.contentObservedAt
       : owner.ref.contentObservedAt,
   ]);
-  const activityDay = utcDayFrom(activityAnchorAt);
+  const pullRequest =
+    owner.kind === "pull_request"
+      ? {
+          ...owner.pullRequest.display,
+          diff:
+            attributionMode === "tracked_authored_pr" &&
+            owner.pullRequest.netOutcomeOwnedCompletely
+              ? owner.pullRequest.display.diff
+              : null,
+        }
+      : null;
+  const activityAt =
+    owner.kind === "pull_request"
+      ? maxInstant([
+          activityAnchorAt,
+          owner.pullRequest.createdAt,
+          owner.pullRequest.statusChangedAt,
+        ])
+      : activityAnchorAt;
+  const activityDay = dateKey(activityAt, WORK_LOG_TIME_ZONE);
   const factsDigest = digestJson({
     activityAnchorAt,
     activityDay,
@@ -772,6 +816,8 @@ const projectedUnitFrom = (
       newestChange.logicalRepositoryId,
       newestChange.logicalSha
     ),
+    pullRequest,
+    activityAt,
     recipe: "github_work_unit_facts_v1",
     repositoryId: repository.id,
     visibility,
@@ -779,7 +825,7 @@ const projectedUnitFrom = (
 
   return {
     activityAnchorAt,
-    activityAt: activityAnchorAt,
+    activityAt,
     activityDay,
     attributionMode,
     branchLineageId: owner.kind === "branch" ? owner.ref.branchLineageId : null,
@@ -795,6 +841,7 @@ const projectedUnitFrom = (
     newestCommitRepositoryId: newestChange.repositoryId,
     newestCommitSha: newestChange.sha,
     outcomeDigest,
+    pullRequest,
     pullRequestNodeId:
       owner.kind === "pull_request" ? owner.pullRequest.nodeId : null,
     repositoryId: repository.id,

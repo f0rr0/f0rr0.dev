@@ -127,6 +127,10 @@ const sparsePullRequestEventFrom = (
     "f0rr0"
   );
 const issue = {
+  state: "open",
+  state_reason: null,
+  closed_at: null,
+  updated_at: "2026-08-26T12:00:00Z",
   created_at: "2026-08-26T10:00:00Z",
   html_url: "https://github.com/another-org/private-repo/issues/91",
   id: 654,
@@ -270,7 +274,7 @@ describe("authenticated user events", () => {
     });
   });
 
-  test("normalizes only opened issues authored by the authenticated account", () => {
+  test("normalizes issue activity authored by the authenticated account", () => {
     expect(
       githubEventFrom(
         {
@@ -521,7 +525,7 @@ describe("issue observation normalization", () => {
     ).toBeNull();
   });
 
-  test("preserves the immutable issue-creation snapshot", () => {
+  test("normalizes issue state and provider timestamps", () => {
     const facts = repositoryFactsFrom(webhookRepository);
     expect(facts).not.toBeNull();
     assert.ok(facts);
@@ -535,6 +539,10 @@ describe("issue observation normalization", () => {
       repository: facts,
       title: "Make event intake durable",
       url: "https://github.com/another-org/private-repo/issues/91",
+      activityAt: "2026-08-26T10:00:00.000Z",
+      providerUpdatedAt: "2026-08-26T12:00:00.000Z",
+      closedAt: null,
+      status: "open",
     });
     expect(
       issueFromGitHub(
@@ -548,7 +556,7 @@ describe("issue observation normalization", () => {
     ).toBeNull();
   });
 
-  test("accepts only an opened issues webhook and attributes the author", () => {
+  test("accepts issue changes and attributes the author", () => {
     expect(
       issueFromWebhook({
         action: "opened",
@@ -559,7 +567,7 @@ describe("issue observation normalization", () => {
     ).toMatchObject({ account: "f0rr0", nodeId: "I_kwDOExample" });
     expect(
       issueFromWebhook({
-        action: "edited",
+        action: "labeled",
         issue,
         repository: webhookRepository,
       })
@@ -1362,4 +1370,49 @@ describe("GitHub request deferral", () => {
       "application/json"
     );
   });
+});
+
+test("issue webhooks preserve completed, not-planned and reopened states and reject malformed dates", () => {
+  for (const [action, state, state_reason, status] of [
+    ["closed", "closed", "completed", "completed"],
+    ["closed", "closed", "not_planned", "not-planned"],
+    ["closed", "closed", null, "closed"],
+    ["reopened", "open", "reopened", "open"],
+    ["edited", "open", null, "open"],
+  ] as const) {
+    expect(
+      issueFromWebhook({
+        action,
+        repository: webhookRepository,
+        issue: {
+          ...issue,
+          state,
+          state_reason,
+          closed_at: state === "closed" ? "2026-08-26T12:00:00Z" : null,
+        },
+      })?.status
+    ).toBe(status);
+  }
+  for (const changes of [
+    { updated_at: "bad" },
+    { state: "closed", closed_at: null },
+    { state: "open", closed_at: "2026-08-26T12:00:00Z" },
+  ]) {
+    expect(
+      issueFromWebhook({
+        action: "closed",
+        repository: webhookRepository,
+        issue: { ...issue, ...changes },
+      })
+    ).toBeNull();
+  }
+});
+
+test("a newly discovered reopened issue uses its reopening time", () => {
+  const result = issueFromWebhook({
+    action: "reopened",
+    repository: webhookRepository,
+    issue,
+  });
+  expect(result?.activityAt).toBe("2026-08-26T12:00:00.000Z");
 });

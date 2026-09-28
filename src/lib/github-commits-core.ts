@@ -134,6 +134,10 @@ export interface GitHubIssue {
   authorLogin: string;
   authorUserId: string;
   createdAt: string;
+  activityAt: string;
+  providerUpdatedAt: string;
+  closedAt: string | null;
+  status: "open" | "closed" | "completed" | "not-planned";
   nodeId: string;
   number: number;
   repository: GitHubRepositoryFacts;
@@ -621,9 +625,11 @@ const repositoryFactsFromEvent = (event: JsonObject) => {
   });
 };
 
+// oxlint-disable-next-line eslint/complexity -- Validate the complete provider issue at the ingestion boundary.
 export const issueFromGitHub = (
   value: unknown,
-  repository: GitHubRepositoryFacts
+  repository: GitHubRepositoryFacts,
+  action = "opened"
 ): GitHubIssue | null => {
   if (!isObject(value) || !isObject(value.user) || "pull_request" in value) {
     return null;
@@ -632,6 +638,18 @@ export const issueFromGitHub = (
   const authorUserId = repositoryIdFrom(value.user.id);
   const account = trackedGitHubAccountFromUserId(authorUserId);
   const createdAt = normalizedDate(value.created_at);
+  const providerUpdatedAt = normalizedDate(value.updated_at);
+  const closedAt = optionalDate(value.closed_at);
+  const { state } = value;
+  const reason = value.state_reason;
+  const status =
+    state === "open"
+      ? "open"
+      : reason === "completed"
+        ? "completed"
+        : reason === "not_planned"
+          ? "not-planned"
+          : "closed";
   const nodeId = normalizedText(value.node_id, 128);
   const number = positiveInteger(value.number);
   const title =
@@ -643,6 +661,15 @@ export const issueFromGitHub = (
     authorLogin === null ||
     authorUserId === null ||
     createdAt === null ||
+    providerUpdatedAt === null ||
+    !closedAt.valid ||
+    (state !== "open" && state !== "closed") ||
+    (state === "closed") !== (closedAt.value !== null) ||
+    (reason !== null &&
+      reason !== undefined &&
+      reason !== "completed" &&
+      reason !== "not_planned" &&
+      reason !== "reopened") ||
     nodeId === null ||
     number === null ||
     title === null
@@ -658,6 +685,11 @@ export const issueFromGitHub = (
     authorLogin,
     authorUserId,
     createdAt,
+    activityAt:
+      closedAt.value ?? (action === "reopened" ? providerUpdatedAt : createdAt),
+    providerUpdatedAt,
+    closedAt: closedAt.value,
+    status,
     nodeId,
     number,
     repository,
@@ -922,7 +954,7 @@ const issueEventFrom = (
   if (action === undefined || !PULL_REQUEST_ACTION.test(action)) {
     return null;
   }
-  if (action !== "opened") {
+  if (!["opened", "closed", "reopened", "edited"].includes(action)) {
     return { id, issue: null, occurredAt, pullRequest: null, push: null };
   }
   const rawIssue = value.payload.issue;
@@ -936,7 +968,7 @@ const issueEventFrom = (
   if (trackedGitHubAccountFromUserId(rawIssue.user.id) !== account) {
     return { id, issue: null, occurredAt, pullRequest: null, push: null };
   }
-  const issue = issueFromGitHub(rawIssue, repository);
+  const issue = issueFromGitHub(rawIssue, repository, action);
   if (issue === null) {
     return null;
   }
@@ -1247,11 +1279,22 @@ export const issueActionFromWebhook = (value: unknown) => {
 };
 
 export const issueFromWebhook = (value: unknown): GitHubIssue | null => {
-  if (!isObject(value) || issueActionFromWebhook(value) !== "opened") {
+  if (
+    !isObject(value) ||
+    !["opened", "closed", "reopened", "edited"].includes(
+      issueActionFromWebhook(value) ?? ""
+    )
+  ) {
     return null;
   }
   const repository = repositoryFactsFrom(value.repository);
-  return repository === null ? null : issueFromGitHub(value.issue, repository);
+  return repository === null
+    ? null
+    : issueFromGitHub(
+        value.issue,
+        repository,
+        issueActionFromWebhook(value) ?? "opened"
+      );
 };
 
 export const pullRequestObservationFromWebhook = (
