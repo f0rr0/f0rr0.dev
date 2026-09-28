@@ -58,7 +58,6 @@ describe("production Supabase cron URLs", () => {
       headRefs: "https://project.example/api/cron/github-refs?repositories=8",
       summary: "https://project.example/api/cron/github-summary",
       worker: "https://project.example/api/cron/github-worker",
-      publication: "https://project.example/api/cron/github-worker?publish=1",
     });
     expect(() => supabaseCronUrlsFrom("http://localhost:3000")).toThrow(
       "HTTPS"
@@ -105,25 +104,23 @@ test("schedules only configured services while retaining disabled jobs for clean
   const environment = { VERCEL_PROJECT_PRODUCTION_URL: "example.vercel.app" };
   expect(enabledNames(environment)).toEqual([
     "github-activity-worker-every-five-minutes",
-    "github-activity-publication-hourly",
   ]);
   expect(enabledNames(environment, true)).toEqual([
     "github-activity-worker-every-five-minutes",
-    "github-activity-publication-hourly",
     "codex-stats-every-fifteen-minutes",
   ]);
   expect(
     enabledNames({ ...environment, OPENAI_API_KEY: "test-key" })
-  ).toHaveLength(3);
+  ).toHaveLength(2);
   const github = {
     ...environment,
     GITHUB_TOKENS: JSON.stringify({ f0rr0: "test-token" }),
   };
-  expect(enabledNames(github)).toHaveLength(4);
+  expect(enabledNames(github)).toHaveLength(3);
   expect(
     enabledNames({ ...github, OPENAI_API_KEY: "test-key" }, true)
-  ).toHaveLength(6);
-  expect(supabaseCronJobsFrom(environment, false)).toHaveLength(6);
+  ).toHaveLength(5);
+  expect(supabaseCronJobsFrom(environment, false)).toHaveLength(5);
   for (const job of supabaseCronJobsFrom(github, true)) {
     expect(new URL(job.url).origin).toBe("https://example.vercel.app");
   }

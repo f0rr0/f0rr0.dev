@@ -1,12 +1,14 @@
-import postgres from "postgres";
+import { Client } from "pg";
 
-import { administrationDatabaseUrl } from "../src/db/connection";
+import {
+  administrationDatabaseUrl,
+  postgresConnectionOptions,
+} from "../src/db/connection";
 import { env } from "../src/env";
 import { githubTokensFrom } from "../src/lib/github-accounts";
 import {
   GITHUB_CRON_EXECUTION_DURATION_MS,
   GITHUB_EVENTS_CRON_JOB,
-  GITHUB_PUBLICATION_CRON_JOB,
   GITHUB_HEAD_REFS_CRON_JOB,
   GITHUB_REF_REPOSITORY_BATCH_SIZE,
   GITHUB_SUMMARY_CRON_JOB,
@@ -21,7 +23,6 @@ const SECRET_NAME = "github_sync_bearer_secret";
 const URL_NAME = "github_sync_url";
 const HEAD_REFS_URL_NAME = "github_head_refs_url";
 const SUMMARY_URL_NAME = "github_summary_url";
-const PUBLICATION_URL_NAME = "github_publication_url";
 const WORKER_URL_NAME = "github_worker_url";
 const CODEX_STATS_URL_NAME = "codex_stats_url";
 const CODEX_STATS_JOB_NAME = "codex-stats-every-fifteen-minutes";
@@ -37,7 +38,6 @@ type SupabaseCronEnvironment = Pick<
   | "CRON_SECRET"
   | "GITHUB_TOKENS"
   | "OPENAI_API_KEY"
-  | "DATABASE_URL"
   | "DATABASE_URL_UNPOOLED"
   | "VERCEL"
   | "VERCEL_ENV"
@@ -54,10 +54,6 @@ const requiredEnvironmentValue = (
   }
   return value;
 };
-
-export const supabaseCronDatabaseUrlFrom = (
-  environment: SupabaseCronEnvironment
-) => administrationDatabaseUrl(environment);
 
 export const supabaseCronUrlsFrom = (configuredSiteUrl: string) => {
   const siteUrl = new URL(configuredSiteUrl);
@@ -77,10 +73,6 @@ export const supabaseCronUrlsFrom = (configuredSiteUrl: string) => {
     events,
     headRefs: headRefs.toString(),
     summary: new URL("/api/cron/github-summary", siteUrl).toString(),
-    publication: new URL(
-      "/api/cron/github-worker?publish=1",
-      siteUrl
-    ).toString(),
     worker: new URL("/api/cron/github-worker", siteUrl).toString(),
   };
 };
@@ -89,35 +81,27 @@ export const supabaseCronSiteUrlFrom = (environment: SupabaseCronEnvironment) =>
   productionSiteOrigin(environment.VERCEL_PROJECT_PRODUCTION_URL);
 
 const upsertVaultSecret = async (
-  sql: postgres.TransactionSql,
+  client: Client,
   input: { name: string; value: string }
 ) => {
-  const [existing] = await sql<{ id: string }[]>`
-    select id::text
-    from vault.secrets
-    where name = ${input.name}
-    limit 1
-  `;
-
-  if (existing === undefined) {
-    await sql`
-      select vault.create_secret(
-        ${input.value},
-        ${input.name},
-        ${SECRET_DESCRIPTION}
-      )
-    `;
-    return;
-  }
-
-  await sql`
-    select vault.update_secret(
-      ${existing.id}::uuid,
-      ${input.value},
-      ${input.name},
-      ${SECRET_DESCRIPTION}
-    )
-  `;
+  const {
+    rows: [existing],
+  } = await client.query<{ id: string }>(
+    "select id::text from vault.secrets where name = $1 limit 1",
+    [input.name]
+  );
+  await (existing === undefined
+    ? client.query("select vault.create_secret($1, $2, $3)", [
+        input.value,
+        input.name,
+        SECRET_DESCRIPTION,
+      ])
+    : client.query("select vault.update_secret($1::uuid, $2, $3, $4)", [
+        existing.id,
+        input.value,
+        input.name,
+        SECRET_DESCRIPTION,
+      ]));
 };
 
 const cronHttpPostCommand = (
@@ -173,13 +157,6 @@ export const supabaseCronJobsFrom = (
       enabled: true,
     },
     {
-      ...GITHUB_PUBLICATION_CRON_JOB,
-      urlName: PUBLICATION_URL_NAME,
-      url: urls.publication,
-      timeout: GITHUB_WORKER_HTTP_TIMEOUT_MS,
-      enabled: true,
-    },
-    {
       ...GITHUB_SUMMARY_CRON_JOB,
       urlName: SUMMARY_URL_NAME,
       url: urls.summary,
@@ -200,7 +177,7 @@ export const supabaseCronJobsFrom = (
 export const configureSupabaseCron = async (
   environment: SupabaseCronEnvironment = env
 ) => {
-  const databaseUrl = supabaseCronDatabaseUrlFrom(environment);
+  const databaseUrl = administrationDatabaseUrl(environment);
   const cronSecret = requiredEnvironmentValue(
     "CRON_SECRET",
     environment.CRON_SECRET
@@ -210,81 +187,74 @@ export const configureSupabaseCron = async (
   }
   // Validate configuration before opening a connection.
   supabaseCronJobsFrom(environment, false);
-  const sql = postgres(databaseUrl, {
-    connect_timeout: 10,
-    idle_timeout: 20,
-    max: 1,
-    prepare: false,
+  const client = new Client({
+    ...postgresConnectionOptions(databaseUrl),
+    connectionTimeoutMillis: 10_000,
   });
-
   try {
-    const jobs = await sql.begin(async (transaction) => {
-      await transaction`
-        select pg_advisory_xact_lock(
-          hashtextextended(${CRON_CONFIGURATION_LOCK_NAME}, 0)
-        )
-      `;
-      await transaction`create schema if not exists extensions`;
-      await transaction`create schema if not exists vault`;
-      await transaction`create extension if not exists pg_cron`;
-      await transaction`create extension if not exists pg_net with schema extensions`;
-      await transaction`create extension if not exists supabase_vault with schema vault`;
-
-      const [codex] = await transaction<{ enabled: boolean }[]>`
-        select exists(select 1 from codex_accounts where enabled) as enabled
-      `;
-      const configuredJobs = supabaseCronJobsFrom(
-        environment,
-
-        codex?.enabled
-      );
-      await upsertVaultSecret(transaction, {
-        name: SECRET_NAME,
-        value: cronSecret,
-      });
-
-      await transaction`
-        select cron.unschedule(jobid)
-        from cron.job
-        where jobname = any(${[
+    await client.connect();
+    await client.query("begin");
+    await client.query(
+      "select pg_advisory_xact_lock(hashtextextended($1, 0))",
+      [CRON_CONFIGURATION_LOCK_NAME]
+    );
+    await client.query("create schema if not exists extensions");
+    await client.query("create schema if not exists vault");
+    await client.query("create extension if not exists pg_cron");
+    await client.query(
+      "create extension if not exists pg_net with schema extensions"
+    );
+    await client.query(
+      "create extension if not exists supabase_vault with schema vault"
+    );
+    const {
+      rows: [codex],
+    } = await client.query<{ enabled: boolean }>(
+      "select exists(select 1 from codex_accounts where enabled) as enabled"
+    );
+    const configuredJobs = supabaseCronJobsFrom(
+      environment,
+      codex?.enabled ?? false
+    );
+    await upsertVaultSecret(client, { name: SECRET_NAME, value: cronSecret });
+    await client.query(
+      "select cron.unschedule(jobid) from cron.job where jobname = any($1::text[])",
+      [
+        [
+          "github-activity-publication-hourly",
           LEGACY_JOB_NAME,
           LEGACY_REFS_JOB_NAME,
           LEGACY_TAG_REFS_JOB_NAME,
           LEGACY_SUMMARY_JOB_NAME,
           ...configuredJobs.map(({ name }) => name),
-        ]}::text[])
-      `;
-
-      const jobs: { name: string; jobId: number }[] = [];
-      for (const job of configuredJobs.filter((value) => value.enabled)) {
-        await upsertVaultSecret(transaction, {
-          name: job.urlName,
-          value: job.url,
-        });
-        const [scheduled] = await transaction<{ jobId: number }[]>`
-          select cron.schedule(${job.name}, ${job.schedule}, ${cronHttpPostCommand(job.urlName, job.timeout)}) as "jobId"
-        `;
-        if (scheduled === undefined) {
-          throw new Error("Supabase did not return the scheduled cron job.");
-        }
-        jobs.push({ name: job.name, jobId: scheduled.jobId });
-      }
-      const [cleanup] = await transaction<{ jobId: number }[]>`
-        select cron.schedule('activity-history-retention', '23 3 * * *', 'select public.cleanup_activity_history()') as "jobId"
-      `;
-      if (cleanup === undefined) {
-        throw new Error("Supabase did not schedule activity retention.");
-      }
-      jobs.push({ name: "activity-history-retention", jobId: cleanup.jobId });
-      return jobs;
-    });
-
-    process.stdout.write(
-      `Configured ${String(jobs.length)} Supabase cron jobs.\n`
+        ],
+      ]
     );
-    return jobs;
+    const enabledJobs = configuredJobs.filter((job) => job.enabled);
+    for (const job of enabledJobs) {
+      await upsertVaultSecret(client, { name: job.urlName, value: job.url });
+      await client.query("select cron.schedule($1, $2, $3)", [
+        job.name,
+        job.schedule,
+        cronHttpPostCommand(job.urlName, job.timeout),
+      ]);
+    }
+    await client.query("select cron.schedule($1, $2, $3)", [
+      "activity-history-retention",
+      "23 3 * * *",
+      "select public.cleanup_activity_history()",
+    ]);
+    await client.query("commit");
+    process.stdout.write(
+      `Configured ${String(enabledJobs.length + 1)} Supabase cron jobs.\n`
+    );
+  } catch (error) {
+    await client.query("rollback").catch(() => {
+      // Preserve the original failure if the connection cannot roll back.
+    });
+    throw error;
   } finally {
-    await sql.end({ timeout: 5 });
+    await client.end();
   }
 };
 

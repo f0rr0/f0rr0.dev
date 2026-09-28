@@ -206,9 +206,6 @@ const checkedNow = (now: Date) => {
 const logicalKeyFrom = (repositoryId: string, sha: string) =>
   githubLogicalChangeKey(repositoryId, sha);
 
-const refKeyFrom = (repositoryId: string, refName: string) =>
-  `${repositoryId}\0${refName}`;
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -253,26 +250,7 @@ const checkedFileFacts = (
   return facts;
 };
 
-// Wire format only: [filename, additions, deletions]. Stored facts stay unchanged.
-const compactFileFacts = sql<unknown>`case
-when ${githubCommits.fileFacts} is null then null
-else coalesce(
-  (
-    select jsonb_agg(
-      jsonb_build_array(
-        entry.value -> 'filename',
-        entry.value -> 'additions',
-        entry.value -> 'deletions'
-      )
-      order by entry.position
-    )
-    from jsonb_array_elements(${githubCommits.fileFacts})
-      with ordinality as entry(value, position)
-  ),
-  '[]'::jsonb
-)
-end`;
-
+// [filename, additions, deletions], maintained by PostgreSQL alongside full evidence.
 const checkedCompactFileFacts = (
   value: unknown
 ): readonly GitHubFileChangeStat[] | null => {
@@ -769,34 +747,17 @@ const loadProjectionSnapshot = async (
     .from(githubRepositories)
     .where(scope(githubRepositories.id))
     .orderBy(asc(githubRepositories.id));
-  const desiredHeadRows = await transaction
-    .select({
-      active: githubRepositoryRefs.active,
-      branchLineageId: githubRepositoryRefs.branchLineageId,
-      headSha: githubRepositoryRefs.headSha,
-      refName: githubRepositoryRefs.refName,
-      repositoryId: githubRepositoryRefs.repositoryId,
-    })
-    .from(githubRepositoryRefs)
-    .where(
-      and(
-        scope(githubRepositoryRefs.repositoryId),
-        eq(githubRepositoryRefs.kind, "head"),
-        eq(githubRepositoryRefs.projectionRelevant, true)
-      )
-    )
-    .orderBy(
-      asc(githubRepositoryRefs.repositoryId),
-      asc(githubRepositoryRefs.refName)
-    );
   const generationRows = await transaction
     .select({
       branchLineageId: githubRefGenerations.branchLineageId,
       completedAt: githubRefGenerations.completedAt,
-      generation: githubRefGenerations.generation,
       headSha: githubRefGenerations.headSha,
       refName: githubRefGenerations.refName,
       repositoryId: githubRefGenerations.repositoryId,
+      members: sql<[string, string][]>`coalesce(jsonb_agg(
+        jsonb_build_array(${githubRefMemberships.commitRepositoryId}, ${githubRefMemberships.commitSha})
+        order by ${githubRefMemberships.position}
+      ) filter (where ${githubRefMemberships.commitSha} is not null), '[]'::jsonb)`,
     })
     .from(githubRefGenerations)
     .innerJoin(
@@ -807,53 +768,32 @@ const loadProjectionSnapshot = async (
           githubRefGenerations.repositoryId
         ),
         eq(githubRepositoryRefs.refName, githubRefGenerations.refName),
+        eq(githubRepositoryRefs.headSha, githubRefGenerations.headSha),
+        eq(
+          githubRepositoryRefs.branchLineageId,
+          githubRefGenerations.branchLineageId
+        ),
         scope(githubRepositoryRefs.repositoryId),
+        eq(githubRepositoryRefs.active, true),
         eq(githubRepositoryRefs.kind, "head"),
         eq(githubRepositoryRefs.projectionRelevant, true)
       )
     )
+    .leftJoin(
+      githubRefMemberships,
+      and(
+        eq(
+          githubRefMemberships.repositoryId,
+          githubRefGenerations.repositoryId
+        ),
+        eq(githubRefMemberships.refName, githubRefGenerations.refName),
+        eq(githubRefMemberships.generation, githubRefGenerations.generation)
+      )
+    )
+    .groupBy(githubRefGenerations.repositoryId, githubRefGenerations.refName)
     .orderBy(
       asc(githubRefGenerations.repositoryId),
       asc(githubRefGenerations.refName)
-    );
-  const refMembershipRows = await transaction
-    .select({
-      commitRepositoryId: githubRefMemberships.commitRepositoryId,
-      commitSha: githubRefMemberships.commitSha,
-      generation: githubRefMemberships.generation,
-      position: githubRefMemberships.position,
-      refName: githubRefMemberships.refName,
-      repositoryId: githubRefMemberships.repositoryId,
-    })
-    .from(githubRefMemberships)
-    .innerJoin(
-      githubRefGenerations,
-      and(
-        eq(
-          githubRefGenerations.repositoryId,
-          githubRefMemberships.repositoryId
-        ),
-        eq(githubRefGenerations.refName, githubRefMemberships.refName),
-        eq(githubRefGenerations.generation, githubRefMemberships.generation)
-      )
-    )
-    .innerJoin(
-      githubRepositoryRefs,
-      and(
-        eq(
-          githubRepositoryRefs.repositoryId,
-          githubRefMemberships.repositoryId
-        ),
-        eq(githubRepositoryRefs.refName, githubRefMemberships.refName),
-        scope(githubRepositoryRefs.repositoryId),
-        eq(githubRepositoryRefs.kind, "head"),
-        eq(githubRepositoryRefs.projectionRelevant, true)
-      )
-    )
-    .orderBy(
-      asc(githubRefMemberships.repositoryId),
-      asc(githubRefMemberships.refName),
-      asc(githubRefMemberships.position)
     );
   const verifiedMergeLanding = transaction
     .select({ one: sql<number>`1` })
@@ -874,7 +814,7 @@ const loadProjectionSnapshot = async (
       committerAt: githubCommits.committerAt,
       deletions: githubCommits.deletions,
       enrichmentState: githubCommits.enrichmentState,
-      fileFacts: compactFileFacts,
+      fileFacts: githubCommits.fileStats,
       fileFactsComplete: githubCommits.fileFactsComplete,
       fileFactsDigest: githubCommits.fileFactsDigest,
       firstObservedAt: githubCommits.firstObservedAt,
@@ -1117,46 +1057,16 @@ const loadProjectionSnapshot = async (
           ]
     )
   );
-  const desiredByRef = new Map(
-    desiredHeadRows.map((row) => [
-      refKeyFrom(row.repositoryId, row.refName),
-      row,
-    ])
-  );
-  const refMembersByRef = new Map<string, typeof refMembershipRows>();
-  for (const membership of refMembershipRows) {
-    const key = refKeyFrom(membership.repositoryId, membership.refName);
-    const rows = refMembersByRef.get(key) ?? [];
-    rows.push(membership);
-    refMembersByRef.set(key, rows);
-  }
-  const refs = generationRows.flatMap((generation) => {
-    const key = refKeyFrom(generation.repositoryId, generation.refName);
-    const desired = desiredByRef.get(key);
-    if (
-      desired?.active !== true ||
-      desired.branchLineageId === null ||
-      desired.headSha !== generation.headSha ||
-      desired.branchLineageId !== generation.branchLineageId
-    ) {
-      return [];
-    }
-    const memberships = (refMembersByRef.get(key) ?? []).filter(
-      (membership) => membership.generation === generation.generation
-    );
-    return [
-      {
-        branchLineageId: generation.branchLineageId,
-        complete: true,
-        contentObservedAt: generation.completedAt.toISOString(),
-        memberLogicalKeys: memberships.map((membership) =>
-          logicalKeyFrom(membership.commitRepositoryId, membership.commitSha)
-        ),
-        refName: generation.refName,
-        repositoryId: generation.repositoryId,
-      },
-    ];
-  });
+  const refs = generationRows.map((generation) => ({
+    branchLineageId: generation.branchLineageId,
+    complete: true,
+    contentObservedAt: generation.completedAt.toISOString(),
+    memberLogicalKeys: generation.members.map(([repositoryId, sha]) =>
+      logicalKeyFrom(repositoryId, sha)
+    ),
+    refName: generation.refName,
+    repositoryId: generation.repositoryId,
+  }));
   const repositories: GitHubRepositoryProjectionEvidence[] = repositoryRows.map(
     (repository) => ({
       defaultBranch: repository.defaultBranch,
