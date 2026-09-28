@@ -22,6 +22,7 @@ import {
   TooltipGroup,
   TooltipTrigger,
 } from "@/components/site-tooltip";
+import { sitePreferences } from "@/content/site";
 import { dateKey, formatDate } from "@/lib/date";
 import { getVisibleGitHubActivityDays } from "@/lib/github-activity-feed-core";
 import type {
@@ -210,6 +211,7 @@ function WorkUnitRow({
             className="whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
+            timeZone={sitePreferences.timeZone}
           />
           <DisclosureChevron />
         </span>
@@ -277,6 +279,7 @@ function IssueRow({
             className="whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
+            timeZone={sitePreferences.timeZone}
           />
         </span>
       </Row>
