@@ -56,10 +56,8 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
                       {post.metadata.summary}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      <DateTime
-                        dateTime={post.date.toISOString().slice(0, 10)}
-                      />{" "}
-                      · {post.readingTime}
+                      <DateTime dateTime={post.date.toISOString()} /> ·{" "}
+                      {post.readingTime}
                       {post.metadata.draft === true ? " · Draft preview" : ""}
                     </p>
                   </div>
@@ -73,7 +71,7 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
               </span>
               <DateTime
                 className="site-row-meta min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums hidden sm:flex"
-                dateTime={post.date.toISOString().slice(0, 10)}
+                dateTime={post.date.toISOString()}
               />
             </HoverCardTrigger>
           </li>

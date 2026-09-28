@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 
 import { CodexActivity } from "@/components/codex-activity";
-import { DateTime } from "@/components/date-time";
 import { InfoLabel } from "@/components/info-label";
 import { SiteSection } from "@/components/site-page";
 import { TokenStatGrid } from "@/components/token-stat-grid";
@@ -12,6 +11,7 @@ import type {
   PublicCodexRange,
   PublicCodexStats,
 } from "@/lib/codex/stats";
+import { formatDate } from "@/lib/date";
 
 const compactNumber = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
@@ -263,9 +263,9 @@ export function CodexUsageLimit({ stats }: { stats: PublicCodexStats }) {
               {limit.resetAt === null ? null : (
                 <p className="mt-2 text-base text-muted-foreground">
                   Resets{" "}
-                  <DateTime
-                    dateTime={new Date(limit.resetAt * 1000).toISOString()}
-                  />
+                  <time dateTime={new Date(limit.resetAt * 1000).toISOString()}>
+                    {formatDate(new Date(limit.resetAt * 1000), "date")}
+                  </time>
                 </p>
               )}
             </div>
