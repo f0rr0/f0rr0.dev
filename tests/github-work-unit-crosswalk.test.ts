@@ -85,10 +85,8 @@ const pullRequest = ({
   >): GitHubPullRequestProjectionEvidence => ({
   authorUserId,
   baseRepositoryId,
-  baseSha: sha("0"),
   contentObservedAt: createdAt,
   createdAt,
-  headSha: sha("f"),
   memberLogicalKeys,
   membershipComplete,
   netOutcome: null,

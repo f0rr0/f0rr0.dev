@@ -62,10 +62,8 @@ export interface GitHubNormalizedOutcomeEvidence {
 export interface GitHubPullRequestProjectionEvidence {
   authorUserId: string | null;
   baseRepositoryId: string;
-  baseSha: string;
   contentObservedAt: string;
   createdAt: string;
-  headSha: string;
   memberLogicalKeys: readonly string[];
   membershipComplete: boolean;
   netOutcome: GitHubNormalizedOutcomeEvidence | null;
@@ -79,7 +77,6 @@ export interface GitHubRefProjectionEvidence {
   branchLineageId: string;
   complete: boolean;
   contentObservedAt: string;
-  headSha: string;
   memberLogicalKeys: readonly string[];
   refName: string;
   repositoryId: string;
@@ -755,14 +752,6 @@ const projectedUnitFrom = (
     unitKey: identityKey,
   });
   const { kind } = owner;
-  const ownerFacts =
-    owner.kind === "pull_request"
-      ? {
-          baseSha: owner.pullRequest.baseSha,
-          headSha: owner.pullRequest.headSha,
-          state: owner.pullRequest.state,
-        }
-      : { headSha: owner.ref.headSha };
   const contentObservedAt = maxInstant([
     ...orderedChanges.map((change) => change.contentObservedAt),
     owner.kind === "pull_request"
@@ -783,7 +772,6 @@ const projectedUnitFrom = (
       newestChange.logicalRepositoryId,
       newestChange.logicalSha
     ),
-    ownerFacts,
     recipe: "github_work_unit_facts_v1",
     repositoryId: repository.id,
     visibility,

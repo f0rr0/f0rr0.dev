@@ -176,6 +176,13 @@
       "when": 1790543384000,
       "tag": "0024_remove_reposted_work",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790602380374,
+      "tag": "0025_noisy_genesis",
+      "breakpoints": true
     }
   ]
 }

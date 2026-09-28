@@ -9,6 +9,69 @@ const check = (source: string) => {
   expect(result.exitCode).toBe(0);
 };
 
+test("publication keeps source dates through delayed syncs, metadata revisions and IST midnight", () => {
+  check(`
+    import assert from "node:assert/strict";
+    import { mock, setSystemTime } from "bun:test";
+    import { PgDialect } from "drizzle-orm/pg-core";
+    import { githubActivitySnapshots, githubPublicFeedHead, githubWorkUnits } from "./src/db/schema.ts";
+    setSystemTime(new Date("2026-09-28T18:30:00Z"));
+    const work = (id, activityAt, additions = 200) => ({
+      id, activityAt, repository: { key: "1" }, facts: { additions }
+    });
+    const rows = [
+      work("canonical:1:2026-08-04", "2026-08-04T09:05:36Z"),
+      work("late", "2026-09-28T18:29:59Z"),
+      work("changed-pr", "2026-09-28T18:30:00Z", 240),
+      work("future", "2026-09-29T18:30:00Z"),
+    ];
+    const units = rows.map(row => ({
+      id: row.id, identityKey: row.id, factsDigest: "new-metadata", revision: 7
+    }));
+    const previous = [{
+      identityKey: rows[0].id, day: "2026-08-04", payload: rows[0],
+      factsDigest: "old-metadata", workUnitRevision: 6,
+    }, {
+      identityKey: "changed-pr", day: "2026-09-28",
+      payload: work("changed-pr", "2026-09-28T12:00:00Z"),
+    }];
+    const issue = { id: "late-issue", activityAt: "2026-09-28T18:29:59Z", repository: { key: "1" } };
+    const writes = [];
+    const query = result => {
+      const chain = {
+        where: () => chain, orderBy: () => chain, innerJoin: () => chain,
+        then: resolve => resolve(result),
+      };
+      return chain;
+    };
+    const transaction = {
+      select: () => ({ from: table => query(table === githubPublicFeedHead
+        ? [{ initialized: new Date("2026-09-27") }] : table === githubWorkUnits ? units : []) }),
+      selectDistinctOn: () => ({ from: () => query(previous) }),
+      insert: table => ({ values: value => ({ onConflictDoUpdate: options => ({ returning: async () => {
+        assert.equal(table, githubActivitySnapshots);
+        const condition = new PgDialect().sqlToQuery(options.setWhere);
+        assert.deepEqual(condition.params, ["2026-09-29"]);
+        assert.equal(condition.sql, '"github_activity_snapshots"."day" = $1');
+        writes.push(value);
+        return [];
+      } }) }) }),
+    };
+    mock.module("./src/db/client.ts", () => ({ getDatabase: () => ({ transaction: callback => callback(transaction) }) }));
+    mock.module("./src/lib/github-work-unit-projection-state.ts", () => ({ acquireGitHubWorkUnitProjectionLock: async () => {} }));
+    mock.module("./src/lib/github-activity-store.ts", () => ({ readCurrentPublicGitHubRows: async () => ({ workUnits: rows, issues: [issue] }) }));
+    const { publishGitHubActivitySnapshots } = await import("./src/lib/github-activity-snapshots.ts");
+    await publishGitHubActivitySnapshots();
+    assert.deepEqual(writes.map(row => [row.identityKey, row.day, row.payload.activityAt]), [
+      ["canonical:1:2026-08-04", "2026-08-04", "2026-08-04T09:05:36Z"],
+      ["late", "2026-09-28", "2026-09-28T18:29:59Z"],
+      ["changed-pr", "2026-09-29", "2026-09-28T18:30:00Z"],
+      ["late-issue", "2026-09-28", "2026-09-28T18:29:59Z"],
+    ]);
+    assert.equal(writes[2].payload.facts.additions, 240);
+  `);
+});
+
 test("only the hourly invocation publishes and warms changed activity, without changing ingestion limits or auth", () => {
   check(`
     import assert from "node:assert/strict";

@@ -1052,10 +1052,8 @@ const loadProjectionSnapshot = async (
     pullRequests.push({
       authorUserId: row.authorUserId,
       baseRepositoryId: row.baseRepositoryId ?? row.repositoryId,
-      baseSha: row.baseSha,
       contentObservedAt: row.observedAt.toISOString(),
       createdAt: row.createdAt.toISOString(),
-      headSha: row.headSha,
       memberLogicalKeys,
       membershipComplete,
       netOutcome: null,
@@ -1116,7 +1114,6 @@ const loadProjectionSnapshot = async (
         branchLineageId: generation.branchLineageId,
         complete: true,
         contentObservedAt: generation.completedAt.toISOString(),
-        headSha: generation.headSha,
         memberLogicalKeys: memberships.map((membership) =>
           logicalKeyFrom(membership.commitRepositoryId, membership.commitSha)
         ),
