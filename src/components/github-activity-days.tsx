@@ -131,7 +131,6 @@ function WorkUnitFacts({
   return (
     <div className="site-row-meta flex min-h-6 shrink-0 items-center gap-2 text-sm text-muted-foreground tabular-nums flex-wrap justify-start">
       <span>
-        {item.pullRequest?.diff ? "PR total · " : ""}
         {commits} · {files}
       </span>
       <span className="inline-flex sm:hidden">

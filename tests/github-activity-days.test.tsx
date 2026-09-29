@@ -59,7 +59,7 @@ test("the initial homepage HTML includes saved IST work across UTC midnight with
   expect(html).not.toContain("yesterday");
 });
 
-test("work uses accessible status icons, PR totals and useful title fallbacks; issues count as updates", () => {
+test("work renders PR status, language icons and net diffs; issues count as updates", () => {
   const repository = { key: "1", label: "Private", url: null, avatarUrl: null };
   const days = buildPublicGitHubActivityDays({
     days: ["2026-09-28"],
@@ -79,7 +79,7 @@ test("work uses accessible status icons, PR totals and useful title fallbacks; i
           deletions: 80,
           ownedCommitCount: 2,
           uniqueFileCount: 1,
-          languages: null,
+          languages: ["TypeScript"],
           dateRange: null,
         },
         pullRequest: {
@@ -115,7 +115,7 @@ test("work uses accessible status icons, PR totals and useful title fallbacks; i
     "Issue closed as not planned",
     "Issue closed",
     "Add filtering",
-    "PR total",
+    'aria-label="TypeScript"',
     "8 updates across 1 repo",
   ]) {
     expect(html).toContain(label);
