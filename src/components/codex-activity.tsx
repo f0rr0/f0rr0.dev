@@ -89,11 +89,6 @@ const ActivityHeatmap = ({
         })}
       </div>
       <TokenMonthAxis calendarOffset={leadingDays} values={series.values} />
-      {series.partial ? (
-        <figcaption className="mt-1 font-sans text-sm text-muted-foreground">
-          Partial history
-        </figcaption>
-      ) : null}
     </figure>
   );
 };
