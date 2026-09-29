@@ -8,6 +8,7 @@ import {
   LockKeyhole,
 } from "lucide-react";
 import Image from "next/image";
+import { useState } from "react";
 
 import { DateTime } from "@/components/date-time";
 import { LanguageIcon } from "@/components/language-icon";
@@ -229,7 +230,7 @@ function IssueRow({
 }: Readonly<{
   item: Extract<PublicGitHubActivityItem, { kind: "issue" }>;
 }>) {
-  const Row = item.destination === null ? "div" : "a";
+  const [expanded, setExpanded] = useState(false);
   const status = item.status ?? "open";
   const Icon =
     status === "open"
@@ -242,15 +243,16 @@ function IssueRow({
       ? "Issue closed as not planned"
       : `Issue ${status}`;
   return (
-    <li>
-      <Row
-        className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group"
-        href={item.destination?.url}
-        rel={item.destination === null ? undefined : "noopener noreferrer"}
-        target={item.destination === null ? undefined : "_blank"}
-        title={item.title}
+    <li className="min-w-0">
+      <button
+        aria-expanded={expanded}
+        className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group cursor-pointer"
+        onClick={() => {
+          setExpanded((open) => !open);
+        }}
+        type="button"
       >
-        <span className="min-w-0 truncate font-normal group-hover:underline">
+        <span className="min-w-0 font-normal disclosure-title group-hover:underline">
           {item.title}
         </span>
         <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
@@ -264,8 +266,9 @@ function IssueRow({
             format="time"
             timeZone={sitePreferences.timeZone}
           />
+          <DisclosureChevron />
         </span>
-      </Row>
+      </button>
     </li>
   );
 }
