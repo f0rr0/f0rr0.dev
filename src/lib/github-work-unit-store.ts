@@ -2180,32 +2180,19 @@ export const refreshGitHubWorkUnitProjection = async (
     snapshot.summaryEvaluationsPending +
     swap.summaryCandidates.length -
     summaries.settled;
-  if (summaryEvaluationsPending === 0) {
-    for (const scope of scopes) {
-      if (scope.token === null) {
-        continue;
-      }
-      await getDatabase()
-        .update(githubRepositories)
-        .set({ projectionRequestToken: null })
-        .where(
-          and(
-            eq(githubRepositories.id, scope.id),
-            eq(githubRepositories.projectionRequestToken, scope.token)
-          )
-        );
-    }
-  }
   if (summaryEvaluationsPending > 0 && projectionRequestToken === null) {
-    await requestGitHubWorkUnitProjection(
-      getDatabase(),
-      scopes.map(({ id }) => id)
+    await getDatabase().transaction(
+      async (transaction) =>
+        await requestGitHubWorkUnitProjection(
+          transaction,
+          scopes.map(({ id }) => id)
+        )
     );
-  } else if (
-    summaryEvaluationsPending === 0 &&
-    projectionRequestToken !== null
-  ) {
-    await completeGitHubWorkUnitProjectionRequest(projectionRequestToken);
+  } else if (projectionRequestToken !== null) {
+    await completeGitHubWorkUnitProjectionRequest(
+      projectionRequestToken,
+      scopes
+    );
   }
   return {
     changed: swap.insertedUnits + swap.updatedUnits + swap.deletedUnits > 0,

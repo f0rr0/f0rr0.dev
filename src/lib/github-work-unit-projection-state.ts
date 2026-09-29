@@ -8,6 +8,7 @@ import {
   githubRepositories,
   githubRepositoryRefs,
   githubRefGenerations,
+  githubWorkUnits,
 } from "@/db/schema";
 import { TRACKED_GITHUB_USER_IDS } from "@/lib/github-commits-core";
 import { GITHUB_WORK_UNIT_SUMMARY_POLICY_DIGEST } from "@/lib/github-work-unit-summary";
@@ -39,7 +40,7 @@ export const acquireGitHubWorkUnitProjectionLock = async (
 };
 
 export const requestGitHubWorkUnitProjection = async (
-  executor: Database | DatabaseTransaction,
+  executor: DatabaseTransaction,
   repositoryIds?: readonly string[]
 ) => {
   const token = randomUUID();
@@ -65,48 +66,68 @@ export const requestGitHubWorkUnitProjection = async (
 
 export const ensureGitHubWorkUnitProjectionRequest = async () =>
   await getDatabase().transaction(async (transaction) => {
+    await acquireGitHubWorkUnitProjectionLock(transaction);
     const [head] = await transaction
       .select({
         policyDigest: githubPublicFeedHead.summaryPolicyDigest,
         token: githubPublicFeedHead.projectionRequestToken,
       })
       .from(githubPublicFeedHead)
-      .where(eq(githubPublicFeedHead.id, true))
-      .for("update");
+      .where(eq(githubPublicFeedHead.id, true));
     if (head === undefined) {
       throw new Error("The GitHub public feed head is unavailable.");
     }
     if (head.policyDigest === PIPELINE_POLICY_DIGEST) {
       return head.token;
     }
-    return await requestGitHubWorkUnitProjection(transaction);
+    const token = await requestGitHubWorkUnitProjection(transaction);
+    // Record the queued policy atomically so retries resume its remaining scopes.
+    // Author changes can also alter issue-only pages without changing a work unit.
+    await transaction
+      .update(githubPublicFeedHead)
+      .set({
+        summaryPolicyDigest: PIPELINE_POLICY_DIGEST,
+        feedRevision: sql`${githubPublicFeedHead.feedRevision} + 1`,
+        headContentRevision: sql`${githubPublicFeedHead.headContentRevision} + 1`,
+        orderingRevision: sql`${githubPublicFeedHead.orderingRevision} + 1`,
+        lastPublishedAt: sql`now()`,
+      })
+      .where(eq(githubPublicFeedHead.id, true));
+    return token;
   });
 
 export const completeGitHubWorkUnitProjectionRequest = async (
-  token: string
-) => {
-  // Author changes can alter issue-only pages even when no work unit changes.
-  const policyChanged = sql`${githubPublicFeedHead.summaryPolicyDigest} IS DISTINCT FROM ${PIPELINE_POLICY_DIGEST}`;
-  const revisionIncrement = sql`CASE WHEN ${policyChanged} THEN 1 ELSE 0 END`;
-  const [cleared] = await getDatabase()
-    .update(githubPublicFeedHead)
-    .set({
-      projectionRequestToken: null,
-      summaryPolicyDigest: PIPELINE_POLICY_DIGEST,
-      feedRevision: sql`${githubPublicFeedHead.feedRevision} + ${revisionIncrement}`,
-      headContentRevision: sql`${githubPublicFeedHead.headContentRevision} + ${revisionIncrement}`,
-      orderingRevision: sql`${githubPublicFeedHead.orderingRevision} + ${revisionIncrement}`,
-      lastPublishedAt: sql`CASE WHEN ${policyChanged} THEN now() ELSE ${githubPublicFeedHead.lastPublishedAt} END`,
-    })
-    .where(
-      and(
-        eq(githubPublicFeedHead.id, true),
-        eq(githubPublicFeedHead.projectionRequestToken, token)
+  token: string,
+  scopes: readonly { id: string; token: string | null }[]
+) =>
+  await getDatabase().transaction(async (transaction) => {
+    await acquireGitHubWorkUnitProjectionLock(transaction);
+    // Finish repositories independently. Connected forks with pending evaluations
+    // need their own token even if only their neighbour originally requested work.
+    await transaction.execute(sql`
+      update ${githubRepositories} as repository
+      set projection_request_token = case when exists (
+        select 1 from ${githubWorkUnits} as unit
+        where unit.repository_id = repository.id
+          and unit.summary_evaluation_digest is distinct from unit.summary_evaluated_digest
+      ) then ${token}::uuid else null end
+      from jsonb_to_recordset(${JSON.stringify(scopes)}::jsonb) as scope(id text, token uuid)
+      where repository.id = scope.id
+        and repository.projection_request_token is not distinct from scope.token
+    `);
+    const [cleared] = await transaction
+      .update(githubPublicFeedHead)
+      .set({ projectionRequestToken: null })
+      .where(
+        and(
+          eq(githubPublicFeedHead.id, true),
+          eq(githubPublicFeedHead.projectionRequestToken, token),
+          sql`not exists (select 1 from ${githubRepositories} where projection_request_token is not null)`
+        )
       )
-    )
-    .returning({ id: githubPublicFeedHead.id });
-  return cleared !== undefined;
-};
+      .returning({ id: githubPublicFeedHead.id });
+    return cleared !== undefined;
+  });
 
 // A repository's branch ownership is publishable only after every relevant head
 // matches its complete generation. Share this predicate with the snapshot reader.

@@ -9,6 +9,53 @@ const check = (source: string) => {
   expect(result.exitCode).toBe(0);
 };
 
+test("a policy rebuild is queued once so retries retain only unfinished repositories", () => {
+  check(`
+    import assert from "node:assert/strict";
+    import { mock } from "bun:test";
+    import { githubPublicFeedHead, githubRepositories } from "./src/db/schema.ts";
+    const head = { policyDigest: null, token: null };
+    let fullRebuilds = 0;
+    let transactions = 0;
+    const transaction = {
+      execute: async () => {},
+      select: () => ({ from: () => ({ where: () => ({
+        for: async () => [head], then: resolve => resolve([head]),
+      }) }) }),
+      update: table => ({ set: values => ({ where: () => {
+        if (table === githubRepositories) fullRebuilds++;
+        if (table === githubPublicFeedHead) {
+          if ("projectionRequestToken" in values) head.token = values.projectionRequestToken;
+          if ("summaryPolicyDigest" in values) head.policyDigest = values.summaryPolicyDigest;
+        }
+        return { returning: async () => [{ token: head.token }], then: resolve => resolve([]) };
+      } }) }),
+    };
+    mock.module("./src/db/client.ts", () => ({ getDatabase: () => ({
+      transaction: async callback => { transactions++; return await callback(transaction); },
+    }) }));
+    const { ensureGitHubWorkUnitProjectionRequest: ensure } = await import("./src/lib/github-work-unit-projection-state.ts");
+    const first = await ensure();
+    assert.ok(first);
+    assert.equal(transactions, 1);
+    assert.match(head.policyDigest, /^[a-f0-9]{64}$/);
+    assert.equal(await ensure(), first);
+    assert.equal(fullRebuilds, 1);
+    // Completing a batch or ingesting a new push must not repeat the policy rebuild.
+    head.token = crypto.randomUUID();
+    assert.equal(await ensure(), head.token);
+    assert.equal(fullRebuilds, 1);
+    head.token = null;
+    assert.equal(await ensure(), null);
+    assert.equal(fullRebuilds, 1);
+    // A new policy must queue all repositories even when scoped work is already pending.
+    head.token = crypto.randomUUID();
+    head.policyDigest = null;
+    assert.notEqual(await ensure(), first);
+    assert.equal(fullRebuilds, 2);
+  `);
+});
+
 test("publication keeps source dates through delayed syncs, metadata revisions and IST midnight", () => {
   check(`
     import assert from "node:assert/strict";
