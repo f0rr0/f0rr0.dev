@@ -219,7 +219,7 @@ function WorkUnitRow({
             <p className="wrap-anywhere">{item.summary}</p>
           )}
           <WorkUnitFacts item={item} />
-          {item.destination === null ? null : (
+          {item.destination === null || item.kind === "pull-request" ? null : (
             <a
               className="site-text-link inline-flex min-h-11 items-center text-sm"
               href={item.destination.url}
@@ -227,9 +227,7 @@ function WorkUnitRow({
               target="_blank"
               rel="noopener noreferrer"
             >
-              {item.kind === "pull-request"
-                ? "View pull request ↗"
-                : "View latest commit ↗"}
+              View latest commit ↗
             </a>
           )}
         </div>
