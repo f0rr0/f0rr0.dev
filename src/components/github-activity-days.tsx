@@ -219,17 +219,6 @@ function WorkUnitRow({
             <p className="wrap-anywhere">{item.summary}</p>
           )}
           <WorkUnitFacts item={item} />
-          {item.destination === null || item.kind === "pull-request" ? null : (
-            <a
-              className="site-text-link inline-flex min-h-11 items-center text-sm"
-              href={item.destination.url}
-              aria-label={item.destination.label}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              View latest commit ↗
-            </a>
-          )}
         </div>
       </CollapsibleContent>
     </Collapsible>
