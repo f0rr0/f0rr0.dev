@@ -205,7 +205,7 @@ function WorkUnitRow({
             </span>
           ) : null}
           <DateTime
-            className="whitespace-nowrap"
+            className="w-[8ch] shrink-0 text-right whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
             timeZone={sitePreferences.timeZone}
@@ -261,7 +261,7 @@ function IssueRow({
             <span className="sr-only">{label}</span>
           </span>
           <DateTime
-            className="whitespace-nowrap"
+            className="w-[8ch] shrink-0 text-right whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
             timeZone={sitePreferences.timeZone}
