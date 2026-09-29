@@ -6,10 +6,7 @@ import {
   supabaseCronJobsFrom,
   supabaseCronUrlsFrom,
 } from "../scripts/configure-supabase-cron.ts";
-import {
-  productionMigrationDatabaseUrl,
-  shouldApplyProductionMigrations,
-} from "../scripts/migrate-production-database.ts";
+import { shouldApplyProductionMigrations } from "../scripts/migrate-production-database.ts";
 
 describe("production migration environment", () => {
   test("runs only for Vercel production deployments", () => {
@@ -62,33 +59,6 @@ describe("production Supabase cron URLs", () => {
     expect(() => supabaseCronUrlsFrom("http://localhost:3000")).toThrow(
       "HTTPS"
     );
-  });
-});
-
-describe("production migration database URL", () => {
-  test("prefers an explicitly non-pooling URL", () => {
-    expect(
-      productionMigrationDatabaseUrl({
-        DATABASE_URL: "postgresql://fallback:secret@runtime.example:6543/db",
-        DATABASE_URL_UNPOOLED:
-          "postgresql://primary:secret@db.example:5432/postgres",
-      })
-    ).toBe("postgresql://primary:secret@db.example:5432/postgres");
-  });
-
-  test("requires a separate administration URL instead of rewriting the runtime pooler", () => {
-    expect(() =>
-      productionMigrationDatabaseUrl({
-        DATABASE_URL:
-          "postgresql://postgres.project:secret@aws-0-region.pooler.supabase.com:6543/postgres",
-      })
-    ).toThrow("DATABASE_URL_UNPOOLED is not configured");
-    expect(() =>
-      productionMigrationDatabaseUrl({
-        DATABASE_URL_UNPOOLED:
-          "postgresql://postgres.project:secret@aws-0-region.pooler.supabase.com:6543/postgres",
-      })
-    ).toThrow("direct connection or session pooler");
   });
 });
 

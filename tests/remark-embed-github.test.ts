@@ -5,6 +5,7 @@ import {
   githubTransformer,
   parseGitHubUrl,
 } from "../src/lib/remark-embed-github.mjs";
+import { mockFetch } from "./helpers";
 
 const commit = "3e5eed1208b9b444830febcfeecb82a8f3259a3d";
 describe("GitHub code reference embeds", () => {
@@ -81,7 +82,7 @@ test("GitHub previews preserve PR states, numbers, and escaped remote content", 
       ["closed", true, false, "Closed"],
       ["closed", false, true, "Merged"],
     ] as const) {
-      globalThis.fetch = (async () =>
+      globalThis.fetch = mockFetch(async () =>
         Response.json({
           state,
           draft,
@@ -93,7 +94,8 @@ test("GitHub previews preserve PR states, numbers, and escaped remote content", 
           additions: 20,
           deletions: 3,
           changed_files: 1,
-        })) as unknown as typeof fetch;
+        })
+      );
       const html = await githubTransformer.getHTML(url);
       expect(html).toContain(`#3086`);
       expect(html).not.toContain("#3,086");

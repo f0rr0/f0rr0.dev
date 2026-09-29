@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import assert from "node:assert/strict";
 
 import {
   githubTokensFrom,
@@ -38,12 +39,14 @@ test("parses arbitrary configured account keys and rejects malformed or ambiguou
     '"private-value"',
     "private-value",
   ]) {
-    expect(() => githubTokensFrom(value, ["alice"])).toThrow(TypeError);
-    try {
-      githubTokensFrom(value, ["alice"]);
-    } catch (error) {
-      expect(String(error)).not.toContain("private-value");
-    }
+    assert.throws(
+      () => githubTokensFrom(value, ["alice"]),
+      (thrown: unknown) => {
+        expect(thrown).toBeInstanceOf(TypeError);
+        expect(String(thrown)).not.toContain("private-value");
+        return true;
+      }
+    );
   }
 });
 
@@ -51,8 +54,8 @@ test("credential rotation, removal and order never change authors or require net
   globalThis.fetch = mockFetch(() => {
     throw new Error("Unexpected discovery request");
   });
-  const authors = TRACKED_GITHUB_USER_IDS;
-  const accounts = TRACKED_GITHUB_ACCOUNTS;
+  const authors = { ...TRACKED_GITHUB_USER_IDS };
+  const accounts = [...TRACKED_GITHUB_ACCOUNTS];
   delete env.GITHUB_TOKEN;
   for (const tokens of [
     { f0rr0: "first", yuppiestechdev: "second" },
@@ -78,8 +81,11 @@ test("credential rotation, removal and order never change authors or require net
 test("existing verification checks both stable identity and configured login in one request", async () => {
   let calls = 0;
   let identity = { id: 8_574_219, login: "F0rr0" };
-  globalThis.fetch = mockFetch(async (input) => {
+  globalThis.fetch = mockFetch(async (input, init) => {
     calls += 1;
+    expect(new Headers(init?.headers).get("authorization")).toBe(
+      "Bearer test-token"
+    );
     expect(new URL(input instanceof Request ? input.url : input).pathname).toBe(
       "/user"
     );
@@ -88,12 +94,14 @@ test("existing verification checks both stable identity and configured login in 
   await assertGitHubTokenIdentity("f0rr0", "test-token");
   expect(calls).toBe(1);
   identity = { id: 99_666_891, login: "f0rr0" };
-  expect(assertGitHubTokenIdentity("f0rr0", "test-token")).rejects.toThrow(
-    "not authenticated"
+  await assert.rejects(
+    assertGitHubTokenIdentity("f0rr0", "test-token"),
+    /not authenticated/u
   );
   identity = { id: 8_574_219, login: "renamed" };
-  expect(assertGitHubTokenIdentity("f0rr0", "test-token")).rejects.toThrow(
-    "not authenticated"
+  await assert.rejects(
+    assertGitHubTokenIdentity("f0rr0", "test-token"),
+    /not authenticated/u
   );
 });
 

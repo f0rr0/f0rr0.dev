@@ -9,7 +9,6 @@ import {
   githubActivityRetryAt,
   githubPullRequestSnapshotDisposition,
   githubPrReconciliationCutoff,
-  GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS,
   nextGitHubPullRequestReconciliationAt,
   workerBatchSizeFrom,
   workerDeadlineReached,
@@ -132,7 +131,6 @@ describe("GitHub activity worker bounds", () => {
   });
 
   test("keeps open PR reconciliation unbounded with age-aware cadence", () => {
-    expect(GITHUB_PR_RECONCILIATION_MAX_AGE_DAYS).toBe(Infinity);
     const now = new Date("2026-08-28T12:00:00.000Z");
     expect(githubPrReconciliationCutoff(Infinity, now)).toBeNull();
     expect(

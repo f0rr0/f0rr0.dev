@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import assert from "node:assert/strict";
 
 import type { GitHubRepositoryInventoryFacts } from "../src/lib/github-commits-core.ts";
 import {
@@ -87,8 +88,9 @@ describe("GitHub repository reconciliation", () => {
       Response.json([{ ...repository, topics: undefined }])
     );
 
-    expect(collectAccessibleGitHubRepositories("token")).rejects.toThrow(
-      "invalid repository response"
+    await assert.rejects(
+      collectAccessibleGitHubRepositories("token"),
+      /invalid repository response/u
     );
   });
 
@@ -131,7 +133,8 @@ describe("GitHub repository reconciliation", () => {
       });
     });
 
-    expect(collectAccessibleGitHubRepositories("token")).rejects.toBeInstanceOf(
+    await assert.rejects(
+      collectAccessibleGitHubRepositories("token"),
       TypeError
     );
     expect(requests).toBe(1);

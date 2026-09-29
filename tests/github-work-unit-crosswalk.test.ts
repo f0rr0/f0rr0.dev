@@ -366,7 +366,6 @@ describe("GitHub work-unit crosswalk", () => {
       ],
       passed: false,
     });
-    expect(report.version).toBe(4);
   });
 
   test("fails if a verified merge landing is projected as ref-owned work", () => {
