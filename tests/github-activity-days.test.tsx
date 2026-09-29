@@ -49,8 +49,7 @@ test("the initial homepage HTML includes saved IST work across UTC midnight with
     <GitHubActivityDays days={days} preview now="2026-09-07T01:00:00.000Z" />
   );
   expect(html).toContain("oliphaunt");
-  expect(html).toContain('href="https://github.com/example/site/pull/1"');
-  expect(html).toContain("Open pull request 1 on GitHub");
+  expect(html).not.toContain('href="https://github.com/example/site/pull/1"');
   expect(html).toContain("2 updates across 2 repos");
   expect(html).not.toContain("+4,474");
   expect(html).not.toContain("−3,427");
