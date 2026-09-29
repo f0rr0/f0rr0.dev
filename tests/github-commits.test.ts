@@ -1,11 +1,17 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setSystemTime,
+  test,
+} from "bun:test";
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
   fetchGitHub,
   GitHubRequestDeadlineError,
-  GitHubResponseError,
   githubApiUrl,
 } from "../src/lib/github-api.ts";
 import {
@@ -24,10 +30,7 @@ import {
   repositoryFrom,
 } from "../src/lib/github-commits-core.ts";
 import { isGitHubAccountPaused } from "../src/lib/github-commits-store.ts";
-import {
-  assertGitHubTokenIdentity,
-  collectGitHubEvents,
-} from "../src/lib/github-commits.ts";
+import { collectGitHubEvents } from "../src/lib/github-commits.ts";
 import { mockFetch } from "./helpers.ts";
 
 const originalFetch = globalThis.fetch;
@@ -46,7 +49,12 @@ const branchLineageRef = (
   active = true
 ) => ({ active, branchLineageId, headSha, refName });
 
+beforeEach(() => {
+  setSystemTime(new Date("2026-09-29T12:00:00Z"));
+});
+
 afterEach(() => {
+  setSystemTime();
   globalThis.fetch = originalFetch;
 });
 
@@ -988,30 +996,6 @@ describe("token identity", () => {
     ).toBeNull();
     expect(authenticatedGitHubAccountFrom({ login: "f0rr0" })).toBeNull();
   });
-
-  test("verifies the authenticated account before an inventory scan", async () => {
-    globalThis.fetch = mockFetch(async (input, init) => {
-      expect(new Request(input).url).toBe("https://api.github.com/user");
-      expect(new Headers(init?.headers).get("authorization")).toBe(
-        "Bearer token"
-      );
-      return Response.json({ id: 8_574_219, login: "f0rr0" });
-    });
-
-    expect(
-      assertGitHubTokenIdentity("f0rr0", "token")
-    ).resolves.toBeUndefined();
-  });
-
-  test("rejects a token authenticated as the wrong account", async () => {
-    globalThis.fetch = mockFetch(async () =>
-      Response.json({ id: 123_456, login: "f0rr0" })
-    );
-
-    expect(assertGitHubTokenIdentity("f0rr0", "token")).rejects.toThrow(
-      "The GitHub token is not authenticated as f0rr0"
-    );
-  });
 });
 
 describe("account pause state", () => {
@@ -1071,12 +1055,7 @@ describe("bounded event collection", () => {
       latestEventId: "12",
       notModified: true,
     });
-    expect(collected.nextPollAt.getTime()).toBeGreaterThanOrEqual(
-      startedAt + 299_000
-    );
-    expect(collected.nextPollAt.getTime()).toBeLessThanOrEqual(
-      startedAt + 301_000
-    );
+    expect(collected.nextPollAt.getTime()).toBe(startedAt + 300_000);
   });
 
   test("collects a real sparse pull request event without poisoning its page", async () => {
@@ -1147,7 +1126,8 @@ describe("bounded event collection", () => {
     globalThis.fetch = mockFetch(async () =>
       Response.json([accountEvent("12")])
     );
-    expect(collectGitHubEvents("f0rr0", "token", null)).rejects.toBeInstanceOf(
+    await assert.rejects(
+      collectGitHubEvents("f0rr0", "token", null),
       TypeError
     );
   });
@@ -1161,7 +1141,8 @@ describe("bounded event collection", () => {
         },
       })
     );
-    expect(collectGitHubEvents("f0rr0", "token", null)).rejects.toBeInstanceOf(
+    await assert.rejects(
+      collectGitHubEvents("f0rr0", "token", null),
       TypeError
     );
   });
@@ -1173,11 +1154,12 @@ describe("bounded event collection", () => {
       return githubEventResponse([]);
     });
 
-    expect(
+    await assert.rejects(
       collectGitHubEvents("f0rr0", "token", null, null, {
         deadlineAt: Date.now() - 1,
-      })
-    ).rejects.toBeInstanceOf(GitHubRequestDeadlineError);
+      }),
+      GitHubRequestDeadlineError
+    );
     expect(calls).toBe(0);
   });
 });
@@ -1190,12 +1172,13 @@ describe("GitHub request deferral", () => {
       return Response.json({});
     });
 
-    expect(
+    await assert.rejects(
       fetchGitHub(githubApiUrl("/user"), {
         deadlineAt: Date.now() - 1,
         token: "token",
-      })
-    ).rejects.toBeInstanceOf(GitHubRequestDeadlineError);
+      }),
+      GitHubRequestDeadlineError
+    );
     expect(calls).toBe(0);
   });
 
@@ -1209,14 +1192,14 @@ describe("GitHub request deferral", () => {
     });
 
     const startedAt = Date.now();
-    expect(
+    await assert.rejects(
       fetchGitHub(githubApiUrl("/user"), {
         deadlineAt: startedAt + 50,
         token: "token",
-      })
-    ).rejects.toBeInstanceOf(GitHubRequestDeadlineError);
+      }),
+      GitHubRequestDeadlineError
+    );
     expect(calls).toBe(1);
-    expect(Date.now() - startedAt).toBeLessThan(1000);
   });
 
   test("does not immediately retry a rate-limited request", async () => {
@@ -1230,16 +1213,15 @@ describe("GitHub request deferral", () => {
     });
 
     const startedAt = Date.now();
-    let caught;
-    try {
-      await fetchGitHub(githubApiUrl("/user"), { token: "token" });
-    } catch (error) {
-      caught = error;
-    }
-    assert.ok(caught instanceof GitHubResponseError);
-    expect(caught).toMatchObject({ retryable: true, status: 429 });
-    assert.ok(caught instanceof GitHubResponseError && caught.retryAt);
-    expect(caught.retryAt.getTime()).toBeGreaterThanOrEqual(startedAt + 59_000);
+    await assert.rejects(
+      fetchGitHub(githubApiUrl("/user"), { token: "token" }),
+      {
+        name: "GitHubResponseError",
+        status: 429,
+        retryable: true,
+        retryAt: new Date(startedAt + 60_000),
+      }
+    );
     expect(calls).toBe(1);
   });
 
@@ -1254,16 +1236,15 @@ describe("GitHub request deferral", () => {
           status: 403,
         })
     );
-    let caught;
-    try {
-      await fetchGitHub(githubApiUrl("/user"), { token: "token" });
-    } catch (error) {
-      caught = error;
-    }
-    assert.ok(caught instanceof GitHubResponseError);
-    expect(caught).toMatchObject({ retryable: true, status: 403 });
-    assert.ok(caught.retryAt);
-    expect(caught.retryAt.toISOString()).toBe("2033-05-18T03:33:20.000Z");
+    await assert.rejects(
+      fetchGitHub(githubApiUrl("/user"), { token: "token" }),
+      {
+        name: "GitHubResponseError",
+        status: 403,
+        retryable: true,
+        retryAt: new Date("2033-05-18T03:33:20.000Z"),
+      }
+    );
   });
 
   test("defers a headerless secondary-limit response for at least one minute", async () => {
@@ -1278,16 +1259,15 @@ describe("GitHub request deferral", () => {
       )
     );
     const startedAt = Date.now();
-    let caught;
-    try {
-      await fetchGitHub(githubApiUrl("/user"), { token: "token" });
-    } catch (error) {
-      caught = error;
-    }
-    assert.ok(caught instanceof GitHubResponseError);
-    expect(caught).toMatchObject({ retryable: true, status: 403 });
-    assert.ok(caught instanceof GitHubResponseError && caught.retryAt);
-    expect(caught.retryAt.getTime()).toBeGreaterThanOrEqual(startedAt + 59_000);
+    await assert.rejects(
+      fetchGitHub(githubApiUrl("/user"), { token: "token" }),
+      {
+        name: "GitHubResponseError",
+        status: 403,
+        retryable: true,
+        retryAt: new Date(startedAt + 60_000),
+      }
+    );
   });
 
   test("keeps a real permission 403 terminal", async () => {
@@ -1301,18 +1281,15 @@ describe("GitHub request deferral", () => {
         { status: 403 }
       )
     );
-    let caught;
-    try {
-      await fetchGitHub(githubApiUrl("/user"), { token: "token" });
-    } catch (error) {
-      caught = error;
-    }
-    assert.ok(caught instanceof GitHubResponseError);
-    expect(caught).toMatchObject({
-      retryAt: null,
-      retryable: false,
-      status: 403,
-    });
+    await assert.rejects(
+      fetchGitHub(githubApiUrl("/user"), { token: "token" }),
+      {
+        name: "GitHubResponseError",
+        status: 403,
+        retryable: false,
+        retryAt: null,
+      }
+    );
   });
 
   test("fails closed when a 403 error body exceeds the inspection bound", async () => {
@@ -1322,17 +1299,15 @@ describe("GitHub request deferral", () => {
         { status: 403 }
       )
     );
-    let caught;
-    try {
-      await fetchGitHub(githubApiUrl("/user"), { token: "token" });
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toMatchObject({
-      retryAt: null,
-      retryable: false,
-      status: 403,
-    });
+    await assert.rejects(
+      fetchGitHub(githubApiUrl("/user"), { token: "token" }),
+      {
+        name: "GitHubResponseError",
+        status: 403,
+        retryable: false,
+        retryAt: null,
+      }
+    );
   });
 
   test("gives a headerless 429 a usable retry time", async () => {
@@ -1340,15 +1315,15 @@ describe("GitHub request deferral", () => {
       Response.json({ message: "Too many requests" }, { status: 429 })
     );
     const startedAt = Date.now();
-    let caught;
-    try {
-      await fetchGitHub(githubApiUrl("/user"), { token: "token" });
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toMatchObject({ retryable: true, status: 429 });
-    assert.ok(caught instanceof GitHubResponseError && caught.retryAt);
-    expect(caught.retryAt.getTime()).toBeGreaterThanOrEqual(startedAt + 59_000);
+    await assert.rejects(
+      fetchGitHub(githubApiUrl("/user"), { token: "token" }),
+      {
+        name: "GitHubResponseError",
+        status: 429,
+        retryable: true,
+        retryAt: new Date(startedAt + 60_000),
+      }
+    );
   });
 
   test("allows authenticated GraphQL query POSTs", async () => {

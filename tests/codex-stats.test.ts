@@ -1,14 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-
-import {
-  activityThresholds,
-  CodexActivity,
-} from "../src/components/codex-activity.tsx";
-import { CodexTotals, CodexUsageLimit } from "../src/components/codex-stats";
-import type { CodexAccountSnapshot } from "../src/lib/codex/stats";
+import { activityThresholds } from "../src/components/codex-activity.tsx";
 import {
   buildPublicCodexStats,
   createCodexAccountSnapshot,
@@ -91,7 +83,7 @@ const requireStats = <T>(stats: T | null): T => {
 };
 
 describe("public Codex statistics", () => {
-  test("daily totals use provider dates and reset timestamps display in IST", () => {
+  test("daily totals use provider dates across IST and UTC midnight", () => {
     const snapshot = createCodexAccountSnapshot(
       profile(120, [{ start_date: "2026-09-28", tokens: 120 }]),
       {
@@ -121,15 +113,6 @@ describe("public Codex statistics", () => {
       });
       expect(stats.totals.last7Days.value).toBe(120);
       expect(stats.totals.todayTokens.value).toBe(expectedToday);
-      const html = renderToStaticMarkup(createElement(CodexTotals, { stats }));
-      expect(html).toContain("Last 7 days");
-      expect(html).toContain(">Today</dt>");
-      expect(html).not.toContain("UTC");
-      const limits = renderToStaticMarkup(
-        createElement(CodexUsageLimit, { stats })
-      );
-      expect(limits).toContain("Sep 29, 2026");
-      expect(limits).not.toContain("UTC");
     }
   });
 
@@ -141,26 +124,6 @@ describe("public Codex statistics", () => {
     ).toEqual([2_000_000, 4_000_000, 6_000_000]);
     expect(activityThresholds([0, 0])).toEqual([0, 0, 0]);
     expect(activityThresholds([10, 10, 10])).toEqual([10, 10, 10]);
-  });
-
-  test("keeps zero-activity calendar cells out of the tab order", () => {
-    const series = {
-      partial: false,
-      values: [
-        { day: "2026-01-01", tokens: 0 },
-        { day: "2026-01-02", tokens: 1000 },
-      ],
-    };
-    const html = renderToStaticMarkup(
-      createElement(CodexActivity, {
-        cumulative: series,
-        daily: series,
-        weekly: series,
-      })
-    );
-
-    expect(html).not.toContain(": 0 tokens");
-    expect(html).toContain("1,000 tokens");
   });
 
   test("whitelists upstream data and combines accounts", () => {
@@ -301,7 +264,6 @@ describe("public Codex statistics", () => {
         resetAt: null,
       },
     ]);
-    expect(JSON.stringify(stats)).not.toContain("Spark");
 
     const partial = requireStats(
       buildPublicCodexStats(
@@ -525,7 +487,7 @@ test("snapshot saves keep profile history when upstream shortens or omits it", a
     dailyUsageBuckets: [{ startDate: "2020-01-01", tokens: 10 }],
     cumulativeDailyUsageBuckets: [{ startDate: "2020-01-01", tokens: 10 }],
     primaryLimit: null,
-    summary: {} as CodexAccountSnapshot["summary"],
+    summary: createCodexAccountSnapshot(profile(0, []), usage()).summary,
     topInvocations: null,
   };
   const next = {

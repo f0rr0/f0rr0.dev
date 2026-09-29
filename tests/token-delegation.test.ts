@@ -15,7 +15,10 @@ test("donut callouts stay separated for narrow charts and adjacent small slices"
         radius,
         height
       );
+      expect(labels).toHaveLength(values.length);
       for (const label of labels) {
+        expect([-1, 1]).toContain(label.side);
+        expect(Number.isFinite(label.y)).toBe(true);
         expect(label.y).toBeGreaterThanOrEqual(36);
         expect(label.y).toBeLessThanOrEqual(height - 36);
         for (const other of labels) {

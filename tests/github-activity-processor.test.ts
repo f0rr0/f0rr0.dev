@@ -1,8 +1,14 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setSystemTime,
+  test,
+} from "bun:test";
 import assert from "node:assert/strict";
 
 import {
-  GitHubGraphQlResponseError,
   fetchGitHubActivityCommitSource,
   fetchGitHubAssociatedPullRequests,
   fetchGitHubPullRequestMembership,
@@ -41,11 +47,13 @@ const restoreEnvironmentValue = (
 };
 
 beforeEach(() => {
+  setSystemTime(new Date("2026-09-29T12:00:00Z"));
   delete env.GITHUB_TOKENS;
   delete env.GITHUB_TOKEN;
 });
 
 afterEach(() => {
+  setSystemTime();
   globalThis.fetch = originalFetch;
   restoreEnvironmentValue("GITHUB_TOKENS", originalTokens);
   restoreEnvironmentValue("GITHUB_TOKEN", originalDefaultToken);
@@ -154,10 +162,10 @@ describe("GitHub activity commit acquisition", () => {
       sha,
     };
 
-    expect(fetchGitHubActivityCommitSource(reference)).rejects.toMatchObject({
+    await assert.rejects(fetchGitHubActivityCommitSource(reference), {
       code: "source_invalid",
     });
-    expect(fetchGitHubActivityCommitSource(reference)).rejects.toMatchObject({
+    await assert.rejects(fetchGitHubActivityCommitSource(reference), {
       code: "source_invalid",
     });
     const root = await fetchGitHubActivityCommitSource(reference);
@@ -320,7 +328,7 @@ describe("GitHub activity commit acquisition", () => {
       })
     );
 
-    expect(
+    await assert.rejects(
       fetchGitHubPushObservationSource({
         historySinceAt: new Date("2026-08-01T00:00:00.000Z"),
         historyUntilAt: null,
@@ -333,8 +341,9 @@ describe("GitHub activity commit acquisition", () => {
         refName: "refs/heads/main",
         repository: "example-org/example-repo",
         repositoryId: "123",
-      })
-    ).rejects.toMatchObject({ code: "source_incomplete" });
+      }),
+      { code: "source_incomplete" }
+    );
   });
 
   test("rejects a pushed sequence that contradicts durable commit order", async () => {
@@ -353,7 +362,7 @@ describe("GitHub activity commit acquisition", () => {
       })
     );
 
-    expect(
+    await assert.rejects(
       fetchGitHubPushObservationSource({
         historySinceAt: new Date("2026-08-01T00:00:00.000Z"),
         historyUntilAt: null,
@@ -366,8 +375,9 @@ describe("GitHub activity commit acquisition", () => {
         refName: "refs/heads/main",
         repository: "example-org/example-repo",
         repositoryId: "123",
-      })
-    ).rejects.toMatchObject({ code: "source_incomplete" });
+      }),
+      { code: "source_incomplete" }
+    );
   });
 
   test("isolates malformed foreign commits and accepts an empty tracked message", async () => {
@@ -435,7 +445,7 @@ describe("GitHub activity commit acquisition", () => {
       })
     );
 
-    expect(
+    await assert.rejects(
       fetchGitHubPushObservationSource({
         historySinceAt: new Date("2026-08-01T00:00:00.000Z"),
         historyUntilAt: null,
@@ -448,8 +458,9 @@ describe("GitHub activity commit acquisition", () => {
         refName: "refs/heads/main",
         repository: "example-org/example-repo",
         repositoryId: "123",
-      })
-    ).rejects.toMatchObject({ code: "source_invalid" });
+      }),
+      { code: "source_invalid" }
+    );
   });
 
   test("accepts a ref rewind with no newly reachable commits", async () => {
@@ -601,7 +612,7 @@ describe("GitHub activity commit acquisition", () => {
       return new Response(null, { status: 404 });
     });
 
-    expect(
+    await assert.rejects(
       fetchGitHubPushObservationSource({
         historyUntilAt: null,
         account: "f0rr0" as const,
@@ -614,8 +625,9 @@ describe("GitHub activity commit acquisition", () => {
         refName: "refs/heads/main",
         repository: "example-org/example-repo",
         repositoryId: "123",
-      })
-    ).rejects.toMatchObject({ status: 404 });
+      }),
+      { status: 404 }
+    );
 
     expect(paths).toEqual([
       `/repos/example-org/example-repo/compare/${beforeSha}...${afterSha}`,
@@ -679,7 +691,7 @@ describe("GitHub activity commit acquisition", () => {
       return new Response(null, { status: 409 });
     });
 
-    expect(
+    await assert.rejects(
       fetchGitHubPushObservationSource({
         historyUntilAt: null,
         account: "f0rr0" as const,
@@ -692,8 +704,9 @@ describe("GitHub activity commit acquisition", () => {
         refName: "refs/heads/main",
         repository: "example-org/example-repo",
         repositoryId: "123",
-      })
-    ).rejects.toMatchObject({ code: "source_incomplete" });
+      }),
+      { code: "source_incomplete" }
+    );
 
     expect(calls).toBe(1);
   });
@@ -719,7 +732,7 @@ describe("GitHub activity commit acquisition", () => {
       )
     );
 
-    expect(
+    await assert.rejects(
       fetchGitHubPushObservationSource({
         historyUntilAt: null,
         account: "f0rr0" as const,
@@ -732,13 +745,14 @@ describe("GitHub activity commit acquisition", () => {
         refName: "refs/heads/main",
         repository: "example-org/example-repo",
         repositoryId: "123",
-      })
-    ).rejects.toMatchObject({
-      code: "source_incomplete",
-      kind: "rate_limited",
-      retryable: true,
-      retryAt: expect.any(Date),
-    });
+      }),
+      {
+        code: "source_incomplete",
+        kind: "rate_limited",
+        retryable: true,
+        retryAt: new Date("2026-09-29T12:02:00Z"),
+      }
+    );
   });
 
   test("bounds a new branch by the observed count without slicing history", async () => {
@@ -1053,13 +1067,14 @@ describe("GitHub pull request merge commit resolution", () => {
       })
     );
 
-    expect(
-      resolveGitHubPullRequestMergeCommits(["PR_partial"], "test-token")
-    ).rejects.toMatchObject({
-      code: "source_incomplete",
-      kind: "partial_response",
-      retryable: true,
-    });
+    await assert.rejects(
+      resolveGitHubPullRequestMergeCommits(["PR_partial"], "test-token"),
+      {
+        code: "source_incomplete",
+        kind: "partial_response",
+        retryable: true,
+      }
+    );
   });
 
   test("classifies HTTP-200 GraphQL rate limits with their reset time", async () => {
@@ -1081,14 +1096,15 @@ describe("GitHub pull request merge commit resolution", () => {
       )
     );
 
-    expect(
-      resolveGitHubPullRequestMergeCommits(["PR_limited"], "test-token")
-    ).rejects.toMatchObject({
-      code: "source_incomplete",
-      kind: "rate_limited",
-      retryable: true,
-      retryAt: resetAt,
-    });
+    await assert.rejects(
+      resolveGitHubPullRequestMergeCommits(["PR_limited"], "test-token"),
+      {
+        code: "source_incomplete",
+        kind: "rate_limited",
+        retryable: true,
+        retryAt: resetAt,
+      }
+    );
   });
 
   test("waits at least one minute for a headerless GraphQL secondary limit", async () => {
@@ -1100,23 +1116,18 @@ describe("GitHub pull request merge commit resolution", () => {
       })
     );
 
-    let caught;
-    try {
-      await resolveGitHubPullRequestMergeCommits(
+    await assert.rejects(
+      resolveGitHubPullRequestMergeCommits(
         ["PR_secondary_limited"],
         "test-token"
-      );
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toMatchObject({
-      code: "source_incomplete",
-      kind: "rate_limited",
-      retryable: true,
-    });
-    assert.ok(caught instanceof GitHubGraphQlResponseError && caught.retryAt);
-    expect(caught.retryAt.getTime()).toBeGreaterThanOrEqual(
-      requestedAt + 60_000
+      ),
+      {
+        name: "GitHubGraphQlResponseError",
+        code: "source_incomplete",
+        kind: "rate_limited",
+        retryable: true,
+        retryAt: new Date(requestedAt + 60_000),
+      }
     );
   });
 
@@ -1128,13 +1139,14 @@ describe("GitHub pull request merge commit resolution", () => {
       })
     );
 
-    expect(
-      resolveGitHubPullRequestMergeCommits(["PR_hidden"], "test-token")
-    ).rejects.toMatchObject({
-      code: "source_incomplete",
-      kind: "access_denied",
-      retryable: true,
-    });
+    await assert.rejects(
+      resolveGitHubPullRequestMergeCommits(["PR_hidden"], "test-token"),
+      {
+        code: "source_incomplete",
+        kind: "access_denied",
+        retryable: true,
+      }
+    );
   });
 });
 
@@ -1191,7 +1203,7 @@ describe("GitHub pull request acquisition", () => {
       Response.json([{ ...pullRequest, node_id: null }])
     );
 
-    expect(
+    await assert.rejects(
       fetchGitHubAssociatedPullRequests({
         author: "f0rr0" as const,
         committedAt: "2026-08-28T12:00:00.000Z",
@@ -1199,8 +1211,9 @@ describe("GitHub pull request acquisition", () => {
         repository: repository.full_name,
         repositoryId: String(repository.id),
         sha: "3".repeat(40),
-      })
-    ).rejects.toMatchObject({ code: "source_invalid" });
+      }),
+      { code: "source_invalid" }
+    );
   });
 
   test("resolves an associated REST 2026 merged PR through GraphQL", async () => {
@@ -1641,7 +1654,7 @@ describe("GitHub pull request acquisition", () => {
       });
     });
 
-    expect(
+    await assert.rejects(
       fetchGitHubPullRequestMembershipWithToken(
         {
           account: "f0rr0" as const,
@@ -1652,8 +1665,9 @@ describe("GitHub pull request acquisition", () => {
         251,
         "test-token",
         { expectedBaseSha: baseSha, expectedHeadSha: headSha }
-      )
-    ).rejects.toMatchObject({ code: "source_incomplete" });
+      ),
+      { code: "source_incomplete" }
+    );
   });
 
   test("rejects comparison links that skip a page", async () => {
@@ -1675,7 +1689,7 @@ describe("GitHub pull request acquisition", () => {
       )
     );
 
-    expect(
+    await assert.rejects(
       fetchGitHubPullRequestMembershipWithToken(
         {
           account: "f0rr0" as const,
@@ -1686,8 +1700,9 @@ describe("GitHub pull request acquisition", () => {
         251,
         "test-token",
         { expectedBaseSha: baseSha, expectedHeadSha: headSha }
-      )
-    ).rejects.toMatchObject({ code: "source_invalid" });
+      ),
+      { code: "source_invalid" }
+    );
   });
 });
 
@@ -1745,7 +1760,7 @@ describe("GitHub activity provider deadlines", () => {
         ),
     ];
     for (const call of callsWithDeadline) {
-      expect(call()).rejects.toBeInstanceOf(GitHubRequestDeadlineError);
+      await assert.rejects(call(), GitHubRequestDeadlineError);
     }
     expect(calls).toBe(0);
   });

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import assert from "node:assert/strict";
 
 import {
   comparePublicActivityRevisions,
@@ -56,17 +57,18 @@ describe("public GitHub activity status", () => {
       globalThis.fetch = mockFetch(async () =>
         Response.json({ revision: "bad" })
       );
-      expect(fetchPublicActivityHead(settledHead)).rejects.toThrow("invalid");
+      await assert.rejects(fetchPublicActivityHead(settledHead), /invalid/u);
       globalThis.fetch = mockFetch(
         async () => new Response(null, { status: 503 })
       );
-      expect(fetchPublicActivityHead(settledHead)).rejects.toThrow(
-        "unavailable"
+      await assert.rejects(
+        fetchPublicActivityHead(settledHead),
+        /unavailable/u
       );
       globalThis.fetch = mockFetch(async () => {
         throw new TypeError("offline");
       });
-      expect(fetchPublicActivityHead(settledHead)).rejects.toThrow("offline");
+      await assert.rejects(fetchPublicActivityHead(settledHead), /offline/u);
     } finally {
       globalThis.fetch = originalFetch;
     }

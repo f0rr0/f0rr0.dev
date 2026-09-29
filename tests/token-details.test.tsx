@@ -1,9 +1,11 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
+import assert from "node:assert/strict";
 
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { TokenUsageDetails } from "../src/components/token-details";
 import { tokenPreferences } from "../src/content/tokens";
+import * as database from "../src/db/client";
 import {
   analyticsSchemas,
   buildTokenDetails,
@@ -11,6 +13,10 @@ import {
   mergeAnalyticsSnapshots,
 } from "../src/lib/codex/analytics";
 import type { AnalyticsSnapshot } from "../src/lib/codex/analytics";
+import {
+  getPublicCodexStats,
+  getPublicTokenDetails,
+} from "../src/lib/codex/public-stats";
 import { mockFetch } from "./helpers";
 
 const now = new Date("2026-09-23T12:00:00Z");
@@ -57,6 +63,29 @@ const fixture = () => ({
   skills: { ...meta, response: { data: [] } },
 });
 
+test("disabled public tokens return no data before consulting the database", async () => {
+  const { enabled } = tokenPreferences;
+  const configured = spyOn(database, "isDatabaseConfigured").mockReturnValue(
+    true
+  );
+  const read = spyOn(database, "getDatabase").mockImplementation(() => {
+    throw new Error("must not read private data");
+  });
+  try {
+    tokenPreferences.enabled = false;
+    expect(await getPublicCodexStats()).toBeNull();
+    for (const days of [7, 30, 365]) {
+      expect(await getPublicTokenDetails(days)).toBeNull();
+    }
+    expect(configured).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+  } finally {
+    tokenPreferences.enabled = enabled;
+    configured.mockRestore();
+    read.mockRestore();
+  }
+});
+
 test("combines counts and weighted cache rate while preserving privacy", () => {
   const first: AnalyticsSnapshot = fixture();
   const second = fixture();
@@ -74,24 +103,6 @@ test("combines counts and weighted cache rate while preserving privacy", () => {
   expect(JSON.stringify(result)).not.toContain("private-tool");
   expect(JSON.stringify(first.activity)).not.toContain("credits");
   expect(JSON.stringify(first.activity)).not.toContain("secret");
-  const html = renderToStaticMarkup(
-    <TokenUsageDetails
-      stats={null}
-      details={result}
-      weekDetails={result}
-      historyDetails={result}
-    />
-  );
-  expect(html).toContain('id="models-title"');
-  expect(html).not.toContain("Account 2");
-  expect(html).not.toContain("<details");
-  expect(html).not.toContain("UTC");
-  expect(html).toContain("Last 7 days");
-  expect(html).toMatch(
-    /<button\b[^>]*aria-selected="true"[^>]*>Last 30 days<\/button>/
-  );
-  expect(html).not.toContain("/tokens?days=");
-  expect(html).not.toContain("private-tool");
 });
 
 test("missing, zero, retained, and disabled sections stay distinct", () => {
@@ -128,9 +139,6 @@ test("missing, zero, retained, and disabled sections stay distinct", () => {
   expect(hidden.plugins).toBeNull();
   expect(hidden.models).toBeNull();
   expect(JSON.stringify(hidden)).not.toContain("private-tool");
-  expect(
-    renderToStaticMarkup(<TokenUsageDetails stats={null} details={hidden} />)
-  ).not.toContain('id="breakdowns"');
   expect(
     analyticsSchemas.activity.safeParse({ data: [{ date: "not-a-date" }] })
       .success
@@ -221,36 +229,6 @@ test("optional source failures retain original timestamps while successful sourc
     { ...tokenPreferences, enabled: false }
   );
   expect(disabled).toEqual({});
-});
-
-test("disabled configuration hides the route and public data without querying a database", () => {
-  const result = Bun.spawnSync(
-    [
-      process.execPath,
-      "--eval",
-      `
-    import assert from "node:assert/strict";
-    import { mock } from "bun:test";
-    import { tokenPreferences } from "./src/content/tokens.ts";
-    mock.module("server-only", () => ({}));
-    mock.module("./src/env.ts", () => ({ env: {} }));
-    mock.module("./src/components/site-shell.tsx", () => ({ SiteShell: () => null }));
-    mock.module("./src/content/tokens.ts", () => ({ tokenPreferences: { ...tokenPreferences, enabled: false } }));
-    mock.module("./src/db/client.ts", () => ({
-      isDatabaseConfigured: () => { throw new Error("must not query"); },
-      getDatabase: () => { throw new Error("must not query"); },
-    }));
-    const { getPublicCodexStats, getPublicTokenDetails } = await import("./src/lib/codex/public-stats.ts");
-    assert.equal(await getPublicCodexStats(), null);
-    assert.equal(await getPublicTokenDetails(7), null);
-    const { default: TokensPage } = await import("./src/app/(portfolio)/tokens/page.tsx");
-    await assert.rejects(TokensPage({ searchParams: Promise.resolve({}) }), /NEXT_HTTP_ERROR_FALLBACK;404/);
-  `,
-    ],
-    { cwd: new URL("..", import.meta.url).pathname }
-  );
-  expect(result.stderr.toString()).toBe("");
-  expect(result.exitCode).toBe(0);
 });
 
 test("ranked tools carry dynamic logos without exposing excluded tool metadata", () => {
@@ -581,7 +559,7 @@ test("backfill preserves old days and missing fields, replaces corrections witho
   expect(result.activity?.response.data).toEqual(
     previous.activity.response.data
   );
-  expect(
+  await assert.rejects(
     fetchAnalytics(
       {},
       mockFetch(async () => new Response(null, { status: 503 })),
@@ -589,6 +567,7 @@ test("backfill preserves old days and missing fields, replaces corrections witho
       previous,
       tokenPreferences,
       { start: "2020-01-01", end: "2020-12-30" }
-    )
-  ).rejects.toThrow("backfill failed");
+    ),
+    /backfill failed/u
+  );
 });

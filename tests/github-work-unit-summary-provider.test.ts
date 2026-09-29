@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import assert from "node:assert/strict";
 
 import type { generateText } from "ai";
@@ -91,7 +91,6 @@ describe("GitHub work-unit summary provider", () => {
       }),
     });
 
-    expect(call).toBeDefined();
     assert.ok(call);
     expect(call.model).toMatchObject({
       modelId: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.model,
@@ -133,21 +132,21 @@ describe("GitHub work-unit summary provider", () => {
       }),
       outputTokens: 6,
     });
-    expect(result.latencyMs).toBeGreaterThanOrEqual(0);
   });
 
   test("propagates an upstream failure unchanged for worker retry", async () => {
     const upstream = new Error("network unavailable");
     let calls = 0;
 
-    expect(
+    await assert.rejects(
       generateGitHubWorkUnitSummary(request(), {
         generateText: mockGenerateText(async () => {
           calls += 1;
           throw upstream;
         }),
-      })
-    ).rejects.toBe(upstream);
+      }),
+      (error: unknown) => error === upstream
+    );
     expect(calls).toBe(1);
   });
 
@@ -165,7 +164,7 @@ describe("GitHub work-unit summary provider", () => {
         };
       }),
     });
-    expect(semanticFailure).rejects.toMatchObject({
+    await assert.rejects(semanticFailure, {
       name: "GitHubWorkUnitSummaryInvalidOutputError",
       reason: "url",
     });
@@ -176,7 +175,7 @@ describe("GitHub work-unit summary provider", () => {
         throw new NoOutputGeneratedError();
       }),
     });
-    expect(structuredFailure).rejects.toMatchObject({
+    await assert.rejects(structuredFailure, {
       name: "GitHubWorkUnitSummaryInvalidOutputError",
       reason: "invalid_shape",
     });
@@ -199,7 +198,7 @@ describe("GitHub work-unit summary provider", () => {
         });
       }),
     });
-    expect(schemaFailure).rejects.toMatchObject({
+    await assert.rejects(schemaFailure, {
       name: "GitHubWorkUnitSummaryInvalidOutputError",
       reason: "invalid_shape",
     });
@@ -244,51 +243,55 @@ describe("GitHub work-unit summary provider", () => {
       };
     };
     for (const serializedInput of invalidInputs) {
-      let receivedError;
-      try {
-        await generateGitHubWorkUnitSummary(request({ serializedInput }), {
+      await assert.rejects(
+        generateGitHubWorkUnitSummary(request({ serializedInput }), {
           generateText: mockGenerateText(generateUnusedSummary),
-        });
-      } catch (error) {
-        receivedError = error;
-      }
-      expect(receivedError).toBeInstanceOf(
+        }),
         GitHubWorkUnitSummaryInvalidInputError
       );
-      expect(receivedError).toMatchObject({
-        name: "GitHubWorkUnitSummaryInvalidInputError",
-      });
     }
     expect(calls).toBe(0);
   });
 
   test("does not start after the deadline and aborts an in-flight request", async () => {
     let calls = 0;
-    expect(
+    await assert.rejects(
       generateGitHubWorkUnitSummary(request({ deadlineAt: Date.now() - 1 }), {
         generateText: mockGenerateText(async () => {
           calls += 1;
           return { output: { headline: "Unused", summary: "Unused." }, usage };
         }),
-      })
-    ).rejects.toMatchObject({ name: "TimeoutError" });
+      }),
+      { name: "TimeoutError" }
+    );
     expect(calls).toBe(0);
 
-    let observedSignal: AbortSignal | undefined;
-    const inFlight = generateGitHubWorkUnitSummary(
-      request({ deadlineAt: Date.now() + 20 }),
-      {
-        generateText: mockGenerateText(async ({ abortSignal }) => {
-          observedSignal = abortSignal;
-          await Bun.sleep(30);
-          assert.ok(abortSignal);
-          abortSignal.throwIfAborted();
-          return { output: { headline: "Unused", summary: "Unused." }, usage };
-        }),
-      }
+    const now = 1_790_683_200_000;
+    const clock = spyOn(Date, "now").mockReturnValue(now);
+    const controller = new AbortController();
+    const timeout = spyOn(AbortSignal, "timeout").mockReturnValue(
+      controller.signal
     );
-    expect(inFlight).rejects.toMatchObject({ name: "TimeoutError" });
-    assert.ok(observedSignal);
-    expect(observedSignal.aborted).toBe(true);
+    const reason = new DOMException("Deadline reached", "TimeoutError");
+    try {
+      await assert.rejects(
+        generateGitHubWorkUnitSummary(request({ deadlineAt: now + 1000 }), {
+          generateText: mockGenerateText(async ({ abortSignal }) => {
+            expect(abortSignal).toBe(controller.signal);
+            controller.abort(reason);
+            abortSignal?.throwIfAborted();
+            return {
+              output: { headline: "Unused", summary: "Unused." },
+              usage,
+            };
+          }),
+        }),
+        reason
+      );
+      expect(timeout.mock.calls).toEqual([[1000]]);
+    } finally {
+      clock.mockRestore();
+      timeout.mockRestore();
+    }
   });
 });

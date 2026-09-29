@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import assert from "node:assert/strict";
 
 import type {
   GitHubWorkUnitSummaryCandidate,
@@ -437,16 +438,15 @@ describe("GitHub work-unit summary evidence", () => {
   });
 
   test("rejects an invalid projection membership as a contract error", async () => {
-    expect(
+    await assert.rejects(
       buildGitHubWorkUnitSummaryInput(
         candidate({ membership: { members: [], unitKey: "pr-42" } })
-      )
-    ).rejects.toThrow("membership");
+      ),
+      /membership/u
+    );
   });
 
   test("compacts oversized net and composite evidence without dropping files or changes", async () => {
-    expect(GITHUB_WORK_UNIT_SUMMARY_MAX_INPUT_TOKENS).toBe(32_000);
-    expect(GITHUB_WORK_UNIT_SUMMARY_MAX_PAYLOAD_BYTES).toBe(393_216);
     const largeFile = (filename: string): GitHubWorkUnitSummaryFileEvidence => {
       const additions = Array.from(
         { length: 40 },

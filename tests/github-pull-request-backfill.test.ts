@@ -1,4 +1,12 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setSystemTime,
+  test,
+} from "bun:test";
+import assert from "node:assert/strict";
 
 import type { GitHubPullRequestBackfillCandidate } from "../src/lib/github-pull-request-backfill.ts";
 import {
@@ -19,7 +27,12 @@ const originalFetch = globalThis.fetch;
 const sinceAt = new Date("2026-08-01T00:00:00.000Z");
 const untilAt = new Date("2026-08-31T23:59:59.999Z");
 
+beforeEach(() => {
+  setSystemTime(new Date("2026-09-29T12:00:00Z"));
+});
+
 afterEach(() => {
+  setSystemTime();
   globalThis.fetch = originalFetch;
 });
 
@@ -254,14 +267,15 @@ describe("GitHub authored pull request backfill", () => {
       );
     });
 
-    expect(
+    await assert.rejects(
       collectGitHubAuthoredPullRequestBackfillCandidates({
         account: "f0rr0",
         deadlineAt: Date.now() + 60_000,
         token: "test-token",
         updatedSinceAt: sinceAt,
-      })
-    ).rejects.toThrow("invalid authored pull request pagination");
+      }),
+      /invalid authored pull request pagination/u
+    );
   });
 
   test("fails closed when a repeated node crosses the history cutoff", async () => {
@@ -283,14 +297,15 @@ describe("GitHub authored pull request backfill", () => {
       );
     });
 
-    expect(
+    await assert.rejects(
       collectGitHubAuthoredPullRequestBackfillCandidates({
         account: "f0rr0",
         deadlineAt: Date.now() + 60_000,
         token: "test-token",
         updatedSinceAt: sinceAt,
-      })
-    ).rejects.toThrow("invalid authored pull request pagination");
+      }),
+      /invalid authored pull request pagination/u
+    );
   });
 
   test("does not scan the accessible repository catalog", async () => {
@@ -364,16 +379,13 @@ describe("GitHub authored pull request backfill", () => {
       }
     );
 
-    expect(Date.now() - startedAt).toBeLessThan(1000);
     expect(result).toMatchObject({
       complete: false,
       scannedPullRequests: 1,
       stopReason: "provider_retry",
       unavailablePullRequests: 0,
     });
-    expect(result.retryAt?.getTime()).toBeGreaterThanOrEqual(
-      startedAt + retrySeconds * 1000
-    );
+    expect(result.retryAt?.getTime()).toBe(startedAt + retrySeconds * 1000);
     expect(checkpointWrites).toBe(0);
   });
 

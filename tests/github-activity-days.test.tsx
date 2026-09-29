@@ -63,40 +63,44 @@ test("work uses accessible status icons, PR totals and useful title fallbacks; i
   const repository = { key: "1", label: "Private", url: null, avatarUrl: null };
   const days = buildPublicGitHubActivityDays({
     days: ["2026-09-28"],
-    workUnits: ["open", "draft", "merged", "closed"].map((status) => ({
-      activityAt: "2026-09-28T12:00:00Z",
-      day: "2026-09-28",
-      destination: null,
-      id: status,
-      kind: "pull-request" as const,
-      headline: null,
-      summary: null,
-      summarizing: false,
-      repository,
-      facts: {
-        additions: 100,
-        deletions: 80,
-        ownedCommitCount: 2,
-        uniqueFileCount: 1,
-        languages: null,
-        dateRange: null,
-      },
-      pullRequest: {
-        title: "Add filtering",
-        status: status as "open" | "draft" | "merged" | "closed",
-        statusChangedAt: "2026-09-28T12:00:00Z",
-        diff: { additions: 20, deletions: 0, files: 1 },
-      },
-    })),
-    issues: ["open", "completed", "not-planned", "closed"].map((status) => ({
-      activityAt: "2026-09-28T12:00:00Z",
-      day: "2026-09-28",
-      destination: null,
-      id: `issue-${status}`,
-      title: "Improve filtering",
-      repository,
-      status: status as "open" | "completed" | "not-planned" | "closed",
-    })),
+    workUnits: (["open", "draft", "merged", "closed"] as const).map(
+      (status) => ({
+        activityAt: "2026-09-28T12:00:00Z",
+        day: "2026-09-28",
+        destination: null,
+        id: status,
+        kind: "pull-request" as const,
+        headline: null,
+        summary: null,
+        summarizing: false,
+        repository,
+        facts: {
+          additions: 100,
+          deletions: 80,
+          ownedCommitCount: 2,
+          uniqueFileCount: 1,
+          languages: null,
+          dateRange: null,
+        },
+        pullRequest: {
+          title: "Add filtering",
+          status,
+          statusChangedAt: "2026-09-28T12:00:00Z",
+          diff: { additions: 20, deletions: 0, files: 1 },
+        },
+      })
+    ),
+    issues: (["open", "completed", "not-planned", "closed"] as const).map(
+      (status) => ({
+        activityAt: "2026-09-28T12:00:00Z",
+        day: "2026-09-28",
+        destination: null,
+        id: `issue-${status}`,
+        title: "Improve filtering",
+        repository,
+        status,
+      })
+    ),
   });
   const html = renderToStaticMarkup(
     <GitHubActivityDays days={days} now="2026-09-28T12:00:00Z" />
@@ -117,6 +121,7 @@ test("work uses accessible status icons, PR totals and useful title fallbacks; i
     expect(html).toContain(label);
   }
   expect(html).not.toContain("+100");
+  expect(html).toContain(">+20<");
   expect(html).not.toContain("−80");
   expect(html).not.toContain("Direct canonical");
 });
