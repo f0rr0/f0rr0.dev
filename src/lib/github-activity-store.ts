@@ -541,10 +541,7 @@ export const readCurrentPublicGitHubRows = async (
         dateRange:
           firstDay === lastDay ? null : { end: lastDay, start: firstDay },
         deletions: row.pullRequest?.diff?.deletions ?? null,
-        languages:
-          kind === "pull-request"
-            ? null
-            : (row.languages?.map(({ label }) => label) ?? null),
+        languages: row.languages?.map(({ label }) => label) ?? null,
         ownedCommitCount: row.memberCount,
         uniqueFileCount: row.pullRequest?.diff?.files ?? row.fileCount,
       },
