@@ -154,7 +154,7 @@ function WorkUnitRow({
   return (
     <Collapsible
       analytics={{ section: "work", item_kind: item.kind }}
-      className="min-w-0"
+      className="col-span-full grid min-w-0 grid-cols-subgrid"
       render={<li />}
     >
       <TooltipTrigger
@@ -174,38 +174,40 @@ function WorkUnitRow({
           </TooltipContent>
         }
         render={
-          <CollapsibleTrigger className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group cursor-pointer" />
+          <CollapsibleTrigger className="site-row col-span-full grid min-h-11 w-full grid-cols-subgrid items-start gap-x-2 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group cursor-pointer" />
         }
       >
         <span className="min-w-0 font-normal disclosure-title group-hover:underline">
           {headline}
         </span>
-        <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
-          <span className="hidden sm:inline-flex">
+        <span className="site-row-meta col-span-4 grid min-h-6 grid-cols-subgrid items-center gap-2 text-sm text-muted-foreground tabular-nums">
+          <span className="hidden justify-self-end sm:inline-flex">
             {item.pullRequest?.diff ? (
               <DiffCounters facts={item.pullRequest.diff} />
             ) : null}
           </span>
-          {item.kind === "pull-request" && item.pullRequest ? (
-            <span
-              title={`Pull request ${item.pullRequest.status}`}
-              className={statusColor(item.pullRequest.status)}
-            >
-              <svg
-                aria-hidden="true"
-                className="size-4"
-                viewBox="0 0 16 16"
-                fill="currentColor"
+          <span className="col-start-2">
+            {item.kind === "pull-request" && item.pullRequest ? (
+              <span
+                title={`Pull request ${item.pullRequest.status}`}
+                className={statusColor(item.pullRequest.status)}
               >
-                <path d={githubIconPaths[item.pullRequest.status]} />
-              </svg>
-              <span className="sr-only">
-                Pull request {item.pullRequest.status}
+                <svg
+                  aria-hidden="true"
+                  className="size-4"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                >
+                  <path d={githubIconPaths[item.pullRequest.status]} />
+                </svg>
+                <span className="sr-only">
+                  Pull request {item.pullRequest.status}
+                </span>
               </span>
-            </span>
-          ) : null}
+            ) : null}
+          </span>
           <DateTime
-            className="w-[8ch] shrink-0 text-right whitespace-nowrap"
+            className="col-start-3 whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
             timeZone={sitePreferences.timeZone}
@@ -213,7 +215,7 @@ function WorkUnitRow({
           <DisclosureChevron />
         </span>
       </TooltipTrigger>
-      <CollapsibleContent hiddenUntilFound>
+      <CollapsibleContent className="col-span-full" hiddenUntilFound>
         <div className="space-y-2 pb-2.5 text-muted-foreground">
           {item.summary === null ? null : (
             <p className="wrap-anywhere">{item.summary}</p>
@@ -243,10 +245,10 @@ function IssueRow({
       ? "Issue closed as not planned"
       : `Issue ${status}`;
   return (
-    <li className="min-w-0">
+    <li className="col-span-full grid min-w-0 grid-cols-subgrid">
       <button
         aria-expanded={expanded}
-        className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group cursor-pointer"
+        className="site-row col-span-full grid min-h-11 w-full grid-cols-subgrid items-start gap-x-2 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group cursor-pointer"
         onClick={() => {
           setExpanded((open) => !open);
         }}
@@ -255,13 +257,13 @@ function IssueRow({
         <span className="min-w-0 font-normal disclosure-title group-hover:underline">
           {item.title}
         </span>
-        <span className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums">
-          <span title={label} className={statusColor(status)}>
+        <span className="site-row-meta col-span-4 grid min-h-6 grid-cols-subgrid items-center gap-2 text-sm text-muted-foreground tabular-nums">
+          <span title={label} className={`col-start-2 ${statusColor(status)}`}>
             <Icon aria-hidden="true" className="size-4" />
             <span className="sr-only">{label}</span>
           </span>
           <DateTime
-            className="w-[8ch] shrink-0 text-right whitespace-nowrap"
+            className="col-start-3 whitespace-nowrap"
             dateTime={item.activityAt}
             format="time"
             timeZone={sitePreferences.timeZone}
@@ -292,25 +294,25 @@ function RepositoryGroup({
     itemLimit === undefined ? group.items : group.items.slice(0, itemLimit);
   const hiddenItems = group.items.slice(visibleItems.length);
   return (
-    <li className="pt-4">
-      <h4 className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
+    <li className="col-span-full grid grid-cols-subgrid pt-4">
+      <h4 className="site-row col-span-full grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
         <RepositoryIdentity repository={group.repository} />
       </h4>
-      <ol className="divide-y divide-border">
+      <ol className="col-span-full grid grid-cols-subgrid divide-y divide-border">
         {visibleItems.map((item) => (
           <ActivityItem item={item} key={item.id} />
         ))}
       </ol>
       {hiddenItems.length === 0 ? null : (
-        <Collapsible>
-          <CollapsibleContent>
-            <ol className="divide-y divide-border border-t border-border">
+        <Collapsible className="col-span-full grid grid-cols-subgrid">
+          <CollapsibleContent className="col-span-full grid grid-cols-subgrid [&>div]:col-span-full [&>div]:grid [&>div]:grid-cols-subgrid">
+            <ol className="col-span-full grid grid-cols-subgrid divide-y divide-border border-t border-border">
               {hiddenItems.map((item) => (
                 <ActivityItem item={item} key={item.id} />
               ))}
             </ol>
           </CollapsibleContent>
-          <CollapsibleTrigger className="site-row grid min-h-11 w-full grid-cols-[minmax(0,max-content)_auto] items-start justify-start gap-x-1.5 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group/more cursor-pointer pt-0">
+          <CollapsibleTrigger className="site-row col-span-full grid min-h-11 w-full grid-cols-[minmax(0,max-content)_auto] items-start justify-start gap-x-1.5 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group/more cursor-pointer pt-0">
             <span className="min-w-0 truncate font-normal text-muted-foreground">
               <span className="group-data-panel-open/more:hidden">
                 Show {countFormatter.format(hiddenItems.length)} more
@@ -362,7 +364,10 @@ function GitHubActivityDay({
           </div>
         </dl>
       </header>
-      <ol aria-label={`Activity for ${day.day}`}>
+      <ol
+        aria-label={`Activity for ${day.day}`}
+        className="grid grid-cols-[minmax(0,1fr)_auto_1rem_max-content_auto] gap-x-2"
+      >
         {day.repositories.map((group) => (
           <RepositoryGroup
             group={group}
