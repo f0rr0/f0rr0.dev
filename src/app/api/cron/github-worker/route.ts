@@ -1,4 +1,4 @@
-import { revalidateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
 import { env } from "@/env";
@@ -42,7 +42,9 @@ export async function POST(request: Request) {
           }),
     });
     if (activity.projection?.feedRevisionChanged === true) {
-      revalidateTag("public-github-activity", { expire: 0 });
+      revalidatePath("/");
+      revalidatePath("/work");
+
       after(async () => {
         await getInitialGitHubActivity();
       });

@@ -1,93 +1,272 @@
-import { expect, mock, spyOn, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 
 import { getInitialGitHubActivity } from "../src/lib/github-activity-feed";
 import * as store from "../src/lib/github-activity-store";
 import type { PublicGitHubActivityPage } from "../src/lib/github-activity-types";
+import { readRuntimeCache } from "../src/lib/runtime-cache";
+import { installRuntimeCache } from "./helpers";
 
-for (const fallbackCached of [true, false]) {
-  test(`cache reads overlap and share fresh content with fallback ${fallbackCached ? "cached" : "missing"}`, async () => {
-    const cached: PublicGitHubActivityPage = {
-      days: [],
-      head: {
-        feedRevision: "10",
-        lastPublishedAt: null,
-        revision: "7",
-        summarizing: false,
-      },
-      nextCursor: null,
-      orderingRevision: "4",
-    };
-    const head = { ...cached.head, revision: "8", summarizing: true };
-    const readHead = spyOn(
-      store,
-      "readPublicGitHubActivityHead"
-    ).mockResolvedValue({
-      etag: "fresh-head",
-      head,
-      orderingRevision: "4",
-    });
-    const readBody = spyOn(
-      store,
-      "readPublicGitHubActivityPage"
-    ).mockRejectedValue(new Error("Unexpected database read"));
-    const bothStarted = Promise.withResolvers<null>();
-    const release = Promise.withResolvers<null>();
-    const started = new Set<string>();
-    const set = mock(async () => {});
-    const previousCache: unknown = Reflect.get(
-      globalThis,
-      "__incrementalCache"
-    );
-    Object.assign(globalThis, {
-      __incrementalCache: {
-        generateSimpleCacheKey: async (key: string) => key,
-        get: async (key: string) => {
-          const fallback = key.includes("public-github-activity-fallback-v2");
-          started.add(fallback ? "fallback" : "content");
-          if (started.size === 2) {
-            bothStarted.resolve(null);
-          }
-          await release.promise;
-          return fallback && !fallbackCached
-            ? null
-            : {
-                value: {
-                  kind: "FETCH",
-                  data: { body: JSON.stringify(cached) },
-                },
-              };
+const page: PublicGitHubActivityPage = {
+  days: [
+    {
+      day: "2026-10-01",
+      repositories: [
+        {
+          repository: {
+            key: "1",
+            label: "example/repo",
+            url: "https://github.com/example/repo",
+            avatarUrl: null,
+          },
+          items: [
+            {
+              id: "issue:1",
+              kind: "issue",
+              activityAt: "2026-10-01T12:00:00Z",
+              title: "Work",
+              destination: {
+                label: "Issue",
+                url: "https://github.com/example/repo/issues/1",
+              },
+            },
+          ],
         },
-        set,
-      },
+      ],
+    },
+  ],
+  head: {
+    feedRevision: "10",
+    lastPublishedAt: null,
+    revision: "9007199254740992",
+    summarizing: false,
+  },
+  nextCursor: null,
+  orderingRevision: "4",
+};
+
+test("cron and page readers share content while status, ordering and visibility revisions stay fresh", async () => {
+  const cache = installRuntimeCache();
+  const head = spyOn(store, "readPublicGitHubActivityHead").mockResolvedValue({
+    etag: "head",
+    head: page.head,
+    orderingRevision: page.orderingRevision,
+  });
+  const body = spyOn(store, "readPublicGitHubActivityPage").mockResolvedValue(
+    page
+  );
+  try {
+    expect(await getInitialGitHubActivity()).toEqual(page);
+    expect(await getInitialGitHubActivity()).toEqual(page);
+    expect(body).toHaveBeenCalledTimes(1);
+    const status = {
+      ...page.head,
+      revision: "9007199254740993",
+      summarizing: true,
+    };
+    head.mockResolvedValue({
+      etag: "status",
+      head: status,
+      orderingRevision: "4",
     });
-    const result = getInitialGitHubActivity();
+    expect(await getInitialGitHubActivity()).toEqual({ ...page, head: status });
+    expect(body).toHaveBeenCalledTimes(1);
+    const masked = {
+      ...page,
+      days: page.days.map((day) => ({
+        ...day,
+        repositories: day.repositories.map((group) => ({
+          repository: { ...group.repository, label: "Private", url: null },
+          items: group.items.map((item) => ({ ...item, destination: null })),
+        })),
+      })),
+      head: { ...status, feedRevision: "11", revision: "9007199254740994" },
+      orderingRevision: "5",
+    };
+    // Ordering changes independently, and a visibility publication changes the feed.
+    for (const next of [
+      { ...page, head: status, orderingRevision: "5" },
+      masked,
+    ]) {
+      head.mockResolvedValue({
+        etag: "next",
+        head: next.head,
+        orderingRevision: next.orderingRevision,
+      });
+      body.mockResolvedValue(next);
+      expect(await getInitialGitHubActivity()).toEqual(next);
+      expect(await getInitialGitHubActivity()).toEqual(next);
+    }
+    expect(body).toHaveBeenCalledTimes(3);
+    head.mockRejectedValue(new Error("Database offline"));
+    expect(await getInitialGitHubActivity()).toEqual(masked);
+    expect(body).toHaveBeenCalledTimes(3);
+  } finally {
+    head.mockRestore();
+    body.mockRestore();
+    cache.restore();
+  }
+});
+
+test("publication races cache the body's actual revision and never replace its newer head", async () => {
+  const cache = installRuntimeCache();
+  const head = spyOn(store, "readPublicGitHubActivityHead").mockResolvedValue({
+    etag: "old",
+    head: page.head,
+    orderingRevision: "4",
+  });
+  const newer = {
+    ...page,
+    head: { ...page.head, feedRevision: "11", revision: "9007199254740993" },
+    orderingRevision: "5",
+  };
+  const body = spyOn(store, "readPublicGitHubActivityPage").mockResolvedValue(
+    newer
+  );
+  try {
+    expect(await getInitialGitHubActivity()).toEqual(newer);
+    expect(
+      await readRuntimeCache<PublicGitHubActivityPage>(
+        JSON.stringify(["public-github-activity-v3", "10", "4"])
+      )
+    ).toBeNull();
+    expect(
+      await readRuntimeCache<PublicGitHubActivityPage>(
+        JSON.stringify(["public-github-activity-v3", "11", "5"])
+      )
+    ).toEqual(newer);
+    head.mockResolvedValue({
+      etag: "new",
+      head: newer.head,
+      orderingRevision: "5",
+    });
+    expect(await getInitialGitHubActivity()).toEqual(newer);
+    expect(body).toHaveBeenCalledTimes(1);
+  } finally {
+    head.mockRestore();
+    body.mockRestore();
+    cache.restore();
+  }
+});
+
+for (const warm of [false, true]) {
+  test(`a slow head uses ${warm ? "a warm outage snapshot" : "one shared cold body read"}`, async () => {
+    const cache = installRuntimeCache();
+    const head = spyOn(store, "readPublicGitHubActivityHead").mockResolvedValue(
+      { etag: "head", head: page.head, orderingRevision: "4" }
+    );
+    const body = spyOn(store, "readPublicGitHubActivityPage").mockResolvedValue(
+      page
+    );
+    const release =
+      Promise.withResolvers<
+        Awaited<ReturnType<typeof store.readPublicGitHubActivityHead>>
+      >();
+    let pending: Promise<PublicGitHubActivityPage | null> | undefined;
     try {
-      // Neither cache lookup completes until both have started.
-      await bothStarted.promise;
-      release.resolve(null);
-      expect(await result).toEqual({ ...cached, head });
-      expect(readBody).not.toHaveBeenCalled();
-      if (!fallbackCached) {
-        expect(set).toHaveBeenCalledWith(
-          expect.any(String),
-          expect.objectContaining({
-            data: expect.objectContaining({
-              body: JSON.stringify({ ...cached, head }),
-            }),
-          }),
-          expect.anything()
-        );
+      if (warm) {
+        await getInitialGitHubActivity();
       }
-    } finally {
-      release.resolve(null);
-      await result;
-      readHead.mockRestore();
-      readBody.mockRestore();
-      if (previousCache === undefined) {
-        Reflect.deleteProperty(globalThis, "__incrementalCache");
+      head.mockReturnValue(release.promise);
+      pending = getInitialGitHubActivity();
+      await Bun.sleep(1100);
+      if (warm) {
+        expect(await pending).toEqual(page);
+        expect(body).toHaveBeenCalledTimes(1);
       } else {
-        Reflect.set(globalThis, "__incrementalCache", previousCache);
+        expect(body).not.toHaveBeenCalled();
       }
+      release.resolve({ etag: "head", head: page.head, orderingRevision: "4" });
+      expect(await pending).toEqual(page);
+      expect(body).toHaveBeenCalledTimes(1);
+    } finally {
+      release.resolve({ etag: "head", head: page.head, orderingRevision: "4" });
+      await pending;
+      head.mockRestore();
+      body.mockRestore();
+      cache.restore();
     }
   });
 }
+
+test("cold metadata failure can recover through one page read; total failure returns null", async () => {
+  const cache = installRuntimeCache();
+  const head = spyOn(store, "readPublicGitHubActivityHead").mockRejectedValue(
+    new Error("Head missing")
+  );
+  const body = spyOn(store, "readPublicGitHubActivityPage").mockResolvedValue(
+    page
+  );
+  try {
+    expect(await getInitialGitHubActivity()).toEqual(page);
+    cache.values.clear();
+    body.mockRejectedValue(new Error("Page missing"));
+    expect(await getInitialGitHubActivity()).toBeNull();
+    expect(body).toHaveBeenCalledTimes(2);
+  } finally {
+    head.mockRestore();
+    body.mockRestore();
+    cache.restore();
+  }
+});
+
+test("fallback and versioned cache checks overlap instead of delaying navigation", async () => {
+  const cache = installRuntimeCache();
+  const head = spyOn(store, "readPublicGitHubActivityHead").mockResolvedValue({
+    etag: "head",
+    head: page.head,
+    orderingRevision: "4",
+  });
+  const body = spyOn(store, "readPublicGitHubActivityPage").mockResolvedValue(
+    page
+  );
+  const both = Promise.withResolvers<string>();
+  const release = Promise.withResolvers<null>();
+  let pending: ReturnType<typeof getInitialGitHubActivity> | undefined;
+  try {
+    await getInitialGitHubActivity();
+    let started = 0;
+    cache.get.mockImplementation(async (key) => {
+      started++;
+      if (started === 2) {
+        both.resolve("overlapping");
+      }
+      await release.promise;
+      return cache.values.get(key) ?? null;
+    });
+    pending = getInitialGitHubActivity();
+    expect(
+      await Promise.race([both.promise, Bun.sleep(200).then(() => "blocked")])
+    ).toBe("overlapping");
+    release.resolve(null);
+    expect(await pending).toEqual(page);
+    expect(body).toHaveBeenCalledTimes(1);
+  } finally {
+    release.resolve(null);
+    await pending;
+    head.mockRestore();
+    body.mockRestore();
+    cache.restore();
+  }
+});
+
+test("cache outages do not hide a healthy database page", async () => {
+  const cache = installRuntimeCache();
+  const head = spyOn(store, "readPublicGitHubActivityHead").mockResolvedValue({
+    etag: "head",
+    head: page.head,
+    orderingRevision: "4",
+  });
+  const body = spyOn(store, "readPublicGitHubActivityPage").mockResolvedValue(
+    page
+  );
+  try {
+    cache.get.mockRejectedValue(new Error("Cache offline"));
+    cache.set.mockRejectedValue(new Error("Cache offline"));
+    expect(await getInitialGitHubActivity()).toEqual(page);
+    expect(body).toHaveBeenCalledTimes(1);
+  } finally {
+    head.mockRestore();
+    body.mockRestore();
+    cache.restore();
+  }
+});

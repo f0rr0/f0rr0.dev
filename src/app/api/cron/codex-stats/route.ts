@@ -1,4 +1,4 @@
-import { revalidateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
 import { env } from "@/env";
@@ -17,7 +17,9 @@ export async function POST(request: Request) {
   try {
     const result = await syncCodexAccounts();
     if (result.updated > 0) {
-      revalidateTag("public-codex-stats", "max");
+      revalidatePath("/");
+      revalidatePath("/tokens");
+
       after(async () => {
         await getPublicCodexStats();
       });

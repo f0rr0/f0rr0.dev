@@ -70,7 +70,7 @@ test("cron authentication rejects missing, wrong and unconfigured secrets before
 test("Codex publication warms only after a successful sync changes data", async () => {
   env.CRON_SECRET = secret;
   const sync = spyOn(tokenSync, "syncCodexAccounts");
-  const invalidate = spyOn(nextCache, "revalidateTag").mockImplementation(
+  const invalidate = spyOn(nextCache, "revalidatePath").mockImplementation(
     () => {}
   );
   const after = spyOn(nextServer, "after").mockImplementation(() => {});
@@ -90,7 +90,7 @@ test("Codex publication warms only after a successful sync changes data", async 
 
     sync.mockResolvedValue({ updated: 1 });
     expect((await syncTokens(request("codex-stats"))).status).toBe(200);
-    expect(invalidate.mock.calls).toEqual([["public-codex-stats", "max"]]);
+    expect(invalidate.mock.calls).toEqual([["/"], ["/tokens"]]);
     expect(after).toHaveBeenCalledTimes(1);
     expect(warm).not.toHaveBeenCalled();
     const [[warmAfterResponse]] = after.mock.calls;
@@ -129,7 +129,7 @@ test("GitHub rejects invalid requests and warms only a changed public feed", asy
   const worker = spyOn(workWorker, "runGitHubActivityWorker").mockResolvedValue(
     result
   );
-  const invalidate = spyOn(nextCache, "revalidateTag").mockImplementation(
+  const invalidate = spyOn(nextCache, "revalidatePath").mockImplementation(
     () => {}
   );
   const after = spyOn(nextServer, "after").mockImplementation(() => {});
@@ -185,9 +185,7 @@ test("GitHub rejects invalid requests and warms only a changed public feed", asy
         refLimit: 1,
       })
     );
-    expect(invalidate.mock.calls).toEqual([
-      ["public-github-activity", { expire: 0 }],
-    ]);
+    expect(invalidate.mock.calls).toEqual([["/"], ["/work"]]);
     expect(after).toHaveBeenCalledTimes(1);
     expect(warm).not.toHaveBeenCalled();
     const [[warmAfterResponse]] = after.mock.calls;
