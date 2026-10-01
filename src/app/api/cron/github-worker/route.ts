@@ -9,6 +9,7 @@ import { GITHUB_WORKER_EXECUTION_DURATION_MS } from "@/lib/github-cron-config";
 import type { GITHUB_WORKER_MAX_DURATION_SECONDS } from "@/lib/github-cron-config";
 import { reportOperationalError } from "@/lib/operational-error";
 import { hasBearerSecret } from "@/lib/request-auth";
+import { warmPublicPages } from "@/lib/warm-public-pages";
 
 export const dynamic = "force-dynamic";
 export const maxDuration =
@@ -46,7 +47,9 @@ export async function POST(request: Request) {
       revalidatePath("/work");
 
       after(async () => {
-        await getInitialGitHubActivity();
+        if ((await getInitialGitHubActivity()) !== null) {
+          await warmPublicPages(["/", "/work"]);
+        }
       });
     }
     return Response.json({

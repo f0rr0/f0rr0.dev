@@ -6,6 +6,7 @@ import { getPublicCodexStats } from "@/lib/codex/public-stats";
 import { syncCodexAccounts } from "@/lib/codex/sync";
 import { reportOperationalError } from "@/lib/operational-error";
 import { hasBearerSecret } from "@/lib/request-auth";
+import { warmPublicPages } from "@/lib/warm-public-pages";
 
 export const maxDuration = 60;
 
@@ -21,7 +22,9 @@ export async function POST(request: Request) {
       revalidatePath("/tokens");
 
       after(async () => {
-        await getPublicCodexStats();
+        if ((await getPublicCodexStats()) !== null) {
+          await warmPublicPages(["/", "/tokens"]);
+        }
       });
     }
     return Response.json({ ok: true, result });
