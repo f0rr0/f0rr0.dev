@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { GitHubActivityDays } from "@/components/github-activity-days";
 import { useGitHubActivityLive } from "@/components/github-activity-status";
 import { track } from "@/lib/analytics";
-import { publicActivityHeadFrom } from "@/lib/github-activity-status";
+import { refreshGitHubActivityPages } from "@/lib/github-activity-pagination";
+import {
+  hasNewPublicActivity,
+  publicActivityHeadFrom,
+} from "@/lib/github-activity-status";
 import type { PublicGitHubActivityPage } from "@/lib/github-activity-types";
 
 const validPage = (value: unknown): value is PublicGitHubActivityPage => {
@@ -31,58 +35,140 @@ export function GitHubTimelinePager({
   preview: boolean;
   now: string;
 }>) {
-  const { feedRevision, markLatestAvailable } = useGitHubActivityLive();
-  const [cursor, setCursor] = useState<string | null>(initialPage.nextCursor);
+  const { feedRevision, orderingRevision, markLatestAvailable } =
+    useGitHubActivityLive();
+  const revision = `${initialPage.head.feedRevision}:${initialPage.orderingRevision}`;
+  const [loaded, setLoaded] = useState({
+    revision,
+    cursor: initialPage.nextCursor,
+    initialDays: initialPage.days,
+    pages: [] as readonly PublicGitHubActivityPage[],
+  });
   const [error, setError] = useState(false);
-  const [isPending, startTransition] = useTransition();
-  const [pages, setPages] = useState<readonly PublicGitHubActivityPage[]>([]);
+  const [isPending, setIsPending] = useState(false);
   const [status, setStatus] = useState("");
+  const request = useRef<AbortController | null>(null);
+  const currentRevision = useRef(revision);
+  // Only committed props may supersede an in-flight request.
+  useLayoutEffect(() => {
+    currentRevision.current = revision;
+    return () => {
+      request.current?.abort();
+    };
+  }, [revision]);
 
-  const loadMore = () => {
-    if (cursor === null || isPending) {
-      return;
-    }
-    const requestedCursor = cursor;
+  const loadPages = async (refresh: boolean) => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
     setError(false);
     setStatus("");
-    startTransition(async () => {
-      try {
-        const response = await fetch(
-          `/api/github/activity?cursor=${encodeURIComponent(requestedCursor)}`
-        );
-        if (!response.ok) {
-          throw new Error("The activity page could not be loaded.");
-        }
-        const page = (await response.json()) as unknown;
-        if (!validPage(page)) {
-          throw new Error("The activity page was invalid.");
-        }
-        if (page.head.feedRevision !== feedRevision) {
-          markLatestAvailable();
-        }
-        setPages((current) => [...current, page]);
-        setCursor(page.nextCursor);
-        track("github_activity_loaded", { days_loaded: page.days.length });
-        setStatus(
-          `Loaded ${page.days.length} earlier ${page.days.length === 1 ? "day" : "days"}.`
-        );
-      } catch {
+    setIsPending(true);
+    const readPage = async (cursor: string) => {
+      const response = await fetch(
+        `/api/github/activity?cursor=${encodeURIComponent(cursor)}`,
+        { signal: controller.signal }
+      );
+      if (!response.ok) {
+        throw new Error("The activity page could not be loaded.");
+      }
+      const page = (await response.json()) as unknown;
+      if (!validPage(page)) {
+        throw new Error("The activity page was invalid.");
+      }
+      if (
+        hasNewPublicActivity(
+          { ...page.head, orderingRevision: page.orderingRevision },
+          feedRevision,
+          orderingRevision
+        )
+      ) {
+        markLatestAvailable();
+      }
+      return page;
+    };
+    try {
+      const next = refresh
+        ? await refreshGitHubActivityPages(
+            initialPage,
+            preview
+              ? undefined
+              : [
+                  ...loaded.initialDays,
+                  ...loaded.pages.flatMap((page) => page.days),
+                ].at(-1)?.day,
+            readPage
+          )
+        : loaded.cursor === null
+          ? loaded
+          : await readPage(loaded.cursor).then((page) => ({
+              pages: [...loaded.pages, page],
+              cursor: page.nextCursor,
+            }));
+      if (controller.signal.aborted || currentRevision.current !== revision) {
+        return;
+      }
+      setLoaded({ ...next, revision, initialDays: initialPage.days });
+      const count = next.pages.at(-1)?.days.length ?? 0;
+      if (!refresh) {
+        track("github_activity_loaded", { days_loaded: count });
+      }
+      setStatus(
+        refresh
+          ? "Loaded activity is up to date."
+          : `Loaded ${count} earlier ${count === 1 ? "day" : "days"}.`
+      );
+    } catch {
+      if (!controller.signal.aborted && currentRevision.current === revision) {
         setError(true);
       }
-    });
+    } finally {
+      if (request.current === controller) {
+        setIsPending(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (loaded.revision !== revision) {
+      void loadPages(true);
+    }
+    // Reconcile only on publication. Loaded pages are retained until all refresh reads succeed.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [revision]);
+
+  const days = [
+    ...new Map(
+      [
+        ...initialPage.days,
+        ...[
+          ...loaded.initialDays,
+          ...loaded.pages.flatMap((page) => page.days),
+        ].filter(
+          (day) => !initialPage.days.some((initial) => initial.day === day.day)
+        ),
+      ].map((day) => [day.day, day])
+    ).values(),
+  ];
+  const cursor =
+    loaded.revision === revision ? loaded.cursor : initialPage.nextCursor;
+  const loadMore = () => {
+    if (!isPending) {
+      void loadPages(loaded.revision !== revision);
+    }
   };
 
   return (
     <>
       <div className="contents" id="github-activity-paginated-days">
         <GitHubActivityDays
-          days={[...initialPage.days, ...pages.flatMap((page) => page.days)]}
+          days={days}
           itemLimit={preview ? 2 : undefined}
           preview={preview}
           now={now}
         />
       </div>
-      {preview || cursor === null ? null : (
+      {preview || (cursor === null && !error) ? null : (
         <div className="flex flex-col items-start gap-3">
           <button
             aria-controls="github-activity-paginated-days"
@@ -91,7 +177,13 @@ export function GitHubTimelinePager({
             onClick={loadMore}
             type="button"
           >
-            {isPending ? "Loading earlier work…" : "Load earlier work"}
+            {loaded.revision === revision
+              ? isPending
+                ? "Loading earlier work…"
+                : "Load earlier work"
+              : isPending
+                ? "Refreshing loaded work…"
+                : "Retry refreshing work"}
           </button>
           {error ? (
             <p className="text-sm text-destructive" role="alert">

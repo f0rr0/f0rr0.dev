@@ -107,7 +107,11 @@ export const githubRepositories = pgTable(
   ]
 ).enableRLS();
 
-export { codexAccounts, codexUsageDays } from "@/db/codex-schema";
+export {
+  codexAccounts,
+  codexPublicRevisions,
+  codexUsageDays,
+} from "@/db/codex-schema";
 
 // Independent of mutable work units/ref generations so rebases cannot erase history.
 export const githubActivitySnapshots = pgTable(

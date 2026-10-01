@@ -23,6 +23,8 @@ export const publicActivityHeadFrom = (
     !isObject(value) ||
     !isPublicActivityRevision(value.revision) ||
     !isPublicActivityRevision(value.feedRevision) ||
+    (value.orderingRevision !== undefined &&
+      !isPublicActivityRevision(value.orderingRevision)) ||
     (value.lastPublishedAt !== null && !isIsoDate(value.lastPublishedAt)) ||
     typeof value.summarizing !== "boolean"
   ) {
@@ -30,6 +32,9 @@ export const publicActivityHeadFrom = (
   }
   return {
     feedRevision: value.feedRevision,
+    ...(value.orderingRevision === undefined
+      ? {}
+      : { orderingRevision: value.orderingRevision }),
     lastPublishedAt: value.lastPublishedAt,
     revision: value.revision,
     summarizing: value.summarizing,
@@ -45,6 +50,16 @@ export const comparePublicActivityRevisions = (left: string, right: string) => {
       ? 1
       : 0;
 };
+
+export const hasNewPublicActivity = (
+  head: PublicActivityHead,
+  feedRevision: string,
+  orderingRevision: string
+) =>
+  comparePublicActivityRevisions(head.feedRevision, feedRevision) > 0 ||
+  (head.orderingRevision !== undefined &&
+    comparePublicActivityRevisions(head.orderingRevision, orderingRevision) >
+      0);
 
 export async function fetchPublicActivityHead(
   initialHead: PublicActivityHead,
@@ -64,7 +79,17 @@ export async function fetchPublicActivityHead(
   return comparePublicActivityRevisions(
     nextHead.revision,
     initialHead.revision
-  ) < 0
+  ) < 0 ||
+    comparePublicActivityRevisions(
+      nextHead.feedRevision,
+      initialHead.feedRevision
+    ) < 0 ||
+    (nextHead.orderingRevision !== undefined &&
+      initialHead.orderingRevision !== undefined &&
+      comparePublicActivityRevisions(
+        nextHead.orderingRevision,
+        initialHead.orderingRevision
+      ) < 0)
     ? initialHead
     : nextHead;
 }

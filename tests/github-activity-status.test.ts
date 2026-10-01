@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   comparePublicActivityRevisions,
   fetchPublicActivityHead,
+  hasNewPublicActivity,
   publicActivityHeadFrom,
 } from "../src/lib/github-activity-status.ts";
 import { mockFetch } from "./helpers.ts";
@@ -21,6 +22,7 @@ describe("public GitHub activity status", () => {
     for (const invalid of [
       null,
       { ...settledHead, feedRevision: "feed-7" },
+      { ...settledHead, orderingRevision: "0002" },
       { ...settledHead, lastPublishedAt: "yesterday" },
       { ...settledHead, revision: "0042" },
       { ...settledHead, summarizing: "yes" },
@@ -40,12 +42,34 @@ describe("public GitHub activity status", () => {
     expect(comparePublicActivityRevisions("41", "42")).toBe(-1);
   });
 
+  test("refreshes ordering changes without refreshing status-only or legacy heads", () => {
+    expect(hasNewPublicActivity(settledHead, "7", "1")).toBe(false);
+    expect(
+      hasNewPublicActivity(
+        { ...settledHead, revision: "43", summarizing: true },
+        "7",
+        "1"
+      )
+    ).toBe(false);
+    expect(
+      hasNewPublicActivity({ ...settledHead, orderingRevision: "2" }, "7", "1")
+    ).toBe(true);
+    expect(
+      hasNewPublicActivity({ ...settledHead, feedRevision: "8" }, "7", "1")
+    ).toBe(true);
+    expect(
+      publicActivityHeadFrom({ ...settledHead, orderingRevision: "2" })
+        ?.orderingRevision
+    ).toBe("2");
+  });
+
   test("passive refresh rejects invalid responses and never regresses the server head", async () => {
     const originalFetch = globalThis.fetch;
     try {
       for (const [response, expected] of [
         [settledHead, settledHead],
         [{ ...settledHead, revision: "41" }, settledHead],
+        [{ ...settledHead, revision: "43", feedRevision: "6" }, settledHead],
         [
           { ...settledHead, revision: "43", feedRevision: "8" },
           { ...settledHead, revision: "43", feedRevision: "8" },
@@ -54,6 +78,11 @@ describe("public GitHub activity status", () => {
         globalThis.fetch = mockFetch(async () => Response.json(response));
         expect(await fetchPublicActivityHead(settledHead)).toEqual(expected);
       }
+      const orderedHead = { ...settledHead, orderingRevision: "2" };
+      globalThis.fetch = mockFetch(async () =>
+        Response.json({ ...orderedHead, orderingRevision: "1" })
+      );
+      expect(await fetchPublicActivityHead(orderedHead)).toEqual(orderedHead);
       globalThis.fetch = mockFetch(async () =>
         Response.json({ revision: "bad" })
       );

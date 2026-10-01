@@ -18,13 +18,14 @@ import {
 import type { ReactNode } from "react";
 
 import {
-  comparePublicActivityRevisions,
+  hasNewPublicActivity,
   fetchPublicActivityHead,
 } from "@/lib/github-activity-status";
 import type { PublicActivityHead } from "@/lib/github-activity-types";
 
 interface GitHubActivityLiveContextValue {
   feedRevision: string;
+  orderingRevision: string;
   isRefreshing: boolean;
   latestAvailable: boolean;
   markLatestAvailable: () => void;
@@ -93,6 +94,7 @@ export function GitHubActivityLiveProvider({
       <GitHubActivityLiveContext
         value={{
           feedRevision,
+          orderingRevision,
           isRefreshing,
           latestAvailable,
           markLatestAvailable,
@@ -111,6 +113,7 @@ export function GitHubActivityStatus({
 }: Readonly<{ initialHead: PublicActivityHead }>) {
   const {
     feedRevision,
+    orderingRevision,
     isRefreshing,
     latestAvailable,
     markLatestAvailable,
@@ -129,14 +132,15 @@ export function GitHubActivityStatus({
 
   useEffect(() => {
     // A refresh can serve stale cached data. Retry after the next successful poll.
-    if (comparePublicActivityRevisions(head.feedRevision, feedRevision) > 0) {
+    if (hasNewPublicActivity(head, feedRevision, orderingRevision)) {
       markLatestAvailable();
       refreshLatest();
     }
   }, [
     dataUpdatedAt,
     feedRevision,
-    head.feedRevision,
+    head,
+    orderingRevision,
     markLatestAvailable,
     refreshLatest,
   ]);

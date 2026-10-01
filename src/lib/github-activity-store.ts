@@ -90,12 +90,13 @@ const publicHeadFromRow = (
   const headContentRevision = checkedRevision(row.headContentRevision);
   const head: PublicActivityHead = {
     feedRevision: checkedRevision(row.feedRevision),
+    orderingRevision: checkedRevision(row.orderingRevision),
     lastPublishedAt: row.lastPublishedAt?.toISOString() ?? null,
     revision: headContentRevision,
     summarizing: row.summarizing,
   };
   return {
-    etag: `"github-activity-head-${headContentRevision}"`,
+    etag: `"github-activity-head-${headContentRevision}-${head.orderingRevision}"`,
     head,
   };
 };
@@ -117,10 +118,8 @@ const readPublicHead = async (
   };
 };
 
-export const readPublicGitHubActivityHead = async () => {
-  const { etag, head } = await readPublicHead(getDatabase());
-  return { etag, head };
-};
+export const readPublicGitHubActivityHead = async () =>
+  await readPublicHead(getDatabase());
 
 const safeAvatarUrl = (value: string | null) => {
   if (value === null) {

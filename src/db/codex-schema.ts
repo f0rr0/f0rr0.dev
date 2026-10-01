@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  bigint,
   check,
   date,
   jsonb,
@@ -13,6 +14,24 @@ import {
 
 import type { CodexUsageDay } from "@/lib/codex/daily-history";
 import type { CodexAccountSnapshot } from "@/lib/codex/stats";
+
+// A public revision and per-day revisions cover every writer, including CLI backfills.
+export const codexPublicRevisions = pgTable(
+  "codex_public_revisions",
+  {
+    scope: varchar("scope", { length: 10 }).primaryKey(),
+    revision: bigint("revision", { mode: "bigint" })
+      .default(sql`0`)
+      .notNull(),
+  },
+  (table) => [
+    check("codex_public_revision_nonnegative", sql`${table.revision} >= 0`),
+    check(
+      "codex_public_revision_scope",
+      sql`${table.scope} = 'views' OR ${table.scope} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'`
+    ),
+  ]
+).enableRLS();
 
 export const codexAccounts = pgTable(
   "codex_accounts",
