@@ -1,6 +1,4 @@
 import "server-only";
-import { unstable_cache } from "next/cache";
-
 import type { GitHubActivityCursor } from "@/lib/github-activity-cursor";
 import {
   PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE,
@@ -10,61 +8,82 @@ import {
 import type { PublicGitHubActivityPage } from "@/lib/github-activity-types";
 import { reportOperationalError } from "@/lib/operational-error";
 import { readPublicSnapshot } from "@/lib/public-snapshot";
+import { readRuntimeCache, writeRuntimeCache } from "@/lib/runtime-cache";
 
-// Keep a successful snapshot available even when the current head cannot be read.
-// Publication invalidation must not discard this outage fallback.
-// Capture the successful page without putting it in the stable cache key.
-const readCachedInitialGitHubActivity = async (
-  snapshot?: Promise<PublicGitHubActivityPage>
+const FALLBACK_KEY = "public-github-activity-fallback-v3";
+const contentKey = (
+  page: Pick<PublicGitHubActivityPage, "head" | "orderingRevision">
 ) =>
-  await unstable_cache(
-    async () =>
-      await (snapshot ??
-        readPublicGitHubActivityPage(
-          null,
-          PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
-        )),
-    ["public-github-activity-fallback-v2"],
-    { revalidate: 60 }
-  )();
-
-const readVersionedInitialGitHubActivity = unstable_cache(
-  async (_feedRevision: string, _orderingRevision: string) =>
-    await readPublicGitHubActivityPage(
-      null,
-      PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
-    ),
-  ["public-github-activity-versioned-v2"],
-  { revalidate: 3600, tags: ["public-github-activity"] }
-);
+  JSON.stringify([
+    "public-github-activity-v3",
+    page.head.feedRevision,
+    page.orderingRevision,
+  ]);
 
 export const getInitialGitHubActivity = async () => {
+  const fallbackRead = readRuntimeCache<PublicGitHubActivityPage>(FALLBACK_KEY);
+  let cacheWrites: Promise<unknown> | undefined;
+  let bodyRead: Promise<PublicGitHubActivityPage> | undefined;
+  const readBody = async () =>
+    await (bodyRead ??= readPublicGitHubActivityPage(
+      null,
+      PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
+    ));
+  const healthyRead = (async () => {
+    const live = await readPublicGitHubActivityHead();
+    const [versioned, fallback] = await Promise.all([
+      readRuntimeCache<PublicGitHubActivityPage>(contentKey(live)),
+      fallbackRead,
+    ]);
+    const cached =
+      fallback?.head.feedRevision === live.head.feedRevision &&
+      fallback.orderingRevision === live.orderingRevision
+        ? fallback
+        : versioned;
+    const snapshot = cached ?? (await readBody());
+    const page =
+      snapshot.head.feedRevision === live.head.feedRevision &&
+      snapshot.orderingRevision === live.orderingRevision &&
+      BigInt(live.head.revision) >= BigInt(snapshot.head.revision)
+        ? { ...snapshot, head: live.head }
+        : snapshot;
+    cacheWrites = Promise.all([
+      cached === null
+        ? writeRuntimeCache(contentKey(snapshot), snapshot, 3600)
+        : undefined,
+      fallback?.head.feedRevision === page.head.feedRevision &&
+      fallback.head.revision === page.head.revision &&
+      fallback.orderingRevision === page.orderingRevision
+        ? undefined
+        : writeRuntimeCache(FALLBACK_KEY, page),
+    ]);
+    return page;
+  })();
   try {
-    return await readPublicSnapshot(async () => {
-      const { head, orderingRevision } = await readPublicGitHubActivityHead();
-      const snapshot = readVersionedInitialGitHubActivity(
-        head.feedRevision,
-        orderingRevision
-      ).then((page) =>
-        page.head.feedRevision === head.feedRevision &&
-        page.orderingRevision === orderingRevision &&
-        BigInt(head.revision) >= BigInt(page.head.revision)
-          ? { ...page, head }
-          : page
-      );
-      // Check both caches concurrently; an expired fallback waits for the same successful snapshot.
-      const [page] = await Promise.all([
-        snapshot,
-        readCachedInitialGitHubActivity(snapshot),
-      ]);
-      return page;
-    });
+    const page = await readPublicSnapshot(async () => await healthyRead);
+    // Optional persistence must not turn a fresh, masked page into an old fallback.
+    await cacheWrites;
+    return page;
   } catch (error) {
     reportOperationalError("github_activity_initial", error);
+    const fallback = await fallbackRead;
+    if (fallback !== null) {
+      return fallback;
+    }
+    // A timeout leaves the original read running. Reuse it instead of downloading
+    // the page again. If metadata failed, one direct page read can still succeed.
     try {
-      return await readCachedInitialGitHubActivity();
+      const page = await healthyRead;
+      await cacheWrites;
+      return page;
     } catch {
-      return null;
+      try {
+        const page = await readBody();
+        await writeRuntimeCache(FALLBACK_KEY, page);
+        return page;
+      } catch {
+        return null;
+      }
     }
   }
 };

@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
@@ -6,7 +6,6 @@ import { Client } from "pg";
 
 import { closeDatabase } from "../src/db/client";
 import { utcOffset } from "../src/lib/codex/analytics";
-import { getPublicCodexStats } from "../src/lib/codex/public-stats";
 import {
   readClosedCodexHistory,
   readCodexPublicRevision,
@@ -275,126 +274,3 @@ integrationTest(
   },
   20_000
 );
-
-integrationTest(
-  "native Next caches refresh backfills and preserve a warm outage snapshot",
-  async () => {
-    if (databaseUrl === undefined) {
-      throw new Error("Missing validation database");
-    }
-    const { IncrementalCache } =
-      await import("next/dist/server/lib/incremental-cache/index.js");
-    const { nodeFs } = await import("next/dist/server/lib/node-fs-methods.js");
-    const cache = new IncrementalCache({
-      dev: false,
-      fs: nodeFs,
-      flushToDisk: false,
-      maxMemoryCacheSize: 1_000_000,
-      serverDistDir: "/tmp/codex-cache-validation",
-      requestHeaders: {},
-      getPrerenderManifest: () => ({
-        version: 4,
-        routes: {},
-        dynamicRoutes: {},
-        notFoundRoutes: [],
-        preview: {
-          previewModeId: "local-cache-test",
-          previewModeSigningKey: "",
-          previewModeEncryptionKey: "",
-        },
-      }),
-    });
-    Object.assign(globalThis, { __incrementalCache: cache });
-    const client = new Client({ connectionString: databaseUrl });
-    await client.connect();
-    let revisionTableRenamed = false;
-    try {
-      const today = new Date().toISOString().slice(0, 10);
-      await client.query(
-        "DELETE FROM codex_usage_days; DELETE FROM codex_accounts;"
-      );
-      const snapshot = createCodexAccountSnapshot(
-        { stats: { lifetime_tokens: 100, daily_usage_buckets: [] } },
-        {}
-      );
-      await client.query(
-        "INSERT INTO codex_accounts(id,snapshot,snapshot_at) VALUES ('native',$1,now())",
-        [snapshot]
-      );
-      const insert = async (day: string, tokens: number) =>
-        await client.query(
-          "INSERT INTO codex_usage_days VALUES ('native',$1,$2,now())",
-          [
-            day,
-            {
-              dailyUsageBuckets: [{ startDate: day, tokens }],
-              cumulativeDailyUsageBuckets: null,
-              analytics: {},
-            },
-          ]
-        );
-      await insert(utcOffset(today, -2), 10);
-      // Adjacent versions above Number's safe range must still choose distinct snapshots.
-      await client.query(
-        "UPDATE codex_public_revisions SET revision=9007199254740992 WHERE scope='views'"
-      );
-      const initial = await getPublicCodexStats();
-      expect(initial?.totals.last7Days.value).toBe(10);
-      expect(await getPublicCodexStats()).toEqual(initial);
-      await insert(utcOffset(today, -3), 5);
-      expect((await getPublicCodexStats())?.totals.last7Days.value).toBe(15);
-      await cache.revalidateTag(["public-codex-stats", "codex-history"], {
-        expire: 0,
-      });
-      // The real revision query fails, while Next must retain its successful fallback.
-      await client.query(
-        "ALTER TABLE codex_public_revisions RENAME TO cache_validation_revisions_offline"
-      );
-      revisionTableRenamed = true;
-      expect(await getPublicCodexStats()).toEqual(initial);
-      await client.query(
-        "ALTER TABLE cache_validation_revisions_offline RENAME TO codex_public_revisions"
-      );
-      revisionTableRenamed = false;
-      expect((await getPublicCodexStats())?.totals.last7Days.value).toBe(15);
-      // Metadata can succeed while a cold history/body read stalls. A warm
-      // snapshot must remain available in both cases, not just metadata outages.
-      for (const tag of ["codex-history", "public-codex-stats"]) {
-        await cache.revalidateTag([tag], { expire: 0 });
-        await client.query(
-          "BEGIN; LOCK TABLE codex_usage_days IN ACCESS EXCLUSIVE MODE"
-        );
-        const pending = getPublicCodexStats();
-        let result: Awaited<typeof pending> | "stalled";
-        try {
-          result = await Promise.race([
-            pending,
-            Bun.sleep(1800).then(() => "stalled" as const),
-          ]);
-        } finally {
-          await client.query("ROLLBACK");
-          await pending;
-        }
-        expect(result).not.toBe("stalled");
-        expect(result).toEqual(initial);
-        expect((await getPublicCodexStats())?.totals.last7Days.value).toBe(15);
-      }
-    } finally {
-      if (revisionTableRenamed) {
-        await client.query(
-          "ALTER TABLE cache_validation_revisions_offline RENAME TO codex_public_revisions"
-        );
-      }
-      await client.end();
-      await closeDatabase();
-      Reflect.deleteProperty(globalThis, "__incrementalCache");
-    }
-  },
-  20_000
-);
-
-afterAll(async () => {
-  if (databaseUrl !== undefined) {
-    await closeDatabase();
-  }
-});

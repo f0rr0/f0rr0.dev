@@ -31,6 +31,8 @@ import type {
   GitHubWorkUnitFileFact,
 } from "@/lib/github-change-evidence";
 import { TRACKED_GITHUB_USER_IDS } from "@/lib/github-commits-core";
+import { readGitHubFileEvidence } from "@/lib/github-file-evidence-cache";
+import type { GitHubFileEvidenceHeader } from "@/lib/github-file-evidence-cache";
 import {
   chooseEffectivePullRequest,
   hasPendingGitHubPullRequest,
@@ -188,6 +190,7 @@ interface CommitSummaryEvaluationEvidence {
 }
 
 interface PullRequestSummaryEvaluationEvidence {
+  fileFactsPresent: boolean;
   fileFactsComplete: boolean;
   fileFactsDigest: string | null;
   versionId: string;
@@ -573,6 +576,7 @@ const hydrateSelectedSummaryEvidence = async (
   transaction: GitHubWorkUnitTransaction,
   input: GitHubWorkUnitProjectionInput,
   units: readonly GitHubProjectedWorkUnit[],
+  commitEvidenceHeaders: ReadonlyMap<string, GitHubFileEvidenceHeader>,
   pullRequestEvidenceByNodeId: ReadonlyMap<
     string,
     PullRequestSummaryEvaluationEvidence
@@ -604,58 +608,79 @@ const hydrateSelectedSummaryEvidence = async (
     }
   }
 
-  const memberRows =
-    compositeMembers.size === 0
-      ? []
-      : await transaction
-          .select({
-            fileFacts: githubCommits.fileFacts,
-            repositoryId: githubCommits.repositoryId,
-            sha: githubCommits.sha,
-          })
-          .from(githubCommits)
-          .where(
-            or(
-              ...[...compositeMembers.values()].map((member) =>
-                and(
-                  eq(githubCommits.repositoryId, member.repositoryId),
-                  eq(githubCommits.sha, member.sha)
-                )
-              )
-            )
-          );
-  const rawCommitFactsByLogicalKey = new Map(
-    memberRows.map((row) => [
-      logicalKeyFrom(row.repositoryId, row.sha),
-      checkedFileFacts(row.fileFacts),
-    ])
+  const rawCommitFactsByLogicalKey = await readGitHubFileEvidence(
+    "commit",
+    [...compositeMembers.keys()].map((id) => {
+      const header = commitEvidenceHeaders.get(id);
+      if (header === undefined) {
+        throw new Error(`A summary lacks commit evidence: ${id}`);
+      }
+      return header;
+    }),
+    async (ids) => {
+      const rows = await transaction
+        .select({
+          fileFacts: githubCommits.fileFacts,
+          repositoryId: githubCommits.repositoryId,
+          sha: githubCommits.sha,
+        })
+        .from(githubCommits)
+        .where(
+          or(
+            ...ids.map((id) => {
+              const member = compositeMembers.get(id);
+              if (member === undefined) {
+                throw new Error(`A summary lacks commit identity: ${id}`);
+              }
+              return and(
+                eq(githubCommits.repositoryId, member.repositoryId),
+                eq(githubCommits.sha, member.sha)
+              );
+            })
+          )
+        );
+      return new Map(
+        rows.map((row) => [
+          logicalKeyFrom(row.repositoryId, row.sha),
+          row.fileFacts,
+        ])
+      );
+    },
+    checkedFileFacts
   );
 
-  const versionIds = [...netPullRequestNodeIds].map((nodeId) => {
+  const versionHeaders = [...netPullRequestNodeIds].map((nodeId) => {
     const evidence = pullRequestEvidenceByNodeId.get(nodeId);
     if (evidence === undefined) {
       throw new Error(
         `A pull-request summary lacks version evidence: ${nodeId}`
       );
     }
-    return evidence.versionId;
+    return {
+      digest: evidence.fileFactsDigest,
+      group: evidence.versionId,
+      id: evidence.versionId,
+      present: evidence.fileFactsPresent,
+    };
   });
-  const versionRows =
-    versionIds.length === 0
-      ? []
-      : await transaction
-          .select({
-            fileFacts: githubPullRequests.fileFacts,
-            id: githubPullRequests.snapshotId,
-          })
-          .from(githubPullRequests)
-          .where(inArray(githubPullRequests.snapshotId, versionIds));
-  const rawPullRequestFactsByVersionId = new Map(
-    versionRows.flatMap((row) =>
-      row.id === null
-        ? []
-        : [[row.id, checkedFileFacts(row.fileFacts)] as const]
-    )
+  const rawPullRequestFactsByVersionId = await readGitHubFileEvidence(
+    "pull-request",
+    versionHeaders,
+    async (ids) => {
+      const rows = await transaction
+        .select({
+          fileFacts: githubPullRequests.fileFacts,
+          id: githubPullRequests.snapshotId,
+        })
+        .from(githubPullRequests)
+        .where(inArray(githubPullRequests.snapshotId, [...ids]));
+      return new Map(
+        rows.flatMap((row) =>
+          row.id === null ? [] : [[row.id, row.fileFacts] as const]
+        )
+      );
+    },
+    checkedFileFacts
   );
 
   return {
@@ -814,7 +839,8 @@ const loadProjectionSnapshot = async (
       committerAt: githubCommits.committerAt,
       deletions: githubCommits.deletions,
       enrichmentState: githubCommits.enrichmentState,
-      fileFacts: githubCommits.fileStats,
+      fileFactsPresent: sql<boolean>`${githubCommits.fileStats} is not null`,
+      fileFactsPrunedAt: githubCommits.fileFactsPrunedAt,
       fileFactsComplete: githubCommits.fileFactsComplete,
       fileFactsDigest: githubCommits.fileFactsDigest,
       firstObservedAt: githubCommits.firstObservedAt,
@@ -833,6 +859,72 @@ const loadProjectionSnapshot = async (
       )
     )
     .orderBy(asc(githubCommits.repositoryId), asc(githubCommits.sha));
+  const commitHeaders = commitRows.map((row) => ({
+    digest: checkedDigest(row.fileFactsDigest),
+    group: `${row.repositoryId}:${row.sha[0]}`,
+    id: logicalKeyFrom(row.repositoryId, row.sha),
+    present: row.fileFactsPresent,
+  }));
+  const compactFactsByLogicalKey = await readGitHubFileEvidence(
+    "stats",
+    commitHeaders,
+    async (ids) => {
+      const selectedIds = new Set(ids);
+      const selectedByRepository = Map.groupBy(
+        commitRows.filter((row) =>
+          selectedIds.has(logicalKeyFrom(row.repositoryId, row.sha))
+        ),
+        (row) => row.repositoryId
+      );
+      const rows = await transaction
+        .select({
+          fileFacts: githubCommits.fileStats,
+          repositoryId: githubCommits.repositoryId,
+          sha: githubCommits.sha,
+        })
+        .from(githubCommits)
+        .where(
+          or(
+            ...[...selectedByRepository].map(([repositoryId, commits]) =>
+              and(
+                eq(githubCommits.repositoryId, repositoryId),
+                inArray(
+                  githubCommits.sha,
+                  commits.map((commit) => commit.sha)
+                )
+              )
+            )
+          )
+        );
+      return new Map(
+        rows.map((row) => [
+          logicalKeyFrom(row.repositoryId, row.sha),
+          row.fileFacts,
+        ])
+      );
+    },
+    checkedCompactFileFacts
+  );
+  const commitEvidenceHeaders = new Map(
+    commitRows.map((row, index) => {
+      const header = commitHeaders[index];
+      return [
+        header.id,
+        {
+          ...header,
+          // Pruning preserves the original digest while removing patches.
+          digest:
+            header.digest === null
+              ? null
+              : JSON.stringify([
+                  header.digest,
+                  row.fileFactsPrunedAt?.toISOString() ?? null,
+                ]),
+          group: header.id,
+        },
+      ] as const;
+    })
+  );
   const associationRows = await transaction
     .select({
       pullRequestNodeId: githubCommitPullRequestAssociations.pullRequestNodeId,
@@ -869,7 +961,9 @@ const loadProjectionSnapshot = async (
     associationsByLogicalKey.set(key, nodeIds);
   }
   const changes: GitHubLogicalChange[] = commitRows.map((row) => {
-    const fileFacts = checkedCompactFileFacts(row.fileFacts);
+    const fileFacts =
+      compactFactsByLogicalKey.get(logicalKeyFrom(row.repositoryId, row.sha)) ??
+      null;
     const parentShas = checkedParentShas(row.parentShas);
     const pullRequestCoverageComplete =
       row.pullRequestDiscoveryState === "complete";
@@ -934,6 +1028,7 @@ const loadProjectionSnapshot = async (
       commitCount: githubPullRequests.commitCount,
       createdAt: githubPullRequests.createdAt,
       fileFactsComplete: githubPullRequests.fileFactsComplete,
+      fileFactsPresent: sql<boolean>`${githubPullRequests.fileFacts} is not null`,
       fileFactsDigest: githubPullRequests.fileFactsDigest,
       headSha: githubPullRequests.headSha,
       mergeSnapshot: githubPullRequests.mergeSnapshot,
@@ -1050,6 +1145,7 @@ const loadProjectionSnapshot = async (
               row.nodeId,
               {
                 fileFactsComplete: row.fileFactsComplete,
+                fileFactsPresent: row.fileFactsPresent,
                 fileFactsDigest: checkedDigest(row.fileFactsDigest),
                 versionId: row.versionId,
               },
@@ -1168,6 +1264,7 @@ const loadProjectionSnapshot = async (
     transaction,
     compactInput,
     selectedSummaryEvaluations,
+    commitEvidenceHeaders,
     pullRequestSummaryEvidenceByNodeId
   );
   const selectedSummaryIdentities = new Set(

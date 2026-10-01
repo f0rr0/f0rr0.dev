@@ -1,4 +1,4 @@
-import { revalidateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
 import { env } from "@/env";
@@ -9,6 +9,7 @@ import { GITHUB_WORKER_EXECUTION_DURATION_MS } from "@/lib/github-cron-config";
 import type { GITHUB_WORKER_MAX_DURATION_SECONDS } from "@/lib/github-cron-config";
 import { reportOperationalError } from "@/lib/operational-error";
 import { hasBearerSecret } from "@/lib/request-auth";
+import { warmPublicPages } from "@/lib/warm-public-pages";
 
 export const dynamic = "force-dynamic";
 export const maxDuration =
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
   if (batchSize === null) {
     return Response.json({ ok: false }, { status: 400 });
   }
+  const warmingDeadlineAt = Date.now() + maxDuration * 1000 - 1000;
 
   try {
     const activity = await runGitHubActivityWorker({
@@ -42,9 +44,13 @@ export async function POST(request: Request) {
           }),
     });
     if (activity.projection?.feedRevisionChanged === true) {
-      revalidateTag("public-github-activity", { expire: 0 });
+      revalidatePath("/");
+      revalidatePath("/work");
+
       after(async () => {
-        await getInitialGitHubActivity();
+        if ((await getInitialGitHubActivity()) !== null) {
+          await warmPublicPages(["/", "/work"], warmingDeadlineAt);
+        }
       });
     }
     return Response.json({

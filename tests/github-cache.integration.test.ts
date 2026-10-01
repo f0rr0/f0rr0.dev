@@ -28,43 +28,11 @@ if (databaseUrl !== undefined) {
 const integrationTest = databaseUrl === undefined ? test.skip : test;
 
 integrationTest(
-  "hourly content caching preserves status, visibility and outage behavior",
+  "revision content caching preserves status, visibility and outage behavior",
   async () => {
-    const { IncrementalCache } =
-      await import("next/dist/server/lib/incremental-cache/index.js");
-    const { nodeFs } = await import("next/dist/server/lib/node-fs-methods.js");
-    const cache = new IncrementalCache({
-      dev: false,
-      fs: nodeFs,
-      flushToDisk: false,
-      maxMemoryCacheSize: 16_000_000,
-      serverDistDir: "/tmp/github-long-cache-native",
-      requestHeaders: {},
-      getPrerenderManifest: () => ({
-        version: 4,
-        routes: {},
-        dynamicRoutes: {},
-        notFoundRoutes: [],
-        preview: {
-          previewModeId: "local",
-          previewModeSigningKey: "",
-          previewModeEncryptionKey: "",
-        },
-      }),
-    });
-    Object.assign(globalThis, { __incrementalCache: cache });
     const realDateNow = Date.now;
-    const realPerformanceNow = performance.now.bind(performance);
     let offset = 0;
     Date.now = () => realDateNow() + offset;
-    const performanceDescriptor = Object.getOwnPropertyDescriptor(
-      performance,
-      "now"
-    );
-    Object.defineProperty(performance, "now", {
-      configurable: true,
-      value: () => realPerformanceNow() + offset,
-    });
     const client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
     let bodyReads = 0;
@@ -253,12 +221,12 @@ integrationTest(
       }
       expect(first.days).toHaveLength(5);
       expect(group(first).repository.label).toBe("example/cache-investigation");
-      // Advance both clocks used by native Next's expiry calculation. Timers/DB stay real.
+      // Exercise stable revision reuse across the versioned entry's TTL.
       for (let step = 1; step <= 60; step++) {
         offset += 61_000;
         expect((await read())?.days).toEqual(first.days);
       }
-      expect(bodyReads).toBe(2);
+      expect(bodyReads).toBe(1);
       // Status changes independently of content: refresh it without rereading the body.
       await client.query(
         "UPDATE github_public_feed_head SET head_content_revision=head_content_revision+1,summarizing=true"
@@ -267,7 +235,7 @@ integrationTest(
       const liveStatus = await readPublicGitHubActivityHead();
       expect(status?.head).toEqual(liveStatus.head);
       expect(status?.days).toEqual(first.days);
-      expect(bodyReads).toBe(2);
+      expect(bodyReads).toBe(1);
       // A publication between the metadata read and the body snapshot must not
       // replace that body's newer head with the earlier metadata.
       for (const update of [
@@ -436,7 +404,7 @@ integrationTest(
         await secondWriter.end();
       }
       {
-        // The outage fallback keeps its original 60-second cadence and is updated from cached successes.
+        // The successful fallback remains available independently of versioned entry expiry.
         const lastSuccess = await read();
         offset += 61_000;
         await read();
@@ -454,14 +422,8 @@ integrationTest(
       }
     } finally {
       Date.now = realDateNow;
-      if (performanceDescriptor) {
-        Object.defineProperty(performance, "now", performanceDescriptor);
-      } else {
-        Reflect.deleteProperty(performance, "now");
-      }
       await closeDatabase();
       await client.end();
-      Reflect.deleteProperty(globalThis, "__incrementalCache");
     }
   },
   20_000
