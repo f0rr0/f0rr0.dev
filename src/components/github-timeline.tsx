@@ -39,7 +39,6 @@ export function GitHubTimeline({
         initialPage={initialPage}
         preview={preview}
         now={new Date().toISOString()}
-        key={`${initialPage.head.feedRevision}:${initialPage.orderingRevision}`}
       />
     </div>
   );

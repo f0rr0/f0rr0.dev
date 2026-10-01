@@ -1,102 +1,81 @@
 import "server-only";
-import { and, gte, lt } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
 
 import { tokenPreferences } from "@/content/tokens";
-import { getDatabase, isDatabaseConfigured } from "@/db/client";
-import { codexAccounts, codexUsageDays } from "@/db/codex-schema";
-import { buildTokenDetails, utcOffset } from "@/lib/codex/analytics";
-import { restoreCodexHistory } from "@/lib/codex/daily-history";
-import { buildPublicCodexStats } from "@/lib/codex/stats";
+import { isDatabaseConfigured } from "@/db/client";
+import {
+  readClosedCodexHistory,
+  readCodexPublicRevision,
+  readCodexPublicViews,
+} from "@/lib/codex/public-stats-store";
+import type { ClosedCodexHistory } from "@/lib/codex/public-stats-store";
 import { reportOperationalError } from "@/lib/operational-error";
+import { readPublicSnapshot } from "@/lib/public-snapshot";
 
-// Closed history is shared by all views and survives the live sync invalidation.
-const readClosedDays = unstable_cache(
-  async (today: string) =>
-    await getDatabase()
-      .select()
-      .from(codexUsageDays)
-      .where(
-        and(
-          gte(codexUsageDays.day, utcOffset(today, -364)),
-          lt(codexUsageDays.day, utcOffset(today, -1))
-        )
-      ),
-  ["codex-closed-days-v1"],
-  { revalidate: 3600, tags: ["codex-history"] }
+const readVersionedClosedDays = unstable_cache(
+  async (today: string, _historyRevision: string) =>
+    await readClosedCodexHistory(today),
+  ["codex-closed-history-versioned-v1"],
+  { revalidate: 86_400, tags: ["codex-history"] }
 );
 
-const readPublicViews = unstable_cache(
-  async (today: string, closed: Awaited<ReturnType<typeof readClosedDays>>) => {
-    const [accounts, recent] = await Promise.all([
-      getDatabase().select().from(codexAccounts).orderBy(codexAccounts.id),
-      getDatabase()
-        .select()
-        .from(codexUsageDays)
-        .where(
-          and(
-            gte(codexUsageDays.day, utcOffset(today, -1)),
-            lt(codexUsageDays.day, utcOffset(today, 1))
-          )
-        ),
-    ]);
-    const days = Map.groupBy([...closed, ...recent], (row) => row.accountId);
-    const records = accounts.flatMap((account, index) =>
-      account.snapshot
-        ? [
-            {
-              snapshot: restoreCodexHistory(
-                account.enabled
-                  ? account.snapshot
-                  : {
-                      ...account.snapshot,
-                      limits: [],
-                      primaryLimit: null,
-                    },
-                (days.get(account.id) ?? []).map((row) => row.payload)
-              ),
-              label:
-                tokenPreferences.accountLabels[account.id] ??
-                `Account ${index + 1}`,
-            },
-          ]
-        : []
-    );
-    const now = new Date(`${today}T12:00:00Z`);
-    return {
-      stats: buildPublicCodexStats(records, now, accounts.length),
-      details: Object.fromEntries(
-        [7, 30, 365].map((range) => [
-          range,
-          buildTokenDetails(
-            records.map((record) => record.snapshot.analytics),
-            range,
-            now,
-            tokenPreferences,
-            records.map((record) => record.label),
-            records.map((record) => record.snapshot.primaryLimit?.planType)
-          ),
-        ])
-      ),
-    };
-  },
-  ["public-codex-views-v2", JSON.stringify(tokenPreferences)],
-  { revalidate: 900, tags: ["public-codex-stats"] }
-);
+const readViews = async (
+  today: string,
+  closedHint?: ClosedCodexHistory,
+  revision?: Awaited<ReturnType<typeof readCodexPublicRevision>>
+) =>
+  await unstable_cache(
+    // History is only a validated query-saving hint. The transaction stamps
+    // the result with the revision of the data it actually read.
+    async () => await readCodexPublicViews(today, closedHint),
+    [
+      revision === undefined
+        ? "public-codex-fallback-v1"
+        : "public-codex-versioned-v1",
+      today,
+      JSON.stringify(tokenPreferences),
+      ...(revision === undefined
+        ? []
+        : [revision.viewsRevision, revision.historyRevision]),
+    ],
+    {
+      revalidate: 900,
+      ...(revision === undefined ? {} : { tags: ["public-codex-stats"] }),
+    }
+  )();
 
 const getViews = cache(async () => {
   if (!tokenPreferences.enabled || !isDatabaseConfigured()) {
     return null;
   }
+  const today = new Date().toISOString().slice(0, 10);
   try {
-    const today = new Date().toISOString().slice(0, 10);
-    // Next bypasses nested unstable_cache reads. Read history outside the views cache.
-    const closed = await readClosedDays(today);
-    return await readPublicViews(today, closed);
+    return await readPublicSnapshot(async () => {
+      const revision = await readCodexPublicRevision(today);
+      // Next bypasses nested unstable_cache reads. Prefetch history outside the views cache.
+      const closed = await readVersionedClosedDays(
+        today,
+        revision.historyRevision
+      );
+      const fallback = await readViews(today, closed);
+      if (
+        BigInt(fallback.viewsRevision) >= BigInt(revision.viewsRevision) &&
+        BigInt(fallback.historyRevision) >= BigInt(revision.historyRevision)
+      ) {
+        return fallback.views;
+      }
+      return (await readViews(today, closed, revision)).views;
+    });
   } catch (error) {
     reportOperationalError("public_codex_stats", error);
-    return null;
+    // Publication never invalidates this successful outage snapshot. Failed
+    // rebuilds throw rather than replacing it with null.
+    try {
+      return (await readViews(today)).views;
+    } catch {
+      return null;
+    }
   }
 });
 

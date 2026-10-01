@@ -76,6 +76,8 @@ export interface PublicGitHubActivityDay {
 
 export interface PublicActivityHead {
   feedRevision: string;
+  // Optional while cached heads and older clients roll over to the new response.
+  orderingRevision?: string;
   lastPublishedAt: string | null;
   revision: string;
   summarizing: boolean;
