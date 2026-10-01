@@ -14,6 +14,7 @@ export async function POST(request: Request) {
   if (!hasBearerSecret(request.headers.get("authorization"), env.CRON_SECRET)) {
     return Response.json({ ok: false }, { status: 401 });
   }
+  const warmingDeadlineAt = Date.now() + maxDuration * 1000 - 1000;
 
   try {
     const result = await syncCodexAccounts();
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
 
       after(async () => {
         if ((await getPublicCodexStats()) !== null) {
-          await warmPublicPages(["/", "/tokens"]);
+          await warmPublicPages(["/", "/tokens"], warmingDeadlineAt);
         }
       });
     }

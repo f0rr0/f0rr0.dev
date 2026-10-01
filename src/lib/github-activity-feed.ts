@@ -22,6 +22,7 @@ const contentKey = (
 
 export const getInitialGitHubActivity = async () => {
   const fallbackRead = readRuntimeCache<PublicGitHubActivityPage>(FALLBACK_KEY);
+  let cacheWrites: Promise<unknown> | undefined;
   let bodyRead: Promise<PublicGitHubActivityPage> | undefined;
   const readBody = async () =>
     await (bodyRead ??= readPublicGitHubActivityPage(
@@ -46,7 +47,7 @@ export const getInitialGitHubActivity = async () => {
       BigInt(live.head.revision) >= BigInt(snapshot.head.revision)
         ? { ...snapshot, head: live.head }
         : snapshot;
-    await Promise.all([
+    cacheWrites = Promise.all([
       cached === null
         ? writeRuntimeCache(contentKey(snapshot), snapshot, 3600)
         : undefined,
@@ -59,7 +60,10 @@ export const getInitialGitHubActivity = async () => {
     return page;
   })();
   try {
-    return await readPublicSnapshot(async () => await healthyRead);
+    const page = await readPublicSnapshot(async () => await healthyRead);
+    // Optional persistence must not turn a fresh, masked page into an old fallback.
+    await cacheWrites;
+    return page;
   } catch (error) {
     reportOperationalError("github_activity_initial", error);
     const fallback = await fallbackRead;
@@ -69,7 +73,9 @@ export const getInitialGitHubActivity = async () => {
     // A timeout leaves the original read running. Reuse it instead of downloading
     // the page again. If metadata failed, one direct page read can still succeed.
     try {
-      return await healthyRead;
+      const page = await healthyRead;
+      await cacheWrites;
+      return page;
     } catch {
       try {
         const page = await readBody();

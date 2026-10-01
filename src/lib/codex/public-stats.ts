@@ -40,6 +40,7 @@ const getViews = cache(async () => {
     preferencesKey,
   ]);
   const fallbackRead = readRuntimeCache<PublicViews>(fallbackKey);
+  const cacheWrites: Promise<void>[] = [];
   let bodyRead: Promise<PublicViews> | undefined;
   const readBody = async (closed?: ClosedCodexHistory) =>
     await (bodyRead ??= readCodexPublicViews(today, closed));
@@ -61,16 +62,18 @@ const getViews = cache(async () => {
       );
       if (closed === null) {
         closed = await readClosedCodexHistory(today);
-        await writeRuntimeCache(
-          historyKey(today, closed.historyRevision),
-          closed,
-          86_400
+        cacheWrites.push(
+          writeRuntimeCache(
+            historyKey(today, closed.historyRevision),
+            closed,
+            86_400
+          )
         );
       }
       value = await readBody(closed);
       // Both store reads stamp their actual transaction revision. A publication
       // between reads must never put newer data under an older revision key.
-      await writeRuntimeCache(viewsKey(today, value), value, 900);
+      cacheWrites.push(writeRuntimeCache(viewsKey(today, value), value, 900));
     }
     if (value === null) {
       throw new Error("Missing Codex public views");
@@ -79,12 +82,15 @@ const getViews = cache(async () => {
       fallback?.viewsRevision !== value.viewsRevision ||
       fallback.historyRevision !== value.historyRevision
     ) {
-      await writeRuntimeCache(fallbackKey, value);
+      cacheWrites.push(writeRuntimeCache(fallbackKey, value));
     }
     return value.views;
   })();
   try {
-    return await readPublicSnapshot(async () => await healthyRead);
+    const views = await readPublicSnapshot(async () => await healthyRead);
+    // Cache writes are optional, and must not trigger an older outage snapshot.
+    await Promise.all(cacheWrites);
+    return views;
   } catch (error) {
     reportOperationalError("public_codex_stats", error);
     const fallback = await fallbackRead;
@@ -93,7 +99,9 @@ const getViews = cache(async () => {
     }
     try {
       // Keep a cold timeout on the same history/body read already in flight.
-      return await healthyRead;
+      const views = await healthyRead;
+      await Promise.all(cacheWrites);
+      return views;
     } catch {
       try {
         const value = await readBody();

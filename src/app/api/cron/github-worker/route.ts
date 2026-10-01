@@ -26,6 +26,7 @@ export async function POST(request: Request) {
   if (batchSize === null) {
     return Response.json({ ok: false }, { status: 400 });
   }
+  const warmingDeadlineAt = Date.now() + maxDuration * 1000 - 1000;
 
   try {
     const activity = await runGitHubActivityWorker({
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
 
       after(async () => {
         if ((await getInitialGitHubActivity()) !== null) {
-          await warmPublicPages(["/", "/work"]);
+          await warmPublicPages(["/", "/work"], warmingDeadlineAt);
         }
       });
     }

@@ -222,3 +222,34 @@ test("cache outages keep Codex data available without duplicate history reads", 
     restore(state);
   }
 });
+
+test("slow optional history and view cache writes cannot trigger older fallback stats", async () => {
+  const state = setup();
+  const release = Promise.withResolvers<null>();
+  try {
+    await getPublicCodexStats();
+    const updated = {
+      ...initial,
+      viewsRevision: "9007199254740993",
+      historyRevision: "2",
+      views: { ...initial.views, stats: stats(101) },
+    };
+    state.revision.mockResolvedValue({
+      viewsRevision: updated.viewsRevision,
+      historyRevision: "2",
+    });
+    state.history.mockResolvedValue({ ...closed, historyRevision: "2" });
+    state.body.mockResolvedValue(updated);
+    state.cache.set.mockImplementation(async (key, value) => {
+      await release.promise;
+      state.cache.values.set(key, value);
+    });
+    expect(await getPublicCodexStats()).toEqual(updated.views.stats);
+    expect(state.history).toHaveBeenCalledTimes(2);
+    expect(state.body).toHaveBeenCalledTimes(2);
+  } finally {
+    release.resolve(null);
+    await Bun.sleep(20);
+    restore(state);
+  }
+});

@@ -4,10 +4,12 @@ import { CANONICAL_SITE_URL } from "@/lib/site-url";
 
 // Warming data alone leaves the next visitor to regenerate invalidated HTML.
 export const warmPublicPages = async (
-  paths: readonly ("/" | "/work" | "/tokens")[]
+  paths: readonly ("/" | "/work" | "/tokens")[],
+  deadlineAt: number
 ) => {
+  const timeoutMs = Math.min(10_000, deadlineAt - Date.now());
   // A preview must never warm or regenerate production pages.
-  if (env.VERCEL_ENV !== "production") {
+  if (env.VERCEL_ENV !== "production" || timeoutMs <= 0) {
     return;
   }
   await Promise.all(
@@ -16,7 +18,7 @@ export const warmPublicPages = async (
         const response = await fetch(new URL(path, CANONICAL_SITE_URL), {
           cache: "no-store",
           redirect: "error",
-          signal: AbortSignal.timeout(10_000),
+          signal: AbortSignal.timeout(timeoutMs),
         });
         await response.arrayBuffer();
         if (!response.ok) {

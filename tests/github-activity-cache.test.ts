@@ -44,6 +44,14 @@ const page: PublicGitHubActivityPage = {
   orderingRevision: "4",
 };
 
+const maskedDays = page.days.map((day) => ({
+  ...day,
+  repositories: day.repositories.map((group) => ({
+    repository: { ...group.repository, label: "Private", url: null },
+    items: group.items.map((item) => ({ ...item, destination: null })),
+  })),
+}));
+
 test("cron and page readers share content while status, ordering and visibility revisions stay fresh", async () => {
   const cache = installRuntimeCache();
   const head = spyOn(store, "readPublicGitHubActivityHead").mockResolvedValue({
@@ -72,13 +80,7 @@ test("cron and page readers share content while status, ordering and visibility 
     expect(body).toHaveBeenCalledTimes(1);
     const masked = {
       ...page,
-      days: page.days.map((day) => ({
-        ...day,
-        repositories: day.repositories.map((group) => ({
-          repository: { ...group.repository, label: "Private", url: null },
-          items: group.items.map((item) => ({ ...item, destination: null })),
-        })),
-      })),
+      days: maskedDays,
       head: { ...status, feedRevision: "11", revision: "9007199254740994" },
       orderingRevision: "5",
     };
@@ -265,6 +267,48 @@ test("cache outages do not hide a healthy database page", async () => {
     expect(await getInitialGitHubActivity()).toEqual(page);
     expect(body).toHaveBeenCalledTimes(1);
   } finally {
+    head.mockRestore();
+    body.mockRestore();
+    cache.restore();
+  }
+});
+
+test("slow optional cache writes cannot replace a freshly masked page with its old public fallback", async () => {
+  const cache = installRuntimeCache();
+  const head = spyOn(store, "readPublicGitHubActivityHead").mockResolvedValue({
+    etag: "head",
+    head: page.head,
+    orderingRevision: page.orderingRevision,
+  });
+  const body = spyOn(store, "readPublicGitHubActivityPage").mockResolvedValue(
+    page
+  );
+  const release = Promise.withResolvers<null>();
+  try {
+    await getInitialGitHubActivity();
+    const masked = {
+      ...page,
+      days: maskedDays,
+      head: { ...page.head, feedRevision: "11", revision: "9007199254740993" },
+    };
+    head.mockImplementation(async () => {
+      await Bun.sleep(700);
+      return {
+        etag: "private",
+        head: masked.head,
+        orderingRevision: masked.orderingRevision,
+      };
+    });
+    body.mockResolvedValue(masked);
+    cache.set.mockImplementation(async (key, value) => {
+      await release.promise;
+      cache.values.set(key, value);
+    });
+    expect(await getInitialGitHubActivity()).toEqual(masked);
+    expect(body).toHaveBeenCalledTimes(2);
+  } finally {
+    release.resolve(null);
+    await Bun.sleep(20);
     head.mockRestore();
     body.mockRestore();
     cache.restore();
