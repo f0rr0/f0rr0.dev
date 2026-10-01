@@ -59,7 +59,9 @@ integrationTest(
       await client.query(`CREATE TABLE IF NOT EXISTS github_public_feed_head (
         id boolean PRIMARY KEY, feed_revision bigint NOT NULL, head_content_revision bigint NOT NULL,
         ordering_revision bigint NOT NULL, last_published_at timestamptz, summarizing boolean NOT NULL);
-        INSERT INTO github_public_feed_head VALUES (true,1,1,1,now(),false)
+        INSERT INTO github_public_feed_head
+        (id,feed_revision,head_content_revision,ordering_revision,last_published_at,summarizing)
+        VALUES (true,1,1,1,now(),false)
         ON CONFLICT(id) DO UPDATE SET feed_revision=1,head_content_revision=1,ordering_revision=1;`);
       const previousHead = await readPublicGitHubActivityHead();
       await client.query(

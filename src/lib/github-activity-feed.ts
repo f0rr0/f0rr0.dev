@@ -13,15 +13,20 @@ import { readPublicSnapshot } from "@/lib/public-snapshot";
 
 // Keep a successful snapshot available even when the current head cannot be read.
 // Publication invalidation must not discard this outage fallback.
-const readCachedInitialGitHubActivity = unstable_cache(
-  async () =>
-    await readPublicGitHubActivityPage(
-      null,
-      PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
-    ),
-  ["public-github-activity-fallback-v1"],
-  { revalidate: 60 }
-);
+// Capture the successful page without putting it in the stable cache key.
+const readCachedInitialGitHubActivity = async (
+  snapshot?: PublicGitHubActivityPage
+) =>
+  await unstable_cache(
+    async () =>
+      snapshot ??
+      (await readPublicGitHubActivityPage(
+        null,
+        PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
+      )),
+    ["public-github-activity-fallback-v2"],
+    { revalidate: 60 }
+  )();
 
 const readVersionedInitialGitHubActivity = unstable_cache(
   async (_feedRevision: string, _orderingRevision: string) =>
@@ -29,34 +34,30 @@ const readVersionedInitialGitHubActivity = unstable_cache(
       null,
       PUBLIC_GITHUB_ACTIVITY_DAY_PAGE_SIZE
     ),
-  ["public-github-activity-versioned-v1"],
-  { revalidate: 60, tags: ["public-github-activity"] }
+  ["public-github-activity-versioned-v2"],
+  { revalidate: 3600, tags: ["public-github-activity"] }
 );
 
 export const getInitialGitHubActivity = async () => {
-  let fallback: PublicGitHubActivityPage | null = null;
   try {
     return await readPublicSnapshot(async () => {
       const { head, orderingRevision } = await readPublicGitHubActivityHead();
-      fallback = await readCachedInitialGitHubActivity();
-      if (
-        BigInt(fallback.head.feedRevision) >= BigInt(head.feedRevision) &&
-        BigInt(fallback.orderingRevision) >= BigInt(orderingRevision)
-      ) {
-        return fallback;
-      }
-      // An older in-flight read can only populate its own revision's cache key.
-      return await readVersionedInitialGitHubActivity(
+      const page = await readVersionedInitialGitHubActivity(
         head.feedRevision,
         orderingRevision
       );
+      const snapshot =
+        page.head.feedRevision === head.feedRevision &&
+        page.orderingRevision === orderingRevision &&
+        BigInt(head.revision) >= BigInt(page.head.revision)
+          ? { ...page, head }
+          : page;
+      // Refresh the 60-second outage cache from the successful current response, with no extra database read.
+      await readCachedInitialGitHubActivity(snapshot);
+      return snapshot;
     });
   } catch (error) {
-    // Catch outside the cache so an outage never replaces a successful snapshot.
     reportOperationalError("github_activity_initial", error);
-    if (fallback !== null) {
-      return fallback;
-    }
     try {
       return await readCachedInitialGitHubActivity();
     } catch {
