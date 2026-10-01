@@ -53,6 +53,25 @@ integrationTest(
       }),
     });
     Object.assign(globalThis, { __incrementalCache: cache });
+    let activeCacheReads = 0;
+    let concurrentCacheReads = 0;
+    let cacheRoundTripMs = 25;
+    cache.get = new Proxy(cache.get.bind(cache), {
+      async apply(target, receiver, args) {
+        activeCacheReads++;
+        concurrentCacheReads = Math.max(concurrentCacheReads, activeCacheReads);
+        try {
+          // Model a remote cache round trip, using Next's real cache underneath.
+          // oxlint-disable-next-line promise/avoid-new -- Deliberately delay the native cache to reproduce remote latency.
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, cacheRoundTripMs);
+          });
+          return await Reflect.apply(target, receiver, args);
+        } finally {
+          activeCacheReads--;
+        }
+      },
+    });
     const realDateNow = Date.now;
     const realPerformanceNow = performance.now.bind(performance);
     let offset = 0;
@@ -253,6 +272,17 @@ integrationTest(
       }
       expect(first.days).toHaveLength(5);
       expect(group(first).repository.label).toBe("example/cache-investigation");
+      expect(concurrentCacheReads).toBe(2);
+      // Two slow remote cache hits must not force an outdated outage response.
+      cacheRoundTripMs = 600;
+      await client.query(
+        "UPDATE github_public_feed_head SET head_content_revision=head_content_revision+1,summarizing=true"
+      );
+      expect((await read())?.head.summarizing).toBe(true);
+      cacheRoundTripMs = 25;
+      await client.query(
+        "UPDATE github_public_feed_head SET head_content_revision=head_content_revision+1,summarizing=false"
+      );
       // Advance both clocks used by native Next's expiry calculation. Timers/DB stay real.
       for (let step = 1; step <= 60; step++) {
         offset += 61_000;
