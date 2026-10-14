@@ -158,13 +158,11 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
     },
     {
       label: "Current streak",
-      metric: stats.highlights.currentStreakDays,
       tooltip: null,
       value: formatDays(stats.highlights.currentStreakDays.value),
     },
     {
       label: "Longest streak",
-      metric: stats.highlights.longestStreakDays,
       tooltip: null,
       value: formatDays(stats.highlights.longestStreakDays.value),
     },
@@ -209,7 +207,7 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
           </dt>
           <dd className="mt-1 text-base font-normal tabular-nums text-foreground">
             {value}
-            {metric.partial ? " · partial" : ""}
+            {metric?.partial === true ? " · partial" : ""}
           </dd>
         </div>
       ))}
