@@ -3,6 +3,9 @@
 Sid Jain's portfolio, blog, and GitHub commit timeline. Built with Next.js and
 deployed on Vercel.
 
+Blog diagrams use Mermaid code blocks rendered by [Pele](https://pele.run/),
+with CSS theme colors, responsive layouts, zoom, pan, and fullscreen controls.
+
 ## Local development
 
 Use Node 24 and Bun:

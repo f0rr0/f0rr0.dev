@@ -288,6 +288,22 @@
   .article-prose :is(.code-block, .mermaid-block) {
     @apply overflow-hidden rounded-lg border border-border bg-muted;
   }
+  .article-prose .mermaid-block {
+    --pele-bg: var(--muted);
+    --pele-fg: var(--foreground);
+    --pele-muted: var(--muted-foreground);
+    --pele-line: var(--muted-foreground);
+    --pele-surface: var(--background);
+    --pele-surface-alt: var(--accent);
+    --pele-border: var(--border);
+    --pele-accent: var(--primary);
+    --pele-critical: var(--destructive);
+    --pele-font: var(--font-sans), ui-sans-serif, sans-serif;
+    --pele-font-mono: var(--font-mono), monospace;
+  }
+  .article-prose .pele-zoom button {
+    @apply min-h-10 min-w-10;
+  }
   .dark .article-prose .code-block {
     @apply bg-background;
   }
@@ -322,6 +338,9 @@
     stroke-width: 1.5;
   }
   @media (pointer: coarse) {
+    .article-prose .pele-zoom button {
+      @apply min-h-11 min-w-11;
+    }
     .article-prose
       :is(.code-block-copy, .code-block-language, .mermaid-control) {
       @apply min-h-11 min-w-11;

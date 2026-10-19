@@ -323,15 +323,11 @@ flowchart TD
   Review --> Publish[Publish]
 ```
 
-### Wide flowchart with ELK layout
+### Responsive flowchart
 
-A larger diagram keeps readable labels, horizontal scrolling, zoom, and full-screen controls:
+Pele renders Mermaid source with theme colors, responsive layouts, zoom, pan, and full-screen controls:
 
 ```mermaid
----
-config:
-  layout: elk
----
 flowchart LR
   accTitle: From an idea to a release
   accDescr: Research and a technical spike converge into a prototype, followed by review and release.
@@ -350,10 +346,10 @@ flowchart LR
 ```mermaid
 sequenceDiagram
   accTitle: Rendering a diagram
-  accDescr: The reader opens the article and Mermaid renders its source.
+  accDescr: The reader opens the article and Pele renders its Mermaid source.
   actor Reader
   participant Blog as Article
-  participant Renderer as Mermaid
+  participant Renderer as Pele
   Reader->>Blog: Open article
   Blog-->>Reader: Show content
   Blog->>Renderer: Send diagram source
