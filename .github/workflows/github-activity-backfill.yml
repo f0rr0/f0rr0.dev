@@ -58,9 +58,4 @@ jobs:
           REPOSITORY_ID: ${{ inputs.repository_id }}
           START_DATE: ${{ inputs.start_date }}
         run: >-
-          bun scripts/backfill-github-activity.ts
-          --account "$ACCOUNT"
-          --start-date "$START_DATE"
-          --end-date "$END_DATE"
-          --repository-id "$REPOSITORY_ID"
-          --maximum-minutes "$MAXIMUM_MINUTES"
+          bun scripts/backfill-github-activity.ts --account "$ACCOUNT" --start-date "$START_DATE" --end-date "$END_DATE" --repository-id "$REPOSITORY_ID" --maximum-minutes "$MAXIMUM_MINUTES"

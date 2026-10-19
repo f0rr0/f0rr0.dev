@@ -80,40 +80,40 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+const RootLayout = ({
   children,
 }: Readonly<{
   children: React.ReactNode;
-}>) {
-  return (
-    <html
-      className={`${sans.variable} ${mono.variable} ${serif.variable}`}
-      lang="en"
-      suppressHydrationWarning
-    >
-      <head>
-        <link href="/llms.txt" rel="describedby" />
-      </head>
-      <body className="min-h-screen font-sans antialiased [&_:is(a,button,summary)]:decoration-solid [&_:is(a,button,summary)]:decoration-1 [&_:is(a,button,summary)]:underline-offset-4 [&_:is(a,button)_:is(h3,span)]:decoration-solid [&_:is(a,button)_:is(h3,span)]:decoration-1 [&_:is(a,button)_:is(h3,span)]:underline-offset-4">
-        <JsonLd data={buildRootJsonLd()} />
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          disableTransitionOnChange
-          enableSystem
-        >
-          <TooltipProvider>{children}</TooltipProvider>
-          <Toaster
-            toastOptions={{
-              classNames: {
-                toast: "cn-toast font-sans! text-sm!",
-                title: "text-sm! font-normal!",
-                description: "text-sm! font-normal!",
-              },
-            }}
-          />
-        </ThemeProvider>
-      </body>
-    </html>
-  );
-}
+}>) => (
+  <html
+    className={`${sans.variable} ${mono.variable} ${serif.variable}`}
+    lang="en"
+    suppressHydrationWarning
+  >
+    <head>
+      <link href="/llms.txt" rel="describedby" />
+    </head>
+    <body className="min-h-screen font-sans antialiased [&_:is(a,button)_:is(h3,span)]:decoration-solid [&_:is(a,button)_:is(h3,span)]:decoration-1 [&_:is(a,button)_:is(h3,span)]:underline-offset-4 [&_:is(a,button,summary)]:decoration-solid [&_:is(a,button,summary)]:decoration-1 [&_:is(a,button,summary)]:underline-offset-4">
+      <JsonLd data={buildRootJsonLd()} />
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        disableTransitionOnChange
+        enableSystem
+      >
+        <TooltipProvider>{children}</TooltipProvider>
+        <Toaster
+          toastOptions={{
+            classNames: {
+              toast: "cn-toast font-sans! text-sm!",
+              title: "text-sm! font-normal!",
+              description: "text-sm! font-normal!",
+            },
+          }}
+        />
+      </ThemeProvider>
+    </body>
+  </html>
+);
+
+export default RootLayout;

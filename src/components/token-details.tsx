@@ -23,7 +23,7 @@ const percent = new Intl.NumberFormat(sitePreferences.language, {
   maximumFractionDigits: 1,
 });
 
-function Metric({
+const Metric = ({
   label,
   value,
   suffix = "",
@@ -31,20 +31,18 @@ function Metric({
   label: string;
   value: number | null;
   suffix?: string;
-}) {
-  return (
-    <div className="min-w-0 py-2.5">
-      <dt className="text-base text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-base font-normal tabular-nums">
-        {value === null
-          ? "—"
-          : `${suffix === "%" ? percent.format(value) : compact.format(value)}${suffix}`}
-      </dd>
-    </div>
-  );
-}
+}) => (
+  <div className="min-w-0 py-2.5">
+    <dt className="text-muted-foreground text-base">{label}</dt>
+    <dd className="mt-1 text-base font-normal tabular-nums">
+      {value === null
+        ? "—"
+        : `${suffix === "%" ? percent.format(value) : compact.format(value)}${suffix}`}
+    </dd>
+  </div>
+);
 
-function Ranking({
+const Ranking = ({
   rows,
   unit,
   className = "",
@@ -54,7 +52,7 @@ function Ranking({
   rows: readonly (TokenRow & { icon?: ReactNode })[];
   unit: string;
   className?: string;
-}) {
+}) => {
   const maximum =
     unit === "%" ? 100 : Math.max(1, ...rows.map((row) => row.value));
   return (
@@ -66,7 +64,7 @@ function Ranking({
               {row.icon}
               <span className="min-w-0 wrap-anywhere">{row.label}</span>
             </dt>
-            <dd className="shrink-0 tabular-nums text-muted-foreground">
+            <dd className="text-muted-foreground shrink-0 tabular-nums">
               {unit === "%"
                 ? row.value > 0 && row.value < 0.1
                   ? "<0.1"
@@ -78,10 +76,10 @@ function Ranking({
           {bars ? (
             <div
               aria-hidden="true"
-              className="mt-2 h-1 overflow-hidden rounded-full bg-muted"
+              className="bg-muted mt-2 h-1 overflow-hidden rounded-full"
             >
               <div
-                className="h-full rounded-full bg-primary"
+                className="bg-primary h-full rounded-full"
                 style={{ width: `${(row.value / maximum) * 100}%` }}
               />
             </div>
@@ -90,15 +88,15 @@ function Ranking({
       ))}
     </dl>
   );
-}
+};
 
-function Tools({
+const Tools = ({
   details,
   toolIcons,
 }: {
   details: TokenDetails | null;
   toolIcons: PublicCodexStats["insights"]["topTools"];
-}) {
+}) => {
   if (
     ![details?.plugins, details?.skills].some(
       (section) => (section?.rows.length ?? 0) > 0
@@ -130,7 +128,7 @@ function Tools({
                 : "Reusable instructions for tasks like writing, design, and code review."
             }
             action={
-              <span className="text-sm text-muted-foreground tabular-nums">
+              <span className="text-muted-foreground text-sm tabular-nums">
                 {number.format(data.distinct)}{" "}
                 {data.distinct === 1
                   ? title.slice(0, -1).toLowerCase()
@@ -170,7 +168,7 @@ function Tools({
       )}
     </div>
   );
-}
+};
 
 function usageMetrics(details: TokenDetails | null) {
   const activity = details?.activity;
@@ -197,7 +195,7 @@ function hasBreakdowns(details: TokenDetails | null) {
   );
 }
 
-function BreakdownContent({
+const BreakdownContent = ({
   details,
   toolIcons,
   periods,
@@ -205,7 +203,7 @@ function BreakdownContent({
   details: TokenDetails;
   toolIcons: PublicCodexStats["insights"]["topTools"];
   periods: ReactNode;
-}) {
+}) => {
   const metrics = usageMetrics(details);
   return (
     <>
@@ -247,7 +245,7 @@ function BreakdownContent({
             {details.delegation.accounts.map((account, index) => (
               <div key={index} className="min-w-0">
                 {account.label && details.accountCount > 1 ? (
-                  <p className="mb-4 text-base text-muted-foreground">
+                  <p className="text-muted-foreground mb-4 text-base">
                     {account.label}
                   </p>
                 ) : null}
@@ -260,9 +258,9 @@ function BreakdownContent({
       <Tools details={details} toolIcons={toolIcons} />
     </>
   );
-}
+};
 
-function Breakdowns({
+const Breakdowns = ({
   details,
   weekDetails,
   historyDetails,
@@ -272,7 +270,7 @@ function Breakdowns({
   details: TokenDetails | null;
   weekDetails: TokenDetails | null;
   historyDetails: TokenDetails | null;
-}) {
+}) => {
   const periods = (
     [
       [7, weekDetails, "Last 7 days"],
@@ -297,7 +295,7 @@ function Breakdowns({
       <TabsList aria-label="Usage period" variant="line">
         {periods.map(([days, , label]) => (
           <TabsTrigger
-            className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none"
+            className="text-muted-foreground font-normal transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) data-active:font-medium motion-reduce:transition-none"
             key={days}
             value={days}
           >
@@ -306,7 +304,7 @@ function Breakdowns({
         ))}
       </TabsList>
     ) : (
-      <span className="text-sm text-muted-foreground">{periods[0][2]}</span>
+      <span className="text-muted-foreground text-sm">{periods[0][2]}</span>
     );
   return (
     <Tabs
@@ -326,9 +324,9 @@ function Breakdowns({
       ))}
     </Tabs>
   );
-}
+};
 
-export function TokenUsageDetails({
+export const TokenUsageDetails = ({
   stats,
   details,
   weekDetails = null,
@@ -338,7 +336,7 @@ export function TokenUsageDetails({
   historyDetails?: TokenDetails | null;
   stats: PublicCodexStats | null;
   details: TokenDetails | null;
-}) {
+}) => {
   const hasData = stats !== null || (details?.accountCount ?? 0) > 0;
   return (
     <>
@@ -349,14 +347,14 @@ export function TokenUsageDetails({
         {tokenPreferences.workLink ? (
           <Link
             href={tokenPreferences.workLink.href}
-            className="underline underline-offset-4 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+            className="focus-visible:outline-ring rounded-sm underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-4"
           >
             {tokenPreferences.workLink.label}
           </Link>
         ) : null}
       </p>
       {!hasData && (
-        <p className="mt-12 text-muted-foreground">
+        <p className="text-muted-foreground mt-12">
           Usage is temporarily unavailable. Please check back later.
         </p>
       )}
@@ -390,4 +388,4 @@ export function TokenUsageDetails({
       ) : null}
     </>
   );
-}
+};

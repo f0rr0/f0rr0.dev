@@ -56,14 +56,14 @@ const statusColor = (status: string) => {
   return "text-muted-foreground";
 };
 
-function RepositoryIdentity({
+const RepositoryIdentity = ({
   repository,
-}: Readonly<{ repository: PublicGitHubActivityRepository }>) {
+}: Readonly<{ repository: PublicGitHubActivityRepository }>) => {
   const isPrivate = repository.label === null || repository.url === null;
   const Identity = isPrivate ? "span" : "a";
   return (
     <Identity
-      className="inline-flex min-h-7 min-w-0 items-center gap-2 rounded-sm text-sm text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+      className="text-muted-foreground focus-visible:outline-ring inline-flex min-h-7 min-w-0 items-center gap-2 rounded-sm text-sm focus-visible:outline-2 focus-visible:outline-offset-4"
       href={isPrivate ? undefined : (repository.url ?? undefined)}
       rel={isPrivate ? undefined : "noopener noreferrer"}
       target={isPrivate ? undefined : "_blank"}
@@ -89,12 +89,12 @@ function RepositoryIdentity({
           />
         )}
         {isPrivate && repository.avatarUrl !== null ? (
-          <span className="absolute -inset-e-0.5 -bottom-0.5 grid size-3.5 place-items-center rounded-full bg-background ring-1 ring-background">
+          <span className="bg-background ring-background absolute -inset-e-0.5 -bottom-0.5 grid size-3.5 place-items-center rounded-full ring-1">
             <LockKeyhole className="size-2.5" />
           </span>
         ) : null}
       </span>
-      <span className="min-w-0 wrap-anywhere font-mono font-normal">
+      <span className="min-w-0 font-mono font-normal wrap-anywhere">
         {repository.label ?? "Private"}
       </span>
       {isPrivate ? null : (
@@ -102,35 +102,33 @@ function RepositoryIdentity({
       )}
     </Identity>
   );
-}
+};
 
-function DiffCounters({
+const DiffCounters = ({
   facts,
 }: Readonly<{
   facts: NonNullable<GitHubPullRequestDisplay["diff"]>;
-}>) {
-  return (
-    <span className="inline-flex items-center gap-2 text-sm text-muted-foreground tabular-nums">
-      <span className="text-[light-dark(oklch(0.48_0.12_155),oklch(0.75_0.13_155))]">
-        <span className="sr-only">Added </span>+
-        {countFormatter.format(facts.additions)}
-      </span>
-      <span className="text-[light-dark(oklch(0.52_0.16_25),oklch(0.76_0.13_25))]">
-        <span className="sr-only">Deleted </span>−
-        {countFormatter.format(facts.deletions)}
-      </span>
+}>) => (
+  <span className="text-muted-foreground inline-flex items-center gap-2 text-sm tabular-nums">
+    <span className="text-[light-dark(oklch(0.48_0.12_155),oklch(0.75_0.13_155))]">
+      <span className="sr-only">Added </span>+
+      {countFormatter.format(facts.additions)}
     </span>
-  );
-}
+    <span className="text-[light-dark(oklch(0.52_0.16_25),oklch(0.76_0.13_25))]">
+      <span className="sr-only">Deleted </span>−
+      {countFormatter.format(facts.deletions)}
+    </span>
+  </span>
+);
 
-function WorkUnitFacts({
+const WorkUnitFacts = ({
   item,
-}: Readonly<{ item: PublicGitHubWorkUnitActivity }>) {
+}: Readonly<{ item: PublicGitHubWorkUnitActivity }>) => {
   const { facts } = item;
   const commits = `${countFormatter.format(facts.ownedCommitCount)} ${facts.ownedCommitCount === 1 ? "commit" : "commits"}`;
   const files = `${countFormatter.format(facts.uniqueFileCount)} ${facts.uniqueFileCount === 1 ? "file" : "files"}`;
   return (
-    <div className="site-row-meta flex min-h-6 shrink-0 items-center gap-2 text-sm text-muted-foreground tabular-nums flex-wrap justify-start">
+    <div className="site-row-meta text-muted-foreground flex min-h-6 shrink-0 flex-wrap items-center justify-start gap-2 text-sm tabular-nums">
       <span>
         {commits} · {files}
       </span>
@@ -144,11 +142,11 @@ function WorkUnitFacts({
       ))}
     </div>
   );
-}
+};
 
-function WorkUnitRow({
+const WorkUnitRow = ({
   item,
-}: Readonly<{ item: PublicGitHubWorkUnitActivity }>) {
+}: Readonly<{ item: PublicGitHubWorkUnitActivity }>) => {
   const headline =
     item.headline ?? item.pullRequest?.title ?? workUnitLabels[item.kind];
   return (
@@ -174,13 +172,13 @@ function WorkUnitRow({
           </TooltipContent>
         }
         render={
-          <CollapsibleTrigger className="site-row col-span-full grid min-h-11 w-full grid-cols-subgrid items-start gap-x-2 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group cursor-pointer" />
+          <CollapsibleTrigger className="site-row text-foreground focus-visible:outline-ring group col-span-full grid min-h-11 w-full cursor-pointer grid-cols-subgrid items-start gap-x-2 rounded-sm py-2.5 text-start text-base focus-visible:outline-2 focus-visible:outline-offset-4" />
         }
       >
-        <span className="min-w-0 font-normal disclosure-title group-hover:underline">
+        <span className="disclosure-title min-w-0 font-normal group-hover:underline">
           {headline}
         </span>
-        <span className="site-row-meta col-span-4 grid min-h-6 grid-cols-subgrid items-center gap-2 text-sm text-muted-foreground tabular-nums">
+        <span className="site-row-meta text-muted-foreground col-span-4 grid min-h-6 grid-cols-subgrid items-center gap-2 text-sm tabular-nums">
           <span className="hidden justify-self-end sm:inline-flex">
             {item.pullRequest?.diff ? (
               <DiffCounters facts={item.pullRequest.diff} />
@@ -216,7 +214,7 @@ function WorkUnitRow({
         </span>
       </TooltipTrigger>
       <CollapsibleContent className="col-span-full" hiddenUntilFound>
-        <div className="space-y-2 pb-2.5 text-muted-foreground">
+        <div className="text-muted-foreground space-y-2 pb-2.5">
           {item.summary === null ? null : (
             <p className="wrap-anywhere">{item.summary}</p>
           )}
@@ -225,13 +223,13 @@ function WorkUnitRow({
       </CollapsibleContent>
     </Collapsible>
   );
-}
+};
 
-function IssueRow({
+const IssueRow = ({
   item,
 }: Readonly<{
   item: Extract<PublicGitHubActivityItem, { kind: "issue" }>;
-}>) {
+}>) => {
   const [expanded, setExpanded] = useState(false);
   const status = item.status ?? "open";
   const Icon =
@@ -248,16 +246,16 @@ function IssueRow({
     <li className="col-span-full grid min-w-0 grid-cols-subgrid">
       <button
         aria-expanded={expanded}
-        className="site-row col-span-full grid min-h-11 w-full grid-cols-subgrid items-start gap-x-2 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group cursor-pointer"
+        className="site-row text-foreground focus-visible:outline-ring group col-span-full grid min-h-11 w-full cursor-pointer grid-cols-subgrid items-start gap-x-2 rounded-sm py-2.5 text-start text-base focus-visible:outline-2 focus-visible:outline-offset-4"
         onClick={() => {
           setExpanded((open) => !open);
         }}
         type="button"
       >
-        <span className="min-w-0 font-normal disclosure-title group-hover:underline">
+        <span className="disclosure-title min-w-0 font-normal group-hover:underline">
           {item.title}
         </span>
-        <span className="site-row-meta col-span-4 grid min-h-6 grid-cols-subgrid items-center gap-2 text-sm text-muted-foreground tabular-nums">
+        <span className="site-row-meta text-muted-foreground col-span-4 grid min-h-6 grid-cols-subgrid items-center gap-2 text-sm tabular-nums">
           <span title={label} className={`col-start-2 ${statusColor(status)}`}>
             <Icon aria-hidden="true" className="size-4" />
             <span className="sr-only">{label}</span>
@@ -273,32 +271,33 @@ function IssueRow({
       </button>
     </li>
   );
-}
+};
 
-function ActivityItem({ item }: Readonly<{ item: PublicGitHubActivityItem }>) {
-  return item.kind === "issue" ? (
+const ActivityItem = ({
+  item,
+}: Readonly<{ item: PublicGitHubActivityItem }>) =>
+  item.kind === "issue" ? (
     <IssueRow item={item} />
   ) : (
     <WorkUnitRow item={item} />
   );
-}
 
-function RepositoryGroup({
+const RepositoryGroup = ({
   group,
   itemLimit,
 }: Readonly<{
   group: PublicGitHubActivityRepositoryGroup;
   itemLimit?: number;
-}>) {
+}>) => {
   const visibleItems =
     itemLimit === undefined ? group.items : group.items.slice(0, itemLimit);
   const hiddenItems = group.items.slice(visibleItems.length);
   return (
     <li className="col-span-full grid grid-cols-subgrid pt-4">
-      <h4 className="site-row col-span-full grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
+      <h4 className="site-row text-foreground focus-visible:outline-ring col-span-full grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-2.5 text-start text-base focus-visible:outline-2 focus-visible:outline-offset-4">
         <RepositoryIdentity repository={group.repository} />
       </h4>
-      <ol className="col-span-full grid grid-cols-subgrid divide-y divide-border">
+      <ol className="divide-border col-span-full grid grid-cols-subgrid divide-y">
         {visibleItems.map((item) => (
           <ActivityItem item={item} key={item.id} />
         ))}
@@ -306,14 +305,14 @@ function RepositoryGroup({
       {hiddenItems.length === 0 ? null : (
         <Collapsible className="col-span-full grid grid-cols-subgrid">
           <CollapsibleContent className="col-span-full grid grid-cols-subgrid [&>div]:col-span-full [&>div]:grid [&>div]:grid-cols-subgrid">
-            <ol className="col-span-full grid grid-cols-subgrid divide-y divide-border border-t border-border">
+            <ol className="divide-border border-border col-span-full grid grid-cols-subgrid divide-y border-t">
               {hiddenItems.map((item) => (
                 <ActivityItem item={item} key={item.id} />
               ))}
             </ol>
           </CollapsibleContent>
-          <CollapsibleTrigger className="site-row col-span-full grid min-h-11 w-full grid-cols-[minmax(0,max-content)_auto] items-start justify-start gap-x-1.5 rounded-sm py-2.5 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group/more cursor-pointer pt-0">
-            <span className="min-w-0 truncate font-normal text-muted-foreground">
+          <CollapsibleTrigger className="site-row text-foreground focus-visible:outline-ring group/more col-span-full grid min-h-11 w-full cursor-pointer grid-cols-[minmax(0,max-content)_auto] items-start justify-start gap-x-1.5 rounded-sm py-2.5 pt-0 text-start text-base focus-visible:outline-2 focus-visible:outline-offset-4">
+            <span className="text-muted-foreground min-w-0 truncate font-normal">
               <span className="group-data-panel-open/more:hidden">
                 Show {countFormatter.format(hiddenItems.length)} more
               </span>
@@ -321,7 +320,7 @@ function RepositoryGroup({
                 Show less
               </span>
             </span>
-            <span className="site-row-meta flex translate-y-px min-h-6 shrink-0 items-center justify-end text-sm text-muted-foreground tabular-nums">
+            <span className="site-row-meta text-muted-foreground flex min-h-6 shrink-0 translate-y-px items-center justify-end text-sm tabular-nums">
               <DisclosureChevron />
             </span>
           </CollapsibleTrigger>
@@ -329,18 +328,18 @@ function RepositoryGroup({
       )}
     </li>
   );
-}
+};
 
-function GitHubActivityDay({
+const GitHubActivityDay = ({
   day,
   itemLimit,
-}: Readonly<{ day: PublicGitHubActivityDay; itemLimit?: number }>) {
+}: Readonly<{ day: PublicGitHubActivityDay; itemLimit?: number }>) => {
   const repositoryCount = day.repositories.length;
   const workUnits = day.repositories.flatMap(({ items }) => items);
   return (
     <section aria-labelledby={`activity-day-${day.day}`}>
-      <header className="site-row min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring flex flex-wrap rounded-none border-y border-border py-2">
-        <h3 className="site-row-meta flex min-h-6 shrink-0 items-center gap-1 text-sm text-muted-foreground tabular-nums justify-start font-medium sm:gap-2">
+      <header className="site-row text-foreground focus-visible:outline-ring border-border flex min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] flex-wrap items-start gap-x-4 rounded-none border-y py-2 text-start text-base focus-visible:outline-2 focus-visible:outline-offset-4">
+        <h3 className="site-row-meta text-muted-foreground flex min-h-6 shrink-0 items-center justify-start gap-1 text-sm font-medium tabular-nums sm:gap-2">
           <time
             className="font-sans font-normal"
             dateTime={day.day}
@@ -351,7 +350,7 @@ function GitHubActivityDay({
         </h3>
         <dl
           aria-label={`Updates for ${day.day}`}
-          className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums ms-auto whitespace-nowrap"
+          className="site-row-meta text-muted-foreground ms-auto flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm whitespace-nowrap tabular-nums"
         >
           <div>
             <dt className="sr-only">Updates across repositories</dt>
@@ -378,9 +377,9 @@ function GitHubActivityDay({
       </ol>
     </section>
   );
-}
+};
 
-export function GitHubActivityDays({
+export const GitHubActivityDays = ({
   days,
   itemLimit,
   preview = false,
@@ -390,7 +389,7 @@ export function GitHubActivityDays({
   itemLimit?: number;
   preview?: boolean;
   now: string;
-}>) {
+}>) => {
   const today = dateKey(now);
   const activeDays = getVisibleGitHubActivityDays(days, today);
   const visibleDays = preview ? activeDays.slice(0, 1) : activeDays;
@@ -401,4 +400,4 @@ export function GitHubActivityDays({
       ))}
     </TooltipGroup>
   );
-}
+};

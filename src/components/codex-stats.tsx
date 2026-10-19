@@ -61,11 +61,11 @@ const Metric = ({
 }) =>
   metric.value === null ? null : (
     <div className="py-2.5">
-      <dt className="text-base text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-base font-normal tabular-nums text-foreground">
+      <dt className="text-muted-foreground text-base">{label}</dt>
+      <dd className="text-foreground mt-1 text-base font-normal tabular-nums">
         {metric.value === null ? "—" : compactNumber.format(metric.value)}
         {metric.partial ? (
-          <span className="ml-2 text-base text-muted-foreground">partial</span>
+          <span className="text-muted-foreground ml-2 text-base">partial</span>
         ) : null}
       </dd>
     </div>
@@ -81,7 +81,7 @@ const LimitBar = ({
   const used = Math.min(100, usedPercent);
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-4 text-base text-muted-foreground">
+      <div className="text-muted-foreground flex items-baseline justify-between gap-4 text-base">
         <span className="min-w-0 wrap-anywhere">{label}</span>
         <span className="shrink-0">{Math.round(100 - used)}% left</span>
       </div>
@@ -90,11 +90,11 @@ const LimitBar = ({
         aria-valuemax={100}
         aria-valuemin={0}
         aria-valuenow={Math.round(used)}
-        className="mt-2 h-1 overflow-hidden rounded-full bg-muted"
+        className="bg-muted mt-2 h-1 overflow-hidden rounded-full"
         role="progressbar"
       >
         <div
-          className="h-full rounded-full bg-primary"
+          className="bg-primary h-full rounded-full"
           style={{ width: `${String(used)}%` }}
         />
       </div>
@@ -102,18 +102,16 @@ const LimitBar = ({
   );
 };
 
-export function CodexTotals({ stats }: { stats: PublicCodexStats }) {
-  return (
-    <TokenStatGrid>
-      <Metric label="Lifetime tokens" metric={stats.totals.lifetimeTokens} />
-      <Metric label="Today" metric={stats.totals.todayTokens} />
-      <Metric label="Last 7 days" metric={stats.totals.last7Days} />
-      <Metric label="Last 30 days" metric={stats.totals.last30Days} />
-    </TokenStatGrid>
-  );
-}
+export const CodexTotals = ({ stats }: { stats: PublicCodexStats }) => (
+  <TokenStatGrid>
+    <Metric label="Lifetime tokens" metric={stats.totals.lifetimeTokens} />
+    <Metric label="Today" metric={stats.totals.todayTokens} />
+    <Metric label="Last 7 days" metric={stats.totals.last7Days} />
+    <Metric label="Last 30 days" metric={stats.totals.last30Days} />
+  </TokenStatGrid>
+);
 
-export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
+export const CodexHighlights = ({ stats }: { stats: PublicCodexStats }) => {
   const reasoningLeaders =
     stats.insights.reasoningEfforts.values.length === 0
       ? "—"
@@ -205,7 +203,7 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
               <InfoLabel label={label} description={tooltip} />
             )}
           </dt>
-          <dd className="mt-1 text-base font-normal tabular-nums text-foreground">
+          <dd className="text-foreground mt-1 text-base font-normal tabular-nums">
             {value}
             {metric?.partial === true ? " · partial" : ""}
           </dd>
@@ -213,9 +211,9 @@ export function CodexHighlights({ stats }: { stats: PublicCodexStats }) {
       ))}
     </TokenStatGrid>
   );
-}
+};
 
-export function CodexStats({ stats }: { stats: PublicCodexStats }) {
+export const CodexStats = ({ stats }: { stats: PublicCodexStats }) => {
   if (
     Object.values(stats.totals).every((metric) => metric.value === null) &&
     stats.history.values.every((row) => row.tokens === null)
@@ -236,9 +234,9 @@ export function CodexStats({ stats }: { stats: PublicCodexStats }) {
       </div>
     </SiteSection>
   );
-}
+};
 
-export function CodexUsageLimit({ stats }: { stats: PublicCodexStats }) {
+export const CodexUsageLimit = ({ stats }: { stats: PublicCodexStats }) => {
   if (stats.limits.length === 0) {
     return null;
   }
@@ -259,7 +257,7 @@ export function CodexUsageLimit({ stats }: { stats: PublicCodexStats }) {
                 usedPercent={limit.usedPercent}
               />
               {limit.resetAt === null ? null : (
-                <p className="mt-2 text-base text-muted-foreground">
+                <p className="text-muted-foreground mt-2 text-base">
                   Resets{" "}
                   <DateTime
                     dateTime={new Date(limit.resetAt * 1000).toISOString()}
@@ -272,4 +270,4 @@ export function CodexUsageLimit({ stats }: { stats: PublicCodexStats }) {
       </div>
     </SiteSection>
   );
-}
+};

@@ -8,7 +8,10 @@ import {
   generateGitHubWorkUnitSummary,
   GitHubWorkUnitSummaryInvalidInputError,
 } from "../src/lib/github-work-unit-summary-provider.ts";
-import { GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY } from "../src/lib/github-work-unit-summary.ts";
+import {
+  GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY,
+  GITHUB_WORK_UNIT_SUMMARY_SYSTEM_PROMPT,
+} from "../src/lib/github-work-unit-summary.ts";
 
 // Only the SDK fields consumed by the provider are needed in these test doubles.
 const mockGenerateText = (
@@ -99,14 +102,15 @@ describe("GitHub work-unit summary provider", () => {
       GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.maxOutputTokens
     );
     expect(call.maxRetries).toBe(0);
+    expect(call.reasoning).toBe("none");
     expect(call.providerOptions).toEqual({
       openai: {
-        reasoningEffort: "none",
         store: false,
         textVerbosity: "low",
       },
     });
     expect(call.prompt).toBe(input.serializedInput);
+    expect(call.instructions).toBe(GITHUB_WORK_UNIT_SUMMARY_SYSTEM_PROMPT);
     expect(call.abortSignal).toBeInstanceOf(AbortSignal);
 
     assert.ok(call.output);

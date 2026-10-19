@@ -1,5 +1,7 @@
 @import "./article.css";
 
+@source "../";
+
 @theme inline {
   --text-sm--line-height: calc(20 / 14);
   --radius-heatmap: 0.2rem;

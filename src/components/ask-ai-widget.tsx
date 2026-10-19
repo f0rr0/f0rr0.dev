@@ -11,10 +11,10 @@ import { Button } from "@/components/ui/button";
 import { buildAssistantActions } from "@/lib/ask-ai";
 import type { AskAiPageContext } from "@/lib/ask-ai";
 
-export function AskAiWidget({
+export const AskAiWidget = ({
   profilePrompt,
   pageContext,
-}: Readonly<{ profilePrompt: string; pageContext?: AskAiPageContext }>) {
+}: Readonly<{ profilePrompt: string; pageContext?: AskAiPageContext }>) => {
   const topicId = useId();
   const [topic, setTopic] = useState(
     pageContext === undefined ? "profile" : "page"
@@ -29,7 +29,7 @@ export function AskAiWidget({
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
         aria-label="Ask an AI"
-        className="group z-40 inline-flex min-h-11 items-center gap-2 rounded-full bg-muted py-2 pr-2 pl-3 text-sm font-normal text-popover-foreground shadow-sm ring-1 ring-border dark:ring-0 transition-colors duration-(--motion-fast) hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring motion-reduce:transition-none min-[92rem]:fixed min-[92rem]:inset-e-6 min-[92rem]:bottom-6 print:hidden"
+        className="group bg-muted text-popover-foreground ring-border hover:bg-accent focus-visible:outline-ring z-40 inline-flex min-h-11 items-center gap-2 rounded-full py-2 pr-2 pl-3 text-sm font-normal shadow-sm ring-1 transition-colors duration-(--motion-fast) focus-visible:outline-2 focus-visible:outline-offset-4 motion-reduce:transition-none min-[92rem]:fixed min-[92rem]:inset-e-6 min-[92rem]:bottom-6 dark:ring-0 print:hidden"
         openOnHover
         delay={250}
         closeDelay={300}
@@ -45,7 +45,7 @@ export function AskAiWidget({
           collisionPadding={16}
           className="z-50 print:hidden"
         >
-          <Popover.Popup className="w-80 max-w-[calc(100vw-2rem)] max-h-[min(70dvh,var(--available-height))] overflow-y-auto overscroll-contain rounded-2xl bg-popover px-4 pt-3 pb-4 text-popover-foreground shadow-md ring-1 ring-border dark:ring-0 outline-none site-popup">
+          <Popover.Popup className="bg-popover text-popover-foreground ring-border site-popup max-h-[min(70dvh,var(--available-height))] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-2xl px-4 pt-3 pb-4 shadow-md ring-1 outline-none dark:ring-0">
             <div className="flex items-start justify-between gap-3">
               <Popover.Title className="text-sm font-medium">
                 Ask an AI
@@ -63,7 +63,7 @@ export function AskAiWidget({
               </Popover.Close>
             </div>
             {pageContext === undefined ? null : (
-              <fieldset className="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+              <fieldset className="bg-muted mt-2 grid grid-cols-2 gap-1 rounded-lg p-1">
                 <legend className="sr-only">Question context</legend>
                 {[
                   { value: "page", label: pageContext.label },
@@ -83,7 +83,7 @@ export function AskAiWidget({
                         setTopic(option.value);
                       }}
                     />
-                    <span className="flex min-h-11 items-center justify-center rounded-sm px-2 text-muted-foreground peer-checked:bg-background peer-checked:text-foreground peer-checked:shadow-sm peer-focus-visible:outline-2 peer-focus-visible:outline-ring">
+                    <span className="text-muted-foreground peer-checked:bg-background peer-checked:text-foreground peer-focus-visible:outline-ring flex min-h-11 items-center justify-center rounded-sm px-2 peer-checked:shadow-sm peer-focus-visible:outline-2">
                       {option.label}
                     </span>
                   </label>
@@ -98,7 +98,7 @@ export function AskAiWidget({
                 <li key={action.label}>
                   <a
                     aria-label={`Ask ${action.label} about ${subject} (opens in a new tab)`}
-                    className="flex h-20 flex-col items-center justify-center gap-2 rounded-lg bg-muted px-2 text-sm font-normal transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    className="bg-muted hover:bg-accent focus-visible:outline-ring flex h-20 flex-col items-center justify-center gap-2 rounded-lg px-2 text-sm font-normal transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
                     data-analytics-placement="ai-widget"
                     href={action.href}
                     onClick={() => {
@@ -128,11 +128,11 @@ export function AskAiWidget({
               key={`${open}:${prompt}`}
               value={prompt}
               label="Copy prompt"
-              className="mt-3 min-h-11 w-full text-muted-foreground"
+              className="text-muted-foreground mt-3 min-h-11 w-full"
             />
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>
     </Popover.Root>
   );
-}
+};

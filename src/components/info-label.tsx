@@ -1,39 +1,47 @@
+"use client";
+
+import { Popover } from "@base-ui/react/popover";
 import { Info } from "lucide-react";
 
-import {
-  TooltipContent,
-  TooltipGroup,
-  TooltipTrigger,
-} from "@/components/site-tooltip";
-
-export function InfoLabel({
+export const InfoLabel = ({
   label,
   description,
 }: {
   label: string;
   description: string;
-}) {
+}) => {
   const lastSpace = label.lastIndexOf(" ");
   return (
-    <TooltipGroup>
+    <Popover.Root>
       <span>
         {lastSpace === -1 ? null : label.slice(0, lastSpace + 1)}
         <span className="whitespace-nowrap">
           {label.slice(lastSpace + 1)}
-          <TooltipTrigger
+          <Popover.Trigger
             aria-label={`About ${label.toLowerCase()}`}
-            payload={
-              <TooltipContent className="max-w-[calc(100vw-2rem)] sm:max-w-xs">
-                {description}
-              </TooltipContent>
-            }
-            className="ml-0.5 inline-flex align-middle size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            openOnHover
+            delay={250}
+            closeDelay={100}
+            className="text-muted-foreground focus-visible:outline-ring ml-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-sm align-middle focus-visible:outline-2 focus-visible:outline-offset-2"
             type="button"
           >
             <Info aria-hidden="true" className="size-3" />
-          </TooltipTrigger>
+          </Popover.Trigger>
         </span>
       </span>
-    </TooltipGroup>
+      <Popover.Portal>
+        <Popover.Positioner
+          side="top"
+          sideOffset={4}
+          collisionPadding={16}
+          className="z-50"
+        >
+          <Popover.Popup className="bg-popover text-popover-foreground site-popup max-w-[calc(100vw-2rem)] rounded-xl border p-3 text-sm shadow-md outline-none sm:max-w-xs">
+            <Popover.Title className="sr-only">{label}</Popover.Title>
+            <Popover.Description>{description}</Popover.Description>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
-}
+};

@@ -63,7 +63,9 @@ const intentionallyIgnoredIssue = (payload: unknown) => {
   );
 };
 
-const supportedGitHubEventFrom = (event: string): SupportedGitHubEvent | null =>
+const supportedGitHubEventFrom = (
+  event: string
+): SupportedGitHubEvent | null =>
   SUPPORTED_GITHUB_EVENTS.has(event) ? (event as SupportedGitHubEvent) : null;
 
 export const dynamic = "force-dynamic";

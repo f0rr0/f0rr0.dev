@@ -11,7 +11,7 @@ import { buildBlogCollectionJsonLd } from "@/lib/structured-data";
 
 export const metadata = buildPageMetadata(pages.writing);
 
-export default async function BlogIndexPage() {
+const BlogIndexPage = async () => {
   const posts = await getBlogPosts();
 
   return (
@@ -30,4 +30,6 @@ export default async function BlogIndexPage() {
       </SiteMain>
     </SiteShell>
   );
-}
+};
+
+export default BlogIndexPage;

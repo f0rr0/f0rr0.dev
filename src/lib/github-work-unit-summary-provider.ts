@@ -132,15 +132,14 @@ export const generateGitHubWorkUnitSummary = async (
       model: summaryModel,
       output: summaryOutput,
       prompt: request.serializedInput,
+      reasoning: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.reasoningEffort,
       providerOptions: {
         openai: {
-          reasoningEffort:
-            GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.reasoningEffort,
           store: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.store,
           textVerbosity: GITHUB_WORK_UNIT_SUMMARY_PROVIDER_POLICY.textVerbosity,
         },
       },
-      system: GITHUB_WORK_UNIT_SUMMARY_SYSTEM_PROMPT,
+      instructions: GITHUB_WORK_UNIT_SUMMARY_SYSTEM_PROMPT,
     });
   } catch (error) {
     if (isInvalidStructuredOutput(error)) {

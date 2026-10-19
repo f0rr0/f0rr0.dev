@@ -48,7 +48,11 @@ export function delegationLabelPositions(
   return labels;
 }
 
-function DelegationSlices({ data }: { data: (TokenRow & { fill: string })[] }) {
+const DelegationSlices = ({
+  data,
+}: {
+  data: (TokenRow & { fill: string })[];
+}) => {
   const width = useChartWidth() ?? 320;
   const height = useChartHeight() ?? 288;
   // Leave room for labels: 104px on each side and 64px above and below.
@@ -114,9 +118,9 @@ function DelegationSlices({ data }: { data: (TokenRow & { fill: string })[] }) {
       }}
     />
   );
-}
+};
 
-export function TokenDelegation({ rows }: { rows: readonly TokenRow[] }) {
+export const TokenDelegation = ({ rows }: { rows: readonly TokenRow[] }) => {
   const data = rows.map((row) => ({
     ...row,
     fill: config[row.label as keyof typeof config]?.color ?? "var(--chart-5)",
@@ -124,7 +128,7 @@ export function TokenDelegation({ rows }: { rows: readonly TokenRow[] }) {
   return (
     <ChartContainer
       config={config}
-      className="text-sm mx-auto h-72 w-full aspect-auto sm:h-96"
+      className="mx-auto aspect-auto h-72 w-full text-sm sm:h-96"
       initialDimension={{ width: 320, height: 288 }}
       role="img"
       aria-label={data
@@ -136,4 +140,4 @@ export function TokenDelegation({ rows }: { rows: readonly TokenRow[] }) {
       </PieChart>
     </ChartContainer>
   );
-}
+};

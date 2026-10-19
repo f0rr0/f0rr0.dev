@@ -12,29 +12,27 @@ interface SiteShellProps extends SiteHeaderProps {
   askAiContext?: AskAiPageContext;
 }
 
-export function SiteShell({
+export const SiteShell = ({
   activeHref,
   askAiContext,
   children,
   currentPath = activeHref ?? "/",
-}: Readonly<SiteShellProps>) {
-  return (
-    <div className="flex min-h-screen flex-col pb-[env(safe-area-inset-bottom)] print:pb-0 bg-background font-sans text-foreground antialiased">
-      <a
-        className="sr-only focus:not-sr-only focus:fixed focus:inset-s-4 focus:top-4 focus:z-50 focus:rounded-sm focus:bg-background focus:p-3 focus:outline-2 focus:outline-ring"
-        href="#main-content"
-      >
-        Skip to content
-      </a>
-      <SiteHeader activeHref={activeHref} currentPath={currentPath} />
-      {children}
-      <SiteFooter>
-        <AskAiWidget
-          key={askAiContext?.prompt ?? "profile"}
-          profilePrompt={buildAskAboutMePrompt()}
-          pageContext={askAiContext}
-        />
-      </SiteFooter>
-    </div>
-  );
-}
+}: Readonly<SiteShellProps>) => (
+  <div className="bg-background text-foreground flex min-h-screen flex-col pb-[env(safe-area-inset-bottom)] font-sans antialiased print:pb-0">
+    <a
+      className="focus:bg-background focus:outline-ring sr-only focus:not-sr-only focus:fixed focus:inset-s-4 focus:top-4 focus:z-50 focus:rounded-sm focus:p-3 focus:outline-2"
+      href="#main-content"
+    >
+      Skip to content
+    </a>
+    <SiteHeader activeHref={activeHref} currentPath={currentPath} />
+    {children}
+    <SiteFooter>
+      <AskAiWidget
+        key={askAiContext?.prompt ?? "profile"}
+        profilePrompt={buildAskAboutMePrompt()}
+        pageContext={askAiContext}
+      />
+    </SiteFooter>
+  </div>
+);

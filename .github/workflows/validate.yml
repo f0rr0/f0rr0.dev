@@ -40,4 +40,4 @@ jobs:
           deployment_dir=$(mktemp -d)
           rsync -a --exclude-from=.vercelignore --exclude=.git --exclude=.next --exclude=node_modules --exclude='*.tsbuildinfo' ./ "$deployment_dir/"
           ln -s "$GITHUB_WORKSPACE/node_modules" "$deployment_dir/node_modules"
-          bunx tsgo --noEmit --incremental false --project "$deployment_dir/tsconfig.json"
+          bunx tsc --noEmit --incremental false --project "$deployment_dir/tsconfig.json"

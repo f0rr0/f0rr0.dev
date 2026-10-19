@@ -5,8 +5,10 @@ export default defineConfig({
   ...ultracite,
   // Preserve authored and historical code samples exactly as published.
   embeddedLanguageFormatting: "off",
+  proseWrap: "preserve",
   ignorePatterns: [
-    // Keep registry-generated shadcn sources unchanged.
+    // Keep registry-generated shadcn sources and styles unchanged.
+    "src/app/globals.css",
     "src/components/ui/**",
     ...(ultracite.ignorePatterns ?? []),
     "**/.rulesync",

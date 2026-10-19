@@ -6,39 +6,34 @@ import type { ReactNode } from "react";
 import {
   TooltipContent as UpstreamTooltipContent,
   TooltipProvider as UpstreamTooltipProvider,
-  TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-function TooltipProvider({
+const TooltipProvider = ({
   delay = 250,
   ...props
-}: TooltipPrimitive.Provider.Props) {
-  return (
-    <UpstreamTooltipProvider
-      data-slot="tooltip-provider"
-      delay={delay}
-      closeDelay={100}
-      timeout={400}
-      {...props}
-    />
-  );
-}
+}: TooltipPrimitive.Provider.Props) => (
+  <UpstreamTooltipProvider
+    data-slot="tooltip-provider"
+    delay={delay}
+    closeDelay={100}
+    timeout={400}
+    {...props}
+  />
+);
 
-function TooltipGroup({ children }: { children: ReactNode }) {
-  return (
-    <TooltipPrimitive.Root<ReactNode>>
-      {({ payload }) => (
-        <>
-          {children}
-          {payload}
-        </>
-      )}
-    </TooltipPrimitive.Root>
-  );
-}
+const TooltipGroup = ({ children }: { children: ReactNode }) => (
+  <TooltipPrimitive.Root<ReactNode>>
+    {({ payload }) => (
+      <>
+        {children}
+        {payload}
+      </>
+    )}
+  </TooltipPrimitive.Root>
+);
 
-function TooltipContent({
+const TooltipContent = ({
   className,
   side = "top",
   sideOffset = 4,
@@ -51,7 +46,7 @@ function TooltipContent({
 }: TooltipPrimitive.Popup.Props & { preview?: boolean } & Pick<
     TooltipPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset" | "anchor"
-  >) {
+  >) => {
   if (!preview) {
     return (
       <UpstreamTooltipContent
@@ -72,7 +67,7 @@ function TooltipContent({
         anchor={anchor}
         align={align}
         alignOffset={alignOffset}
-        className="transition-[top,left,right,bottom,transform] duration-(--motion-layout) ease-(--ease-settle) motion-reduce:transition-none isolate z-50"
+        className="isolate z-50 h-(--positioner-height) w-(--positioner-width) transition-[top,left,right,bottom,transform] duration-(--motion-layout) ease-(--ease-settle) motion-reduce:transition-none"
         side={side}
         sideOffset={sideOffset}
         collisionPadding={16}
@@ -83,7 +78,7 @@ function TooltipContent({
         }}
       >
         <TooltipPrimitive.Popup
-          className="w-80 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover text-sm text-popover-foreground shadow-md h-(--popup-height,auto) site-popup block overflow-hidden"
+          className="bg-popover text-popover-foreground site-popup block h-(--popup-height,auto) w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border text-sm shadow-md"
           data-slot="tooltip-content"
           {...props}
         >
@@ -94,6 +89,7 @@ function TooltipContent({
       </TooltipPrimitive.Positioner>
     </TooltipPrimitive.Portal>
   );
-}
+};
 
-export { TooltipGroup, TooltipContent, TooltipProvider, TooltipTrigger };
+export { TooltipGroup, TooltipContent, TooltipProvider };
+export { TooltipTrigger } from "@/components/ui/tooltip";

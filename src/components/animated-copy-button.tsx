@@ -7,11 +7,11 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export function AnimatedCopyButton({
+export const AnimatedCopyButton = ({
   value,
   label = "Copy",
   className,
-}: Readonly<{ value: string; label?: string; className?: string }>) {
+}: Readonly<{ value: string; label?: string; className?: string }>) => {
   const [status, setStatus] = useState<"idle" | "copied" | "error">("idle");
   const request = useRef(0);
   const timeout = useRef(0);
@@ -89,7 +89,7 @@ export function AnimatedCopyButton({
       <p
         role="status"
         className={
-          status === "error" ? "text-sm text-muted-foreground" : "sr-only"
+          status === "error" ? "text-muted-foreground text-sm" : "sr-only"
         }
       >
         {status === "error"
@@ -101,7 +101,7 @@ export function AnimatedCopyButton({
       {status === "error" ? (
         <textarea
           aria-label="Text to copy"
-          className="mt-2 min-h-32 w-full resize-y rounded-lg border border-border bg-background p-3 text-sm text-foreground"
+          className="border-border bg-background text-foreground mt-2 min-h-32 w-full resize-y rounded-lg border p-3 text-sm"
           readOnly
           value={value}
           onFocus={(event) => {
@@ -111,4 +111,4 @@ export function AnimatedCopyButton({
       ) : null}
     </>
   );
-}
+};

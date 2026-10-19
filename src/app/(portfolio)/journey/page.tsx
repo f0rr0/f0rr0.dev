@@ -16,36 +16,36 @@ export const metadata = buildPageMetadata(pages.journey);
 const { education, experience, skills } = resumeData;
 const profileJsonLd = buildProfilePageJsonLd();
 
-export default function JourneyPage() {
-  return (
-    <>
-      <JsonLd data={profileJsonLd} />
-      <SiteShell activeHref={pages.journey.path}>
-        <SiteMain>
-          <h1 className="sr-only">{siteNavigation.journey.title}</h1>
-          <Journey
-            experience={experience}
-            education={education}
-            skills={skills}
-            action={
-              <a
-                key="resume"
-                className="site-text-link inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm font-normal text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
-                href={resumePdfUrl}
-                download
-                aria-label="Résumé (PDF)"
-              >
-                <Download
-                  aria-hidden="true"
-                  className="size-3.5 shrink-0"
-                  strokeWidth={1.5}
-                />
-                Résumé
-              </a>
-            }
-          />
-        </SiteMain>
-      </SiteShell>
-    </>
-  );
-}
+const JourneyPage = () => (
+  <>
+    <JsonLd data={profileJsonLd} />
+    <SiteShell activeHref={pages.journey.path}>
+      <SiteMain>
+        <h1 className="sr-only">{siteNavigation.journey.title}</h1>
+        <Journey
+          experience={experience}
+          education={education}
+          skills={skills}
+          action={
+            <a
+              key="resume"
+              className="site-text-link text-muted-foreground hover:text-foreground focus-visible:outline-ring inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm font-normal hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 disabled:pointer-events-none disabled:opacity-50"
+              href={resumePdfUrl}
+              download
+              aria-label="Résumé (PDF)"
+            >
+              <Download
+                aria-hidden="true"
+                className="size-3.5 shrink-0"
+                strokeWidth={1.5}
+              />
+              Résumé
+            </a>
+          }
+        />
+      </SiteMain>
+    </SiteShell>
+  </>
+);
+
+export default JourneyPage;

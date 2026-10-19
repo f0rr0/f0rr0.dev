@@ -19,14 +19,8 @@ type MDXImageProps = Omit<
 const DEFAULT_SIZES = "auto, (min-width: 72rem) 64rem, calc(100vw - 2rem)";
 
 const parseDimension = (value?: number | string) => {
-  if (typeof value === "number") {
-    return value;
-  }
-  if (typeof value === "string") {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isNaN(parsed) ? null : parsed;
-  }
-  return null;
+  const parsed = Math.trunc(Number(value));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
 
 const isClientResolvableStringSrc = (src: string) =>
@@ -49,7 +43,7 @@ const getPlaceholder = (image: StaticImageData | null) =>
     ? "blur"
     : "empty";
 
-export default function MDXImage({
+const MDXImage = ({
   src,
   alt,
   width,
@@ -59,7 +53,7 @@ export default function MDXImage({
   loading,
   className,
   ...rest
-}: MDXImageProps) {
+}: MDXImageProps) => {
   if (src === undefined || src === "") {
     return null;
   }
@@ -109,4 +103,6 @@ export default function MDXImage({
       {...rest}
     />
   );
-}
+};
+
+export default MDXImage;

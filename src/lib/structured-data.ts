@@ -155,21 +155,19 @@ export const buildBlogCollectionJsonLd = (
   },
   mainEntity: {
     "@type": "ItemList",
-    itemListElement: posts.map(
-      (post, index): ListItem => ({
-        "@type": "ListItem",
-        item: {
-          "@id": publicUrl(`/writing/${post.slug}#article`),
-          "@type": "BlogPosting",
-          datePublished: post.date.toISOString(),
-          headline: post.metadata.title,
-          name: post.metadata.title,
-          url: publicUrl(`/writing/${post.slug}`),
-        },
+    itemListElement: posts.map((post, index): ListItem => ({
+      "@type": "ListItem",
+      item: {
+        "@id": publicUrl(`/writing/${post.slug}#article`),
+        "@type": "BlogPosting",
+        datePublished: post.date.toISOString(),
+        headline: post.metadata.title,
         name: post.metadata.title,
-        position: index + 1,
-      })
-    ),
+        url: publicUrl(`/writing/${post.slug}`),
+      },
+      name: post.metadata.title,
+      position: index + 1,
+    })),
     numberOfItems: posts.length,
   } satisfies ItemList,
   name: buildPageMetadata(pages.writing).title.absolute,

@@ -34,7 +34,7 @@ const languageIconSlugs: Readonly<Record<string, string>> = {
   Zig: "zig",
 };
 
-export function LanguageIcon({ language }: Readonly<{ language: string }>) {
+export const LanguageIcon = ({ language }: Readonly<{ language: string }>) => {
   const slug = languageIconSlugs[language];
   return (
     <span
@@ -57,4 +57,4 @@ export function LanguageIcon({ language }: Readonly<{ language: string }>) {
       )}
     </span>
   );
-}
+};

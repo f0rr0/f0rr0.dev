@@ -24,7 +24,9 @@ const subscribe = (onChange: () => void) => {
 const getReducedMotion = () => matchMedia(motionQuery).matches;
 const getServerReducedMotion = () => true;
 
-export function PortraitFace({ className }: Readonly<{ className?: string }>) {
+export const PortraitFace = ({
+  className,
+}: Readonly<{ className?: string }>) => {
   const portrait = useRef<HTMLSpanElement>(null);
   const reducedMotion = useSyncExternalStore(
     subscribe,
@@ -165,11 +167,11 @@ export function PortraitFace({ className }: Readonly<{ className?: string }>) {
       ref={portrait}
       aria-hidden="true"
       className={cn(
-        "block size-7 shrink-0 rounded-full bg-primary bg-contain bg-center bg-no-repeat",
+        "bg-primary block size-7 shrink-0 rounded-full bg-contain bg-center bg-no-repeat",
         className
       )}
       data-frame="center"
       style={{ backgroundImage: `url("${FACE_MOTION_POSTER_SRC}")` }}
     />
   );
-}
+};

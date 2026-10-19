@@ -6,66 +6,55 @@ import { ChevronRight } from "lucide-react";
 import {
   Collapsible as UpstreamCollapsible,
   CollapsibleContent as UpstreamCollapsibleContent,
-  CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { track } from "@/lib/analytics";
 import type { DetailProperties } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 
-function Collapsible({
+const Collapsible = ({
   analytics,
   onOpenChange,
   ...props
-}: CollapsiblePrimitive.Root.Props & { analytics?: DetailProperties }) {
-  return (
-    <UpstreamCollapsible
-      data-slot="collapsible"
-      {...props}
-      onOpenChange={(open, details) => {
-        onOpenChange?.(open, details);
-        if (
-          open &&
-          !details.isCanceled &&
-          details.reason === "trigger-press" &&
-          analytics
-        ) {
-          track("details_opened", analytics);
-        }
-      }}
-    />
-  );
-}
+}: CollapsiblePrimitive.Root.Props & { analytics?: DetailProperties }) => (
+  <UpstreamCollapsible
+    data-slot="collapsible"
+    {...props}
+    onOpenChange={(open, details) => {
+      onOpenChange?.(open, details);
+      if (
+        open &&
+        !details.isCanceled &&
+        details.reason === "trigger-press" &&
+        analytics
+      ) {
+        track("details_opened", analytics);
+      }
+    }}
+  />
+);
 
-function CollapsibleContent({
+const CollapsibleContent = ({
   className,
   children,
   ...props
-}: CollapsiblePrimitive.Panel.Props) {
-  return (
-    <UpstreamCollapsibleContent
-      className={cn("disclosure-panel", className)}
-      data-slot="collapsible-content"
-      {...props}
-    >
-      {/* Transforms here change Base UI's scrollHeight measurement and cause an end-of-open jump. */}
-      <div className="flow-root">{children}</div>
-    </UpstreamCollapsibleContent>
-  );
-}
+}: CollapsiblePrimitive.Panel.Props) => (
+  <UpstreamCollapsibleContent
+    className={cn("disclosure-panel", className)}
+    data-slot="collapsible-content"
+    {...props}
+  >
+    {/* Transforms here change Base UI's scrollHeight measurement and cause an end-of-open jump. */}
+    <div className="flow-root">{children}</div>
+  </UpstreamCollapsibleContent>
+);
 
-function DisclosureChevron() {
-  return (
-    <ChevronRight
-      aria-hidden="true"
-      className="[--chevron-inset:5px] size-4 shrink-0 transition-[rotate] duration-(--motion-layout) ease-(--ease-settle) in-aria-expanded:rotate-90 [.site-row-meta_>_&]:-me-(--chevron-inset) [.site-text-link_>_&:last-child]:-me-(--chevron-inset) [.site-text-link_>_&:first-child]:-ms-(--chevron-inset) motion-reduce:transition-none"
-      strokeWidth={1.5}
-    />
-  );
-}
+const DisclosureChevron = () => (
+  <ChevronRight
+    aria-hidden="true"
+    className="size-4 shrink-0 transition-[rotate] duration-(--motion-layout) ease-(--ease-settle) [--chevron-inset:5px] in-aria-expanded:rotate-90 motion-reduce:transition-none [.site-row-meta_>_&]:-me-(--chevron-inset) [.site-text-link_>_&:first-child]:-ms-(--chevron-inset) [.site-text-link_>_&:last-child]:-me-(--chevron-inset)"
+    strokeWidth={1.5}
+  />
+);
 
-export {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-  DisclosureChevron,
-};
+export { Collapsible, CollapsibleContent, DisclosureChevron };
+export { CollapsibleTrigger } from "@/components/ui/collapsible";
