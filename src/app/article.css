@@ -23,7 +23,7 @@
     --article-wing: --spacing(40);
     --article-note: --spacing(56);
     --article-gap: --spacing(8);
-    @apply grid text-foreground;
+    @apply text-foreground grid;
     grid-template-columns:
       [full-start] minmax(var(--site-gutter), 1fr)
       [wide-start] minmax(0, var(--article-wing))
@@ -41,14 +41,14 @@
   }
 
   .article-title {
-    @apply text-balance font-serif text-2xl font-normal text-foreground;
+    @apply text-foreground font-serif text-2xl font-normal text-balance;
   }
   .article-meta {
     @apply mt-3;
   }
 
   .article-prose {
-    @apply grid grid-cols-subgrid min-w-0 max-w-none;
+    @apply grid max-w-none min-w-0 grid-cols-subgrid;
     grid-column: full;
     overflow-wrap: anywhere;
   }
@@ -124,16 +124,16 @@
   }
 
   .article-prose :is(h1, h2) {
-    @apply font-serif text-xl font-normal text-foreground;
+    @apply text-foreground font-serif text-xl font-normal;
   }
   .article-prose :is(h3, h4, h5, h6) {
-    @apply font-sans text-base font-medium text-foreground;
+    @apply text-foreground font-sans text-base font-medium;
   }
   .article-prose :is(h1, h2, h3, h4, h5, h6) {
-    @apply text-balance scroll-mt-8;
+    @apply scroll-mt-8 text-balance;
   }
   .article-prose strong {
-    @apply font-medium text-foreground;
+    @apply text-foreground font-medium;
   }
   .article-prose a:not(.github-embed) {
     @apply text-foreground underline;
@@ -142,7 +142,7 @@
     text-decoration-skip-ink: auto;
   }
   .article-prose a:focus-visible {
-    @apply rounded-sm outline-2 outline-offset-4 outline-ring;
+    @apply outline-ring rounded-sm outline-2 outline-offset-4;
   }
   .article-prose a.heading-anchor {
     @apply text-inherit no-underline;
@@ -186,13 +186,13 @@
     @apply font-mono;
   }
   .article-prose code:not(pre code) {
-    @apply rounded bg-muted px-[0.3em] py-[0.1em] font-normal text-foreground;
+    @apply bg-muted text-foreground rounded px-[0.3em] py-[0.1em] font-normal;
     font-size: var(--text-sm);
     line-height: inherit;
     box-decoration-break: clone;
   }
   .article-prose blockquote {
-    @apply border-s-2 border-muted-foreground/40 ps-4 font-normal not-italic;
+    @apply border-muted-foreground/40 border-s-2 ps-4 font-normal not-italic;
   }
   .article-prose hr {
     @apply border-border;
@@ -207,7 +207,7 @@
     @apply m-0;
   }
   .article-prose figcaption {
-    @apply mx-auto mt-3 text-start font-sans text-sm font-normal text-pretty text-muted-foreground;
+    @apply text-muted-foreground mx-auto mt-3 text-start font-sans text-sm font-normal text-pretty;
     max-width: var(--site-measure);
   }
   .article-prose .article-screenshot {
@@ -228,7 +228,7 @@
     );
   }
   .article-prose .article-screenshot-grid figure {
-    @apply m-0 min-w-0 w-full max-w-80 justify-self-center;
+    @apply m-0 w-full max-w-80 min-w-0 justify-self-center;
   }
 
   .article-prose details {
@@ -236,13 +236,13 @@
     line-height: 1.5;
   }
   .article-prose summary {
-    @apply min-h-11 cursor-pointer py-3 font-sans text-sm font-normal text-pretty text-foreground;
+    @apply text-foreground min-h-11 cursor-pointer py-3 font-sans text-sm font-normal text-pretty;
   }
   .article-prose summary:hover {
     @apply text-foreground underline;
   }
   .article-prose summary:focus-visible {
-    @apply rounded-sm outline-2 outline-offset-4 outline-ring;
+    @apply outline-ring rounded-sm outline-2 outline-offset-4;
   }
   .article-prose details > :not(summary) {
     margin-inline-start: --spacing(4);
@@ -252,11 +252,11 @@
   }
 
   .article-block:has(> table) {
-    @apply overflow-x-auto rounded-lg border border-border;
+    @apply border-border overflow-x-auto rounded-lg border;
     overscroll-behavior-inline: contain;
   }
   .article-block:has(> table):focus-visible {
-    @apply outline-2 outline-offset-4 outline-ring;
+    @apply outline-ring outline-2 outline-offset-4;
   }
   .article-prose .article-chart {
     background: #171717;
@@ -272,11 +272,11 @@
     @apply px-4 py-3 text-start align-top;
   }
   .article-prose th {
-    @apply bg-muted font-medium text-foreground;
+    @apply bg-muted text-foreground font-medium;
   }
   .article-prose tbody tr:not(:last-child),
   .article-prose thead {
-    @apply border-b border-border;
+    @apply border-border border-b;
   }
   .article-prose tbody tr:last-child {
     @apply border-b-0;
@@ -286,7 +286,7 @@
   }
 
   .article-prose :is(.code-block, .mermaid-block) {
-    @apply overflow-hidden rounded-lg border border-border bg-muted;
+    @apply border-border bg-muted overflow-hidden rounded-lg border;
   }
   .article-prose .mermaid-block {
     --pele-bg: var(--muted);
@@ -312,7 +312,7 @@
     @apply m-0 flex min-h-12 max-w-none flex-wrap items-center justify-between gap-2 px-2 py-1 font-sans text-sm text-wrap;
   }
   .article-prose :is(.code-block-copy, .code-block-language, .mermaid-control) {
-    @apply inline-flex min-h-10 min-w-10 items-center justify-center gap-1.5 rounded px-2 py-2 font-sans text-sm font-normal text-muted-foreground;
+    @apply text-muted-foreground inline-flex min-h-10 min-w-10 items-center justify-center gap-1.5 rounded px-2 py-2 font-sans text-sm font-normal;
   }
   .article-prose :is(.code-block-copy, .mermaid-control) {
     @apply cursor-pointer;
@@ -326,7 +326,7 @@
       .code-block-language,
       .mermaid-control
     ):focus-visible {
-    @apply outline-2 outline-offset-1 outline-ring;
+    @apply outline-ring outline-2 outline-offset-1;
   }
   .article-prose .mermaid-control:disabled {
     @apply cursor-default opacity-35;
@@ -357,7 +357,7 @@
     @apply h-auto min-h-10;
   }
   .article-prose .mermaid-toolbar-actions {
-    @apply min-w-0 max-w-full flex-wrap;
+    @apply max-w-full min-w-0 flex-wrap;
   }
   .article-prose .github-code-embed-source-label {
     @apply whitespace-normal;
@@ -374,7 +374,7 @@
 
   .article-prose > .footnotes {
     grid-column: content;
-    @apply mt-12 min-w-0 border-t border-border pt-6 text-sm;
+    @apply border-border mt-12 min-w-0 border-t pt-6 text-sm;
   }
   .article-prose .footnotes :is(p + p, ol + ol) {
     @apply mt-3;
@@ -410,7 +410,7 @@
       width: var(--article-note);
       margin-inline-start: var(--article-gap);
       margin-block-start: var(--article-space);
-      @apply self-start text-sm text-muted-foreground;
+      @apply text-muted-foreground self-start text-sm;
     }
     .article-prose .footnotes > ol:not(.article-sidenotes) {
       grid-column: content;

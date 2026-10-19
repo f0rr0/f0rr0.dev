@@ -39,44 +39,42 @@ const SkillMark = () => (
   </svg>
 );
 
-export function CodexToolIcon({
+export const CodexToolIcon = ({
   tool,
 }: {
   tool: Pick<CodexInvocation, "name" | "kind" | "logoUrl" | "logoUrlDark">;
-}) {
-  return (
-    <span className="inline-flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-muted text-foreground dark:border-white/10">
-      {tool.logoUrl === undefined ? null : (
-        <Image
-          alt=""
-          className={
-            tool.logoUrlDark === undefined
-              ? "size-full object-cover"
-              : "size-full object-cover dark:hidden"
-          }
-          height={24}
-          src={tool.logoUrl}
-          width={24}
-        />
-      )}
-      {tool.logoUrlDark === undefined ? null : (
-        <Image
-          alt=""
-          className="hidden size-full object-cover dark:block"
-          height={24}
-          src={tool.logoUrlDark}
-          width={24}
-        />
-      )}
-      {tool.logoUrl === undefined ? (
-        tool.kind === "skill" ? (
-          <SkillMark />
-        ) : tool.name === "github" ? (
-          <GitHubMark />
-        ) : (
-          <Plug aria-hidden="true" className="size-3.5" />
-        )
-      ) : null}
-    </span>
-  );
-}
+}) => (
+  <span className="bg-muted text-foreground inline-flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/10 dark:border-white/10">
+    {tool.logoUrl === undefined ? null : (
+      <Image
+        alt=""
+        className={
+          tool.logoUrlDark === undefined
+            ? "size-full object-cover"
+            : "size-full object-cover dark:hidden"
+        }
+        height={24}
+        src={tool.logoUrl}
+        width={24}
+      />
+    )}
+    {tool.logoUrlDark === undefined ? null : (
+      <Image
+        alt=""
+        className="hidden size-full object-cover dark:block"
+        height={24}
+        src={tool.logoUrlDark}
+        width={24}
+      />
+    )}
+    {tool.logoUrl === undefined ? (
+      tool.kind === "skill" ? (
+        <SkillMark />
+      ) : tool.name === "github" ? (
+        <GitHubMark />
+      ) : (
+        <Plug aria-hidden="true" className="size-3.5" />
+      )
+    ) : null}
+  </span>
+);

@@ -34,7 +34,7 @@ const layoutTransition = {
 const revealEase = [0.23, 1, 0.32, 1] as const;
 
 // Exit in place while the persistent labels move to their new positions.
-function JourneyReveal({
+const JourneyReveal = ({
   expanded,
   children,
   className,
@@ -46,7 +46,7 @@ function JourneyReveal({
   className?: string;
   delay?: number;
   inline?: boolean;
-}>) {
+}>) => {
   const reducedMotion = useReducedMotion() === true;
   const Element = inline ? motion.span : motion.div;
   return (
@@ -87,51 +87,47 @@ function JourneyReveal({
       ) : null}
     </AnimatePresence>
   );
-}
+};
 
-function CompanyLogo({
+const CompanyLogo = ({
   logo,
 }: Readonly<{
   logo: LogoAsset;
-}>) {
-  return (
-    <div
-      className={`flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full shadow-sm ring-1 ring-border ${logo.tileClassName}`}
-      aria-hidden="true"
-    >
-      <img
-        alt=""
-        className={`object-contain ${logo.imageClassName ?? "h-5 w-7"}`}
-        src={logo.src}
-      />
-    </div>
-  );
-}
+}>) => (
+  <div
+    className={`ring-border flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full shadow-sm ring-1 ${logo.tileClassName}`}
+    aria-hidden="true"
+  >
+    <img
+      alt=""
+      className={`object-contain ${logo.imageClassName ?? "h-5 w-7"}`}
+      src={logo.src}
+    />
+  </div>
+);
 
-function BulletLogo({
+const BulletLogo = ({
   logo,
 }: Readonly<{
   logo: LogoAsset;
-}>) {
-  return (
-    <span
-      className={`mt-0.5 flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full ring-1 ring-border ${logo.tileClassName}`}
-      aria-hidden="true"
-      title={logo.alt}
-    >
-      <img
-        alt=""
-        className={`object-contain ${
-          logo.bulletImageClassName ?? logo.imageClassName ?? "h-4 w-5"
-        }`}
-        src={logo.src}
-      />
-    </span>
-  );
-}
+}>) => (
+  <span
+    className={`ring-border mt-0.5 flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full ring-1 ${logo.tileClassName}`}
+    aria-hidden="true"
+    title={logo.alt}
+  >
+    <img
+      alt=""
+      className={`object-contain ${
+        logo.bulletImageClassName ?? logo.imageClassName ?? "h-4 w-5"
+      }`}
+      src={logo.src}
+    />
+  </span>
+);
 
-function RoleMarkers({ role }: Readonly<{ role: ResumeRole }>) {
-  return role.markers?.map((marker) => (
+const RoleMarkers = ({ role }: Readonly<{ role: ResumeRole }>) =>
+  role.markers?.map((marker) => (
     <Badge
       className="h-7 text-sm"
       variant="outline"
@@ -141,12 +137,11 @@ function RoleMarkers({ role }: Readonly<{ role: ResumeRole }>) {
       {resumeRoleMarkerLabels[marker]}
     </Badge>
   ));
-}
 
-function RoleBlock({
+const RoleBlock = ({
   role,
   expanded,
-}: Readonly<{ role: ResumeRole; expanded: boolean }>) {
+}: Readonly<{ role: ResumeRole; expanded: boolean }>) => {
   const reducedMotion = useReducedMotion() === true;
   const pointVariants = {
     hidden: {
@@ -164,14 +159,14 @@ function RoleBlock({
     }),
   };
   return (
-    <div className="contents [.journey[data-expanded='true']_&]:grid [.journey[data-expanded='true']_&]:grid-cols-1 sm:[.journey[data-expanded='true']_&]:grid-cols-[minmax(0,1fr)_auto] [.journey[data-expanded='true']_&]:items-baseline [.journey[data-expanded='true']_&]:gap-x-2 [.journey[data-expanded='true']_&]:gap-y-1 md:[.journey[data-expanded='true']_&]:gap-x-4 [.journey[data-expanded='true']_&]:mt-4">
+    <div className="contents [.journey[data-expanded='true']_&]:mt-4 [.journey[data-expanded='true']_&]:grid [.journey[data-expanded='true']_&]:grid-cols-1 [.journey[data-expanded='true']_&]:items-baseline [.journey[data-expanded='true']_&]:gap-x-2 [.journey[data-expanded='true']_&]:gap-y-1 sm:[.journey[data-expanded='true']_&]:grid-cols-[minmax(0,1fr)_auto] md:[.journey[data-expanded='true']_&]:gap-x-4">
       <motion.div
         layout="position"
-        className="sm:[.journey[data-expanded='true']_&]:block sm:[.journey[data-expanded='true']_&]:wrap-anywhere col-2 [.journey[data-expanded='true']_&]:col-1 mt-1 [.journey[data-expanded='true']_&]:mt-0 sm:[.journey[data-expanded='false']_&]:place-self-end sm:[.journey[data-expanded='false']_&]:text-end sm:[.journey[data-expanded='false']_&]:col-3 sm:[.journey[data-expanded='false']_&]:row-1 sm:[.journey[data-expanded='false']_&]:mt-0 relative flex min-w-0 flex-wrap items-center gap-2"
+        className="relative col-2 mt-1 flex min-w-0 flex-wrap items-center gap-2 sm:[.journey[data-expanded='false']_&]:col-3 sm:[.journey[data-expanded='false']_&]:row-1 sm:[.journey[data-expanded='false']_&]:mt-0 sm:[.journey[data-expanded='false']_&]:place-self-end sm:[.journey[data-expanded='false']_&]:text-end [.journey[data-expanded='true']_&]:col-1 [.journey[data-expanded='true']_&]:mt-0 sm:[.journey[data-expanded='true']_&]:block sm:[.journey[data-expanded='true']_&]:wrap-anywhere"
       >
         <motion.span
           layout="position"
-          className="min-w-0 max-w-full wrap-anywhere font-normal text-foreground"
+          className="text-foreground max-w-full min-w-0 font-normal wrap-anywhere"
         >
           {role.title}
         </motion.span>
@@ -186,7 +181,7 @@ function RoleBlock({
       </motion.div>
       <motion.p
         layout="position"
-        className="col-2 [.journey[data-expanded='true']_&]:col-1 sm:[.journey[data-expanded='true']_&]:col-2 sm:[.journey[data-expanded='true']_&]:row-1 sm:[.journey[data-expanded='true']_&]:text-end mt-1 sm:[.journey[data-expanded='false']_&]:justify-self-end sm:[.journey[data-expanded='false']_&]:text-end sm:[.journey[data-expanded='false']_&]:col-3 sm:[.journey[data-expanded='false']_&]:row-2 sm:[.journey[data-expanded='false']_&]:mt-1 relative text-sm text-muted-foreground tabular-nums"
+        className="text-muted-foreground relative col-2 mt-1 text-sm tabular-nums sm:[.journey[data-expanded='false']_&]:col-3 sm:[.journey[data-expanded='false']_&]:row-2 sm:[.journey[data-expanded='false']_&]:mt-1 sm:[.journey[data-expanded='false']_&]:justify-self-end sm:[.journey[data-expanded='false']_&]:text-end [.journey[data-expanded='true']_&]:col-1 sm:[.journey[data-expanded='true']_&]:col-2 sm:[.journey[data-expanded='true']_&]:row-1 sm:[.journey[data-expanded='true']_&]:text-end"
       >
         <JourneyReveal
           expanded={expanded}
@@ -207,10 +202,10 @@ function RoleBlock({
         delay={0.12}
       >
         {role.summary === undefined ? null : (
-          <p className="mt-2 text-muted-foreground">{role.summary}</p>
+          <p className="text-muted-foreground mt-2">{role.summary}</p>
         )}
         {role.bullets !== undefined && role.bullets.length > 0 ? (
-          <ul className="mt-2 space-y-2 text-muted-foreground">
+          <ul className="text-muted-foreground mt-2 space-y-2">
             {role.bullets.map((bullet, index) => {
               const isTextBullet = typeof bullet === "string";
               const text = isTextBullet ? bullet : bullet.text;
@@ -224,7 +219,7 @@ function RoleBlock({
                   variants={pointVariants}
                   className={
                     logo === undefined
-                      ? "relative pl-4 before:absolute before:left-0 before:text-primary before:content-['·']"
+                      ? "before:text-primary relative pl-4 before:absolute before:left-0 before:content-['·']"
                       : "flex gap-2.5"
                   }
                 >
@@ -236,7 +231,7 @@ function RoleBlock({
                       <span>
                         {label === undefined ? null : (
                           <>
-                            <span className="font-medium text-foreground">
+                            <span className="text-foreground font-medium">
                               {label}
                             </span>
                             {": "}
@@ -254,9 +249,9 @@ function RoleBlock({
       </JourneyReveal>
     </div>
   );
-}
+};
 
-function ExperienceItem({
+const ExperienceItem = ({
   item,
   expanded,
   onToggle,
@@ -264,7 +259,7 @@ function ExperienceItem({
   item: ResumeExperience;
   expanded: boolean;
   onToggle: () => void;
-}>) {
+}>) => {
   const fullName = item.displayName ?? item.company;
   const compactName = item.compactName ?? item.company;
   const company = expanded ? fullName : compactName;
@@ -277,17 +272,17 @@ function ExperienceItem({
     <motion.li
       ref={entryRef}
       layout="position"
-      className="relative [border-bottom:1px_solid_transparent] transition-[border-color] duration-(--motion-fast) ease-out grid grid-cols-[2.5rem_minmax(0,1fr)] items-start gap-x-4 py-3 [.journey[data-expanded='false']_&:not(:last-child)]:[border-bottom-color:var(--border)] [.journey[data-expanded='false']_&:not(:last-child)]:delay-(--motion-layout) sm:[.journey[data-expanded='false']_&]:grid-cols-[2.5rem_fit-content(45%)_minmax(0,1fr)] motion-reduce:transition-none motion-reduce:delay-0"
+      className="relative grid grid-cols-[2.5rem_minmax(0,1fr)] items-start gap-x-4 py-3 transition-[border-color] duration-(--motion-fast) ease-out [border-bottom:1px_solid_transparent] motion-reduce:transition-none motion-reduce:delay-0 sm:[.journey[data-expanded='false']_&]:grid-cols-[2.5rem_fit-content(45%)_minmax(0,1fr)] [.journey[data-expanded='false']_&:not(:last-child)]:[border-bottom-color:var(--border)] [.journey[data-expanded='false']_&:not(:last-child)]:delay-(--motion-layout)"
     >
       <motion.div
         layout="position"
-        className="col-1 row-[1/span_2] self-start sm:[.journey[data-expanded='false']_&]:self-center [.journey[data-expanded='false']_&]:row-[1/span_3] sm:[.journey[data-expanded='false']_&]:row-[1/span_2]"
+        className="col-1 row-[1/span_2] self-start [.journey[data-expanded='false']_&]:row-[1/span_3] sm:[.journey[data-expanded='false']_&]:row-[1/span_2] sm:[.journey[data-expanded='false']_&]:self-center"
       >
         <CompanyLogo logo={item.logo} />
       </motion.div>
       <motion.div
         layout="position"
-        className="flex min-h-10 [.journey[data-expanded='true']_&]:min-h-6 [.journey[data-expanded='true']_&]:self-start max-sm:[.journey[data-expanded='false']_&]:min-h-6 items-center self-center col-2 row-1 sm:[.journey[data-expanded='false']_&]:row-[1/span_2] min-w-0"
+        className="col-2 row-1 flex min-h-10 min-w-0 items-center self-center max-sm:[.journey[data-expanded='false']_&]:min-h-6 sm:[.journey[data-expanded='false']_&]:row-[1/span_2] [.journey[data-expanded='true']_&]:min-h-6 [.journey[data-expanded='true']_&]:self-start"
       >
         <div className="relative flex flex-wrap items-center gap-x-2 gap-y-1">
           <h3 className="text-foreground">
@@ -302,13 +297,13 @@ function ExperienceItem({
                 >
                   <p className="font-medium">{fullName}</p>
                   {item.tagline ? (
-                    <p className="mt-2 text-muted-foreground">{item.tagline}</p>
+                    <p className="text-muted-foreground mt-2">{item.tagline}</p>
                   ) : null}
                   {item.roles.map((role) => {
                     const bullet = role.bullets?.[0];
                     return (
                       <p
-                        className="mt-2 text-muted-foreground"
+                        className="text-muted-foreground mt-2"
                         key={role.title}
                       >
                         {role.summary ??
@@ -321,7 +316,7 @@ function ExperienceItem({
                   })}
                 </TooltipContent>
               }
-              className="font-medium underline decoration-transparent underline-offset-[0.2em] transition-[text-decoration-color] duration-(--motion-fast) ease-out [:hover,_:focus-visible]:decoration-[currentColor] motion-reduce:transition-none relative block min-h-6 cursor-pointer text-start focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+              className="focus-visible:outline-ring relative block min-h-6 cursor-pointer text-start font-medium underline decoration-transparent underline-offset-[0.2em] transition-[text-decoration-color] duration-(--motion-fast) ease-out focus-visible:outline-2 focus-visible:outline-offset-4 motion-reduce:transition-none [:hover,_:focus-visible]:decoration-[currentColor]"
               onClick={onToggle}
               aria-expanded={expanded}
               aria-label={`${company}: ${expanded ? "hide details" : "show details"}`}
@@ -370,21 +365,21 @@ function ExperienceItem({
       </motion.div>
       <JourneyReveal
         expanded={expanded && item.tagline.length > 0}
-        className="col-2 mt-1 text-sm text-muted-foreground"
+        className="text-muted-foreground col-2 mt-1 text-sm"
         delay={0.08}
       >
         <p>{item.tagline}</p>
       </JourneyReveal>
-      <div className="contents [.journey[data-expanded='true']_&]:block [.journey[data-expanded='true']_&]:col-span-full sm:[.journey[data-expanded='true']_&]:col-2">
+      <div className="contents [.journey[data-expanded='true']_&]:col-span-full [.journey[data-expanded='true']_&]:block sm:[.journey[data-expanded='true']_&]:col-2">
         {item.roles.map((role) => (
           <RoleBlock key={role.title} role={role} expanded={expanded} />
         ))}
       </div>
     </motion.li>
   );
-}
+};
 
-export function Journey({
+export const Journey = ({
   experience,
   education,
   skills,
@@ -394,7 +389,7 @@ export function Journey({
   education: ResumeExperience[];
   skills: readonly string[];
   action?: React.ReactNode;
-}>) {
+}>) => {
   const [expanded, setExpanded] = useState(false);
   const DetailsIcon = expanded ? FoldVertical : UnfoldVertical;
   const contentId = useId();
@@ -443,14 +438,14 @@ export function Journey({
             aria-label="Career history"
           >
             <div className="mb-4 flex items-baseline justify-between gap-3">
-              <h2 className="font-serif text-xl font-normal text-foreground">
+              <h2 className="text-foreground font-serif text-xl font-normal">
                 Experience
               </h2>
               <div className="flex shrink-0 items-center justify-end gap-3">
                 {action}
                 <button
                   type="button"
-                  className="site-text-link inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm font-normal text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
+                  className="site-text-link text-muted-foreground hover:text-foreground focus-visible:outline-ring inline-flex min-h-11 items-center gap-1.5 rounded-sm text-sm font-normal hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 disabled:pointer-events-none disabled:opacity-50"
                   aria-expanded={expanded}
                   aria-controls={contentId}
                   onClick={toggle}
@@ -481,7 +476,7 @@ export function Journey({
                   ))}
                 </ol>
                 <motion.div layout="position" className="mt-8">
-                  <h2 className="mb-4 font-serif text-xl font-normal text-foreground">
+                  <h2 className="text-foreground mb-4 font-serif text-xl font-normal">
                     Education
                   </h2>
                   <ol className="mt-4">
@@ -507,10 +502,10 @@ export function Journey({
                   className="mt-8"
                   delay={0.04}
                 >
-                  <h2 className="mb-4 font-serif text-xl font-normal text-foreground">
+                  <h2 className="text-foreground mb-4 font-serif text-xl font-normal">
                     Skills
                   </h2>
-                  <p className="mt-2 text-muted-foreground">
+                  <p className="text-muted-foreground mt-2">
                     {skills.join(" · ")}
                   </p>
                 </JourneyReveal>
@@ -521,4 +516,4 @@ export function Journey({
       </LayoutGroup>
     </MotionConfig>
   );
-}
+};

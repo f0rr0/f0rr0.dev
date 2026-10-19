@@ -4,7 +4,7 @@ import { useEffect } from "react";
 
 import { articleDepth, track } from "@/lib/analytics";
 
-export function ArticleAnalytics({ slug }: Readonly<{ slug: string }>) {
+export const ArticleAnalytics = ({ slug }: Readonly<{ slug: string }>) => {
   useEffect(() => {
     const article = document.querySelector("[data-article-body]");
     const reached = new Set<number>();
@@ -48,4 +48,4 @@ export function ArticleAnalytics({ slug }: Readonly<{ slug: string }>) {
     };
   }, [slug]);
   return null;
-}
+};

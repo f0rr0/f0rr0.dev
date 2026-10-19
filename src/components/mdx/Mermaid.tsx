@@ -63,7 +63,9 @@ function getDiagramTypeName(diagramType: DiagramType) {
   );
 }
 
-export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
+const loadDiagramRenderer = async () => await import("pele/lazy");
+
+const Mermaid = ({ chart, className }: Readonly<MermaidProps>) => {
   const generatedId = useId();
   const mermaidId = `mermaid-${generatedId.replaceAll(/[^a-zA-Z0-9-_]/gu, "")}`;
   const frameId = `${mermaidId}-frame`;
@@ -98,7 +100,7 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
       }
 
       try {
-        const { detectType, load, mount } = await import("pele/lazy");
+        const { detectType, load, mount } = await loadDiagramRenderer();
         await load(detectType(chart));
 
         if (cancelled) {
@@ -162,7 +164,7 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
     <figure
       aria-busy={isLoading}
       className={cn(
-        "mermaid-block min-w-0 overflow-hidden [&.mermaid-block:fullscreen]:flex [&.mermaid-block:fullscreen]:w-screen [&.mermaid-block:fullscreen]:h-screen [&.mermaid-block:fullscreen]:m-0 [&.mermaid-block:fullscreen]:flex-col [&.mermaid-block:fullscreen]:border-0 [&.mermaid-block:fullscreen]:rounded-none [&.mermaid-block:fullscreen]:bg-background print:break-inside-avoid print:shadow-none",
+        "mermaid-block [&.mermaid-block:fullscreen]:bg-background min-w-0 overflow-hidden print:break-inside-avoid print:shadow-none [&.mermaid-block:fullscreen]:m-0 [&.mermaid-block:fullscreen]:flex [&.mermaid-block:fullscreen]:h-screen [&.mermaid-block:fullscreen]:w-screen [&.mermaid-block:fullscreen]:flex-col [&.mermaid-block:fullscreen]:rounded-none [&.mermaid-block:fullscreen]:border-0",
         className
       )}
       data-error={errorMessage}
@@ -172,29 +174,29 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
     >
       <div
         aria-label={`${diagramLabel}. Zoom in and drag to inspect the diagram.`}
-        className="relative overflow-hidden p-4 [.mermaid-block:fullscreen_&]:flex [.mermaid-block:fullscreen_&]:min-h-0 [.mermaid-block:fullscreen_&]:flex-1 [.mermaid-block:fullscreen_&]:items-center [.mermaid-block:fullscreen_&]:p-[clamp(1rem,4vw,4rem)] print:overflow-visible print:p-3"
+        className="relative overflow-hidden p-4 print:overflow-visible print:p-3 [.mermaid-block:fullscreen_&]:flex [.mermaid-block:fullscreen_&]:min-h-0 [.mermaid-block:fullscreen_&]:flex-1 [.mermaid-block:fullscreen_&]:items-center [.mermaid-block:fullscreen_&]:p-[clamp(1rem,4vw,4rem)]"
         role="group"
       >
         <div
-          className="grid w-full min-w-0 place-items-center [&>svg.pele:focus-visible]:outline-2 [&>svg.pele:focus-visible]:outline-offset-2 [&>svg.pele:focus-visible]:outline-ring [&_.pele-error]:hidden [.mermaid-block:fullscreen_&]:h-full [.mermaid-block:fullscreen_&>svg.pele]:max-h-full print:[&>svg.pele]:w-full print:[&_.pele-zoom]:invisible"
+          className="[&>svg.pele:focus-visible]:outline-ring grid w-full min-w-0 place-items-center [&_.pele-error]:hidden print:[&_.pele-zoom]:invisible print:[&>svg.pele]:w-full [&>svg.pele:focus-visible]:outline-2 [&>svg.pele:focus-visible]:outline-offset-2 [.mermaid-block:fullscreen_&]:h-full [.mermaid-block:fullscreen_&>svg.pele]:max-h-full"
           ref={canvasRef}
         />
         {isLoading ? (
           <div
             aria-live="polite"
-            className="flex min-h-30 items-center justify-center gap-3 text-muted-foreground font-sans text-sm"
+            className="text-muted-foreground flex min-h-30 items-center justify-center gap-3 font-sans text-sm"
             role="status"
           >
             <span
               aria-hidden="true"
-              className="motion-reduce:animate-none w-9 h-[1.4rem] [border:2px_solid_color-mix(in_oklab,var(--primary)_72%,transparent)] rounded-[48%_54%_46%_52%] animate-mermaid-sketch-pulse transform-[rotate(-3deg)]"
+              className="animate-mermaid-sketch-pulse h-[1.4rem] w-9 transform-[rotate(-3deg)] rounded-[48%_54%_46%_52%] [border:2px_solid_color-mix(in_oklab,var(--primary)_72%,transparent)] motion-reduce:animate-none"
             />
             <span>Drawing diagram…</span>
           </div>
         ) : null}
         {errorMessage === null ? null : (
           <div
-            className="flex min-h-30 flex-col items-center justify-center gap-3 text-center font-sans text-sm text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground"
+            className="text-muted-foreground [&_strong]:text-foreground flex min-h-30 flex-col items-center justify-center gap-3 text-center font-sans text-sm [&_strong]:font-medium"
             role="alert"
           >
             <strong>Diagram unavailable</strong>
@@ -205,7 +207,7 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
                 tabIndex={0}
                 role="region"
                 aria-label="Diagram source"
-                className="overflow-x-auto rounded-sm bg-background p-4 text-sm"
+                className="bg-background overflow-x-auto rounded-sm p-4 text-sm"
               >
                 <code>{chart}</code>
               </pre>
@@ -214,7 +216,7 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
         )}
       </div>
       <div className="mermaid-toolbar print:hidden">
-        <span className="min-w-0 text-sm font-normal text-muted-foreground">
+        <span className="text-muted-foreground min-w-0 text-sm font-normal">
           {diagramLabel}
         </span>
         <div className="mermaid-toolbar-actions flex shrink-0 items-center gap-1">
@@ -242,4 +244,6 @@ export default function Mermaid({ chart, className }: Readonly<MermaidProps>) {
       </div>
     </figure>
   );
-}
+};
+
+export default Mermaid;

@@ -48,7 +48,7 @@ const ActivityHeatmap = ({
     <figure>
       <div
         aria-label={`${mode} token activity${series.partial ? ", partial data" : ""}`}
-        className="grid grid-flow-col grid-rows-7 auto-cols-fr gap-0.5 sm:gap-1"
+        className="grid auto-cols-fr grid-flow-col grid-rows-7 gap-0.5 sm:gap-1"
         role="group"
       >
         {Array.from({ length: leadingDays }, (_, index) => (
@@ -82,7 +82,7 @@ const ActivityHeatmap = ({
                 </TooltipContent>
               }
               aria-label={`${dayLabel}: ${number.format(tokens)} tokens`}
-              className={`${className} outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring`}
+              className={`${className} focus-visible:ring-ring outline-none focus-visible:z-10 focus-visible:ring-2`}
               type="button"
             />
           );
@@ -93,7 +93,7 @@ const ActivityHeatmap = ({
   );
 };
 
-export function CodexActivity({
+export const CodexActivity = ({
   cumulative,
   daily,
   weekly,
@@ -101,7 +101,7 @@ export function CodexActivity({
   cumulative: PublicCodexSeries;
   daily: PublicCodexSeries;
   weekly: PublicCodexSeries;
-}) {
+}) => {
   const views = (
     [
       ["daily", "Daily", daily],
@@ -127,7 +127,7 @@ export function CodexActivity({
             <TabsList aria-label="Token activity interval" variant="line">
               {views.map(([mode, label]) => (
                 <TabsTrigger
-                  className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none"
+                  className="text-muted-foreground font-normal transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) data-active:font-medium motion-reduce:transition-none"
                   key={mode}
                   value={mode}
                 >
@@ -146,4 +146,4 @@ export function CodexActivity({
       </Tabs>
     </TooltipGroup>
   );
-}
+};

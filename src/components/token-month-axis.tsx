@@ -29,7 +29,7 @@ export const TokenMonthAxis = ({
               Math.max(1, columns - 1);
         return (
           <span
-            className={`absolute -translate-x-1/2 font-sans text-sm text-muted-foreground ${position > 0.95 ? "-translate-x-full" : position < 0.05 ? "translate-x-0" : ""}`}
+            className={`text-muted-foreground absolute -translate-x-1/2 font-sans text-sm ${position > 0.95 ? "-translate-x-full" : position < 0.05 ? "translate-x-0" : ""}`}
             key={tick.day}
             style={{ left: `${String(position * 100)}%` }}
           >

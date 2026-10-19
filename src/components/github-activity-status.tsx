@@ -3,6 +3,7 @@
 import {
   QueryClient,
   QueryClientProvider,
+  environmentManager,
   useQuery,
 } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -11,6 +12,8 @@ import {
   use,
   useCallback,
   useEffect,
+  useEffectEvent,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -36,6 +39,16 @@ interface GitHubActivityLiveContextValue {
 const GitHubActivityLiveContext =
   createContext<GitHubActivityLiveContextValue | null>(null);
 
+let browserQueryClient: QueryClient | undefined;
+
+const getQueryClient = () => {
+  if (environmentManager.isServer()) {
+    return new QueryClient();
+  }
+  browserQueryClient ??= new QueryClient();
+  return browserQueryClient;
+};
+
 export function useGitHubActivityLive() {
   const context = use(GitHubActivityLiveContext);
   if (context === null) {
@@ -44,7 +57,7 @@ export function useGitHubActivityLive() {
   return context;
 }
 
-export function GitHubActivityLiveProvider({
+export const GitHubActivityLiveProvider = ({
   children,
   feedRevision,
   orderingRevision,
@@ -52,9 +65,9 @@ export function GitHubActivityLiveProvider({
   children: ReactNode;
   feedRevision: string;
   orderingRevision: string;
-}>) {
+}>) => {
   const router = useRouter();
-  const [queryClient] = useState(() => new QueryClient());
+  const queryClient = getQueryClient();
   const previousFeedRevision = useRef(feedRevision);
   const previousOrderingRevision = useRef(orderingRevision);
   const refreshRequested = useRef(false);
@@ -89,28 +102,39 @@ export function GitHubActivityLiveProvider({
     });
   }, [router]);
 
+  const value = useMemo(
+    () => ({
+      feedRevision,
+      orderingRevision,
+      isRefreshing,
+      latestAvailable,
+      markLatestAvailable,
+      refreshCompletion,
+      refreshLatest,
+    }),
+    [
+      feedRevision,
+      orderingRevision,
+      isRefreshing,
+      latestAvailable,
+      markLatestAvailable,
+      refreshCompletion,
+      refreshLatest,
+    ]
+  );
+
   return (
     <QueryClientProvider client={queryClient}>
-      <GitHubActivityLiveContext
-        value={{
-          feedRevision,
-          orderingRevision,
-          isRefreshing,
-          latestAvailable,
-          markLatestAvailable,
-          refreshCompletion,
-          refreshLatest,
-        }}
-      >
+      <GitHubActivityLiveContext value={value}>
         {children}
       </GitHubActivityLiveContext>
     </QueryClientProvider>
   );
-}
+};
 
-export function GitHubActivityStatus({
+export const GitHubActivityStatus = ({
   initialHead,
-}: Readonly<{ initialHead: PublicActivityHead }>) {
+}: Readonly<{ initialHead: PublicActivityHead }>) => {
   const {
     feedRevision,
     orderingRevision,
@@ -130,25 +154,24 @@ export function GitHubActivityStatus({
       await fetchPublicActivityHead(initialHead, signal),
   });
 
-  useEffect(() => {
+  const onPoll = useEffectEvent(() => {
     // A refresh can serve stale cached data. Retry after the next successful poll.
     if (hasNewPublicActivity(head, feedRevision, orderingRevision)) {
       markLatestAvailable();
       refreshLatest();
     }
-  }, [
-    dataUpdatedAt,
-    feedRevision,
-    head,
-    orderingRevision,
-    markLatestAvailable,
-    refreshLatest,
-  ]);
+  });
+
+  useEffect(() => {
+    if (dataUpdatedAt > 0) {
+      onPoll();
+    }
+  }, [dataUpdatedAt]);
 
   return (
     <div id="github-activity-status">
       <button
-        className="site-text-link inline-flex min-h-11 w-24 items-center justify-end gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
+        className="site-text-link text-muted-foreground hover:text-foreground focus-visible:outline-ring inline-flex min-h-11 w-24 items-center justify-end gap-1.5 rounded-sm text-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 disabled:pointer-events-none disabled:opacity-50"
         style={{ visibility: latestAvailable ? "visible" : "hidden" }}
         disabled={isRefreshing}
         onClick={refreshLatest}
@@ -165,4 +188,4 @@ export function GitHubActivityStatus({
       </p>
     </div>
   );
-}
+};

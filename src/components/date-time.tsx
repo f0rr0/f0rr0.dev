@@ -10,7 +10,7 @@ const visitorTimeZone = browser
   ? Intl.DateTimeFormat().resolvedOptions().timeZone
   : sitePreferences.timeZone;
 
-export function DateTime({
+export const DateTime = ({
   dateTime,
   format = "date",
   timeZone,
@@ -19,7 +19,7 @@ export function DateTime({
   dateTime: string;
   format?: keyof typeof dateFormats;
   timeZone?: string;
-}) {
+}) => {
   const localize =
     timeZone === undefined && !/^\d{4}-\d{2}-\d{2}$/u.test(dateTime);
   const zone = timeZone ?? visitorTimeZone;
@@ -39,11 +39,10 @@ export function DateTime({
         <script
           type={browser ? "text/plain" : "text/javascript"}
           suppressHydrationWarning
-          dangerouslySetInnerHTML={{
-            __html: `((t)=>{const d=new Date(t.dateTime);const f=o=>new Intl.DateTimeFormat(${JSON.stringify(sitePreferences.language)},o).format(d);t.textContent=f(${JSON.stringify(dateFormats[format])});t.title=f(${JSON.stringify(dateFormats[titleFormat])});})(document.currentScript.previousElementSibling);`,
-          }}
-        />
+        >
+          {`((t)=>{const d=new Date(t.dateTime);const f=o=>new Intl.DateTimeFormat(${JSON.stringify(sitePreferences.language)},o).format(d);t.textContent=f(${JSON.stringify(dateFormats[format])});t.title=f(${JSON.stringify(dateFormats[titleFormat])});})(document.currentScript.previousElementSibling);`}
+        </script>
       ) : null}
     </>
   );
-}
+};

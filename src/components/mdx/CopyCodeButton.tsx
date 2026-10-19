@@ -33,9 +33,7 @@ const buttonContent: Record<
   },
 };
 
-export default function CopyCodeButton({
-  language,
-}: Readonly<{ language: string }>) {
+const CopyCodeButton = ({ language }: Readonly<{ language: string }>) => {
   const [status, setStatus] = useState<CopyStatus>("idle");
   const resetTimer = useRef<number | null>(null);
 
@@ -58,16 +56,16 @@ export default function CopyCodeButton({
       window.clearTimeout(resetTimer.current);
     }
 
-    try {
-      if (code === undefined) {
-        throw new Error("Code content was not found");
-      }
-
-      await navigator.clipboard.writeText(code);
-      track("code_copied", { language });
-      setStatus("copied");
-    } catch {
+    if (code === undefined) {
       setStatus("error");
+    } else {
+      try {
+        await navigator.clipboard.writeText(code);
+        track("code_copied", { language });
+        setStatus("copied");
+      } catch {
+        setStatus("error");
+      }
     }
 
     resetTimer.current = window.setTimeout(() => {
@@ -100,4 +98,6 @@ export default function CopyCodeButton({
       </TooltipTrigger>
     </TooltipGroup>
   );
-}
+};
+
+export default CopyCodeButton;

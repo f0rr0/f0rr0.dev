@@ -6,7 +6,7 @@ import type * as React from "react";
 
 type ThemeProviderProps = React.ComponentProps<typeof NextThemesProvider>;
 
-function ThemeIcons() {
+const ThemeIcons = () => {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -31,13 +31,11 @@ function ThemeIcons() {
       }
     />
   ));
-}
+};
 
-export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
-  return (
-    <NextThemesProvider {...props}>
-      <ThemeIcons />
-      {children}
-    </NextThemesProvider>
-  );
-}
+export const ThemeProvider = ({ children, ...props }: ThemeProviderProps) => (
+  <NextThemesProvider {...props}>
+    <ThemeIcons />
+    {children}
+  </NextThemesProvider>
+);

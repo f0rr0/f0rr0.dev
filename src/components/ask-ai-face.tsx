@@ -15,7 +15,7 @@ const subscribe = (onChange: () => void) => {
 const getReducedMotion = () => matchMedia(motionQuery).matches;
 const getServerReducedMotion = () => true;
 
-export function AskAiFace() {
+export const AskAiFace = () => {
   const face = useRef<HTMLSpanElement>(null);
   const reducedMotion = useSyncExternalStore(
     subscribe,
@@ -69,7 +69,7 @@ export function AskAiFace() {
     <span
       ref={face}
       aria-hidden="true"
-      className="relative flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground"
+      className="bg-primary text-primary-foreground relative flex size-7 items-center justify-center rounded-full"
     >
       <motion.span
         style={{ x: reducedMotion ? 0 : x, y: reducedMotion ? 0 : y }}
@@ -95,7 +95,7 @@ export function AskAiFace() {
           }
         >
           <motion.span
-            className="flex items-center gap-1.25 [&>span]:h-2 [&>span]:w-0.75 [&>span]:rounded-full [&>span]:bg-current [&>span]:transition-[height] [&>span]:duration-(--motion-fast) [&>span]:ease-(--ease-settle) group-hover:[&>span]:h-1.5 [@media(hover:hover)_and_(pointer:fine)]:group-focus-visible:[&>span]:h-1.5 [@media(hover:hover)_and_(pointer:fine)]:group-data-popup-open:[&>span]:h-1.5 motion-reduce:[&>span]:transition-none"
+            className="flex items-center gap-1.25 [&>span]:h-2 [&>span]:w-0.75 [&>span]:rounded-full [&>span]:bg-current [&>span]:transition-[height] [&>span]:duration-(--motion-fast) [&>span]:ease-(--ease-settle) group-hover:[&>span]:h-1.5 motion-reduce:[&>span]:transition-none [@media(hover:hover)_and_(pointer:fine)]:group-focus-visible:[&>span]:h-1.5 [@media(hover:hover)_and_(pointer:fine)]:group-data-popup-open:[&>span]:h-1.5"
             animate={{
               scaleY: reducedMotion
                 ? 1
@@ -116,4 +116,4 @@ export function AskAiFace() {
       </motion.span>
     </span>
   );
-}
+};

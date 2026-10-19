@@ -24,7 +24,6 @@ const nextConfig: NextConfig = {
     // Reused compiler output has served stale Tailwind theme values.
     turbopackFileSystemCacheForBuild: false,
     turbopackFileSystemCacheForDev: false,
-    useTypeScriptCli: true,
   },
   images: {
     remotePatterns: [

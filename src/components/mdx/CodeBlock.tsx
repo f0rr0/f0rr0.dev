@@ -26,15 +26,13 @@ type CodeBlockProps = ComponentPropsWithoutRef<"pre"> & {
   "data-language"?: string;
 };
 
-function GitHubMark() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16">
-      <path d={githubIconPaths.mark} />
-    </svg>
-  );
-}
+const GitHubMark = () => (
+  <svg aria-hidden="true" viewBox="0 0 16 16">
+    <path d={githubIconPaths.mark} />
+  </svg>
+);
 
-function LanguageIcon({ language }: Readonly<{ language: string }>) {
+const LanguageIcon = ({ language }: Readonly<{ language: string }>) => {
   const languageName = getCodeLanguageName(language);
   const iconUrl = getCodeLanguageIconUrl(language);
   const iconStyle = {
@@ -50,18 +48,15 @@ function LanguageIcon({ language }: Readonly<{ language: string }>) {
       >
         <span
           aria-hidden="true"
-          className="relative size-4 flex-none [&::before]:absolute [&::before]:inset-0 [&::before]:[background:currentColor] [&::before]:content-[''] [&::before]:[mask:var(--code-language-icon)_center/contain_no-repeat]"
+          className="relative size-4 flex-none [&::before]:absolute [&::before]:inset-0 [&::before]:content-[''] [&::before]:[background:currentColor] [&::before]:[mask:var(--code-language-icon)_center/contain_no-repeat]"
           style={iconStyle}
         />
       </TooltipTrigger>
     </TooltipGroup>
   );
-}
+};
 
-export default function CodeBlock({
-  children,
-  ...props
-}: Readonly<CodeBlockProps>) {
+const CodeBlock = ({ children, ...props }: Readonly<CodeBlockProps>) => {
   const language = props["data-language"] ?? "plaintext";
   const languageName = getCodeLanguageName(language);
   const code = (
@@ -84,13 +79,13 @@ export default function CodeBlock({
 
     return (
       <figure
-        className={`${codeBlockClassName} github-code-embed [&_pre[data-theme]]:max-h-128 [&_pre[data-theme]]:overflow-y-auto [&_pre[data-theme]]:overscroll-contain **:data-line-number:block **:data-line-number:min-w-full **:data-line-number:pr-5 [&_[data-line-number]::before]:inline-block [&_[data-line-number]::before]:w-15 [&_[data-line-number]::before]:mr-3.5 [&_[data-line-number]::before]:[border-right:1px_solid_color-mix(in_oklab,var(--border)_78%,transparent)] [&_[data-line-number]::before]:pr-3 [&_[data-line-number]::before]:text-muted-foreground [&_[data-line-number]::before]:[content:attr(data-line-number)] [&_[data-line-number]::before]:tabular-nums [&_[data-line-number]::before]:text-right [&_[data-line-number]::before]:select-none max-sm:**:data-line-number:pr-4 max-sm:[&_[data-line-number]::before]:w-14 max-sm:[&_[data-line-number]::before]:mr-3 max-sm:[&_[data-line-number]::before]:pr-[0.65rem] print:shadow-none print:[&_pre[data-theme]]:max-h-none print:[&_pre[data-theme]]:overflow-visible print:[&_pre[data-theme]]:whitespace-pre-wrap print:[&_pre[data-theme]_>_code]:w-auto print:[&_pre[data-theme]_>_code]:wrap-anywhere`}
+        className={`${codeBlockClassName} github-code-embed [&_[data-line-number]::before]:text-muted-foreground **:data-line-number:block **:data-line-number:min-w-full **:data-line-number:pr-5 max-sm:**:data-line-number:pr-4 print:shadow-none [&_[data-line-number]::before]:mr-3.5 [&_[data-line-number]::before]:inline-block [&_[data-line-number]::before]:w-15 [&_[data-line-number]::before]:pr-3 [&_[data-line-number]::before]:text-right [&_[data-line-number]::before]:tabular-nums [&_[data-line-number]::before]:[content:attr(data-line-number)] [&_[data-line-number]::before]:select-none [&_[data-line-number]::before]:[border-right:1px_solid_color-mix(in_oklab,var(--border)_78%,transparent)] max-sm:[&_[data-line-number]::before]:mr-3 max-sm:[&_[data-line-number]::before]:w-14 max-sm:[&_[data-line-number]::before]:pr-[0.65rem] [&_pre[data-theme]]:max-h-128 [&_pre[data-theme]]:overflow-y-auto [&_pre[data-theme]]:overscroll-contain print:[&_pre[data-theme]]:max-h-none print:[&_pre[data-theme]]:overflow-visible print:[&_pre[data-theme]]:whitespace-pre-wrap print:[&_pre[data-theme]_>_code]:w-auto print:[&_pre[data-theme]_>_code]:wrap-anywhere`}
         data-language={language}
       >
         <figcaption className="github-code-embed-toolbar">
           <a
             aria-label={`View ${owner}/${repo}/${filePath}, ${lineLabel}, on GitHub`}
-            className="github-code-embed-source inline-flex h-8 min-w-0 items-center gap-2 rounded-sm px-2 text-muted-foreground no-underline hover:underline hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:fill-current"
+            className="github-code-embed-source text-muted-foreground focus-visible:outline-ring inline-flex h-8 min-w-0 items-center gap-2 rounded-sm px-2 no-underline hover:underline hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-1 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:fill-current"
             href={sourceHref}
             rel="noreferrer noopener"
             target="_blank"
@@ -119,4 +114,6 @@ export default function CodeBlock({
       {code}
     </div>
   );
-}
+};
+
+export default CodeBlock;

@@ -48,7 +48,7 @@ export async function generateMetadata({
   return buildBlogMetadata(post);
 }
 
-export default async function BlogPostPage({ params }: { params: PageParams }) {
+const BlogPostPage = async ({ params }: { params: PageParams }) => {
   const { slug } = await params;
   const post = await getBlogPost(slug);
 
@@ -86,12 +86,12 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
         }),
       }}
     >
-      <SiteMain className="article-main relative @container/article">
+      <SiteMain className="article-main @container/article relative">
         <JsonLd data={jsonLd} />
         <article className="article-layout">
           <header className="article-header">
             <h1 className="article-title">{metadata.title}</h1>
-            <div className="article-meta flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            <div className="article-meta text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               <time dateTime={date.toISOString()}>{formatDate(date)}</time>
               <span aria-hidden="true">·</span>
               <span>{readingTime}</span>
@@ -105,4 +105,6 @@ export default async function BlogPostPage({ params }: { params: PageParams }) {
       </SiteMain>
     </SiteShell>
   );
-}
+};
+
+export default BlogPostPage;

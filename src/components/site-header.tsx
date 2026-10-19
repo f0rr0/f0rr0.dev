@@ -15,10 +15,10 @@ export interface SiteHeaderProps {
   currentPath?: "/" | PagePath;
 }
 
-export function SiteHeader({
+export const SiteHeader = ({
   activeHref,
   currentPath = activeHref ?? "/",
-}: Readonly<SiteHeaderProps>): React.ReactNode {
+}: Readonly<SiteHeaderProps>): React.ReactNode => {
   const navigation = resumeData.navItems
     .filter(
       (item) =>
@@ -38,7 +38,7 @@ export function SiteHeader({
       );
     });
   return (
-    <header className="bg-background font-sans text-foreground print:hidden">
+    <header className="bg-background text-foreground font-sans print:hidden">
       <div className="site-container py-6">
         <nav
           aria-label="Primary navigation"
@@ -48,7 +48,7 @@ export function SiteHeader({
             href="/"
             aria-label={`${resumeData.person.name} home`}
             aria-current={currentPath === "/" ? "page" : undefined}
-            className="group flex min-h-11 min-w-0 max-w-full items-center gap-3 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+            className="group focus-visible:outline-ring flex min-h-11 max-w-full min-w-0 items-center gap-3 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4"
           >
             <PortraitFace className="size-12" />
             <span className="font-serif text-2xl font-normal">
@@ -64,4 +64,4 @@ export function SiteHeader({
       </div>
     </header>
   );
-}
+};

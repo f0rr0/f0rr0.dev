@@ -10,18 +10,16 @@ interface SiteMainProps {
   className?: string;
 }
 
-export function SiteMain({ children, className }: Readonly<SiteMainProps>) {
-  return (
-    <main
-      className={cn("site-container flex-1 pb-12 pt-8", className)}
-      id="main-content"
-    >
-      {children}
-    </main>
-  );
-}
+export const SiteMain = ({ children, className }: Readonly<SiteMainProps>) => (
+  <main
+    className={cn("site-container flex-1 pt-8 pb-12", className)}
+    id="main-content"
+  >
+    {children}
+  </main>
+);
 
-export function SiteSection({
+export const SiteSection = ({
   action,
   children,
   className = "mt-12 scroll-mt-8",
@@ -41,7 +39,7 @@ export function SiteSection({
   linkLabel?: string;
   id: string;
   title: string;
-}>) {
+}>) => {
   const external = /^https?:\/\//u.test(href ?? "");
   const LinkIcon = external ? ArrowUpRight : ArrowRight;
   return (
@@ -49,7 +47,7 @@ export function SiteSection({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <Heading
           className={cn(
-            "font-serif font-normal text-foreground",
+            "text-foreground font-serif font-normal",
             Heading === "h1" ? "text-2xl" : "text-xl"
           )}
           id={`${id}-title`}
@@ -64,7 +62,7 @@ export function SiteSection({
           {action}
           {href === undefined ? null : (
             <Link
-              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+              className="text-muted-foreground hover:text-foreground focus-visible:outline-ring inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-sm text-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-4"
               href={href}
               target={external ? "_blank" : undefined}
               rel={external ? "noreferrer noopener" : undefined}
@@ -81,4 +79,4 @@ export function SiteSection({
       {children}
     </section>
   );
-}
+};

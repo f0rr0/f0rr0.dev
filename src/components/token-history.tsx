@@ -43,7 +43,7 @@ function historyAxis(
   };
 }
 
-function HistoryPlot({
+const HistoryPlot = ({
   history,
   reportingDay,
   mode,
@@ -51,7 +51,7 @@ function HistoryPlot({
   history: TokenHistory;
   reportingDay: string;
   mode: "daily" | "cumulative";
-}) {
+}) => {
   const summary = summarizeTokenHistory(history, reportingDay);
   const rows = mode === "cumulative" ? summary.cumulativeRows : summary.rows;
   const { peak } = summary;
@@ -74,7 +74,7 @@ function HistoryPlot({
     <>
       <ChartContainer
         config={config}
-        className="text-sm h-54 w-full aspect-auto sm:h-66 [&_.recharts-surface]:overflow-visible [&_.recharts-surface]:focus-visible:outline-2 [&_.recharts-surface]:focus-visible:outline-ring"
+        className="[&_.recharts-surface]:focus-visible:outline-ring aspect-auto h-54 w-full text-sm sm:h-66 [&_.recharts-surface]:overflow-visible [&_.recharts-surface]:focus-visible:outline-2"
       >
         <LineChart
           accessibilityLayer
@@ -114,7 +114,7 @@ function HistoryPlot({
                 | (typeof rows)[number]
                 | undefined;
               return active && row !== undefined ? (
-                <div className="rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm">
+                <div className="border-border bg-background rounded-md border px-3 py-2 text-sm shadow-sm">
                   <p>{formatDate(row.day)}</p>
                   <p>
                     {row.tokens === null
@@ -196,15 +196,15 @@ function HistoryPlot({
       </p>
     </>
   );
-}
+};
 
-export function TokenHistoryChart({
+export const TokenHistoryChart = ({
   history,
   reportingDay,
 }: {
   history: TokenHistory;
   reportingDay: string;
-}) {
+}) => {
   if (
     !history.values.some(
       (row) => row.day <= reportingDay && row.tokens !== null
@@ -221,13 +221,13 @@ export function TokenHistoryChart({
         action={
           <TabsList aria-label="Token history view" variant="line">
             <TabsTrigger
-              className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none"
+              className="text-muted-foreground font-normal transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) data-active:font-medium motion-reduce:transition-none"
               value="daily"
             >
               Daily
             </TabsTrigger>
             <TabsTrigger
-              className="font-normal text-muted-foreground data-active:font-medium transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) motion-reduce:transition-none"
+              className="text-muted-foreground font-normal transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) data-active:font-medium motion-reduce:transition-none"
               value="cumulative"
             >
               Cumulative
@@ -247,4 +247,4 @@ export function TokenHistoryChart({
       </SiteSection>
     </Tabs>
   );
-}
+};

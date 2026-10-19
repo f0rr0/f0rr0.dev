@@ -15,7 +15,7 @@ export const metadata = buildPageMetadata(pages.tokens);
 
 export const revalidate = 60;
 
-export default async function TokensPage() {
+const TokensPage = async () => {
   if (!tokenPreferences.enabled) {
     notFound();
   }
@@ -39,4 +39,6 @@ export default async function TokensPage() {
       </SiteMain>
     </SiteShell>
   );
-}
+};
+
+export default TokensPage;

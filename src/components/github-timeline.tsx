@@ -8,13 +8,15 @@ import { primaryGitHubProfile } from "@/content/resume";
 import { siteNavigation } from "@/content/site";
 import type { PublicGitHubActivityPage } from "@/lib/github-activity-types";
 
-export function GitHubTimeline({
+export const GitHubTimeline = ({
   initialPage,
   preview = false,
+  now,
 }: Readonly<{
   initialPage: PublicGitHubActivityPage | null;
   preview?: boolean;
-}>) {
+  now: string;
+}>) => {
   if (initialPage === null) {
     return preview ? null : (
       <SiteSection
@@ -38,7 +40,7 @@ export function GitHubTimeline({
       <GitHubTimelinePager
         initialPage={initialPage}
         preview={preview}
-        now={new Date().toISOString()}
+        now={now}
       />
     </div>
   );
@@ -73,4 +75,4 @@ export function GitHubTimeline({
       )}
     </GitHubActivityLiveProvider>
   );
-}
+};

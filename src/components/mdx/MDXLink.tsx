@@ -3,7 +3,7 @@ import type { AnchorHTMLAttributes } from "react";
 
 type MDXLinkProps = AnchorHTMLAttributes<HTMLAnchorElement>;
 
-export default function MDXLink({ href, children, ...rest }: MDXLinkProps) {
+const MDXLink = ({ href, children, ...rest }: MDXLinkProps) => {
   if (href === undefined || href === "" || href.startsWith("#")) {
     return (
       <a href={href} {...rest}>
@@ -25,4 +25,6 @@ export default function MDXLink({ href, children, ...rest }: MDXLinkProps) {
       {children}
     </a>
   );
-}
+};
+
+export default MDXLink;

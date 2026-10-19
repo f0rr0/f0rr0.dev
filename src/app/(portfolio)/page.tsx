@@ -22,12 +22,13 @@ import { getInitialGitHubActivity } from "@/lib/github-activity-feed";
 import { getGitHubProfile } from "@/lib/github-profile";
 import type { GitHubProfile } from "@/lib/github-profile";
 import { buildPageMetadata } from "@/lib/page-metadata";
+import { getRequestTime } from "@/lib/server-time";
 
 export const metadata = buildPageMetadata(pages.home);
 
 export const revalidate = 60;
 
-function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
+const OpenSource = ({ github }: Readonly<{ github: GitHubProfile }>) => {
   const projects = github.projects
     .filter(({ name }) => name !== "koa-webpack-boilerplate")
     .slice(0, 4);
@@ -39,7 +40,7 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
       title="Open source"
     >
       <HoverCardGroup>
-        <ol className="divide-y divide-border">
+        <ol className="divide-border divide-y">
           {projects.map((project) => (
             <li key={project.name}>
               <HoverCardTrigger
@@ -47,12 +48,12 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
                   <HoverCardContent side="left">
                     <div className="p-4">
                       <p className="wrap-break-word">{project.name}</p>
-                      <p className="mt-2 text-muted-foreground">
+                      <p className="text-muted-foreground mt-2">
                         {projectEditorial[
                           project.name as keyof typeof projectEditorial
                         ]?.description ?? project.description}
                       </p>
-                      <div className="site-row-meta flex min-h-6 shrink-0 items-center gap-2 text-sm text-muted-foreground tabular-nums mt-2 justify-start">
+                      <div className="site-row-meta text-muted-foreground mt-2 flex min-h-6 shrink-0 items-center justify-start gap-2 text-sm tabular-nums">
                         {project.language === null ? null : (
                           <LanguageIcon language={project.language} />
                         )}
@@ -78,7 +79,7 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
                     </div>
                   </HoverCardContent>
                 }
-                className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-3 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group"
+                className="site-row text-foreground focus-visible:outline-ring group grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-3 text-start text-base focus-visible:outline-2 focus-visible:outline-offset-4"
                 href={project.url}
                 rel="noopener noreferrer"
                 target="_blank"
@@ -89,7 +90,7 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
                 {project.stars === null ? null : (
                   <span
                     aria-label={`${String(project.stars)} GitHub stars`}
-                    className="site-row-meta flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums"
+                    className="site-row-meta text-muted-foreground flex min-h-6 shrink-0 items-center justify-end gap-2 text-sm tabular-nums"
                   >
                     <Star aria-hidden="true" className="size-3" />
                     {project.stars}
@@ -102,9 +103,9 @@ function OpenSource({ github }: Readonly<{ github: GitHubProfile }>) {
       </HoverCardGroup>
     </SiteSection>
   );
-}
+};
 
-export default async function Home() {
+const Home = async () => {
   const [codexStats, activity, posts, github] = await Promise.all([
     tokenPreferences.enabled && tokenPreferences.homepagePreview
       ? getPublicCodexStats()
@@ -128,9 +129,11 @@ export default async function Home() {
         </SiteSection>
 
         <OpenSource github={github} />
-        <GitHubTimeline initialPage={activity} preview />
+        <GitHubTimeline initialPage={activity} now={getRequestTime()} preview />
         {codexStats === null ? null : <CodexStats stats={codexStats} />}
       </SiteMain>
     </SiteShell>
   );
-}
+};
+
+export default Home;

@@ -14,7 +14,9 @@ import {
 } from "@/lib/blog-utils";
 import type { BlogPost } from "@/lib/blog-utils";
 
-export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
+export const WritingList = async ({
+  posts,
+}: Readonly<{ posts: BlogPost[] }>) => {
   const entries = await Promise.all(
     posts.map(async (post) => {
       const asset =
@@ -36,7 +38,7 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
     <p className="text-muted-foreground">No published writing yet.</p>
   ) : (
     <HoverCardGroup>
-      <ol className="divide-y divide-border">
+      <ol className="divide-border divide-y">
         {entries.map(({ post, shareImage }) => (
           <li key={post.slug}>
             <HoverCardTrigger
@@ -55,7 +57,7 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
                     <p className="text-muted-foreground">
                       {post.metadata.summary}
                     </p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-muted-foreground text-sm">
                       <DateTime
                         dateTime={post.date.toISOString().slice(0, 10)}
                       />{" "}
@@ -65,14 +67,14 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
                   </div>
                 </HoverCardContent>
               }
-              className="site-row grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-3 text-start text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring group"
+              className="site-row text-foreground focus-visible:outline-ring group grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-sm py-3 text-start text-base focus-visible:outline-2 focus-visible:outline-offset-4"
               render={<Link href={`/writing/${post.slug}`} />}
             >
               <span className="min-w-0 font-normal group-hover:underline">
                 {post.metadata.title}
               </span>
               <DateTime
-                className="site-row-meta min-h-6 shrink-0 items-center justify-end gap-2 text-sm text-muted-foreground tabular-nums hidden sm:flex"
+                className="site-row-meta text-muted-foreground hidden min-h-6 shrink-0 items-center justify-end gap-2 text-sm tabular-nums sm:flex"
                 dateTime={post.date.toISOString().slice(0, 10)}
               />
             </HoverCardTrigger>
@@ -81,4 +83,4 @@ export async function WritingList({ posts }: Readonly<{ posts: BlogPost[] }>) {
       </ol>
     </HoverCardGroup>
   );
-}
+};

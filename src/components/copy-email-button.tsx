@@ -38,19 +38,17 @@ export async function copyEmail(email: string) {
   }
 }
 
-export function CopyEmailButton({ email }: Readonly<{ email: string }>) {
-  return (
-    <button
-      aria-label={`Copy email address ${email}`}
-      className="site-text-link inline-flex min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-sm text-start text-sm wrap-anywhere text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
-      onClick={() => {
-        void copyEmail(email);
-      }}
-      title={email}
-      type="button"
-    >
-      <Mail aria-hidden="true" className="size-4 shrink-0" />
-      {email}
-    </button>
-  );
-}
+export const CopyEmailButton = ({ email }: Readonly<{ email: string }>) => (
+  <button
+    aria-label={`Copy email address ${email}`}
+    className="site-text-link text-muted-foreground hover:text-foreground focus-visible:outline-ring inline-flex min-h-11 max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-start text-sm wrap-anywhere hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 disabled:pointer-events-none disabled:opacity-50"
+    onClick={() => {
+      void copyEmail(email);
+    }}
+    title={email}
+    type="button"
+  >
+    <Mail aria-hidden="true" className="size-4 shrink-0" />
+    {email}
+  </button>
+);
