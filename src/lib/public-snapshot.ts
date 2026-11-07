@@ -1,5 +1,8 @@
 // A warm outage snapshot must not wait for the database's longer connection timeout.
-export const readPublicSnapshot = async <T>(read: () => Promise<T>) => {
+export const readPublicSnapshot = async <T>(
+  read: () => Promise<T>,
+  timeoutMs = 1000
+) => {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -8,7 +11,7 @@ export const readPublicSnapshot = async <T>(read: () => Promise<T>) => {
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
           reject(new Error("The public snapshot read timed out."));
-        }, 1000);
+        }, timeoutMs);
       }),
     ]);
   } finally {

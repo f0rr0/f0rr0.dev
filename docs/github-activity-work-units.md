@@ -285,7 +285,7 @@ Supabase Cron invokes:
 | -------------------------- | ------------------------------------- | -------------------------------------------------------------------- |
 | `/api/cron/github-sync`    | every 5 minutes                       | 15-second request                                                    |
 | `/api/cron/github-worker`  | every 5 minutes, offset by 2 minutes  | 60-second request; default eight items per factual queue and one ref |
-| `/api/cron/github-summary` | every 3 minutes                       | 60-second request; at most one provider claim                        |
+| `/api/cron/github-summary` | every 3 minutes, if work is due       | 60-second request; at most one provider claim                        |
 | `/api/cron/github-refs`    | every 15 minutes, offset by 4 minutes | 15-second request; eight ref pages/repositories per account          |
 
 The worker processes factual queues and current-ref repair before recomputing
@@ -293,6 +293,8 @@ the projection and reconciling the minimal summary status. The separate summary
 worker may claim one provider request, with newer work staying ahead of older
 backlog. Webhooks shorten discovery, but they do not render a page directly;
 publication still waits for the bounded factual worker.
+Both workers check content and ordering revisions before invalidating and warming
+Home and Work. Rendered pages also expire after five minutes.
 Timeline payloads are read from the current projection and are never held in a
 shared response cache.
 

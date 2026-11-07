@@ -1,12 +1,8 @@
-import { revalidatePath } from "next/cache";
-import { after } from "next/server";
-
 import { env } from "@/env";
-import { getPublicCodexStats } from "@/lib/codex/public-stats";
+import { publishCodexStats } from "@/lib/codex/public-stats";
 import { syncCodexAccounts } from "@/lib/codex/sync";
 import { reportOperationalError } from "@/lib/operational-error";
 import { hasBearerSecret } from "@/lib/request-auth";
-import { warmPublicPages } from "@/lib/warm-public-pages";
 
 export const maxDuration = 60;
 
@@ -18,16 +14,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await syncCodexAccounts();
-    if (result.updated > 0) {
-      revalidatePath("/");
-      revalidatePath("/tokens");
-
-      after(async () => {
-        if ((await getPublicCodexStats()) !== null) {
-          await warmPublicPages(["/", "/tokens"], warmingDeadlineAt);
-        }
-      });
-    }
+    await publishCodexStats(warmingDeadlineAt);
     return Response.json({ ok: true, result });
   } catch (error) {
     const errorName = reportOperationalError("codex_stats", error);

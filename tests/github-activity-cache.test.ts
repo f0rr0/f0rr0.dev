@@ -1,6 +1,12 @@
 import { expect, spyOn, test } from "bun:test";
 
-import { getInitialGitHubActivity } from "../src/lib/github-activity-feed";
+import * as nextCache from "next/cache";
+import * as nextServer from "next/server";
+
+import {
+  getInitialGitHubActivity,
+  publishGitHubActivity,
+} from "../src/lib/github-activity-feed";
 import * as store from "../src/lib/github-activity-store";
 import type { PublicGitHubActivityPage } from "../src/lib/github-activity-types";
 import { readRuntimeCache } from "../src/lib/runtime-cache";
@@ -54,6 +60,10 @@ const maskedDays = page.days.map((day) => ({
 
 test("cron and page readers share content while status, ordering and visibility revisions stay fresh", async () => {
   const cache = installRuntimeCache();
+  const invalidate = spyOn(nextCache, "revalidatePath").mockImplementation(
+    () => {}
+  );
+  const after = spyOn(nextServer, "after").mockImplementation(() => {});
   const head = spyOn(store, "readPublicGitHubActivityHead").mockResolvedValue({
     etag: "head",
     head: page.head,
@@ -65,6 +75,9 @@ test("cron and page readers share content while status, ordering and visibility 
   try {
     expect(await getInitialGitHubActivity()).toEqual(page);
     expect(await getInitialGitHubActivity()).toEqual(page);
+    await publishGitHubActivity(Date.now() + 10_000);
+    await publishGitHubActivity(Date.now() + 10_000);
+    expect(invalidate.mock.calls).toEqual([["/"], ["/work"]]);
     expect(body).toHaveBeenCalledTimes(1);
     const status = {
       ...page.head,
@@ -77,6 +90,8 @@ test("cron and page readers share content while status, ordering and visibility 
       orderingRevision: "4",
     });
     expect(await getInitialGitHubActivity()).toEqual({ ...page, head: status });
+    await publishGitHubActivity(Date.now() + 10_000);
+    expect(invalidate).toHaveBeenCalledTimes(2);
     expect(body).toHaveBeenCalledTimes(1);
     const masked = {
       ...page,
@@ -97,12 +112,17 @@ test("cron and page readers share content while status, ordering and visibility 
       body.mockResolvedValue(next);
       expect(await getInitialGitHubActivity()).toEqual(next);
       expect(await getInitialGitHubActivity()).toEqual(next);
+      await publishGitHubActivity(Date.now() + 10_000);
     }
+    expect(invalidate).toHaveBeenCalledTimes(6);
+    expect(after).toHaveBeenCalledTimes(3);
     expect(body).toHaveBeenCalledTimes(3);
     head.mockRejectedValue(new Error("Database offline"));
     expect(await getInitialGitHubActivity()).toEqual(masked);
     expect(body).toHaveBeenCalledTimes(3);
   } finally {
+    invalidate.mockRestore();
+    after.mockRestore();
     head.mockRestore();
     body.mockRestore();
     cache.restore();

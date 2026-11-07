@@ -125,6 +125,16 @@ const cronHttpPostCommand = (
     body := jsonb_build_object('source', 'supabase-cron'),
     timeout_milliseconds := ${String(timeoutMilliseconds)}
   ) as request_id
+  ${
+    urlSecretName === SUMMARY_URL_NAME
+      ? `where exists (
+          select 1 from public.github_work_unit_summary_attempts
+          where (state in ('pending', 'retryable') and request_payload is not null
+                 and debounce_until <= now())
+             or (state = 'processing' and lease_until <= now())
+        )`
+      : ""
+  }
 `;
 
 export const supabaseCronJobsFrom = (

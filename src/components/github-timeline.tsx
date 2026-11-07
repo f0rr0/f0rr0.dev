@@ -6,6 +6,7 @@ import { GitHubTimelinePager } from "@/components/github-timeline-pager";
 import { SiteSection } from "@/components/site-page";
 import { primaryGitHubProfile } from "@/content/resume";
 import { siteNavigation } from "@/content/site";
+import { getVisibleGitHubActivityDays } from "@/lib/github-activity-feed-core";
 import type { PublicGitHubActivityPage } from "@/lib/github-activity-types";
 
 export const GitHubTimeline = ({
@@ -38,7 +39,19 @@ export const GitHubTimeline = ({
   const content = (
     <div className="grid gap-4">
       <GitHubTimelinePager
-        initialPage={initialPage}
+        initialPage={
+          preview
+            ? {
+                ...initialPage,
+                days: getVisibleGitHubActivityDays(
+                  initialPage.days,
+                  now,
+                  preview
+                ),
+                nextCursor: null,
+              }
+            : initialPage
+        }
         preview={preview}
         now={now}
       />

@@ -22,11 +22,11 @@ import { getInitialGitHubActivity } from "@/lib/github-activity-feed";
 import { getGitHubProfile } from "@/lib/github-profile";
 import type { GitHubProfile } from "@/lib/github-profile";
 import { buildPageMetadata } from "@/lib/page-metadata";
-import { getRequestTime } from "@/lib/server-time";
+import { getRequestDay } from "@/lib/server-time";
 
 export const metadata = buildPageMetadata(pages.home);
 
-export const revalidate = 60;
+export const revalidate = 300;
 
 const OpenSource = ({ github }: Readonly<{ github: GitHubProfile }>) => {
   const projects = github.projects
@@ -129,7 +129,7 @@ const Home = async () => {
         </SiteSection>
 
         <OpenSource github={github} />
-        <GitHubTimeline initialPage={activity} now={getRequestTime()} preview />
+        <GitHubTimeline initialPage={activity} now={getRequestDay()} preview />
         {codexStats === null ? null : <CodexStats stats={codexStats} />}
       </SiteMain>
     </SiteShell>

@@ -1,11 +1,15 @@
 import { expect, spyOn, test } from "bun:test";
 
+import * as nextCache from "next/cache";
+import * as nextServer from "next/server";
+
 import { tokenPreferences } from "../src/content/tokens";
 import * as database from "../src/db/client";
 import { buildTokenDetails } from "../src/lib/codex/analytics";
 import {
   getPublicCodexStats,
   getPublicTokenDetails,
+  publishCodexStats,
 } from "../src/lib/codex/public-stats";
 import * as store from "../src/lib/codex/public-stats-store";
 import {
@@ -73,6 +77,47 @@ const restore = (state: ReturnType<typeof setup>) => {
   state.body.mockRestore();
   state.cache.restore();
 };
+
+test("Codex publication skips unchanged revisions and notices token-detail backfills", async () => {
+  const state = setup();
+  const invalidate = spyOn(nextCache, "revalidatePath").mockImplementation(
+    () => {}
+  );
+  const after = spyOn(nextServer, "after").mockImplementation(() => {});
+  try {
+    await publishCodexStats(Date.now() + 10_000);
+    for (const viewsRevision of ["9007199254740993", "9007199254740994"]) {
+      state.revision.mockResolvedValue({ viewsRevision, historyRevision: "1" });
+      state.body.mockResolvedValue({ ...initial, viewsRevision });
+      await publishCodexStats(Date.now() + 10_000);
+    }
+    expect(invalidate.mock.calls).toEqual([["/"], ["/tokens"]]);
+    state.revision.mockResolvedValue({
+      viewsRevision: "9007199254740995",
+      historyRevision: "2",
+    });
+    state.history.mockResolvedValue({ ...closed, historyRevision: "2" });
+    state.body.mockResolvedValue({
+      ...initial,
+      viewsRevision: "9007199254740995",
+      historyRevision: "2",
+      views: {
+        ...initial.views,
+        details: {
+          ...initial.views.details,
+          365: { ...initial.views.details[365], accountCount: 1 },
+        },
+      },
+    });
+    await publishCodexStats(Date.now() + 10_000);
+    expect(invalidate).toHaveBeenCalledTimes(4);
+    expect(after).toHaveBeenCalledTimes(2);
+  } finally {
+    invalidate.mockRestore();
+    after.mockRestore();
+    restore(state);
+  }
+});
 
 test("views and token details share content; recent updates reuse history, backfills refresh it", async () => {
   const state = setup();

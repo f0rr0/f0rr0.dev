@@ -12,6 +12,7 @@ import type { ClosedCodexHistory } from "@/lib/codex/public-stats-store";
 import { reportOperationalError } from "@/lib/operational-error";
 import { readPublicSnapshot } from "@/lib/public-snapshot";
 import { readRuntimeCache, writeRuntimeCache } from "@/lib/runtime-cache";
+import { publishPublicPages } from "@/lib/warm-public-pages";
 
 type PublicViews = Awaited<ReturnType<typeof readCodexPublicViews>>;
 const preferencesKey = JSON.stringify(tokenPreferences);
@@ -118,3 +119,7 @@ export const getPublicCodexStats = async () =>
   (await getViews())?.stats ?? null;
 export const getPublicTokenDetails = async (days: number) =>
   (await getViews())?.details[days] ?? null;
+
+export const publishCodexStats = async (deadlineAt: number) => {
+  await publishPublicPages(["/", "/tokens"], getViews, deadlineAt);
+};
