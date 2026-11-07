@@ -13,7 +13,7 @@ import { buildPageMetadata } from "@/lib/page-metadata";
 
 export const metadata = buildPageMetadata(pages.tokens);
 
-export const revalidate = 60;
+export const revalidate = 300;
 
 const TokensPage = async () => {
   if (!tokenPreferences.enabled) {

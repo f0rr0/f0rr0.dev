@@ -1,8 +1,5 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 
-import * as nextCache from "next/cache";
-import * as nextServer from "next/server";
-
 import { POST as syncTokens } from "../src/app/api/cron/codex-stats/route";
 import { POST as summarizeWork } from "../src/app/api/cron/github-summary/route";
 import { POST as syncWork } from "../src/app/api/cron/github-worker/route";
@@ -67,47 +64,31 @@ test("cron authentication rejects missing, wrong and unconfigured secrets before
   }
 });
 
-test("Codex publication warms only after a successful sync changes data", async () => {
+test("Codex checks publication after every successful sync, including zero updated accounts", async () => {
   env.CRON_SECRET = secret;
   const sync = spyOn(tokenSync, "syncCodexAccounts");
-  const invalidate = spyOn(nextCache, "revalidatePath").mockImplementation(
-    () => {}
-  );
-  const after = spyOn(nextServer, "after").mockImplementation(() => {});
-  const warm = spyOn(tokenViews, "getPublicCodexStats").mockResolvedValue(null);
+  const publish = spyOn(tokenViews, "publishCodexStats").mockResolvedValue();
   try {
     sync.mockResolvedValue({ updated: 0 });
     expect((await syncTokens(request("codex-stats"))).status).toBe(200);
-    expect(invalidate).not.toHaveBeenCalled();
-    expect(after).not.toHaveBeenCalled();
+    expect(publish).toHaveBeenCalledTimes(1);
 
     sync.mockRejectedValue(new Error("private upstream details"));
     const failure = await syncTokens(request("codex-stats"));
     expect(failure.status).toBe(503);
     expect(await failure.json()).toEqual({ ok: false, error: "Error" });
-    expect(invalidate).not.toHaveBeenCalled();
-    expect(after).not.toHaveBeenCalled();
+    expect(publish).toHaveBeenCalledTimes(1);
 
     sync.mockResolvedValue({ updated: 1 });
     expect((await syncTokens(request("codex-stats"))).status).toBe(200);
-    expect(invalidate.mock.calls).toEqual([["/"], ["/tokens"]]);
-    expect(after).toHaveBeenCalledTimes(1);
-    expect(warm).not.toHaveBeenCalled();
-    const [[warmAfterResponse]] = after.mock.calls;
-    expect(typeof warmAfterResponse).toBe("function");
-    if (typeof warmAfterResponse === "function") {
-      await warmAfterResponse();
-    }
-    expect(warm).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledTimes(2);
   } finally {
     sync.mockRestore();
-    invalidate.mockRestore();
-    after.mockRestore();
-    warm.mockRestore();
+    publish.mockRestore();
   }
 });
 
-test("GitHub rejects invalid requests and warms only a changed public feed", async () => {
+test("GitHub workers check publication even without a projection or a new summary claim", async () => {
   env.CRON_SECRET = secret;
   const stage = {
     claimed: 0,
@@ -129,13 +110,11 @@ test("GitHub rejects invalid requests and warms only a changed public feed", asy
   const worker = spyOn(workWorker, "runGitHubActivityWorker").mockResolvedValue(
     result
   );
-  const invalidate = spyOn(nextCache, "revalidatePath").mockImplementation(
-    () => {}
-  );
-  const after = spyOn(nextServer, "after").mockImplementation(() => {});
-  const warm = spyOn(workViews, "getInitialGitHubActivity").mockResolvedValue(
-    null
-  );
+  const summary = spyOn(
+    summaryWorker,
+    "runGitHubWorkUnitSummaryWorker"
+  ).mockResolvedValue(stage);
+  const publish = spyOn(workViews, "publishGitHubActivity").mockResolvedValue();
   try {
     expect((await syncWork(request("github-worker?batch=bad"))).status).toBe(
       400
@@ -145,38 +124,9 @@ test("GitHub rejects invalid requests and warms only a changed public feed", asy
     const failure = await syncWork(request("github-worker"));
     expect(failure.status).toBe(503);
     expect(await failure.json()).toEqual({ ok: false, error: "Error" });
-    expect(invalidate).not.toHaveBeenCalled();
-    expect(after).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
     expect((await syncWork(request("github-worker"))).status).toBe(200);
-    expect(invalidate).not.toHaveBeenCalled();
-    expect(after).not.toHaveBeenCalled();
-
-    result.projection = {
-      changed: true,
-      deletedUnits: 0,
-      exclusionReasonCounts: {
-        merged_pr_landing: 0,
-        canonical_branch_unknown: 0,
-        head_generation_incomplete: 0,
-        no_current_owner: 0,
-        pull_request_coverage_incomplete: 0,
-        repository_visibility_unknown: 0,
-      },
-      feedRevisionChanged: false,
-      insertedUnits: 0,
-      orderingRevisionChanged: true,
-      summaryAttemptsQueued: 0,
-      summaryEvaluationsPending: 0,
-      summaryEvaluationsSettled: 0,
-      summaryInputsFailed: 0,
-      summaryInputsSet: 0,
-      updatedUnits: 1,
-    };
-    expect((await syncWork(request("github-worker"))).status).toBe(200);
-    expect(invalidate).not.toHaveBeenCalled();
-    expect(after).not.toHaveBeenCalled();
-
-    result.projection.feedRevisionChanged = true;
+    expect(publish).toHaveBeenCalledTimes(1);
     expect((await syncWork(request("github-worker?batch=2"))).status).toBe(200);
     expect(worker).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -185,19 +135,12 @@ test("GitHub rejects invalid requests and warms only a changed public feed", asy
         refLimit: 1,
       })
     );
-    expect(invalidate.mock.calls).toEqual([["/"], ["/work"]]);
-    expect(after).toHaveBeenCalledTimes(1);
-    expect(warm).not.toHaveBeenCalled();
-    const [[warmAfterResponse]] = after.mock.calls;
-    expect(typeof warmAfterResponse).toBe("function");
-    if (typeof warmAfterResponse === "function") {
-      await warmAfterResponse();
-    }
-    expect(warm).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledTimes(2);
+    expect((await summarizeWork(request("github-summary"))).status).toBe(200);
+    expect(publish).toHaveBeenCalledTimes(3);
   } finally {
     worker.mockRestore();
-    invalidate.mockRestore();
-    after.mockRestore();
-    warm.mockRestore();
+    summary.mockRestore();
+    publish.mockRestore();
   }
 });

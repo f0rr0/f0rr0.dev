@@ -391,8 +391,7 @@ export const GitHubActivityDays = ({
   now: string;
 }>) => {
   const today = dateKey(now);
-  const activeDays = getVisibleGitHubActivityDays(days, today);
-  const visibleDays = preview ? activeDays.slice(0, 1) : activeDays;
+  const visibleDays = getVisibleGitHubActivityDays(days, today, preview);
   return (
     <TooltipGroup>
       {visibleDays.map((day) => (

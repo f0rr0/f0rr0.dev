@@ -47,15 +47,18 @@ interface MutableRepositoryGroup {
 
 export const getVisibleGitHubActivityDays = (
   days: readonly PublicGitHubActivityDay[],
-  today: string
-) =>
-  days
+  today: string,
+  preview = false
+) => {
+  const visibleDays = days
     .filter(
       (day) =>
         day.day <= today &&
         day.repositories.some((group) => group.items.length > 0)
     )
     .toSorted((left, right) => right.day.localeCompare(left.day));
+  return preview ? visibleDays.slice(0, 1) : visibleDays;
+};
 
 const compareText = (left: string, right: string) =>
   left < right ? -1 : left > right ? 1 : 0;

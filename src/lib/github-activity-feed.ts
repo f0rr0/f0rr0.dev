@@ -9,6 +9,8 @@ import type { PublicGitHubActivityPage } from "@/lib/github-activity-types";
 import { reportOperationalError } from "@/lib/operational-error";
 import { readPublicSnapshot } from "@/lib/public-snapshot";
 import { readRuntimeCache, writeRuntimeCache } from "@/lib/runtime-cache";
+import { getRequestDay } from "@/lib/server-time";
+import { publishPublicPages } from "@/lib/warm-public-pages";
 
 const FALLBACK_KEY = "public-github-activity-fallback-v3";
 const contentKey = (
@@ -96,3 +98,16 @@ export const getGitHubActivityPage = async (cursor: GitHubActivityCursor) =>
 
 export const getGitHubActivityHead = async () =>
   await readPublicGitHubActivityHead();
+
+export const publishGitHubActivity = async (deadlineAt: number) => {
+  await publishPublicPages(
+    ["/", "/work"],
+    async () => {
+      const page = await getInitialGitHubActivity();
+      return page === null
+        ? null
+        : [getRequestDay(), page.head.feedRevision, page.orderingRevision];
+    },
+    deadlineAt
+  );
+};

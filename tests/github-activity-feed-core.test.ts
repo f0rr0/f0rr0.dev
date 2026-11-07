@@ -76,6 +76,9 @@ describe("public GitHub activity day projection", () => {
       active,
       older,
     ]);
+    expect(getVisibleGitHubActivityDays(days, "2026-09-06", true)).toEqual([
+      active,
+    ]);
     expect(days).toEqual([older, empty, active, emptyGroup]);
     expect(getVisibleGitHubActivityDays([active], "2026-09-04")).toEqual([
       active,

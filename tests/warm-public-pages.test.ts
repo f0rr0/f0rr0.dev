@@ -1,8 +1,57 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, mock, spyOn, test } from "bun:test";
+
+import * as nextCache from "next/cache";
+import * as nextServer from "next/server";
 
 import { CANONICAL_SITE_URL } from "../src/lib/site-url";
-import { warmPublicPages } from "../src/lib/warm-public-pages";
-import { env, mockFetch } from "./helpers";
+import {
+  publishPublicPages,
+  warmPublicPages,
+} from "../src/lib/warm-public-pages";
+import { env, installRuntimeCache, mockFetch } from "./helpers";
+
+test("publication ignores fetch timestamps and leaves timed-out content retryable", async () => {
+  const cache = installRuntimeCache();
+  const invalidate = spyOn(nextCache, "revalidatePath").mockImplementation(
+    () => {}
+  );
+  const after = spyOn(nextServer, "after").mockImplementation(() => {});
+  const late = Promise.withResolvers<{ tokens: number }>();
+  try {
+    for (const fetchedAt of ["2026-11-07T01:00Z", "2026-11-07T02:00Z"]) {
+      await publishPublicPages(
+        ["/", "/tokens"],
+        async () => ({ tokens: 100, fetchedAt }),
+        Date.now() + 10_000
+      );
+    }
+    expect(invalidate.mock.calls).toEqual([["/"], ["/tokens"]]);
+    expect(after).toHaveBeenCalledTimes(1);
+    await publishPublicPages(
+      ["/", "/tokens"],
+      async () => ({ tokens: 101 }),
+      Date.now() + 10_000
+    );
+    expect(invalidate).toHaveBeenCalledTimes(4);
+    expect(after).toHaveBeenCalledTimes(2);
+    const read = mock(async () => await late.promise);
+    await publishPublicPages(["/", "/tokens"], read, 0);
+    expect(read).not.toHaveBeenCalled();
+    const startedAt = performance.now();
+    await publishPublicPages(["/", "/tokens"], read, Date.now() + 1050);
+    expect(performance.now() - startedAt).toBeLessThan(500);
+    expect(invalidate).toHaveBeenCalledTimes(4);
+    late.resolve({ tokens: 102 });
+    await publishPublicPages(["/", "/tokens"], read, Date.now() + 10_000);
+    expect(invalidate).toHaveBeenCalledTimes(6);
+    expect(after).toHaveBeenCalledTimes(3);
+  } finally {
+    late.resolve({ tokens: 102 });
+    invalidate.mockRestore();
+    after.mockRestore();
+    cache.restore();
+  }
+});
 
 test("only production warms pages concurrently; failures cannot fail publication", async () => {
   const original = env.VERCEL_ENV;

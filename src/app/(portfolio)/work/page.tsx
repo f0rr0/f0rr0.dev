@@ -4,18 +4,18 @@ import { SiteShell } from "@/components/site-shell";
 import { pages } from "@/content/pages";
 import { getInitialGitHubActivity } from "@/lib/github-activity-feed";
 import { buildPageMetadata } from "@/lib/page-metadata";
-import { getRequestTime } from "@/lib/server-time";
+import { getRequestDay } from "@/lib/server-time";
 
 export const metadata = buildPageMetadata(pages.work);
 
-export const revalidate = 60;
+export const revalidate = 300;
 
 const WorkLogPage = async () => {
   const initialPage = await getInitialGitHubActivity();
   return (
     <SiteShell activeHref={pages.work.path}>
       <SiteMain>
-        <GitHubTimeline initialPage={initialPage} now={getRequestTime()} />
+        <GitHubTimeline initialPage={initialPage} now={getRequestDay()} />
       </SiteMain>
     </SiteShell>
   );

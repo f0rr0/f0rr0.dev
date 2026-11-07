@@ -1,4 +1,5 @@
 import { env } from "@/env";
+import { publishGitHubActivity } from "@/lib/github-activity-feed";
 import { GITHUB_WORKER_EXECUTION_DURATION_MS } from "@/lib/github-cron-config";
 import type { GITHUB_WORKER_MAX_DURATION_SECONDS } from "@/lib/github-cron-config";
 import { runGitHubWorkUnitSummaryWorker } from "@/lib/github-work-unit-summary-worker";
@@ -15,10 +16,12 @@ export async function POST(request: Request) {
     return Response.json({ ok: false }, { status: 401 });
   }
 
+  const warmingDeadlineAt = Date.now() + maxDuration * 1000 - 1000;
   try {
     const summary = await runGitHubWorkUnitSummaryWorker(
       GITHUB_WORKER_EXECUTION_DURATION_MS
     );
+    await publishGitHubActivity(warmingDeadlineAt);
     return Response.json({ ok: true, summary });
   } catch (error) {
     const errorName = reportOperationalError("github_summary", error);
